@@ -1,0 +1,15 @@
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/bin/Debug/net9.0/HelloblueGK
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/bin/Debug/net9.0/HelloblueGK.deps.json
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/bin/Debug/net9.0/HelloblueGK.runtimeconfig.json
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/bin/Debug/net9.0/HelloblueGK.dll
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/bin/Debug/net9.0/HelloblueGK.pdb
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.GeneratedMSBuildEditorConfig.editorconfig
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.AssemblyInfoInputs.cache
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.AssemblyInfo.cs
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.csproj.CoreCompileInputs.cache
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.sourcelink.json
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.dll
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/refint/HelloblueGK.dll
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.pdb
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/HelloblueGK.genruntimeconfig.cache
+/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/Debug/net9.0/ref/HelloblueGK.dll
