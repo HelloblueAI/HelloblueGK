@@ -1,7 +1,7 @@
 using System;
 using System.Threading.Tasks;
 
-namespace HelloblueGK.Models
+namespace HB_NLP_Research_Lab.Models
 {
     public class TelemetrySystem
     {

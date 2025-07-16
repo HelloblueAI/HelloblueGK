@@ -10,12 +10,11 @@
     <Product>HelloblueGK - Advanced Aerospace Engine Kernel</Product>
     <Description>World's most advanced aerospace engine simulation and design platform</Description>
     <RootNamespace>HB_NLP_Research_Lab</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="**/*.cs" />
-    <Compile Include="Core/**/*.cs" />
-    <Compile Include="AI/**/*.cs" />
   </ItemGroup>
 
   <ItemGroup>

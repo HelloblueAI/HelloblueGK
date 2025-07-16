@@ -2,7 +2,7 @@ using System;
 using System.Numerics;
 using System.Collections.Generic;
 
-namespace HelloblueGK.Models
+namespace HB_NLP_Research_Lab.Models
 {
     /// <summary>
     /// Comprehensive performance metrics for aerospace engines
