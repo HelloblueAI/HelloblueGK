@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("World\'s most advanced aerospace engine simulation and design platform")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6a88dbf9972b50bde4571b0722527a5b7665c90e")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+646d7d4f3a75625db1e1f2e062a4c584975f4577")]
 [assembly: System.Reflection.AssemblyProductAttribute("HelloblueGK - Advanced Aerospace Engine Kernel")]
 [assembly: System.Reflection.AssemblyTitleAttribute("HelloblueGK")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
