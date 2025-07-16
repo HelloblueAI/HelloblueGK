@@ -1,4 +1,4 @@
-### HB-NLP Research Lab Aerospace Engine Kernel
+### Helloblue, Inc. 2025 HB-NLP Research Lab Aerospace Engine Kernel
 
 <div align="center">
 
@@ -30,7 +30,7 @@
 
 </div>
 
-**HB-NLP Research Lab** presents a comprehensive aerospace engine simulation and design platform built from the ground up with enterprise-grade architecture, advanced physics simulation, and optimization algorithms.
+**Helloblue, Inc. 2025 HB-NLP Research Lab** presents a comprehensive aerospace engine simulation and design platform built from the ground up with enterprise-grade architecture, advanced physics simulation, and optimization.
 
 ### Core Features
 
@@ -208,7 +208,7 @@ dotnet run
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
-│           HB-NLP RESEARCH LAB - ENGINE SIMULATION               │
+│           HELLOBLUE, INC. 2025 HB-NLP RESEARCH LAB - ENGINE SIMULATION               │
 ├─────────────────────────────────────────────────────────────────┤
 │  Initializing Advanced Propulsion Systems...                    │
 │  Running Multi-Engine Performance Analysis...                   │
@@ -256,7 +256,7 @@ dotnet run
 
 ---
 
-## Why Choose HB-NLP Research Lab?
+## Why Choose Helloblue, Inc. 2025 HB-NLP Research Lab?
 
 ### Technical Excellence
 
@@ -292,7 +292,7 @@ dotnet run
 
 ### Apache License 2.0
 
-Copyright (c) 2024 HB-NLP Research Lab
+Copyright (c) 2024 Helloblue, Inc. 2025 HB-NLP Research Lab
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at:
 
@@ -337,7 +337,7 @@ For licensing inquiries, enterprise deployments, or commercial use:
 
 <div align="center">
 
-![HB-NLP Research Lab](https://img.shields.io/badge/HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)
+![Helloblue, Inc. 2025 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202025%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)
 ![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)
 ![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)
 ![CFD](https://img.shields.io/badge/CFD-Computational%20Fluid%20Dynamics-orange?style=flat)
