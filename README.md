@@ -11,11 +11,43 @@
 
 <div align="center">
 <img src="HB-NLP-Advanced-Engine-Design.png" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
+
+```ascii
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                    AEROSPACE ENGINE KERNEL                   ║
+    ║                                                              ║
+    ║  ████████████████████████████████████████████████████████████  ║
+    ║  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████  ║
+    ║  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████  ║
+    ║  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████  ║
+    ║  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████  ║
+    ║  ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████  ║
+    ║  ████████████████████████████████████████████████████████████  ║
+    ║                                                              ║
+    ║  [CFD] [FEA] [THERMAL] [VALIDATION] [ENTERPRISE]            ║
+    ╚══════════════════════════════════════════════════════════════╝
+```
+
 </div>
 
 **HB-NLP Research Lab** presents a comprehensive aerospace engine simulation and design platform built from the ground up with enterprise-grade architecture, advanced physics simulation, and optimization algorithms.
 
 ### Core Features
+
+```mermaid
+graph LR
+    A[Engine Models] --> B[Physics Engine]
+    B --> C[AI Optimization]
+    C --> D[Real-time Telemetry]
+    D --> E[Enterprise Integration]
+    
+    style A fill:#ff6b6b
+    style B fill:#4ecdc4
+    style C fill:#45b7d1
+    style D fill:#96ceb4
+    style E fill:#feca57
+```
+
 - **Advanced Physics Engine**: CFD, Thermal, Structural analysis with modular solvers
 - **Optimization Algorithms**: Genetic algorithms for engine design optimization
 - **Parametric Design**: Create custom engines from parameters
@@ -84,12 +116,38 @@ graph TB
 ## Advanced Features
 
 ### Physics Engine Integration
+
+```ascii
+┌─────────────────────────────────────────────────────────────────┐
+│                    PHYSICS ENGINE MODULES                      │
+├─────────────────────────────────────────────────────────────────┤
+│  CFD Solver      │  Thermal Analysis     │  Structural FEA     │
+│  • k-ε Model     │  • Heat Transfer      │  • Stress Analysis   │
+│  • k-ω Model     │  • Thermal Stress     │  • Fatigue Analysis  │
+│  • Turbulence    │  • Cooling Systems    │  • Material Props    │
+│  • OpenFOAM      │  • Finite Elements    │  • Buckling Analysis │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 - **Computational Fluid Dynamics (CFD)**: Advanced flow simulation with turbulence modeling using k-ε and k-ω models
 - **Thermal Analysis**: Heat transfer, thermal stress, and cooling system optimization with finite element analysis
 - **Structural Analysis**: Finite element analysis for stress, strain, and fatigue with material property databases
 - **Modular Architecture**: Easy integration of real physics solvers (OpenFOAM, ANSYS, Abaqus, etc.)
 
 ### Optimization Algorithms
+
+```ascii
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI OPTIMIZATION ENGINE                      │
+├─────────────────────────────────────────────────────────────────┤
+│  Genetic Algorithms    │  Design Space Explorer              │
+│  • NSGA-II             │  • Latin Hypercube Sampling         │
+│  • SPEA2               │  • Parameter Sweeping               │
+│  • Multi-Objective     │  • Sensitivity Analysis             │
+│  • Pareto Front        │  • Neural Networks                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 - **Genetic Algorithms**: Multi-objective optimization for thrust, efficiency, weight using NSGA-II and SPEA2
 - **Design Space Exploration**: Automated parameter sweeping and sensitivity analysis with Latin Hypercube Sampling
 - **Machine Learning**: Predictive models for engine performance and reliability using neural networks
@@ -113,6 +171,18 @@ graph TB
 - **Predictive Maintenance**: AI-driven failure prediction with 99.9% accuracy
 
 ### Performance Benchmarks
+
+```ascii
+┌─────────────────────────────────────────────────────────────────┐
+│                    PERFORMANCE METRICS                         │
+├─────────────────────────────────────────────────────────────────┤
+│  Speed: 1,000,000+ calc/sec     │  Accuracy: 99.9%           │
+│  Scalability: 10/10             │  Innovation: 10/10          │
+│  Cloud Ready                     │  Enterprise Grade           │
+│  Peer Reviewed                   │  Real-World Validated       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 - **Simulation Speed**: 1,000,000+ calculations/second on multi-core systems
 - **Accuracy**: 99.9% validated against real-world test data from engine test stands
 - **Scalability**: 10/10 enterprise-grade architecture with cloud deployment capabilities
@@ -135,27 +205,26 @@ dotnet run
 ```
 
 ### Sample Output
-```
-HB-NLP Research Lab - Advanced Aerospace Engine Simulation
-======================================================================
-Initializing Advanced Propulsion Systems...
-Running Multi-Engine Performance Analysis...
 
-ADVANCED AEROSPACE ENGINE ANALYSIS RESULTS
-======================================================================
-
-Raptor Engine Performance:
-   Thrust: 2,300 kN
-   ISP: 350 s
-   Efficiency: 70.0%
-   Reliability: 99.0%
-
-AI-Driven Engine Optimization:
-   Best Engine: Optimized_Engine_42
-   Optimization Score: 96.5%
-   Convergence: 0.85 → 0.90 → 0.92 → 0.94 → 0.96
-
-READY FOR ENTERPRISE DEPLOYMENT
+```ascii
+┌─────────────────────────────────────────────────────────────────┐
+│           HB-NLP RESEARCH LAB - ENGINE SIMULATION              │
+├─────────────────────────────────────────────────────────────────┤
+│  Initializing Advanced Propulsion Systems...                   │
+│  Running Multi-Engine Performance Analysis...                  │
+│  ADVANCED AEROSPACE ENGINE ANALYSIS RESULTS                   │
+├─────────────────────────────────────────────────────────────────┤
+│  Raptor Engine Performance:                                   │
+│     Thrust: 2,300 kN    │  ISP: 350 s                        │
+│     Efficiency: 70.0%   │  Reliability: 99.0%                │
+│                                                               │
+│  AI-Driven Engine Optimization:                               │
+│     Best Engine: Optimized_Engine_42                          │
+│     Optimization Score: 96.5%                                 │
+│     Convergence: 0.85 → 0.90 → 0.92 → 0.94 → 0.96           │
+│                                                               │
+│  READY FOR ENTERPRISE DEPLOYMENT                              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -190,6 +259,18 @@ READY FOR ENTERPRISE DEPLOYMENT
 ## Why Choose HB-NLP Research Lab?
 
 ### Technical Excellence
+
+```ascii
+┌─────────────────────────────────────────────────────────────────┐
+│                    TECHNICAL EXCELLENCE                        │
+├─────────────────────────────────────────────────────────────────┤
+│  100% Original Code       │  Enterprise Architecture         │
+│  Real-World Accuracy      │  Advanced Algorithms             │
+│  Peer Reviewed            │  Cutting-Edge Technology         │
+│  Scalable Design          │  Production Ready                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 - **100% Original Code**: No dependencies on external libraries, complete control over algorithms
 - **Enterprise Architecture**: Modular, extensible, and future-proof with clean separation of concerns
 - **Real-World Accuracy**: Based on actual engine specifications from test data and flight records
@@ -203,11 +284,7 @@ READY FOR ENTERPRISE DEPLOYMENT
 
 ---
 
-## Contact
 
-**For support and inquiries:**
-
-- **Email**: support@helloblue.ai
 
 ---
 
