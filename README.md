@@ -2,12 +2,6 @@
 
 <div align="center">
 
-![HB-NLP Research Lab](https://img.shields.io/badge/HB--NLP%20Research%20Lab-World's%20Most%20Advanced%20Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)
-![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)
-![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)
-![Aerospace](https://img.shields.io/badge/Aerospace-Engineering-blue?style=flat)
-![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)
-
 **Enterprise-Grade Aerospace Engine Simulation & Design Platform**
 </div>
 
@@ -147,7 +141,7 @@ HB-NLP Research Lab - Advanced Aerospace Engine Simulation
 Initializing Advanced Propulsion Systems...
 Running Multi-Engine Performance Analysis...
 
-WORLD'S MOST ADVANCED AEROSPACE ENGINE ANALYSIS RESULTS
+ADVANCED AEROSPACE ENGINE ANALYSIS RESULTS
 ======================================================================
 
 Raptor Engine Performance:
@@ -161,7 +155,7 @@ AI-Driven Engine Optimization:
    Optimization Score: 96.5%
    Convergence: 0.85 → 0.90 → 0.92 → 0.94 → 0.96
 
-READY FOR ENTERPRISE DEPLOYMENT - WORLD'S MOST ADVANCED
+READY FOR ENTERPRISE DEPLOYMENT
 ```
 
 ---
@@ -217,8 +211,71 @@ READY FOR ENTERPRISE DEPLOYMENT - WORLD'S MOST ADVANCED
 
 ---
 
+## License
+
+### Apache License 2.0
+
+Copyright (c) 2024 HB-NLP Research Lab
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at:
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+
+### License Terms Summary
+
+**Permissions:**
+- ✅ Commercial use
+- ✅ Modification
+- ✅ Distribution
+- ✅ Patent use
+- ✅ Private use
+
+**Limitations:**
+- ❌ Liability
+- ❌ Warranty
+
+**Conditions:**
+- 📋 License and copyright notice must be included
+- 📋 State changes must be documented
+
+### Aerospace Industry Compliance
+
+This software is designed for aerospace engineering applications and complies with industry standards. Users are responsible for:
+
+- **Validation**: Ensuring simulation results meet their specific requirements
+- **Safety**: Following aerospace industry safety protocols
+- **Compliance**: Adhering to relevant regulatory requirements
+- **Testing**: Conducting appropriate validation testing before production use
+
+### Contact for Licensing
+
+For licensing inquiries, enterprise deployments, or commercial use:
+
+- **Email**: licensing@helloblue.ai
+- **Support**: support@helloblue.ai
+
+---
+
 <div align="center">
 
-**The World's Most Advanced Aerospace Engine Simulation Platform**
+**Advanced Aerospace Engine Simulation Platform**
+
+</div>
+
+---
+
+<div align="center">
+
+![HB-NLP Research Lab](https://img.shields.io/badge/HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)
+![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)
+![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)
+![CFD](https://img.shields.io/badge/CFD-Computational%20Fluid%20Dynamics-orange?style=flat)
+![FEA](https://img.shields.io/badge/FEA-Finite%20Element%20Analysis-red?style=flat)
+![Thermal](https://img.shields.io/badge/Thermal-Heat%20Transfer%20Analysis-yellow?style=flat)
+![Validation](https://img.shields.io/badge/Validation-Real%20World%20Data-green?style=flat)
+![Enterprise](https://img.shields.io/badge/Enterprise-Grade%20Architecture-purple?style=flat)
+![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)
 
 </div>
