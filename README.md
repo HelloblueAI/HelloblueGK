@@ -9,7 +9,6 @@
 ![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)
 
 **Enterprise-Grade Aerospace Engine Simulation & Design Platform**
-
 </div>
 
 ---
@@ -222,6 +221,4 @@ READY FOR ENTERPRISE DEPLOYMENT - WORLD'S MOST ADVANCED
 
 **The World's Most Advanced Aerospace Engine Simulation Platform**
 
-*Ready for SpaceX, Boeing, NASA, and the Future of Aerospace Innovation*
-
-</div> 
+</div>
