@@ -1,12 +1,3 @@
-### Helloblue, Inc. 2025 HB-NLP Research Lab Aerospace Engine Kernel
-
-<div align="center">
-
-**Enterprise-Grade Aerospace Engine Simulation & Design Platform**
-</div>
-
----
-
 ## HB-NLP Advanced Aerospace Engine Design
 
 <div align="center">
