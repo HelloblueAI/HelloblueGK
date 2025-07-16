@@ -381,6 +381,7 @@ namespace HB_NLP_Research_Lab.Core
     {
         public double Thrust { get; set; } // kN
         public double Efficiency { get; set; }
+        public double Reliability { get; set; }
         public double FuelConsumption { get; set; } // kg/s
         public double Temperature { get; set; } // K
         public double Pressure { get; set; } // bar
