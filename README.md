@@ -41,11 +41,11 @@ graph LR
     C --> D[Real-time Telemetry]
     D --> E[Enterprise Integration]
     
-    style A fill:#ff6b6b
-    style B fill:#4ecdc4
-    style C fill:#45b7d1
-    style D fill:#96ceb4
-    style E fill:#feca57
+    style A fill:#ff6b6b,stroke:#000,color:#000
+    style B fill:#4ecdc4,stroke:#000,color:#000
+    style C fill:#45b7d1,stroke:#000,color:#000
+    style D fill:#96ceb4,stroke:#000,color:#000
+    style E fill:#feca57,stroke:#000,color:#000
 ```
 
 - **Advanced Physics Engine**: CFD, Thermal, Structural analysis with modular solvers
