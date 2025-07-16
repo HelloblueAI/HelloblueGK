@@ -119,9 +119,9 @@ graph TB
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PHYSICS ENGINE MODULES                      │
+│                    PHYSICS ENGINE MODULES                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  CFD Solver      │  Thermal Analysis     │  Structural FEA     │
+│  CFD Solver      │  Thermal Analysis     │  Structural FEA      │
 │  • k-ε Model     │  • Heat Transfer      │  • Stress Analysis   │
 │  • k-ω Model     │  • Thermal Stress     │  • Fatigue Analysis  │
 │  • Turbulence    │  • Cooling Systems    │  • Material Props    │
@@ -138,13 +138,13 @@ graph TB
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
-│                    AI OPTIMIZATION ENGINE                      │
+│                    AI OPTIMIZATION ENGINE                       │
 ├─────────────────────────────────────────────────────────────────┤
-│  Genetic Algorithms    │  Design Space Explorer              │
-│  • NSGA-II             │  • Latin Hypercube Sampling         │
-│  • SPEA2               │  • Parameter Sweeping               │
-│  • Multi-Objective     │  • Sensitivity Analysis             │
-│  • Pareto Front        │  • Neural Networks                  │
+│  Genetic Algorithms    │  Design Space Explorer                 │
+│  • NSGA-II             │  • Latin Hypercube Sampling            │
+│  • SPEA2               │  • Parameter Sweeping                  │
+│  • Multi-Objective     │  • Sensitivity Analysis                │
+│  • Pareto Front        │  • Neural Networks                     │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -174,12 +174,12 @@ graph TB
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PERFORMANCE METRICS                         │
+│                    PERFORMANCE METRICS                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  Speed: 1,000,000+ calc/sec     │  Accuracy: 99.9%           │
-│  Scalability: 10/10             │  Innovation: 10/10          │
-│  Cloud Ready                     │  Enterprise Grade           │
-│  Peer Reviewed                   │  Real-World Validated       │
+│  Speed: 1,000,000+ calc/sec      │  Accuracy: 99.9%             │
+│  Scalability: 10/10              │  Innovation: 10/10           │
+│  Cloud Ready                     │  Enterprise Grade            │
+│  Peer Reviewed                   │  Real-World Validated        │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -208,22 +208,22 @@ dotnet run
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
-│           HB-NLP RESEARCH LAB - ENGINE SIMULATION              │
+│           HB-NLP RESEARCH LAB - ENGINE SIMULATION               │
 ├─────────────────────────────────────────────────────────────────┤
-│  Initializing Advanced Propulsion Systems...                   │
-│  Running Multi-Engine Performance Analysis...                  │
-│  ADVANCED AEROSPACE ENGINE ANALYSIS RESULTS                   │
+│  Initializing Advanced Propulsion Systems...                    │
+│  Running Multi-Engine Performance Analysis...                   │
+│  ADVANCED AEROSPACE ENGINE ANALYSIS RESULTS                     │
 ├─────────────────────────────────────────────────────────────────┤
-│  Raptor Engine Performance:                                   │
-│     Thrust: 2,300 kN    │  ISP: 350 s                        │
-│     Efficiency: 70.0%   │  Reliability: 99.0%                │
-│                                                               │
-│  AI-Driven Engine Optimization:                               │
-│     Best Engine: Optimized_Engine_42                          │
-│     Optimization Score: 96.5%                                 │
-│     Convergence: 0.85 → 0.90 → 0.92 → 0.94 → 0.96           │
-│                                                               │
-│  READY FOR ENTERPRISE DEPLOYMENT                              │
+│  Raptor Engine Performance:                                     │
+│     Thrust: 2,300 kN    │  ISP: 350 s                           │
+│     Efficiency: 70.0%   │  Reliability: 99.0%                   │
+│                                                                 │
+│  AI-Driven Engine Optimization:                                 │
+│     Best Engine: Optimized_Engine_42                            │
+│     Optimization Score: 96.5%                                   │
+│     Convergence: 0.85 → 0.90 → 0.92 → 0.94 → 0.96               │
+│                                                                 │
+│  READY FOR ENTERPRISE DEPLOYMENT                                │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -262,12 +262,12 @@ dotnet run
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
-│                    TECHNICAL EXCELLENCE                        │
+│                    TECHNICAL EXCELLENCE                         │
 ├─────────────────────────────────────────────────────────────────┤
-│  100% Original Code       │  Enterprise Architecture         │
-│  Real-World Accuracy      │  Advanced Algorithms             │
-│  Peer Reviewed            │  Cutting-Edge Technology         │
-│  Scalable Design          │  Production Ready                │
+│  100% Original Code       │  Enterprise Architecture            │
+│  Real-World Accuracy      │  Advanced Algorithms                │
+│  Peer Reviewed            │  Cutting-Edge Technology            │
+│  Scalable Design          │  Production Ready                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
