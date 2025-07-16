@@ -328,7 +328,7 @@ For licensing inquiries, enterprise deployments, or commercial use:
 
 <div align="center">
 
-![Helloblue, Inc. 2025 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202025%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)
+
 ![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)
 ![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)
 ![CFD](https://img.shields.io/badge/CFD-Computational%20Fluid%20Dynamics-orange?style=flat)
@@ -337,5 +337,6 @@ For licensing inquiries, enterprise deployments, or commercial use:
 ![Validation](https://img.shields.io/badge/Validation-Real%20World%20Data-green?style=flat)
 ![Enterprise](https://img.shields.io/badge/Enterprise-Grade%20Architecture-purple?style=flat)
 ![License](https://img.shields.io/badge/License-Apache%202.0-green.svg)
+![Helloblue, Inc. 2025 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202025%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)
 
 </div>
