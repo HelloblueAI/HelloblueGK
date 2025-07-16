@@ -1,6 +1,6 @@
 using System;
 
-namespace HelloblueGK.Physics
+namespace HB_NLP_Research_Lab.Physics
 {
     public class CFDSolverStub : IPhysicsSolver
     {

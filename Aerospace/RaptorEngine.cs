@@ -1,6 +1,6 @@
 using System;
 
-namespace HelloblueGK.Aerospace
+namespace HB_NLP_Research_Lab.Aerospace
 {
     public class RaptorEngine : RocketEngineBase
     {

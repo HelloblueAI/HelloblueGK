@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/HelloblueGK.csproj": {}
+    "/home/pejmanhaghighatnia/Documents/PicoGK/HelloblueGK.csproj": {}
   },
   "projects": {
-    "/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/HelloblueGK.csproj": {
+    "/home/pejmanhaghighatnia/Documents/PicoGK/HelloblueGK.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/HelloblueGK.csproj",
+        "projectUniqueName": "/home/pejmanhaghighatnia/Documents/PicoGK/HelloblueGK.csproj",
         "projectName": "HelloblueGK",
-        "projectPath": "/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/HelloblueGK.csproj",
+        "projectPath": "/home/pejmanhaghighatnia/Documents/PicoGK/HelloblueGK.csproj",
         "packagesPath": "/home/pejmanhaghighatnia/.nuget/packages/",
-        "outputPath": "/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/obj/",
+        "outputPath": "/home/pejmanhaghighatnia/Documents/PicoGK/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/home/pejmanhaghighatnia/.nuget/NuGet/NuGet.Config"
@@ -43,6 +43,13 @@
       "frameworks": {
         "net9.0": {
           "targetAlias": "net9.0",
+          "dependencies": {
+            "Microsoft.SourceLink.GitHub": {
+              "suppressParent": "All",
+              "target": "Package",
+              "version": "[8.0.0, )"
+            }
+          },
           "imports": [
             "net461",
             "net462",

@@ -10,11 +10,12 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("HelloblueGK")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("HB-NLP Research Lab")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
+[assembly: System.Reflection.AssemblyDescriptionAttribute("World\'s most advanced aerospace engine simulation and design platform")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+3c67620c7162a068625410712b5894d38e1e305f")]
-[assembly: System.Reflection.AssemblyProductAttribute("HelloblueGK")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6a88dbf9972b50bde4571b0722527a5b7665c90e")]
+[assembly: System.Reflection.AssemblyProductAttribute("HelloblueGK - Advanced Aerospace Engine Kernel")]
 [assembly: System.Reflection.AssemblyTitleAttribute("HelloblueGK")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
 

@@ -1,8 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "jpX/0tObw9c=",
+  "dgSpecHash": "LSI2GTTJVnU=",
   "success": true,
-  "projectFilePath": "/home/pejmanhaghighatnia/Documents/HelloblueGK-Fresh/HelloblueGK/HelloblueGK.csproj",
-  "expectedPackageFiles": [],
+  "projectFilePath": "/home/pejmanhaghighatnia/Documents/PicoGK/HelloblueGK.csproj",
+  "expectedPackageFiles": [
+    "/home/pejmanhaghighatnia/.nuget/packages/microsoft.build.tasks.git/8.0.0/microsoft.build.tasks.git.8.0.0.nupkg.sha512",
+    "/home/pejmanhaghighatnia/.nuget/packages/microsoft.sourcelink.common/8.0.0/microsoft.sourcelink.common.8.0.0.nupkg.sha512",
+    "/home/pejmanhaghighatnia/.nuget/packages/microsoft.sourcelink.github/8.0.0/microsoft.sourcelink.github.8.0.0.nupkg.sha512"
+  ],
   "logs": []
 }
