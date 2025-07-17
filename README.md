@@ -1,8 +1,6 @@
 # HelloblueGK - Revolutionary Aerospace Engine Simulation Platform
 
-**Helloblue, Inc. 2025 HB-NLP Research Lab**
-
-<div align="center">
+<div align="left">
 <img src="HB-NLP-Advanced-Engine-Design.png" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
 
 ```ascii
