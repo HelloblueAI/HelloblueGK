@@ -717,10 +717,7 @@ This software is designed for aerospace engineering applications and complies wi
 - **Testing**: Conducting appropriate validation testing before production use
 
 
-For licensing inquiries, enterprise deployments, or commercial use:
 
-- **Email**: licensing@helloblue.ai
-- **Support**: support@helloblue.ai
 
 ## Acknowledgments
 
@@ -741,7 +738,7 @@ For licensing inquiries, enterprise deployments, or commercial use:
 - **Enterprise Ready**: Production-hardened
 - **Beyond SpaceX**: Revolutionary technology achieved
 
-### **Revolutionary Technology Breakthroughs**
+### **Technology Breakthroughs**
 - **AI-Driven Design**: 98.0% innovation score
 - **Digital Twin Learning**: 99.900% accuracy
 - **Multi-Physics Coupling**: 97.0% efficiency
@@ -771,3 +768,5 @@ The HelloblueGK platform is now **LIVE** and demonstrating all revolutionary fea
 [![Helloblue, Inc. 2025 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202025%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)](https://helloblue.com/)
 
 </div>
+
+**Copyright © 2025 Helloblue, Inc. HB-NLP Research Lab**
