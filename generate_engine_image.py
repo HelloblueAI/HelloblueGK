@@ -53,7 +53,7 @@ def create_revolutionary_engine_diagram():
     components = [
         # Main Combustion Chamber with advanced styling
         {'type': 'rectangle', 'x': 4, 'y': 4, 'width': 3, 'height': 4, 
-         'color': colors['combustion'], 'alpha': 0.9, 'label': 'Revolutionary\nCombustion\nChamber',
+         'color': colors['combustion'], 'alpha': 0.9, 'label': 'Advanced\nCombustion\nChamber',
          'gradient': True, 'linewidth': 3, 'glow': True},
         
         # Advanced Bell Nozzle with realistic shape
@@ -71,9 +71,9 @@ def create_revolutionary_engine_diagram():
          'color': colors['oxidizer'], 'alpha': 0.95, 'label': 'Smart\nOxidizer\nInjector',
          'gradient': True, 'linewidth': 2, 'glow': True},
         
-        # Revolutionary High-Pressure Turbopump
+        # Advanced High-Pressure Turbopump
         {'type': 'rectangle', 'x': 0.5, 'y': 2, 'width': 1.5, 'height': 2, 
-         'color': colors['turbopump'], 'alpha': 0.9, 'label': 'Revolutionary\nHigh-Pressure\nTurbopump',
+         'color': colors['turbopump'], 'alpha': 0.9, 'label': 'Advanced\nHigh-Pressure\nTurbopump',
          'gradient': True, 'linewidth': 3, 'glow': True},
         
         # Quantum-Enhanced Cooling System
@@ -182,7 +182,7 @@ def create_revolutionary_engine_diagram():
         # Oxidizer flow with glow
         {'start': (1.8, 1), 'end': (2.3, 1), 'color': colors['oxidizer'], 'label': 'Smart\nOxidizer Flow'},
         # Exhaust flow with dramatic effect
-        {'start': (16, 5), 'end': (19, 5), 'color': '#ff4444', 'label': 'Revolutionary\nExhaust Flow'},
+        {'start': (16, 5), 'end': (19, 5), 'color': '#ff4444', 'label': 'Advanced\nExhaust Flow'},
         # Cooling flow
         {'start': (3.2, 6), 'end': (3.5, 6), 'color': colors['cooling'], 'label': 'Quantum\nCooling Flow'},
         # Data flow to AI system
@@ -205,24 +205,24 @@ def create_revolutionary_engine_diagram():
                       fontweight='bold', color=arrow['color'])
         text.set_path_effects([path_effects.withStroke(linewidth=2, foreground='black')])
     
-    # Add stunning title with revolutionary effects
-    title = ax.text(10, 11.2, 'HB-NLP REVOLUTIONARY AEROSPACE ENGINE DESIGN', 
+    # Add stunning title with advanced effects
+    title = ax.text(10, 11.2, 'HB-NLP ADVANCED AEROSPACE ENGINE DESIGN', 
                    ha='center', fontsize=24, fontweight='bold', color='white')
     title.set_path_effects([path_effects.withStroke(linewidth=4, foreground='#ffaa00')])
     
-    # Add revolutionary subtitle
+    # Add advanced subtitle
     subtitle = ax.text(10, 10.6, 'BEYOND SPACEX CAPABILITIES - WORLD\'S MOST ADVANCED TECHNOLOGY', 
                       ha='center', fontsize=14, fontweight='bold', color='#ffaa00')
     
     # Add enterprise specifications with professional styling
     specs = [
-        'Thrust: 2,300 kN (Revolutionary)',
+        'Thrust: 2,300 kN (Advanced)',
         'Specific Impulse: 350 s (Beyond Industry Standard)', 
         'Chamber Pressure: 300 bar (Ultra-High Performance)',
         'Propellant: Methane/LOX (Next-Generation)',
         'Expansion Ratio: 40:1 (Advanced Design)',
         'Mass Flow Rate: 650 kg/s (High-Efficiency)',
-        'Innovation Score: 98.0% (Revolutionary)',
+        'Innovation Score: 98.0% (Advanced)',
         'AI Accuracy: 99.9% (Industry Leading)'
     ]
     
@@ -231,8 +231,8 @@ def create_revolutionary_engine_diagram():
                            color='white', bbox=dict(boxstyle="round,pad=0.4", 
                            facecolor="#222222", alpha=0.9, edgecolor='#ffaa00', linewidth=2))
     
-    # Add revolutionary features box
-    features_text = """REVOLUTIONARY TECHNOLOGY BREAKTHROUGHS:
+    # Add advanced features box
+    features_text = """ADVANCED TECHNOLOGY BREAKTHROUGHS:
 • AI-Driven Autonomous Engine Design
 • Real-Time Multi-Physics CFD Analysis
 • Quantum-Classical Hybrid Computing
@@ -250,7 +250,7 @@ def create_revolutionary_engine_diagram():
     
     # Add performance metrics with stunning styling
     metrics_text = """ENTERPRISE PERFORMANCE METRICS:
-• Innovation Score: 98.0% (Revolutionary)
+• Innovation Score: 98.0% (Advanced)
 • AI Accuracy: 99.9% (Industry Leading)
 • Multi-Physics Efficiency: 97.0% (Advanced)
 • Digital Twin Accuracy: 99.900% (Breakthrough)
@@ -268,32 +268,14 @@ def create_revolutionary_engine_diagram():
                       edgecolor='#ffaa00', linewidth=4, alpha=0.9)
     ax.add_patch(border)
     
-    # Add corner accents for professional look
-    corner_length = 2
-    corner_width = 0.3
-    
-    # Top-left corner
-    ax.add_patch(Rectangle((0.3, 10.7), corner_length, corner_width, facecolor='#ffaa00'))
-    ax.add_patch(Rectangle((0.3, 10.7), corner_width, corner_length, facecolor='#ffaa00'))
-    
-    # Top-right corner
-    ax.add_patch(Rectangle((19.4-corner_length, 10.7), corner_length, corner_width, facecolor='#ffaa00'))
-    ax.add_patch(Rectangle((19.4-corner_width, 10.7), corner_width, corner_length, facecolor='#ffaa00'))
-    
-    # Bottom-left corner
-    ax.add_patch(Rectangle((0.3, 0.3), corner_length, corner_width, facecolor='#ffaa00'))
-    ax.add_patch(Rectangle((0.3, 0.3), corner_width, corner_length, facecolor='#ffaa00'))
-    
-    # Bottom-right corner
-    ax.add_patch(Rectangle((19.4-corner_length, 0.3), corner_length, corner_width, facecolor='#ffaa00'))
-    ax.add_patch(Rectangle((19.4-corner_width, 0.3), corner_width, corner_length, facecolor='#ffaa00'))
+
     
     plt.tight_layout()
     plt.savefig('HB-NLP-Advanced-Engine-Design.png', dpi=300, bbox_inches='tight',
                 facecolor='#0a0a0a', edgecolor='none')
     plt.close()
     
-    print("Revolutionary engine diagram generated: HB-NLP-Advanced-Engine-Design.png")
+    print("Advanced engine diagram generated: HB-NLP-Advanced-Engine-Design.png")
 
 if __name__ == "__main__":
     create_revolutionary_engine_diagram() 
