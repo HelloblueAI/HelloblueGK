@@ -7,20 +7,21 @@ namespace HB_NLP_Research_Lab.Models
     {
         public async Task InitializeAsync()
         {
-            await Task.Delay(20);
+            await Task.CompletedTask;
+            Console.WriteLine("[Telemetry] 📡 Initializing telemetry system...");
         }
 
         public async Task<bool> StreamTelemetryAsync()
         {
-            // Simulate real-time telemetry streaming
-            await Task.Delay(50);
+            await Task.CompletedTask;
+            Console.WriteLine("[Telemetry] 📊 Streaming telemetry data...");
             return true;
         }
 
         public async Task<bool> RunPredictiveMaintenanceAsync()
         {
-            // Simulate predictive maintenance
-            await Task.Delay(40);
+            await Task.CompletedTask;
+            Console.WriteLine("[Telemetry] 🔮 Running predictive maintenance...");
             return true;
         }
     }

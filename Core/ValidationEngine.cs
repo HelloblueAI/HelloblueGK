@@ -7,12 +7,34 @@ namespace HB_NLP_Research_Lab.Core
     public class ValidationEngine
     {
         private readonly Dictionary<string, TestData> _testDataDatabase;
-        private readonly Dictionary<string, ValidationMetrics> _validationResults;
+        private readonly List<ValidationResult> _validationResults;
+        private readonly List<ValidationResult> _validationHistory;
+        private readonly List<TestScenario> _testScenarios;
+        private readonly Dictionary<string, double> _validationMetrics;
+        
+        public EngineModel EngineModel { get; set; }
+        public TestData TestData { get; set; }
+        public SimulationResults SimulationResults { get; set; }
+        public ValidationMetrics ValidationMetrics { get; set; }
+        public List<string> ValidatedEngines { get; set; }
+        public ThermalData ThermalData { get; set; }
+        public StructuralData StructuralData { get; set; }
 
         public ValidationEngine()
         {
-            _testDataDatabase = InitializeTestDataDatabase();
-            _validationResults = new Dictionary<string, ValidationMetrics>();
+            _testDataDatabase = new Dictionary<string, TestData>();
+            _validationResults = new List<ValidationResult>();
+            _validationHistory = new List<ValidationResult>();
+            _testScenarios = new List<TestScenario>();
+            _validationMetrics = new Dictionary<string, double>();
+            
+            EngineModel = new EngineModel();
+            TestData = new TestData();
+            SimulationResults = new SimulationResults();
+            ValidationMetrics = new ValidationMetrics();
+            ValidatedEngines = new List<string>();
+            ThermalData = new ThermalData();
+            StructuralData = new StructuralData();
         }
 
         public ValidationReport ValidateEngineModel(string engineModel, SimulationResults simulationResults)
@@ -50,7 +72,14 @@ namespace HB_NLP_Research_Lab.Core
             // Calculate overall accuracy
             metrics.OverallAccuracy = CalculateOverallAccuracy(metrics);
             
-            _validationResults[engineModel] = metrics;
+            _validationResults.Add(new ValidationResult { EngineId = engineModel, TestResults = new Dictionary<string, double> {
+                ["Thrust"] = metrics.ThrustAccuracy,
+                ["ISP"] = metrics.ISPAccuracy,
+                ["ChamberPressure"] = metrics.ChamberPressureAccuracy,
+                ["Thermal"] = metrics.ThermalAccuracy,
+                ["Structural"] = metrics.StructuralAccuracy,
+                ["Overall"] = metrics.OverallAccuracy
+            }});
 
             return new ValidationReport
             {
@@ -212,10 +241,10 @@ namespace HB_NLP_Research_Lab.Core
             var summary = new ValidationSummary
             {
                 TotalEnginesValidated = _validationResults.Count,
-                AverageAccuracy = _validationResults.Values.Average(v => v.OverallAccuracy),
-                HighestAccuracy = _validationResults.Values.Max(v => v.OverallAccuracy),
-                LowestAccuracy = _validationResults.Values.Min(v => v.OverallAccuracy),
-                ValidatedEngines = _validationResults.Keys.ToList(),
+                AverageAccuracy = _validationResults.Average(v => v.TestResults.Values.Average()),
+                HighestAccuracy = _validationResults.Max(v => v.TestResults.Values.Max()),
+                LowestAccuracy = _validationResults.Min(v => v.TestResults.Values.Min()),
+                ValidatedEngines = _validationResults.Select(v => v.EngineId).ToList(),
                 ValidationTimestamp = DateTime.UtcNow
             };
 
@@ -228,69 +257,170 @@ namespace HB_NLP_Research_Lab.Core
         }
     }
 
+    public class ValidationResult
+    {
+        public ValidationResult()
+        {
+            EngineId = string.Empty;
+            ValidationStatus = string.Empty;
+            TestResults = new Dictionary<string, double>();
+        }
+        public string EngineId { get; set; }
+        public string ValidationStatus { get; set; }
+        public Dictionary<string, double> TestResults { get; set; }
+    }
+
+    public class EngineModel
+    {
+        public EngineModel()
+        {
+            Name = string.Empty;
+            Version = string.Empty;
+            Parameters = new Dictionary<string, double>();
+        }
+        public string Name { get; set; }
+        public string Version { get; set; }
+        public Dictionary<string, double> Parameters { get; set; }
+    }
+
+    public class TestScenario
+    {
+        public TestScenario()
+        {
+            Name = string.Empty;
+            Description = string.Empty;
+        }
+        public string Name { get; set; }
+        public string Description { get; set; }
+        public double Duration { get; set; }
+    }
+
     public class TestData
     {
+        public TestData()
+        {
+            EngineModel = string.Empty;
+            ThermalData = new ThermalData();
+            StructuralData = new StructuralData();
+            TestSource = string.Empty;
+            TestFacility = string.Empty;
+            TestName = string.Empty;
+            TestResults = new Dictionary<string, double>();
+            TestDate = DateTime.MinValue;
+        }
         public string EngineModel { get; set; }
-        public double Thrust { get; set; } // N
-        public double SpecificImpulse { get; set; } // s
-        public double ChamberPressure { get; set; } // Pa
+        public double Thrust { get; set; }
+        public double SpecificImpulse { get; set; }
+        public double ChamberPressure { get; set; }
         public ThermalData ThermalData { get; set; }
         public StructuralData StructuralData { get; set; }
         public string TestSource { get; set; }
         public DateTime TestDate { get; set; }
         public string TestFacility { get; set; }
+        public string TestName { get; set; }
+        public Dictionary<string, double> TestResults { get; set; }
+    }
+
+    public class SimulationResults
+    {
+        public SimulationResults()
+        {
+            ThermalData = new ThermalData();
+            StructuralData = new StructuralData();
+        }
+        public double Thrust { get; set; }
+        public double SpecificImpulse { get; set; }
+        public double ChamberPressure { get; set; }
+        public ThermalData ThermalData { get; set; }
+        public StructuralData StructuralData { get; set; }
     }
 
     public class ThermalData
     {
-        public double MaxTemperature { get; set; } // K
-        public double HeatTransferCoefficient { get; set; } // W/m²K
+        public ThermalData()
+        {
+            MaxTemperature = 0.0;
+            HeatTransferCoefficient = 0.0;
+            CoolingSystemEfficiency = 0.0;
+        }
+        public double MaxTemperature { get; set; }
+        public double HeatTransferCoefficient { get; set; }
         public double CoolingSystemEfficiency { get; set; }
     }
 
     public class StructuralData
     {
-        public double MaxStress { get; set; } // Pa
-        public double MaxDisplacement { get; set; } // m
+        public StructuralData()
+        {
+            MaxStress = 0.0;
+            MaxDisplacement = 0.0;
+            SafetyFactor = 0.0;
+        }
+        public double MaxStress { get; set; }
+        public double MaxDisplacement { get; set; }
         public double SafetyFactor { get; set; }
     }
 
     public class ValidationMetrics
     {
+        public ValidationMetrics()
+        {
+            ThrustAccuracy = 0.0;
+            ISPAccuracy = 0.0;
+            ChamberPressureAccuracy = 0.0;
+            ThermalAccuracy = 0.0;
+            StructuralAccuracy = 0.0;
+            OverallAccuracy = 0.0;
+            Accuracy = 0.0;
+            Precision = 0.0;
+            Recall = 0.0;
+        }
         public double ThrustAccuracy { get; set; }
         public double ISPAccuracy { get; set; }
         public double ChamberPressureAccuracy { get; set; }
         public double ThermalAccuracy { get; set; }
         public double StructuralAccuracy { get; set; }
         public double OverallAccuracy { get; set; }
+        public double Accuracy { get; set; }
+        public double Precision { get; set; }
+        public double Recall { get; set; }
     }
 
     public class ValidationReport
     {
+        public ValidationReport()
+        {
+            EngineModel = string.Empty;
+            TestData = new TestData();
+            SimulationResults = new SimulationResults();
+            ValidationMetrics = new ValidationMetrics();
+        }
         public string EngineModel { get; set; }
         public TestData TestData { get; set; }
         public SimulationResults SimulationResults { get; set; }
         public ValidationMetrics ValidationMetrics { get; set; }
         public bool IsValidated { get; set; }
         public DateTime ValidationTimestamp { get; set; }
+        public double ValidationScore { get; set; }
+        public int CriticalIssues { get; set; }
+        public int Warnings { get; set; }
     }
 
     public class ValidationSummary
     {
+        public ValidationSummary()
+        {
+            ValidatedEngines = new List<string>();
+        }
         public int TotalEnginesValidated { get; set; }
         public double AverageAccuracy { get; set; }
         public double HighestAccuracy { get; set; }
         public double LowestAccuracy { get; set; }
         public List<string> ValidatedEngines { get; set; }
         public DateTime ValidationTimestamp { get; set; }
-    }
-
-    public class SimulationResults
-    {
-        public double Thrust { get; set; }
-        public double SpecificImpulse { get; set; }
-        public double ChamberPressure { get; set; }
-        public ThermalData ThermalData { get; set; }
-        public StructuralData StructuralData { get; set; }
+        public bool IsValid { get; set; }
+        public double ValidationScore { get; set; }
+        public int CriticalIssues { get; set; }
+        public int Warnings { get; set; }
     }
 } 

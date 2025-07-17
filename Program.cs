@@ -81,7 +81,7 @@ namespace HB_NLP_Research_Lab
                 
                 // Demonstrate digital twin with real-time learning
                 Console.WriteLine("\n[Digital Twin] 🎯 Creating digital twin with real-time learning capabilities...");
-                var engineModel = new EngineModel { Name = "Revolutionary Engine", Parameters = new Dictionary<string, object>() };
+                var engineModel = new HB_NLP_Research_Lab.Core.EngineModel { Name = "Revolutionary Engine", Parameters = new Dictionary<string, double>() };
                 Console.WriteLine("[Debug] engineModel created successfully");
                 
                 Console.WriteLine($"[Debug] digitalTwin is null: {digitalTwin == null}");

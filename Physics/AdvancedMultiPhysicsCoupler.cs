@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Numerics;
 using System.Linq;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.Physics.RealPhysicsSolvers;
 
 namespace HB_NLP_Research_Lab.Physics
 {
@@ -13,9 +14,9 @@ namespace HB_NLP_Research_Lab.Physics
     /// </summary>
     public class AdvancedMultiPhysicsCoupler : IMultiPhysicsCoupler
     {
-        private readonly AdvancedCFDSolver _cfdSolver;
-        private readonly AdvancedThermalSolver _thermalSolver;
-        private readonly AdvancedStructuralSolver _structuralSolver;
+        private readonly IPhysicsSolver _cfdSolver;
+        private readonly IPhysicsSolver _thermalSolver;
+        private readonly IPhysicsSolver _structuralSolver;
         private readonly ElectromagneticSolver _electromagneticSolver;
         private readonly MolecularDynamicsSolver _molecularSolver;
         
@@ -29,9 +30,20 @@ namespace HB_NLP_Research_Lab.Physics
 
         public AdvancedMultiPhysicsCoupler()
         {
-            _cfdSolver = new AdvancedCFDSolver();
-            _thermalSolver = new AdvancedThermalSolver();
-            _structuralSolver = new AdvancedStructuralSolver();
+            // Use environment variable or config to select real or advanced solvers
+            var useRealCFD = Environment.GetEnvironmentVariable("USE_REAL_CFD") == "1";
+            var useRealThermal = Environment.GetEnvironmentVariable("USE_REAL_THERMAL") == "1";
+            var useRealStructural = Environment.GetEnvironmentVariable("USE_REAL_STRUCTURAL") == "1";
+
+            _cfdSolver = useRealCFD
+                ? new OpenFOAMIntegration()
+                : new AdvancedCFDSolver() as IPhysicsSolver;
+            _thermalSolver = useRealThermal
+                ? /* TODO: Add real thermal solver integration here */ new AdvancedThermalSolver() as IPhysicsSolver
+                : new AdvancedThermalSolver() as IPhysicsSolver;
+            _structuralSolver = useRealStructural
+                ? /* TODO: Add real FEA solver integration here */ new AdvancedStructuralSolver() as IPhysicsSolver
+                : new AdvancedStructuralSolver() as IPhysicsSolver;
             _electromagneticSolver = new ElectromagneticSolver();
             _molecularSolver = new MolecularDynamicsSolver();
             
@@ -448,12 +460,12 @@ namespace HB_NLP_Research_Lab.Physics
         // Data extraction methods
         private double[,] ExtractPressureLoads(AdvancedCFDResult cfdResult)
         {
-            return cfdResult?.PressureDistribution ?? new double[100, 100];
+            return cfdResult.PressureDistribution;
         }
 
         private double[,] ExtractStructuralDeformation(AdvancedStructuralResult structuralResult)
         {
-            return structuralResult?.DisplacementField ?? new double[100, 100];
+            return structuralResult.DisplacementField;
         }
 
         private double[,] CalculateThermalStress(AdvancedThermalResult thermalResult, AdvancedStructuralResult structuralResult)
@@ -542,6 +554,13 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class CouplingStatus
     {
+        public CouplingStatus()
+        {
+            ActiveSolvers = new string[0];
+            CouplingMode = string.Empty;
+            FeedbackLoops = string.Empty;
+            ConvergenceStatus = string.Empty;
+        }
         public bool IsReady { get; set; }
         public string[] ActiveSolvers { get; set; }
         public string CouplingMode { get; set; }
@@ -551,36 +570,81 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class MultiPhysicsResult
     {
+        public MultiPhysicsResult()
+        {
+            CfdAnalysis = new AdvancedCFDResult();
+            ThermalAnalysis = new AdvancedThermalResult();
+            StructuralAnalysis = new AdvancedStructuralResult();
+            ElectromagneticAnalysis = new ElectromagneticResult();
+            MolecularAnalysis = new MolecularDynamicsResult();
+            CouplingHistory = new List<CouplingIteration>();
+            AnalysisTime = TimeSpan.Zero;
+            FinalResidualNorm = 0.0;
+            PhysicsIntegrationLevel = string.Empty;
+            
+            // Add the missing properties that are referenced
+            FluidStructureCoupling = new FluidStructureCoupling();
+            ThermalFluidCoupling = new ThermalFluidCoupling();
+            ElectromagneticCoupling = new ElectromagneticCoupling();
+            MolecularCoupling = new MolecularCoupling();
+            OverallIntegration = new CompletePhysicsIntegration();
+            
+            // Add the missing properties that are referenced in the code
+            TotalIterations = 0;
+            ConvergenceAchieved = false;
+            CouplingEfficiency = 0.0;
+        }
         public AdvancedCFDResult CfdAnalysis { get; set; }
         public AdvancedThermalResult ThermalAnalysis { get; set; }
         public AdvancedStructuralResult StructuralAnalysis { get; set; }
         public ElectromagneticResult ElectromagneticAnalysis { get; set; }
         public MolecularDynamicsResult MolecularAnalysis { get; set; }
         public List<CouplingIteration> CouplingHistory { get; set; }
-        public int TotalIterations { get; set; }
         public TimeSpan AnalysisTime { get; set; }
-        public bool ConvergenceAchieved { get; set; }
         public double FinalResidualNorm { get; set; }
-        public double CouplingEfficiency { get; set; }
         public string PhysicsIntegrationLevel { get; set; }
+        
+        // Add the missing properties that are referenced
         public FluidStructureCoupling FluidStructureCoupling { get; set; }
         public ThermalFluidCoupling ThermalFluidCoupling { get; set; }
         public ElectromagneticCoupling ElectromagneticCoupling { get; set; }
         public MolecularCoupling MolecularCoupling { get; set; }
         public CompletePhysicsIntegration OverallIntegration { get; set; }
+        
+        // Add the missing properties that are referenced in the code
+        public int TotalIterations { get; set; }
+        public bool ConvergenceAchieved { get; set; }
+        public double CouplingEfficiency { get; set; }
     }
 
     public class FluidStructureThermalElectromagneticResult
     {
+        public FluidStructureThermalElectromagneticResult()
+        {
+            FluidStructureCoupling = new FluidStructureCoupling();
+            ThermalFluidCoupling = new ThermalFluidCoupling();
+            ElectromagneticCoupling = new ElectromagneticCoupling();
+            MolecularCoupling = new MolecularCoupling();
+            OverallIntegration = new CompletePhysicsIntegration();
+            AnalysisTime = TimeSpan.Zero;
+        }
+
         public FluidStructureCoupling FluidStructureCoupling { get; set; }
         public ThermalFluidCoupling ThermalFluidCoupling { get; set; }
         public ElectromagneticCoupling ElectromagneticCoupling { get; set; }
         public MolecularCoupling MolecularCoupling { get; set; }
         public CompletePhysicsIntegration OverallIntegration { get; set; }
+        public TimeSpan AnalysisTime { get; set; }
     }
 
     public class FluidStructureCoupling
     {
+        public FluidStructureCoupling()
+        {
+            PressureLoads = new double[100, 100];
+            StructuralDeformation = new double[100, 100];
+        }
+
         public double[,] PressureLoads { get; set; }
         public double[,] StructuralDeformation { get; set; }
         public double CouplingEfficiency { get; set; }
@@ -589,6 +653,12 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class ThermalFluidCoupling
     {
+        public ThermalFluidCoupling()
+        {
+            TemperatureDistribution = new double[100, 100];
+            ThermalStress = new double[100, 100];
+        }
+
         public double HeatTransferCoefficient { get; set; }
         public double[,] TemperatureDistribution { get; set; }
         public double[,] ThermalStress { get; set; }
@@ -597,6 +667,13 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class ElectromagneticCoupling
     {
+        public ElectromagneticCoupling()
+        {
+            MagneticFieldStrength = new double[100, 100];
+            ElectricFieldStrength = new double[100, 100];
+            ElectromagneticForces = new double[100, 100];
+        }
+
         public double[,] MagneticFieldStrength { get; set; }
         public double[,] ElectricFieldStrength { get; set; }
         public double[,] ElectromagneticForces { get; set; }
@@ -605,6 +682,13 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class MolecularCoupling
     {
+        public MolecularCoupling()
+        {
+            AtomicStressDistribution = new double[100, 100];
+            MaterialProperties = new Dictionary<string, double>();
+            DynamicsData = new Dictionary<string, object>();
+        }
+
         public double[,] AtomicStressDistribution { get; set; }
         public Dictionary<string, double> MaterialProperties { get; set; }
         public Dictionary<string, object> DynamicsData { get; set; }
@@ -613,6 +697,11 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class CompletePhysicsIntegration
     {
+        public CompletePhysicsIntegration()
+        {
+            IntegrationLevel = string.Empty;
+        }
+
         public string IntegrationLevel { get; set; }
         public bool AllPhysicsCoupled { get; set; }
         public bool RealTimeFeedback { get; set; }
@@ -623,6 +712,16 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class CouplingIteration
     {
+        public CouplingIteration()
+        {
+            CfdData = new PhysicsResult();
+            ThermalData = new PhysicsResult();
+            StructuralData = new PhysicsResult();
+            ElectromagneticData = new PhysicsResult();
+            MolecularData = new PhysicsResult();
+            ConvergenceStatus = new ConvergenceStatus();
+        }
+
         public int IterationNumber { get; set; }
         public DateTime Timestamp { get; set; }
         public PhysicsResult CfdData { get; set; }
@@ -642,6 +741,15 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class FeedbackData
     {
+        public FeedbackData()
+        {
+            StructuralDeformation = new double[100, 100];
+            FluidFlow = new double[100, 100];
+            FluidPressure = new double[100, 100];
+            ThermalStress = new double[100, 100];
+            MacroscopicForces = new double[100, 100];
+        }
+
         public double[,] StructuralDeformation { get; set; }
         public double ThermalEffects { get; set; }
         public double[,] FluidFlow { get; set; }
@@ -652,6 +760,12 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class RealTimeCouplingResult
     {
+        public RealTimeCouplingResult()
+        {
+            Snapshots = new List<CouplingSnapshot>();
+            RealTimePerformance = string.Empty;
+        }
+
         public List<CouplingSnapshot> Snapshots { get; set; }
         public int TotalSnapshots { get; set; }
         public double AverageCouplingEfficiency { get; set; }
@@ -661,6 +775,15 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class CouplingSnapshot
     {
+        public CouplingSnapshot()
+        {
+            CfdStatus = new PhysicsStatus();
+            ThermalStatus = new PhysicsStatus();
+            StructuralStatus = new PhysicsStatus();
+            ElectromagneticStatus = new PhysicsStatus();
+            MolecularStatus = new PhysicsStatus();
+        }
+
         public DateTime Timestamp { get; set; }
         public PhysicsStatus CfdStatus { get; set; }
         public PhysicsStatus ThermalStatus { get; set; }
@@ -677,19 +800,12 @@ namespace HB_NLP_Research_Lab.Physics
         
         public void Initialize()
         {
-            Console.WriteLine("[Electromagnetic] Initializing electromagnetic solver...");
+            Console.WriteLine("[Electromagnetic] Initializing electromagnetic field solver...");
         }
         
         public PhysicsResult RunSimulation(object model)
         {
-            return new ElectromagneticResult
-            {
-                Status = "Success",
-                Data = new double[] { 1.0, 2.0, 3.0 },
-                MagneticFieldStrength = new double[100, 100],
-                ElectricFieldStrength = new double[100, 100],
-                ElectromagneticForces = new double[100, 100]
-            };
+            return new ElectromagneticResult();
         }
     }
 
@@ -704,19 +820,19 @@ namespace HB_NLP_Research_Lab.Physics
         
         public PhysicsResult RunSimulation(object model)
         {
-            return new MolecularDynamicsResult
-            {
-                Status = "Success",
-                Data = new double[] { 1.0, 2.0, 3.0 },
-                AtomicStressDistribution = new double[100, 100],
-                MaterialProperties = new Dictionary<string, double>(),
-                DynamicsData = new Dictionary<string, object>()
-            };
+            return new MolecularDynamicsResult();
         }
     }
 
     public class ElectromagneticResult : PhysicsResult
     {
+        public ElectromagneticResult()
+        {
+            MagneticFieldStrength = new double[100, 100];
+            ElectricFieldStrength = new double[100, 100];
+            ElectromagneticForces = new double[100, 100];
+        }
+
         public double[,] MagneticFieldStrength { get; set; }
         public double[,] ElectricFieldStrength { get; set; }
         public double[,] ElectromagneticForces { get; set; }
@@ -724,6 +840,13 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class MolecularDynamicsResult : PhysicsResult
     {
+        public MolecularDynamicsResult()
+        {
+            AtomicStressDistribution = new double[100, 100];
+            MaterialProperties = new Dictionary<string, double>();
+            DynamicsData = new Dictionary<string, object>();
+        }
+
         public double[,] AtomicStressDistribution { get; set; }
         public Dictionary<string, double> MaterialProperties { get; set; }
         public Dictionary<string, object> DynamicsData { get; set; }
@@ -734,12 +857,12 @@ namespace HB_NLP_Research_Lab.Physics
     {
         public async Task InitializeAsync()
         {
-            await Task.Delay(50);
+            await Task.CompletedTask;
         }
         
         public async Task UpdateCouplingStrategyAsync(ConvergenceStatus status)
         {
-            await Task.Delay(10);
+            await Task.CompletedTask;
         }
     }
 
@@ -747,12 +870,12 @@ namespace HB_NLP_Research_Lab.Physics
     {
         public async Task InitializeAsync()
         {
-            await Task.Delay(50);
+            await Task.CompletedTask;
         }
         
         public async Task<FeedbackData> ProcessFeedbackAsync(CouplingIteration iteration)
         {
-            await Task.Delay(10);
+            await Task.CompletedTask;
             return new FeedbackData();
         }
     }
@@ -761,12 +884,12 @@ namespace HB_NLP_Research_Lab.Physics
     {
         public async Task InitializeAsync()
         {
-            await Task.Delay(50);
+            await Task.CompletedTask;
         }
         
         public async Task<ConvergenceStatus> CheckConvergenceAsync(CouplingIteration iteration)
         {
-            await Task.Delay(10);
+            await Task.CompletedTask;
             return new ConvergenceStatus
             {
                 ResidualNorm = 1e-6,
@@ -778,6 +901,12 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class EngineModel
     {
+        public EngineModel()
+        {
+            Name = string.Empty;
+            Parameters = new Dictionary<string, object>();
+        }
+
         public string Name { get; set; }
         public Dictionary<string, object> Parameters { get; set; }
     }

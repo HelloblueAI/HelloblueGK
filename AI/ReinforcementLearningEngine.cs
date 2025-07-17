@@ -63,6 +63,7 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task TrainAsync(int episodes)
         {
+            await Task.CompletedTask;
             Console.WriteLine("🎯 Training Reinforcement Learning Engine for Autonomous Control...");
             
             for (int episode = 0; episode < episodes; episode++)

@@ -28,3 +28,4 @@
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/HelloblueGK.pdb
 /home/pejmanhaghighatnia/Documents/PicoGK/obj/Debug/net9.0/HelloblueGK.genruntimeconfig.cache
 /home/pejmanhaghighatnia/Documents/PicoGK/obj/Debug/net9.0/ref/HelloblueGK.dll
+/home/pejmanhaghighatnia/Documents/PicoGK/obj/Debug/net9.0/HelloblueGK.csproj.AssemblyReference.cache
