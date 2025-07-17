@@ -17,6 +17,15 @@ namespace HB_NLP_Research_Lab.Physics
         private double[,] densityField;
         private bool isInitialized = false;
 
+        public AdvancedCFDSolver()
+        {
+            pressureField = new double[1000, 1000];
+            velocityField = new double[1000, 1000];
+            temperatureField = new double[1000, 1000];
+            densityField = new double[1000, 1000];
+            isInitialized = false;
+        }
+
         public string Name => "Advanced CFD Solver - High-Fidelity Turbulence Modeling";
 
         public void Initialize()
@@ -147,6 +156,15 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class AdvancedCFDResult : PhysicsResult
     {
+        public AdvancedCFDResult()
+        {
+            TurbulenceModel = string.Empty;
+            PressureDistribution = new double[100, 100];
+            VelocityField = new double[100, 100];
+            ConvergenceHistory = new List<double>();
+        }
+
+        public string TurbulenceModel { get; set; }
         public double[,] PressureDistribution { get; set; }
         public double[,] VelocityField { get; set; }
         public double TurbulenceIntensity { get; set; }

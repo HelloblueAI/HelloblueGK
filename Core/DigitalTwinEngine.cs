@@ -96,7 +96,7 @@ namespace HB_NLP_Research_Lab.Core
             if (engineModel.Parameters == null)
             {
                 Console.WriteLine("[Digital Twin] WARNING: engineModel.Parameters is null, initializing to empty dictionary");
-                engineModel.Parameters = new Dictionary<string, object>();
+                engineModel.Parameters = new Dictionary<string, double>();
             }
 
             Console.WriteLine($"[Digital Twin] 🎯 Creating Digital Twin for Engine: {engineId}");
@@ -307,8 +307,11 @@ namespace HB_NLP_Research_Lab.Core
         {
             Console.WriteLine($"[Digital Twin] 🌊🔥🏗️⚡ Running Predictive Multi-Physics Analysis for {engineId}...");
             
+            // Convert Core.EngineModel to Physics.EngineModel
+            var physicsEngineModel = new HB_NLP_Research_Lab.Physics.EngineModel { Name = engineModel.Name };
+            
             // Run predictive multi-physics analysis
-            var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(engineModel);
+            var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(physicsEngineModel);
             
             // Create predictive result
             var prediction = new MultiPhysicsPrediction
@@ -416,17 +419,25 @@ namespace HB_NLP_Research_Lab.Core
         public void Dispose()
         {
             // Cleanup resources
-            _digitalTwins?.Clear();
-            _learningHistories?.Clear();
-            _predictionAccuracies?.Clear();
+            _digitalTwins.Clear();
+            _learningHistories.Clear();
+            _predictionAccuracies.Clear();
         }
     }
 
     // Supporting Classes
     public class EngineDigitalTwin
     {
+        public EngineDigitalTwin()
+        {
+            EngineId = string.Empty;
+            EngineModel = new EngineModel();
+            LearningStatus = string.Empty;
+            PredictionAccuracy = 0.0;
+            TwinVersion = string.Empty;
+        }
         public string EngineId { get; set; }
-        public EngineModel EngineModel { get; set; }
+        public HB_NLP_Research_Lab.Core.EngineModel EngineModel { get; set; }
         public DateTime CreationTimestamp { get; set; }
         public DateTime LastUpdateTimestamp { get; set; }
         public string LearningStatus { get; set; }
@@ -455,6 +466,16 @@ namespace HB_NLP_Research_Lab.Core
 
     public class EnginePrediction
     {
+        public EnginePrediction()
+        {
+            EngineId = string.Empty;
+            Scenario = new PredictionScenario();
+            PredictedMetrics = new Dictionary<string, double>();
+            ConfidenceLevel = 0.0;
+            PredictionTimestamp = DateTime.UtcNow;
+            PredictedIssues = new List<string>();
+            RecommendedActions = new List<string>();
+        }
         public string EngineId { get; set; }
         public PredictionScenario Scenario { get; set; }
         public Dictionary<string, double> PredictedMetrics { get; set; }
@@ -589,7 +610,7 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(200);
             return new AutonomousTestingResult
             {
-                TestScenarios = new List<TestScenario>(),
+                TestScenarios = new List<HB_NLP_Research_Lab.AI.TestScenario>(),
                 TestResults = new List<TestResult>(),
                 Analysis = new TestAnalysis
                 {
@@ -660,6 +681,12 @@ namespace HB_NLP_Research_Lab.Core
 
     public class LearningMetrics
     {
+        public LearningMetrics()
+        {
+            DataQuality = 0.0;
+            LearningRate = 0.0;
+            ModelConvergence = 0.0;
+        }
         public double DataQuality { get; set; }
         public double LearningRate { get; set; }
         public double ModelConvergence { get; set; }
@@ -667,6 +694,10 @@ namespace HB_NLP_Research_Lab.Core
 
     public class PredictionAccuracy
     {
+        public PredictionAccuracy()
+        {
+            EngineId = string.Empty;
+        }
         public string EngineId { get; set; }
         public double OverallAccuracy { get; set; }
         public double ThrustPredictionAccuracy { get; set; }

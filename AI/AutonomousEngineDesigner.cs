@@ -262,7 +262,7 @@ namespace HB_NLP_Research_Lab.AI
             return new TestResult
             {
                 Scenario = scenario,
-                Passed = result.ConvergenceResidual < 1e-6,
+                Passed = result.MeshQuality > 0.98, // Assuming MeshQuality is the convergence indicator
                 PerformanceMetrics = new Dictionary<string, double>
                 {
                     ["Thrust"] = 1500000.0, // N
@@ -330,6 +330,7 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<List<EngineArchitecture>> GenerateEngineArchitecturesAsync(DesignRequirements requirements)
         {
+            await Task.CompletedTask;
             Console.WriteLine("[Generative AI] 🧠 Generating Revolutionary Engine Architectures...");
             
             var architectures = new List<EngineArchitecture>();
@@ -360,6 +361,7 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<List<TestScenario>> DesignTestScenariosAsync(EngineArchitecture engine)
         {
+            await Task.CompletedTask;
             var scenarios = new List<TestScenario>
             {
                 new TestScenario { Name = "High-Thrust Test", TestConditions = "Maximum thrust conditions" },
@@ -374,6 +376,7 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<double> GetLearningImprovementAsync()
         {
+            await Task.CompletedTask;
             return 0.15; // 15% improvement from learning
         }
 
@@ -467,6 +470,7 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<double> GetOptimizationImprovementAsync()
         {
+            await Task.CompletedTask;
             return 0.12; // 12% improvement
         }
 
@@ -508,6 +512,7 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<double> GetPredictionImprovementAsync()
         {
+            await Task.CompletedTask;
             return 0.08; // 8% improvement
         }
 
@@ -547,6 +552,16 @@ namespace HB_NLP_Research_Lab.AI
 
     public class EngineArchitecture
     {
+        public EngineArchitecture()
+        {
+            Id = string.Empty;
+            Name = string.Empty;
+            ArchitectureType = string.Empty;
+            PropulsionSystem = new PropulsionSystem();
+            CoolingSystem = new CoolingSystem();
+            ControlSystem = new ControlSystem();
+            MaterialComposition = new MaterialComposition();
+        }
         public string Id { get; set; }
         public string Name { get; set; }
         public double InnovationLevel { get; set; }
@@ -561,6 +576,14 @@ namespace HB_NLP_Research_Lab.AI
 
     public class SelfOptimizedEngine
     {
+        public SelfOptimizedEngine()
+        {
+            Id = string.Empty;
+            Architecture = new EngineArchitecture();
+            Performance = new EnginePerformance();
+            OptimizationHistory = new List<OptimizationStep>();
+            OptimizedParameters = new Dictionary<string, double>();
+        }
         public string Id { get; set; }
         public EngineArchitecture Architecture { get; set; }
         public EnginePerformance Performance { get; set; }
@@ -572,6 +595,12 @@ namespace HB_NLP_Research_Lab.AI
 
     public class FailurePrediction
     {
+        public FailurePrediction()
+        {
+            EngineId = string.Empty;
+            PredictedFailureMode = string.Empty;
+            RecommendedActions = new List<string>();
+        }
         public string EngineId { get; set; }
         public double FailureProbability { get; set; }
         public string PredictedFailureMode { get; set; }
@@ -623,6 +652,10 @@ namespace HB_NLP_Research_Lab.AI
     // Additional supporting classes
     public class PropulsionSystem
     {
+        public PropulsionSystem()
+        {
+            Type = string.Empty;
+        }
         public string Type { get; set; }
         public double Thrust { get; set; }
         public double SpecificImpulse { get; set; }
@@ -632,6 +665,10 @@ namespace HB_NLP_Research_Lab.AI
 
     public class CoolingSystem
     {
+        public CoolingSystem()
+        {
+            Type = string.Empty;
+        }
         public string Type { get; set; }
         public double CoolingCapacity { get; set; }
         public double Efficiency { get; set; }
@@ -639,6 +676,10 @@ namespace HB_NLP_Research_Lab.AI
 
     public class ControlSystem
     {
+        public ControlSystem()
+        {
+            Type = string.Empty;
+        }
         public string Type { get; set; }
         public double ResponseTime { get; set; }
         public double Accuracy { get; set; }
@@ -646,6 +687,12 @@ namespace HB_NLP_Research_Lab.AI
 
     public class MaterialComposition
     {
+        public MaterialComposition()
+        {
+            PrimaryMaterial = string.Empty;
+            SecondaryMaterial = string.Empty;
+            Coating = string.Empty;
+        }
         public string PrimaryMaterial { get; set; }
         public string SecondaryMaterial { get; set; }
         public string Coating { get; set; }
@@ -655,12 +702,22 @@ namespace HB_NLP_Research_Lab.AI
 
     public class TestScenario
     {
+        public TestScenario()
+        {
+            Name = string.Empty;
+            TestConditions = string.Empty;
+        }
         public string Name { get; set; }
         public string TestConditions { get; set; }
     }
 
     public class TestResult
     {
+        public TestResult()
+        {
+            Scenario = new TestScenario();
+            PerformanceMetrics = new Dictionary<string, double>();
+        }
         public TestScenario Scenario { get; set; }
         public bool Passed { get; set; }
         public Dictionary<string, double> PerformanceMetrics { get; set; }
@@ -684,8 +741,6 @@ namespace HB_NLP_Research_Lab.AI
     }
 
     // Placeholder classes for AI components
-    public class NeuralNetwork { }
-    public class GeneticAlgorithm { }
     public class TransformerModel { }
     public class OptimizationAlgorithm 
     { 

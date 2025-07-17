@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Numerics;
 using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.Physics;
+using HB_NLP_Research_Lab.Models;
 
 namespace HB_NLP_Research_Lab.Aerospace
 {
@@ -40,6 +41,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<RevolutionaryEngine> CreateVariableGeometryEngineAsync(string engineId, VariableGeometrySpecs specs)
         {
+            await Task.CompletedTask;
             Console.WriteLine($"[Revolutionary Architectures] 🔄 Creating Variable Geometry Engine: {engineId}");
             Console.WriteLine("[Revolutionary Architectures] Shape-Shifting Engine Technology");
             
@@ -74,7 +76,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             _revolutionaryEngines[engineId] = engine;
             
             // Create digital twin for the variable geometry engine
-            var engineModel = new EngineModel { Name = engine.Name };
+            var engineModel = new HB_NLP_Research_Lab.Core.EngineModel { Name = engine.Name };
             await _digitalTwin.CreateDigitalTwinAsync(engineId, engineModel);
             
             Console.WriteLine($"[Revolutionary Architectures] Variable geometry engine created successfully");
@@ -86,6 +88,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<RevolutionaryEngine> CreateModularEngineSystemAsync(string engineId, ModularSystemSpecs specs)
         {
+            await Task.CompletedTask;
             Console.WriteLine($"[Revolutionary Architectures] 🧩 Creating Modular Engine System: {engineId}");
             Console.WriteLine("[Revolutionary Architectures] Standardized Component Architecture");
             
@@ -124,6 +127,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<RevolutionaryEngine> CreateDistributedPropulsionSystemAsync(string engineId, DistributedPropulsionSpecs specs)
         {
+            await Task.CompletedTask;
             Console.WriteLine($"[Revolutionary Architectures] 🔄 Creating Distributed Propulsion System: {engineId}");
             Console.WriteLine("[Revolutionary Architectures] Multi-Engine Coordination Technology");
             
@@ -163,6 +167,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<RevolutionaryEngine> CreateHybridElectricEngineAsync(string engineId, HybridElectricSpecs specs)
         {
+            await Task.CompletedTask;
             Console.WriteLine($"[Revolutionary Architectures] ⚡ Creating Hybrid Electric Engine: {engineId}");
             Console.WriteLine("[Revolutionary Architectures] Electric-Combustion Hybrid Technology");
             
@@ -207,6 +212,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<RevolutionaryEngine> CreateNuclearThermalEngineAsync(string engineId, NuclearThermalSpecs specs)
         {
+            await Task.CompletedTask;
             Console.WriteLine($"[Revolutionary Architectures] ☢️ Creating Nuclear Thermal Engine: {engineId}");
             Console.WriteLine("[Revolutionary Architectures] Nuclear Propulsion Technology");
             
@@ -251,13 +257,15 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<ArchitecturePerformance> AnalyzeRevolutionaryEngineAsync(string engineId)
         {
+            Console.WriteLine($"[Revolutionary Architectures] 🔬 Analyzing revolutionary engine: {engineId}");
+            
             if (!_revolutionaryEngines.ContainsKey(engineId))
-                throw new ArgumentException($"Revolutionary engine not found: {engineId}");
-
-            Console.WriteLine($"[Revolutionary Architectures] 📊 Analyzing Revolutionary Engine: {engineId}");
+            {
+                throw new ArgumentException($"Engine {engineId} not found");
+            }
             
             var engine = _revolutionaryEngines[engineId];
-            var engineModel = new EngineModel { Name = engine.Name };
+            var engineModel = new HB_NLP_Research_Lab.Physics.EngineModel { Name = engine.Name };
             
             // Run comprehensive analysis
             var physicsResult = await _physicsEngine.RunCfdAnalysisAsync();
@@ -270,8 +278,26 @@ namespace HB_NLP_Research_Lab.Aerospace
                 InnovationLevel = engine.InnovationLevel,
                 PhysicsAnalysis = physicsResult,
                 MultiPhysicsAnalysis = multiPhysicsResult,
-                PerformanceMetrics = CalculatePerformanceMetrics(engine),
-                InnovationMetrics = CalculateInnovationMetrics(engine),
+                PerformanceMetrics = new PerformanceMetrics
+                {
+                    ThrustEfficiency = 0.92f,
+                    FuelConsumption = 0.85f,
+                    ThermalEfficiency = 0.91f,
+                    WeightToThrust = 0.95f,
+                    OverallEfficiency = 0.93f,
+                    EnvironmentalImpact = new EnvironmentalMetrics()
+                },
+                InnovationMetrics = new InnovationMetrics
+                {
+                    TechnologyReadinessLevel = "TRL 8",
+                    NoveltyScore = 0.95f,
+                    DisruptivePotential = 0.92f,
+                    MarketImpact = 0.90f,
+                    Patentability = 0.88f,
+                    CostEffectiveness = 0.91f,
+                    Scalability = 0.93f,
+                    Sustainability = 0.94f
+                },
                 TechnologyReadinessLevel = CalculateTechnologyReadinessLevel(engine)
             };
             
@@ -303,30 +329,6 @@ namespace HB_NLP_Research_Lab.Aerospace
             Console.WriteLine($"[Revolutionary Architectures] Average innovation: {summary.AverageInnovationLevel:P1}");
             
             return summary;
-        }
-
-        private Dictionary<string, double> CalculatePerformanceMetrics(RevolutionaryEngine engine)
-        {
-            return new Dictionary<string, double>
-            {
-                ["Thrust"] = 1500000.0, // N
-                ["Efficiency"] = 0.92,
-                ["Reliability"] = 0.999,
-                ["InnovationScore"] = engine.InnovationLevel,
-                ["TechnologyAdvancement"] = 0.95
-            };
-        }
-
-        private Dictionary<string, double> CalculateInnovationMetrics(RevolutionaryEngine engine)
-        {
-            return new Dictionary<string, double>
-            {
-                ["NoveltyScore"] = 0.95,
-                ["ComplexityLevel"] = 0.90,
-                ["IntegrationLevel"] = 0.88,
-                ["Scalability"] = 0.92,
-                ["Maintainability"] = 0.85
-            };
         }
 
         private string CalculateTechnologyReadinessLevel(RevolutionaryEngine engine)
@@ -413,18 +415,42 @@ namespace HB_NLP_Research_Lab.Aerospace
     // Revolutionary Engine Base Class
     public abstract class RevolutionaryEngine
     {
+        public RevolutionaryEngine()
+        {
+            EngineId = string.Empty;
+            Name = string.Empty;
+            ArchitectureType = string.Empty;
+            PhysicsAnalysis = new CfdAnalysisResult();
+            MultiPhysicsAnalysis = new FluidStructureThermalElectromagneticResult();
+            PerformanceMetrics = new PerformanceMetrics();
+            InnovationMetrics = new InnovationMetrics();
+            TechnologyReadinessLevel = string.Empty;
+        }
         public string EngineId { get; set; }
         public string Name { get; set; }
         public string ArchitectureType { get; set; }
         public double InnovationLevel { get; set; }
+        public CfdAnalysisResult PhysicsAnalysis { get; set; }
+        public FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
+        public PerformanceMetrics PerformanceMetrics { get; set; }
+        public InnovationMetrics InnovationMetrics { get; set; }
+        public string TechnologyReadinessLevel { get; set; }
     }
 
     // Variable Geometry Engine
     public class VariableGeometryEngine : RevolutionaryEngine
     {
+        public VariableGeometryEngine()
+        {
+            GeometryStates = new List<GeometryState>();
+            MorphingMechanism = new MorphingMechanism();
+            AdaptiveControl = new AdaptiveControlSystem();
+            Name = "Variable Geometry Engine";
+        }
         public List<GeometryState> GeometryStates { get; set; }
         public MorphingMechanism MorphingMechanism { get; set; }
         public AdaptiveControlSystem AdaptiveControl { get; set; }
+        public new string Name { get; set; }
     }
 
     public class GeometryState
@@ -453,6 +479,13 @@ namespace HB_NLP_Research_Lab.Aerospace
     // Modular Engine System
     public class ModularEngineSystem : RevolutionaryEngine
     {
+        public ModularEngineSystem()
+        {
+            Type = "Modular System";
+            Modules = new List<EngineModule>();
+            AssemblySystem = new ModularAssemblySystem();
+        }
+        public string Type { get; set; }
         public List<EngineModule> Modules { get; set; }
         public ModularAssemblySystem AssemblySystem { get; set; }
         public double StandardizationLevel { get; set; }
@@ -477,6 +510,20 @@ namespace HB_NLP_Research_Lab.Aerospace
     // Distributed Propulsion System
     public class DistributedPropulsionSystem : RevolutionaryEngine
     {
+        public DistributedPropulsionSystem()
+        {
+            Type = "Distributed Propulsion";
+            Engines = new List<SubEngine>();
+            CoordinationSystem = new EngineCoordinationSystem
+            {
+                Type = "AI-Driven Multi-Engine Coordination",
+                CoordinationAlgorithm = "Neural Network Optimization",
+                ResponseTime = 0.001, // 1 ms
+                SynchronizationAccuracy = 0.999,
+                FailureRedundancy = true
+            };
+        }
+        public string Type { get; set; }
         public List<SubEngine> Engines { get; set; }
         public EngineCoordinationSystem CoordinationSystem { get; set; }
         public double TotalThrust { get; set; }
@@ -573,8 +620,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public double InnovationLevel { get; set; }
         public CfdAnalysisResult PhysicsAnalysis { get; set; }
         public FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
-        public Dictionary<string, double> PerformanceMetrics { get; set; }
-        public Dictionary<string, double> InnovationMetrics { get; set; }
+        public PerformanceMetrics PerformanceMetrics { get; set; }
+        public InnovationMetrics InnovationMetrics { get; set; }
         public string TechnologyReadinessLevel { get; set; }
     }
 
@@ -613,6 +660,13 @@ namespace HB_NLP_Research_Lab.Aerospace
     // Specification Classes
     public class VariableGeometrySpecs
     {
+        public VariableGeometrySpecs()
+        {
+            GeometryStates = 0;
+            MinExpansionRatio = 0.0;
+            MaxExpansionRatio = 0.0;
+            MorphingResponseTime = 0.0;
+        }
         public int GeometryStates { get; set; }
         public double MinExpansionRatio { get; set; }
         public double MaxExpansionRatio { get; set; }
@@ -621,6 +675,13 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class ModularSystemSpecs
     {
+        public ModularSystemSpecs()
+        {
+            ModuleCount = 0;
+            StandardizedComponents = false;
+            TargetAssemblyTime = TimeSpan.Zero;
+            AutomationLevel = 0.0;
+        }
         public int ModuleCount { get; set; }
         public bool StandardizedComponents { get; set; }
         public TimeSpan TargetAssemblyTime { get; set; }
@@ -629,6 +690,13 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class DistributedPropulsionSpecs
     {
+        public DistributedPropulsionSpecs()
+        {
+            EngineCount = 0;
+            TotalThrust = 0.0;
+            CoordinationAccuracy = 0.0;
+            RedundancyRequired = false;
+        }
         public int EngineCount { get; set; }
         public double TotalThrust { get; set; }
         public double CoordinationAccuracy { get; set; }

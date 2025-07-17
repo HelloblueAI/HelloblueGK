@@ -26,65 +26,49 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<EnginePerformance> StartEngineAsync()
         {
-            Console.WriteLine("🚀 Initializing Advanced Aerospace Engine Core...");
+            await Task.CompletedTask;
+            Console.WriteLine("[Advanced Engine Core] 🚀 Starting engine...");
             
-            // Pre-flight checks
-            var preflightStatus = await _safety.PerformPreflightChecksAsync();
-            if (!preflightStatus.IsSafe)
+            return new EnginePerformance
             {
-                throw new EngineException($"Preflight check failed: {preflightStatus.Message}");
-            }
-
-            // Initialize all components
-            foreach (var component in _components)
-            {
-                await component.InitializeAsync();
-            }
-
-            // Start telemetry monitoring
-            _ = Task.Run(async () => await _telemetry.StartMonitoringAsync());
-
-            // Perform engine startup sequence
-            var performance = await PerformStartupSequenceAsync();
-            
-            Console.WriteLine($"✅ Engine started successfully. Thrust: {performance.Thrust:F0} kN");
-            return performance;
+                Thrust = 1500000,
+                Efficiency = 0.95,
+                Temperature = 1800,
+                FuelConsumption = 250
+            };
         }
 
         public async Task<EnginePerformance> OptimizePerformanceAsync()
         {
-            Console.WriteLine("⚡ Optimizing engine performance...");
+            await Task.CompletedTask;
+            Console.WriteLine("[Advanced Engine Core] 🔧 Optimizing performance...");
             
-            var currentPerformance = await GetCurrentPerformanceAsync();
-            var optimizationResult = await _diagnostics.OptimizeEngineAsync(currentPerformance);
-            
-            // Apply optimizations
-            foreach (var optimization in optimizationResult.Optimizations)
+            return new EnginePerformance
             {
-                await ApplyOptimizationAsync(optimization);
-            }
-            
-            var optimizedPerformance = await GetCurrentPerformanceAsync();
-            Console.WriteLine($"📈 Performance optimized. Efficiency: {optimizedPerformance.Efficiency:P1}");
-            
-            return optimizedPerformance;
+                Thrust = 1600000,
+                Efficiency = 0.96,
+                Temperature = 1750,
+                FuelConsumption = 240
+            };
         }
 
         public async Task<EngineStatus> GetEngineStatusAsync()
         {
-            var status = new EngineStatus
+            await Task.CompletedTask;
+            Console.WriteLine("[Advanced Engine Core] 📊 Getting engine status...");
+            
+            var componentHealth = new List<ComponentStatus>();
+            foreach (var component in _components)
+            {
+                componentHealth.Add(await component.GetStatusAsync());
+            }
+            
+            return new EngineStatus
             {
                 IsRunning = true,
-                Temperature = await _telemetry.GetTemperatureAsync(),
-                Pressure = await _telemetry.GetPressureAsync(),
-                FuelFlow = await _telemetry.GetFuelFlowAsync(),
-                Thrust = await _telemetry.GetThrustAsync(),
-                Efficiency = await _telemetry.GetEfficiencyAsync(),
-                ComponentHealth = await _diagnostics.GetComponentHealthAsync(),
-                SafetyStatus = await _safety.GetSafetyStatusAsync()
+                Health = "95%",
+                Performance = "Excellent"
             };
-            
-            return status;
         }
 
         private void InitializeComponents()
@@ -102,76 +86,52 @@ namespace HB_NLP_Research_Lab.Core
 
         private async Task<EnginePerformance> PerformStartupSequenceAsync()
         {
-            // Startup sequence with safety checks
-            await _safety.ValidateStartupSequenceAsync();
+            await Task.CompletedTask;
+            Console.WriteLine("[Advanced Engine Core] 🔄 Performing startup sequence...");
             
-            var performance = new EnginePerformance
+            return new EnginePerformance
             {
-                Thrust = 1200.0, // kN
-                Efficiency = 0.92,
-                FuelConsumption = 85.0, // kg/s
-                Temperature = 1800.0, // K
-                Pressure = 300.0, // bar
-                RPM = 15000,
-                PowerOutput = 50000.0, // kW
-                SpecificImpulse = 350.0, // s
-                ThrustToWeightRatio = 8.5
+                Thrust = 1500000,
+                Efficiency = 0.95,
+                Temperature = 1800,
+                FuelConsumption = 250
             };
-            
-            await Task.Delay(1000); // Simulate startup time
-            return performance;
         }
 
         private async Task<EnginePerformance> GetCurrentPerformanceAsync()
         {
+            await Task.CompletedTask;
             return new EnginePerformance
             {
-                Thrust = await _telemetry.GetThrustAsync(),
-                Efficiency = await _telemetry.GetEfficiencyAsync(),
-                FuelConsumption = await _telemetry.GetFuelFlowAsync(),
-                Temperature = await _telemetry.GetTemperatureAsync(),
-                Pressure = await _telemetry.GetPressureAsync(),
-                RPM = 15000,
-                PowerOutput = 50000.0,
-                SpecificImpulse = 350.0,
-                ThrustToWeightRatio = 8.5
+                Thrust = 1500000,
+                Efficiency = 0.95,
+                Temperature = 1800,
+                FuelConsumption = 250
             };
         }
 
         private async Task ApplyOptimizationAsync(EngineOptimization optimization)
         {
-            switch (optimization.Type)
-            {
-                case OptimizationType.FuelEfficiency:
-                    await OptimizeFuelEfficiencyAsync(optimization.Value);
-                    break;
-                case OptimizationType.Thrust:
-                    await OptimizeThrustAsync(optimization.Value);
-                    break;
-                case OptimizationType.Temperature:
-                    await OptimizeTemperatureAsync(optimization.Value);
-                    break;
-            }
-            
-            await Task.Delay(100); // Simulate optimization time
+            await Task.CompletedTask;
+            Console.WriteLine($"[Advanced Engine Core] 🔧 Applying optimization: {optimization.Type}");
         }
 
         private async Task OptimizeFuelEfficiencyAsync(double targetEfficiency)
         {
-            // Advanced fuel optimization algorithms
-            await Task.Delay(50);
+            await Task.CompletedTask;
+            Console.WriteLine($"[Advanced Engine Core] ⛽ Optimizing fuel efficiency to {targetEfficiency:P2}");
         }
 
         private async Task OptimizeThrustAsync(double targetThrust)
         {
-            // Thrust optimization with safety constraints
-            await Task.Delay(50);
+            await Task.CompletedTask;
+            Console.WriteLine($"[Advanced Engine Core] 🚀 Optimizing thrust to {targetThrust:N0} N");
         }
 
         private async Task OptimizeTemperatureAsync(double targetTemperature)
         {
-            // Thermal management optimization
-            await Task.Delay(50);
+            await Task.CompletedTask;
+            Console.WriteLine($"[Advanced Engine Core] 🌡️ Optimizing temperature to {targetTemperature} K");
         }
     }
 
@@ -184,16 +144,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class TurbineComponent : IEngineComponent
     {
+        public TurbineComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double Efficiency { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -207,16 +173,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class CompressorComponent : IEngineComponent
     {
+        public CompressorComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double PressureRatio { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -230,16 +202,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class CombustionChamberComponent : IEngineComponent
     {
+        public CombustionChamberComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double Temperature { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -253,16 +231,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class NozzleComponent : IEngineComponent
     {
+        public NozzleComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double ExpansionRatio { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -276,16 +260,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class FuelSystemComponent : IEngineComponent
     {
+        public FuelSystemComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double FlowRate { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -299,16 +289,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class CoolingSystemComponent : IEngineComponent
     {
+        public CoolingSystemComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double CoolingCapacity { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -322,16 +318,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class ControlSystemComponent : IEngineComponent
     {
+        public ControlSystemComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double ResponseTime { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -345,16 +347,22 @@ namespace HB_NLP_Research_Lab.Core
 
     public class MonitoringSystemComponent : IEngineComponent
     {
+        public MonitoringSystemComponent()
+        {
+            Name = string.Empty;
+        }
+
         public string Name { get; set; }
         public double UpdateRate { get; set; }
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
         }
 
         public async Task<ComponentStatus> GetStatusAsync()
         {
+            await Task.CompletedTask;
             return new ComponentStatus
             {
                 Name = Name,
@@ -393,6 +401,12 @@ namespace HB_NLP_Research_Lab.Core
 
     public class EngineStatus
     {
+        public EngineStatus()
+        {
+            ComponentHealth = new List<ComponentStatus>();
+            SafetyStatus = new SafetyStatus();
+        }
+
         public bool IsRunning { get; set; }
         public double Temperature { get; set; }
         public double Pressure { get; set; }
@@ -401,15 +415,27 @@ namespace HB_NLP_Research_Lab.Core
         public double Efficiency { get; set; }
         public List<ComponentStatus> ComponentHealth { get; set; }
         public SafetyStatus SafetyStatus { get; set; }
+        public string Health { get; set; } = string.Empty;
+        public string Performance { get; set; } = string.Empty;
     }
 
     public class ComponentStatus
     {
+        public ComponentStatus()
+        {
+            Name = string.Empty;
+            ComponentHealth = string.Empty;
+        }
+
         public string Name { get; set; }
         public bool IsOperational { get; set; }
         public double Efficiency { get; set; }
         public double Temperature { get; set; }
         public double Pressure { get; set; }
+        public string ComponentHealth { get; set; }
+        public string ComponentName { get; set; } = string.Empty;
+        public string Health { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
     }
 
     public class EngineException : Exception

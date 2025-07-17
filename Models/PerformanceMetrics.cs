@@ -10,6 +10,10 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class PerformanceMetrics
     {
+        public PerformanceMetrics()
+        {
+            EnvironmentalImpact = new EnvironmentalMetrics();
+        }
         public float ThrustEfficiency { get; set; }
         public float FuelConsumption { get; set; } // g/kN·s
         public float ThermalEfficiency { get; set; }
@@ -23,6 +27,7 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class EnvironmentalMetrics
     {
+        public EnvironmentalMetrics() {}
         public float NOxEmissions { get; set; } // ppm
         public float COEmissions { get; set; } // ppm
         public float UnburnedHydrocarbons { get; set; } // ppm
@@ -36,6 +41,12 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class EngineSpecifications
     {
+        public EngineSpecifications()
+        {
+            TemperatureRange = Vector2.Zero;
+            HumidityRange = Vector2.Zero;
+            VectoringAngles = Vector3.Zero;
+        }
         public float Thrust { get; set; } // N
         public float Weight { get; set; } // kg
         public float Length { get; set; } // m
@@ -55,6 +66,11 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public abstract class EngineComponent
     {
+        public EngineComponent()
+        {
+            Name = string.Empty;
+            Dimensions = Vector3.Zero;
+        }
         public string Name { get; set; }
         public float Efficiency { get; set; }
         public float Weight { get; set; }
@@ -68,6 +84,10 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class AdaptiveVariableGeometryCompressor : EngineComponent
     {
+        public AdaptiveVariableGeometryCompressor()
+        {
+            // No additional non-nullable properties
+        }
         public int Stages { get; set; }
         public bool AdaptiveBlades { get; set; }
         public float PressureRatio { get; set; }
@@ -79,6 +99,7 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class SmartCombustionChamber : EngineComponent
     {
+        public SmartCombustionChamber() {}
         public int FuelInjectors { get; set; }
         public int FlameHolders { get; set; }
         public float CombustionTemperature { get; set; }
@@ -90,11 +111,11 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class HighTemperatureCMCTurbine : EngineComponent
     {
-        public int HighPressureStages { get; set; }
-        public int LowPressureStages { get; set; }
-        public int CoolingHoles { get; set; }
-        public float TurbineInletTemperature { get; set; }
-        public float ExpansionRatio { get; set; }
+        public HighTemperatureCMCTurbine() {}
+        public int CoolingChannels { get; set; }
+        public float MaxTemperature { get; set; }
+        public float MaxStress { get; set; }
+        public float FatigueLife { get; set; }
     }
     
     /// <summary>
@@ -113,11 +134,14 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class HybridElectricPowerSystem : EngineComponent
     {
-        public int GeneratorStages { get; set; }
-        public bool BatteryIntegration { get; set; }
-        public bool SmartPowerManagement { get; set; }
-        public float PowerOutput { get; set; } // kW
-        public float Efficiency { get; set; }
+        public HybridElectricPowerSystem()
+        {
+            Name = "Hybrid Electric Power System";
+        }
+        public new double Efficiency { get; set; }
+        public double ElectricPowerOutput { get; set; }
+        public double BatteryCapacity { get; set; }
+        public double RegenerativeBrakingEfficiency { get; set; }
     }
     
     /// <summary>
@@ -144,10 +168,40 @@ namespace HB_NLP_Research_Lab.Models
     }
     
     /// <summary>
+    /// Innovation metrics for revolutionary engine architectures
+    /// </summary>
+    public class InnovationMetrics
+    {
+        public InnovationMetrics()
+        {
+            TechnologyReadinessLevel = string.Empty;
+            NoveltyScore = 0.0f;
+            DisruptivePotential = 0.0f;
+            MarketImpact = 0.0f;
+            Patentability = 0.0f;
+        }
+        public string TechnologyReadinessLevel { get; set; }
+        public float NoveltyScore { get; set; }
+        public float DisruptivePotential { get; set; }
+        public float MarketImpact { get; set; }
+        public float Patentability { get; set; }
+        public float CostEffectiveness { get; set; }
+        public float Scalability { get; set; }
+        public float Sustainability { get; set; }
+    }
+
+    /// <summary>
     /// Multi-physics analysis results
     /// </summary>
     public class MultiPhysicsResults
     {
+        public MultiPhysicsResults()
+        {
+            ThermalAnalysis = new ThermalAnalysis();
+            StructuralAnalysis = new StructuralAnalysis();
+            FluidDynamics = new FluidDynamicsAnalysis();
+            CoupledAnalysis = new CoupledAnalysis();
+        }
         public ThermalAnalysis ThermalAnalysis { get; set; }
         public StructuralAnalysis StructuralAnalysis { get; set; }
         public FluidDynamicsAnalysis FluidDynamics { get; set; }
@@ -230,6 +284,13 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class ManufacturingData
     {
+        public ManufacturingData()
+        {
+            STLFiles = new List<string>();
+            SupportStructures = new List<string>();
+            SlicingData = new List<string>();
+            QualityControl = new QualityControlData();
+        }
         public List<string> STLFiles { get; set; }
         public List<string> SupportStructures { get; set; }
         public List<string> SlicingData { get; set; }
@@ -241,6 +302,7 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class QualityControlData
     {
+        public QualityControlData() {}
         public bool WatertightGeometry { get; set; }
         public float WallThickness { get; set; }
         public bool AssemblyClearance { get; set; }
@@ -252,6 +314,13 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class EnterpriseExportData
     {
+        public EnterpriseExportData()
+        {
+            CATIAFiles = new List<string>();
+            ANSYSFiles = new List<string>();
+            NXFiles = new List<string>();
+            SolidWorksFiles = new List<string>();
+        }
         public List<string> CATIAFiles { get; set; }
         public List<string> ANSYSFiles { get; set; }
         public List<string> NXFiles { get; set; }
@@ -263,12 +332,8 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class ComponentAnalysis
     {
+        public ComponentAnalysis() {}
         private readonly Dictionary<string, ComponentMetrics> _componentMetrics;
-        
-        public ComponentAnalysis()
-        {
-            _componentMetrics = new Dictionary<string, ComponentMetrics>();
-        }
         
         public void AddComponentAnalysis(EngineComponent component)
         {

@@ -18,6 +18,15 @@ namespace HB_NLP_Research_Lab.Physics
         private double[,] fatigueField;
         private bool isInitialized = false;
 
+        public AdvancedStructuralSolver()
+        {
+            stressField = new double[1000, 1000];
+            strainField = new double[1000, 1000];
+            displacementField = new double[1000, 1000];
+            fatigueField = new double[1000, 1000];
+            isInitialized = false;
+        }
+
         public string Name => "Advanced Structural Solver - Finite Element Stress Analysis";
 
         public void Initialize()
@@ -202,10 +211,10 @@ namespace HB_NLP_Research_Lab.Physics
             return bucklingAnalysis;
         }
 
-        private Dictionary<string, double> GetMaterialProperties()
+        private Dictionary<string, object> GetMaterialProperties()
         {
             // Real aerospace material properties
-            var materials = new Dictionary<string, double>();
+            var materials = new Dictionary<string, object>();
             
             materials["Steel_YoungsModulus"] = YOUNGS_MODULUS_STEEL;
             materials["Steel_PoissonsRatio"] = POISSONS_RATIO_STEEL;
@@ -223,10 +232,10 @@ namespace HB_NLP_Research_Lab.Physics
             return materials;
         }
 
-        private Dictionary<string, double> CalculateSafetyFactors()
+        private Dictionary<string, object> CalculateSafetyFactors()
         {
             // Real safety factor calculations
-            var safetyFactors = new Dictionary<string, double>();
+            var safetyFactors = new Dictionary<string, object>();
             
             double maxStress = 350e6; // Pa
             double yieldStrength = YIELD_STRENGTH_STEEL;
@@ -306,17 +315,31 @@ namespace HB_NLP_Research_Lab.Physics
 
     public class AdvancedStructuralResult : PhysicsResult
     {
+        public AdvancedStructuralResult()
+        {
+            StressField = new double[100, 100];
+            StrainField = new double[100, 100];
+            DisplacementField = new double[100, 100];
+            FatigueAnalysis = new Dictionary<string, object>();
+            BucklingAnalysis = new Dictionary<string, object>();
+            MaterialProperties = new Dictionary<string, object>();
+            SafetyFactors = new Dictionary<string, object>();
+            FailurePrediction = new Dictionary<string, object>();
+            ConvergenceHistory = new List<double>();
+            NaturalFrequencies = new List<double>();
+        }
+
         public double[,] StressField { get; set; }
         public double[,] StrainField { get; set; }
         public double[,] DisplacementField { get; set; }
         public Dictionary<string, object> FatigueAnalysis { get; set; }
         public Dictionary<string, object> BucklingAnalysis { get; set; }
-        public Dictionary<string, double> MaterialProperties { get; set; }
-        public Dictionary<string, double> SafetyFactors { get; set; }
+        public Dictionary<string, object> MaterialProperties { get; set; }
+        public Dictionary<string, object> SafetyFactors { get; set; }
         public Dictionary<string, object> FailurePrediction { get; set; }
         public List<double> ConvergenceHistory { get; set; }
+        public List<double> NaturalFrequencies { get; set; }
         public double MaxVonMisesStress { get; set; }
         public double MaxDisplacement { get; set; }
-        public List<double> NaturalFrequencies { get; set; }
     }
 } 
