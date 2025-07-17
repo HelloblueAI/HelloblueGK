@@ -2,37 +2,12 @@
 # Production-ready with security, performance, and enterprise features
 
 # Stage 1: Build stage
-FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
-
-# Install OpenFOAM and dependencies for CFD simulations
-RUN apt-get update && apt-get install -y \
-    wget \
-    build-essential \
-    flex \
-    bison \
-    cmake \
-    zlib1g-dev \
-    libboost-system-dev \
-    libboost-thread-dev \
-    libopenmpi-dev \
-    openmpi-bin \
-    gnuplot \
-    libreadline-dev \
-    libncurses-dev \
-    libxt-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Download and install OpenFOAM
-RUN wget -O - https://dl.openfoam.org/gpg.key | apt-key add - \
-    && echo "deb https://dl.openfoam.org/ubuntu focal main" > /etc/apt/sources.list.d/openfoam.list \
-    && apt-get update \
-    && apt-get install -y openfoam8 \
-    && rm -rf /var/lib/apt/lists/*
 
 # Copy project files
 COPY ["HelloblueGK.csproj", "./"]
-COPY ["WebAPI/", "./WebAPI/"]
+COPY ["Program.cs", "./"]
 COPY ["Core/", "./Core/"]
 COPY ["Physics/", "./Physics/"]
 COPY ["AI/", "./AI/"]
@@ -51,15 +26,8 @@ FROM build AS publish
 RUN dotnet publish "HelloblueGK.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # Stage 3: Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    openfoam8 \
-    openmpi-bin \
-    libopenmpi-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
 RUN groupadd -r helloblue && useradd -r -g helloblue -s /bin/bash helloblue
@@ -75,10 +43,6 @@ COPY --from=publish /app/publish .
 ENV ASPNETCORE_URLS=http://+:8080
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_RUNNING_IN_CONTAINER=true
-ENV OPENFOAM_VERSION=8
-
-# Create OpenFOAM environment
-RUN echo "source /opt/openfoam8/etc/bashrc" >> /etc/bash.bashrc
 
 # Switch to non-root user
 USER helloblue
