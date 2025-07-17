@@ -1,7 +1,7 @@
 # HelloblueGK - Revolutionary Aerospace Engine Simulation Platform
 
 <div align="left">
-<img src="HB-NLP-Advanced-Engine-Design.png?v=2" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
+<img src="HB-NLP-Advanced-Engine-Design.png?v=3" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
 
 ```ascii
     ╔══════════════════════════════════════════════════════════════╗
