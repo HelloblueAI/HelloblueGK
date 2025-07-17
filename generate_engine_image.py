@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HB-NLP Research Lab - Revolutionary Aerospace Engine Design Image Generator
+HB-NLP Research Lab - Advanced Aerospace Engine Design Image Generator
 Creates a stunning enterprise-grade technical diagram that amazes big tech companies
 """
 
@@ -13,7 +13,7 @@ import matplotlib.patheffects as path_effects
 from matplotlib.patches import ConnectionPatch
 import matplotlib.patches as mpatches
 
-def create_revolutionary_engine_diagram():
+def create_advanced_engine_diagram():
     """Create a stunning aerospace engine diagram that amazes big tech companies"""
     
     # Create figure with ultra-professional dark theme
@@ -49,7 +49,7 @@ def create_revolutionary_engine_diagram():
     for i in range(0, 13, 2):
         ax.axhline(y=i, color='#1a1a1a', alpha=0.3, linewidth=0.5)
     
-    # Engine components with revolutionary styling
+    # Engine components with advanced styling
     components = [
         # Main Combustion Chamber with advanced styling
         {'type': 'rectangle', 'x': 4, 'y': 4, 'width': 3, 'height': 4, 
@@ -107,7 +107,7 @@ def create_revolutionary_engine_diagram():
          'gradient': True, 'linewidth': 2, 'glow': True},
     ]
     
-    # Draw components with revolutionary styling
+    # Draw components with advanced styling
     for comp in components:
         if comp['type'] == 'rectangle':
             # Create main component with glow effect
@@ -175,7 +175,7 @@ def create_revolutionary_engine_diagram():
                           fontsize=9, fontweight='bold', color='white')
             text.set_path_effects([path_effects.withStroke(linewidth=3, foreground='black')])
     
-    # Add revolutionary flow arrows with advanced effects
+    # Add advanced flow arrows with professional effects
     arrows = [
         # Fuel flow with glow
         {'start': (1.8, 7), 'end': (2.3, 7), 'color': colors['fuel'], 'label': 'AI-Optimized\nFuel Flow'},
@@ -278,4 +278,4 @@ def create_revolutionary_engine_diagram():
     print("Advanced engine diagram generated: HB-NLP-Advanced-Engine-Design.png")
 
 if __name__ == "__main__":
-    create_revolutionary_engine_diagram() 
+    create_advanced_engine_diagram() 

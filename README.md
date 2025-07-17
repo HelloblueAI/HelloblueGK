@@ -1,7 +1,7 @@
 # HelloblueGK - Revolutionary Aerospace Engine Simulation Platform
 
 <div align="left">
-<img src="HB-NLP-Advanced-Engine-Design.png?v=3" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
+<img src="HB-NLP-Advanced-Engine-Design.png?v=4" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
 
 ```ascii
     ╔══════════════════════════════════════════════════════════════╗
@@ -23,7 +23,7 @@
 
 ## Overview
 
-**HelloblueGK** is the world's most revolutionary aerospace engine simulation platform, **BEYOND SPACEX CAPABILITIES**, integrating cutting-edge AI-driven autonomous design, quantum-classical hybrid computing, digital twins with real-time learning, and enterprise-grade architecture. Built for the most demanding aerospace applications, from revolutionary rocket engine design to next-generation aircraft propulsion systems.
+**HelloblueGK** is the world's most advanced aerospace engine simulation platform, **BEYOND SPACEX CAPABILITIES**, integrating cutting-edge AI-driven autonomous design, quantum-classical hybrid computing, digital twins with real-time learning, and enterprise-grade architecture. Built for the most demanding aerospace applications, from advanced rocket engine design to next-generation aircraft propulsion systems.
 
 ### Revolutionary Features
 
@@ -32,7 +32,7 @@
 - **Digital Twin with Real-Time Learning**: Self-improving predictive models
 - **Revolutionary Engine Architectures**: Variable geometry, modular, distributed propulsion
 - **Quantum-Classical Hybrid Computing**: Quantum advantage achieved
-- **Nuclear Thermal Propulsion**: Revolutionary propulsion technology
+- **Nuclear Thermal Propulsion**: Revolutionar propulsion technology
 - **Hybrid Electric Propulsion**: Electric-combustion hybrid systems
 - **Live Learning Capabilities**: Autonomous testing and optimization
 - **Predictive Digital Twins**: Failure prediction and prevention
