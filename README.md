@@ -757,7 +757,7 @@ The HelloblueGK platform is now **LIVE** and demonstrating all revolutionary fea
 
 [![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/helloblue/hellobluegk)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/helloblue/hellobluegk/releases)
+
 [![Deployment](https://img.shields.io/badge/deployment-live-success)](https://github.com/helloblue/hellobluegk)
 [![Technology](https://img.shields.io/badge/technology-revolutionary-orange)](https://github.com/helloblue/hellobluegk)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
