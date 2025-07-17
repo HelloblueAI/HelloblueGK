@@ -2,20 +2,26 @@
 
 **Helloblue, Inc. 2025 HB-NLP Research Lab**
 
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/helloblue/hellobluegk)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/helloblue/hellobluegk/releases)
-[![Deployment](https://img.shields.io/badge/deployment-live-success)](https://github.com/helloblue/hellobluegk)
-[![Technology](https://img.shields.io/badge/technology-revolutionary-orange)](https://github.com/helloblue/hellobluegk)
-[![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
-[![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)](https://docs.microsoft.com/en-us/dotnet/csharp/)
-[![CFD](https://img.shields.io/badge/CFD-Computational%20Fluid%20Dynamics-orange?style=flat)](https://www.openfoam.org/)
-[![FEA](https://img.shields.io/badge/FEA-Finite%20Element%20Analysis-red?style=flat)](https://en.wikipedia.org/wiki/Finite_element_method)
-[![Thermal](https://img.shields.io/badge/Thermal-Heat%20Transfer%20Analysis-yellow?style=flat)](https://en.wikipedia.org/wiki/Heat_transfer)
-[![Validation](https://img.shields.io/badge/Validation-Real%20World%20Data-green?style=flat)](https://en.wikipedia.org/wiki/Validation)
-[![Enterprise](https://img.shields.io/badge/Enterprise-Grade%20Architecture-purple?style=flat)](https://en.wikipedia.org/wiki/Enterprise_software)
-[![AI-Driven Design](https://img.shields.io/badge/AI--Driven%20Design-Robotic%20Innovation-teal?style=for-the-badge&logo=robot)](https://en.wikipedia.org/wiki/Artificial_intelligence)
-[![Helloblue, Inc. 2025 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202025%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)](https://helloblue.com/)
+<div align="center">
+<img src="HB-NLP-Advanced-Engine-Design.png" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
+
+```ascii
+    ╔══════════════════════════════════════════════════════════════╗
+    ║                    AEROSPACE ENGINE KERNEL                   ║
+    ║                                                              ║
+    ║ ████████████████████████████████████████████████████████████ ║
+    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
+    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
+    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
+    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
+    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
+    ║ ████████████████████████████████████████████████████████████ ║
+    ║                                                              ║
+    ║  [CFD] [FEA] [THERMAL] [VALIDATION] [ENTERPRISE]             ║
+    ╚══════════════════════════════════════════════════════════════╝
+```
+
+</div>
 
 ## Overview
 
@@ -719,15 +725,6 @@ For licensing inquiries, enterprise deployments, or commercial use:
 - **Email**: licensing@helloblue.ai
 - **Support**: support@helloblue.ai
 
-## Enterprise Support
-
-For enterprise support, custom integrations, and revolutionary consulting services:
-
-- **Email**: enterprise@helloblue.com
-- **Phone**: +1 (555) 123-4567
-- **Website**: https://helloblue.com/enterprise
-- **Revolutionary Technology**: https://helloblue.com/revolutionary
-
 ## Revolutionary Acknowledgments
 
 - **OpenFOAM Foundation** for CFD solver integration
@@ -737,12 +734,6 @@ For enterprise support, custom integrations, and revolutionary consulting servic
 - **Quantum Computing Pioneers** for quantum advantage
 - **AI Research Community** for autonomous design breakthroughs
 - **Digital Twin Innovators** for real-time learning capabilities
-
----
-
-**Built with ❤️ by the HB-NLP Research Lab at Helloblue, Inc.**
-
-*Advancing the future of aerospace engineering through revolutionary simulation technology that goes BEYOND SPACEX CAPABILITIES.*
 
 ---
 
@@ -763,3 +754,24 @@ For enterprise support, custom integrations, and revolutionary consulting servic
 
 ### **Production Status: COMPLETE SUCCESS**
 The HelloblueGK platform is now **LIVE** and demonstrating all revolutionary features in production!
+
+---
+
+<div align="center">
+
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/helloblue/hellobluegk)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/helloblue/hellobluegk/releases)
+[![Deployment](https://img.shields.io/badge/deployment-live-success)](https://github.com/helloblue/hellobluegk)
+[![Technology](https://img.shields.io/badge/technology-revolutionary-orange)](https://github.com/helloblue/hellobluegk)
+[![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
+[![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)](https://docs.microsoft.com/en-us/dotnet/csharp/)
+[![CFD](https://img.shields.io/badge/CFD-Computational%20Fluid%20Dynamics-orange?style=flat)](https://www.openfoam.org/)
+[![FEA](https://img.shields.io/badge/FEA-Finite%20Element%20Analysis-red?style=flat)](https://en.wikipedia.org/wiki/Finite_element_method)
+[![Thermal](https://img.shields.io/badge/Thermal-Heat%20Transfer%20Analysis-yellow?style=flat)](https://en.wikipedia.org/wiki/Heat_transfer)
+[![Validation](https://img.shields.io/badge/Validation-Real%20World%20Data-green?style=flat)](https://en.wikipedia.org/wiki/Validation)
+[![Enterprise](https://img.shields.io/badge/Enterprise-Grade%20Architecture-purple?style=flat)](https://en.wikipedia.org/wiki/Enterprise_software)
+[![AI-Driven Design](https://img.shields.io/badge/AI--Driven%20Design-Robotic%20Innovation-teal?style=for-the-badge&logo=robot)](https://en.wikipedia.org/wiki/Artificial_intelligence)
+[![Helloblue, Inc. 2025 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202025%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)](https://helloblue.com/)
+
+</div>
