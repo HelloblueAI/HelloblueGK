@@ -770,4 +770,3 @@ The HelloblueGK platform is now **LIVE** and demonstrating all revolutionary fea
 
 </div>
 
-**Copyright © 2025 Helloblue, Inc. HB-NLP Research Lab**
