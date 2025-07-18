@@ -654,7 +654,7 @@ dotnet test --filter Category=Quantum
 │                    TECHNICAL EXCELLENCE                         │
 ├─────────────────────────────────────────────────────────────────┤
 │  100% Original Code       │  Enterprise Architecture            │
-│  Real-World Accuracy      │  Algorithms                │
+│  Real-World Accuracy      │  Algorithms                         │
 │  Peer Reviewed            │  Cutting-Edge Technology            │
 │  Scalable Design          │  Production Ready                   │
 └─────────────────────────────────────────────────────────────────┘
