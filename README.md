@@ -103,47 +103,6 @@ Our platform includes sophisticated engine models with real-world specifications
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Technical Architecture
-
-```mermaid
-graph TB
-    subgraph "User Interface"
-        A[Engineer/Designer] --> B[HB-NLP Engine Kernel]
-    end
-    
-    subgraph "Core Engine Models"
-        B --> C1[Raptor Engine Model]
-        B --> C2[Merlin Engine Model] 
-        B --> C3[RS-25 Engine Model]
-        B --> C4[Parametric Engine Designer]
-    end
-    
-    subgraph "Advanced Simulation"
-        B --> D1[CFD Solver]
-        B --> D2[Thermal Analyzer]
-        B --> D3[Structural Analyzer]
-        B --> D4[Performance Analyzer]
-    end
-    
-    subgraph "AI & Optimization"
-        B --> E1[Genetic Algorithm Optimizer]
-        B --> E2[Multi-Objective Optimization]
-        B --> E3[Design Space Explorer]
-    end
-    
-    subgraph "Enterprise Integration"
-        B --> F1[Real-time Telemetry]
-        B --> F2[Predictive Maintenance]
-        B --> F3[SpaceX/Boeing/NASA APIs]
-    end
-    
-    subgraph "Output & Visualization"
-        B --> G1[3D Engine Visualization]
-        B --> G2[Performance Reports]
-        B --> G3[Manufacturing Data]
-    end
-```
-
 ## Technology Breakthroughs
 
 ### AI-Driven Autonomous Engine Design
