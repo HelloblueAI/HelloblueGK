@@ -105,7 +105,7 @@ namespace HB_NLP_Research_Lab.Core
             {
                 return typedValue;
             }
-            return defaultValue;
+            return defaultValue ?? default(T)!;
         }
 
         public async Task SaveConfigurationAsync(string filePath)

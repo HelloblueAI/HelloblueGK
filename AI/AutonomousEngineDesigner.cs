@@ -562,14 +562,14 @@ namespace HB_NLP_Research_Lab.AI
             ControlSystem = new ControlSystem();
             MaterialComposition = new MaterialComposition();
         }
-        public string Id { get; set; }
-        public string Name { get; set; }
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
         public double InnovationLevel { get; set; }
-        public string ArchitectureType { get; set; }
-        public PropulsionSystem PropulsionSystem { get; set; }
-        public CoolingSystem CoolingSystem { get; set; }
-        public ControlSystem ControlSystem { get; set; }
-        public MaterialComposition MaterialComposition { get; set; }
+        public string ArchitectureType { get; set; } = string.Empty;
+        public PropulsionSystem PropulsionSystem { get; set; } = new();
+        public CoolingSystem CoolingSystem { get; set; } = new();
+        public ControlSystem ControlSystem { get; set; } = new();
+        public MaterialComposition MaterialComposition { get; set; } = new();
         public bool GeneratedByAI { get; set; }
         public DateTime GenerationTimestamp { get; set; }
     }
@@ -584,13 +584,13 @@ namespace HB_NLP_Research_Lab.AI
             OptimizationHistory = new List<OptimizationStep>();
             OptimizedParameters = new Dictionary<string, double>();
         }
-        public string Id { get; set; }
-        public EngineArchitecture Architecture { get; set; }
-        public EnginePerformance Performance { get; set; }
+        public string Id { get; set; } = string.Empty;
+        public EngineArchitecture Architecture { get; set; } = new();
+        public EnginePerformance Performance { get; set; } = new();
         public double OptimizationEfficiency { get; set; }
         public double InnovationLevel { get; set; }
-        public List<OptimizationStep> OptimizationHistory { get; set; }
-        public Dictionary<string, double> OptimizedParameters { get; set; }
+        public List<OptimizationStep> OptimizationHistory { get; set; } = new();
+        public Dictionary<string, double> OptimizedParameters { get; set; } = new();
     }
 
     public class FailurePrediction
@@ -612,11 +612,11 @@ namespace HB_NLP_Research_Lab.AI
 
     public class AutonomousDesignResult
     {
-        public SelfOptimizedEngine BestEngine { get; set; }
-        public List<EngineArchitecture> AllArchitectures { get; set; }
-        public List<SelfOptimizedEngine> OptimizedEngines { get; set; }
-        public List<FailurePrediction> FailurePredictions { get; set; }
-        public ValidationReport ValidationReport { get; set; }
+        public SelfOptimizedEngine BestEngine { get; set; } = new();
+        public List<EngineArchitecture> AllArchitectures { get; set; } = new();
+        public List<SelfOptimizedEngine> OptimizedEngines { get; set; } = new();
+        public List<FailurePrediction> FailurePredictions { get; set; } = new();
+        public ValidationReport ValidationReport { get; set; } = new();
         public double DesignInnovationScore { get; set; }
         public double OptimizationEfficiency { get; set; }
         public double FailurePredictionAccuracy { get; set; }
@@ -632,21 +632,21 @@ namespace HB_NLP_Research_Lab.AI
 
     public class AutonomousTestingResult
     {
-        public List<TestScenario> TestScenarios { get; set; }
-        public List<TestResult> TestResults { get; set; }
-        public TestAnalysis Analysis { get; set; }
+        public List<TestScenario> TestScenarios { get; set; } = new();
+        public List<TestResult> TestResults { get; set; } = new();
+        public TestAnalysis Analysis { get; set; } = new();
         public double TestCoverage { get; set; }
         public double TestAccuracy { get; set; }
     }
 
     public class FailurePredictionResult
     {
-        public string EngineId { get; set; }
+        public string EngineId { get; set; } = string.Empty;
         public double PredictionAccuracy { get; set; }
-        public string PredictedFailureMode { get; set; }
+        public string PredictedFailureMode { get; set; } = string.Empty;
         public TimeSpan TimeToFailure { get; set; }
         public double ConfidenceLevel { get; set; }
-        public List<string> RecommendedActions { get; set; }
+        public List<string> RecommendedActions { get; set; } = new();
     }
 
     // Additional supporting classes
@@ -735,9 +735,9 @@ namespace HB_NLP_Research_Lab.AI
 
     public class TestFlightData
     {
-        public string EngineId { get; set; }
+        public string EngineId { get; set; } = string.Empty;
         public DateTime FlightDate { get; set; }
-        public Dictionary<string, double> FlightMetrics { get; set; }
+        public Dictionary<string, double> FlightMetrics { get; set; } = new();
     }
 
     // Placeholder classes for AI components
@@ -764,10 +764,10 @@ namespace HB_NLP_Research_Lab.AI
 
     public class EngineOptimizationResult
     {
-        public EnginePerformance Performance { get; set; }
+        public EnginePerformance Performance { get; set; } = new();
         public double Efficiency { get; set; }
-        public List<OptimizationStep> History { get; set; }
-        public Dictionary<string, double> Parameters { get; set; }
+        public List<OptimizationStep> History { get; set; } = new();
+        public Dictionary<string, double> Parameters { get; set; } = new();
     }
     public class RealTimeOptimizer { }
     public class FailurePredictionModel { }

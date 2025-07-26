@@ -264,7 +264,7 @@ namespace HB_NLP_Research_Lab.Models
         public bool Feasible { get; set; }
         public int Iterations { get; set; }
         public float Convergence { get; set; }
-        public Dictionary<string, float> OptimizedParameters { get; set; }
+        public Dictionary<string, float> OptimizedParameters { get; set; } = new();
     }
     
     /// <summary>
@@ -332,7 +332,10 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class ComponentAnalysis
     {
-        public ComponentAnalysis() {}
+        public ComponentAnalysis() 
+        {
+            _componentMetrics = new Dictionary<string, ComponentMetrics>();
+        }
         private readonly Dictionary<string, ComponentMetrics> _componentMetrics;
         
         public void AddComponentAnalysis(EngineComponent component)
@@ -367,7 +370,7 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class ComponentMetrics
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
         public float Efficiency { get; set; }
         public float Weight { get; set; }
         public float Reliability { get; set; }
@@ -404,11 +407,11 @@ namespace HB_NLP_Research_Lab.Models
     /// </summary>
     public class PerformanceReport
     {
-        public EngineSpecifications EngineSpecifications { get; set; }
-        public PerformanceMetrics PerformanceMetrics { get; set; }
-        public ComponentAnalysis ComponentAnalysis { get; set; }
-        public EnvironmentalMetrics EnvironmentalImpact { get; set; }
-        public ManufacturingReadiness ManufacturingReadiness { get; set; }
-        public EnterpriseCompatibility EnterpriseCompatibility { get; set; }
+        public EngineSpecifications EngineSpecifications { get; set; } = new();
+        public PerformanceMetrics PerformanceMetrics { get; set; } = new();
+        public ComponentAnalysis ComponentAnalysis { get; set; } = new();
+        public EnvironmentalMetrics EnvironmentalImpact { get; set; } = new();
+        public ManufacturingReadiness ManufacturingReadiness { get; set; } = new();
+        public EnterpriseCompatibility EnterpriseCompatibility { get; set; } = new();
     }
 } 
