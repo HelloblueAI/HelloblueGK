@@ -455,14 +455,14 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class GeometryState
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
         public double ExpansionRatio { get; set; }
         public double Thrust { get; set; }
     }
 
     public class MorphingMechanism
     {
-        public string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
         public double ResponseTime { get; set; }
         public double Precision { get; set; }
         public double Reliability { get; set; }
@@ -470,7 +470,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class AdaptiveControlSystem
     {
-        public string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
         public double AdaptationRate { get; set; }
         public bool LearningCapability { get; set; }
         public bool PredictiveAdjustment { get; set; }
@@ -485,16 +485,16 @@ namespace HB_NLP_Research_Lab.Aerospace
             Modules = new List<EngineModule>();
             AssemblySystem = new ModularAssemblySystem();
         }
-        public string Type { get; set; }
-        public List<EngineModule> Modules { get; set; }
-        public ModularAssemblySystem AssemblySystem { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public List<EngineModule> Modules { get; set; } = new();
+        public ModularAssemblySystem AssemblySystem { get; set; } = new();
         public double StandardizationLevel { get; set; }
         public double InterchangeabilityFactor { get; set; }
     }
 
     public class EngineModule
     {
-        public string Type { get; set; }
+        public string Type { get; set; } = string.Empty;
         public bool Standardized { get; set; }
         public bool Interchangeable { get; set; }
     }
@@ -504,7 +504,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         public TimeSpan AssemblyTime { get; set; }
         public TimeSpan DisassemblyTime { get; set; }
         public double AutomationLevel { get; set; }
-        public string QualityControl { get; set; }
+        public string QualityControl { get; set; } = string.Empty;
     }
 
     // Distributed Propulsion System
@@ -523,24 +523,24 @@ namespace HB_NLP_Research_Lab.Aerospace
                 FailureRedundancy = true
             };
         }
-        public string Type { get; set; }
-        public List<SubEngine> Engines { get; set; }
-        public EngineCoordinationSystem CoordinationSystem { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public List<SubEngine> Engines { get; set; } = new();
+        public EngineCoordinationSystem CoordinationSystem { get; set; } = new();
         public double TotalThrust { get; set; }
         public double CoordinationEfficiency { get; set; }
     }
 
     public class SubEngine
     {
-        public string Id { get; set; }
+        public string Id { get; set; } = string.Empty;
         public double Thrust { get; set; }
         public Vector3 Position { get; set; }
     }
 
     public class EngineCoordinationSystem
     {
-        public string Type { get; set; }
-        public string CoordinationAlgorithm { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string CoordinationAlgorithm { get; set; } = string.Empty;
         public double ResponseTime { get; set; }
         public double SynchronizationAccuracy { get; set; }
         public bool FailureRedundancy { get; set; }

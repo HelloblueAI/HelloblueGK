@@ -899,11 +899,11 @@ RAS
             Field = new double[0,0,0];
             Distribution = new double[0,0];
         }
-        public string OutputPath { get; set; }
-        public string LogFile { get; set; }
-        public string ErrorMessage { get; set; }
-        public double[,,] Field { get; set; }
-        public double[,] Distribution { get; set; }
+        public string OutputPath { get; set; } = string.Empty;
+        public string LogFile { get; set; } = string.Empty;
+        public string ErrorMessage { get; set; } = string.Empty;
+        public double[,,] Field { get; set; } = new double[0,0,0];
+        public double[,] Distribution { get; set; } = new double[0,0];
         public bool Success { get; set; }
     }
 

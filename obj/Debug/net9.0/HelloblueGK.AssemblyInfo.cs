@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("HelloblueGK")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+dc55983c951b5e477c1f9adf8e3642d04ac55afb")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+6e284774ec00f66091e5914d6663fc1081318c1b")]
 [assembly: System.Reflection.AssemblyProductAttribute("HelloblueGK")]
 [assembly: System.Reflection.AssemblyTitleAttribute("HelloblueGK Aerospace Engine Simulation Platform")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

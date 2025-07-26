@@ -448,19 +448,19 @@ namespace HB_NLP_Research_Lab.Core
     public class DigitalTwinStatus
     {
         public bool IsReady { get; set; }
-        public string[] ActiveSystems { get; set; }
-        public string LearningMode { get; set; }
-        public string PredictionAccuracy { get; set; }
+        public string[] ActiveSystems { get; set; } = Array.Empty<string>();
+        public string LearningMode { get; set; } = string.Empty;
+        public string PredictionAccuracy { get; set; } = string.Empty;
         public int TwinCount { get; set; }
     }
 
     public class LiveLearningResult
     {
-        public string EngineId { get; set; }
-        public LearningEvent LearningEvent { get; set; }
-        public ContinuousLearningResult AILearningResult { get; set; }
-        public ModelImprovement ModelImprovement { get; set; }
-        public PredictionAccuracy UpdatedPredictionAccuracy { get; set; }
+        public string EngineId { get; set; } = string.Empty;
+        public LearningEvent LearningEvent { get; set; } = new();
+        public ContinuousLearningResult AILearningResult { get; set; } = new();
+        public ModelImprovement ModelImprovement { get; set; } = new();
+        public PredictionAccuracy UpdatedPredictionAccuracy { get; set; } = new();
         public DateTime LearningTimestamp { get; set; }
     }
 
@@ -476,23 +476,23 @@ namespace HB_NLP_Research_Lab.Core
             PredictedIssues = new List<string>();
             RecommendedActions = new List<string>();
         }
-        public string EngineId { get; set; }
-        public PredictionScenario Scenario { get; set; }
-        public Dictionary<string, double> PredictedMetrics { get; set; }
+        public string EngineId { get; set; } = string.Empty;
+        public PredictionScenario Scenario { get; set; } = new();
+        public Dictionary<string, double> PredictedMetrics { get; set; } = new();
         public double ConfidenceLevel { get; set; }
         public DateTime PredictionTimestamp { get; set; }
-        public List<string> PredictedIssues { get; set; }
-        public List<string> RecommendedActions { get; set; }
+        public List<string> PredictedIssues { get; set; } = new();
+        public List<string> RecommendedActions { get; set; } = new();
     }
 
     public class MultiPhysicsPrediction
     {
-        public string EngineId { get; set; }
+        public string EngineId { get; set; } = string.Empty;
         public DateTime PredictionTimestamp { get; set; }
-        public FluidStructureThermalElectromagneticResult MultiPhysicsResult { get; set; }
+        public FluidStructureThermalElectromagneticResult MultiPhysicsResult { get; set; } = new();
         public double PredictionConfidence { get; set; }
-        public PredictedPerformance PredictedPerformance { get; set; }
-        public List<PredictedFailure> PredictedFailures { get; set; }
+        public PredictedPerformance PredictedPerformance { get; set; } = new();
+        public List<PredictedFailure> PredictedFailures { get; set; } = new();
     }
 
     public class PredictedPerformance
@@ -506,7 +506,7 @@ namespace HB_NLP_Research_Lab.Core
 
     public class PredictedFailure
     {
-        public string FailureMode { get; set; }
+        public string FailureMode { get; set; } = string.Empty;
         public double Probability { get; set; }
         public TimeSpan TimeToFailure { get; set; }
         public double Confidence { get; set; }
@@ -519,21 +519,21 @@ namespace HB_NLP_Research_Lab.Core
         public double AveragePredictionAccuracy { get; set; }
         public int TotalLearningEvents { get; set; }
         public int TotalPredictions { get; set; }
-        public string LearningPerformance { get; set; }
-        public string PredictionPerformance { get; set; }
-        public string SystemHealth { get; set; }
+        public string LearningPerformance { get; set; } = string.Empty;
+        public string PredictionPerformance { get; set; } = string.Empty;
+        public string SystemHealth { get; set; } = string.Empty;
     }
 
     public class LearningPerformanceReport
     {
-        public string EngineId { get; set; }
+        public string EngineId { get; set; } = string.Empty;
         public int TotalLearningEvents { get; set; }
         public int TotalModelImprovements { get; set; }
         public int TotalPredictions { get; set; }
         public double AverageModelImprovement { get; set; }
         public double PredictionAccuracy { get; set; }
-        public string LearningTrend { get; set; }
-        public string PerformanceRating { get; set; }
+        public string LearningTrend { get; set; } = string.Empty;
+        public string PerformanceRating { get; set; } = string.Empty;
     }
 
     // Learning and prediction components
@@ -648,33 +648,33 @@ namespace HB_NLP_Research_Lab.Core
     // Additional supporting classes
     public class LearningHistory
     {
-        public string EngineId { get; set; }
-        public List<LearningEvent> LearningEvents { get; set; }
-        public List<ModelImprovement> ModelImprovements { get; set; }
-        public List<PredictionRecord> PredictionHistory { get; set; }
+        public string EngineId { get; set; } = string.Empty;
+        public List<LearningEvent> LearningEvents { get; set; } = new();
+        public List<ModelImprovement> ModelImprovements { get; set; } = new();
+        public List<PredictionRecord> PredictionHistory { get; set; } = new();
     }
 
     public class LearningEvent
     {
         public DateTime Timestamp { get; set; }
-        public string EventType { get; set; }
-        public TestFlightData FlightData { get; set; }
-        public LearningMetrics LearningMetrics { get; set; }
+        public string EventType { get; set; } = string.Empty;
+        public TestFlightData FlightData { get; set; } = new();
+        public LearningMetrics LearningMetrics { get; set; } = new();
     }
 
     public class ModelImprovement
     {
-        public string EngineId { get; set; }
+        public string EngineId { get; set; } = string.Empty;
         public double ImprovementPercentage { get; set; }
-        public string ModelVersion { get; set; }
+        public string ModelVersion { get; set; } = string.Empty;
         public DateTime UpdateTimestamp { get; set; }
     }
 
     public class PredictionRecord
     {
         public DateTime Timestamp { get; set; }
-        public PredictionScenario Scenario { get; set; }
-        public EnginePrediction Prediction { get; set; }
+        public PredictionScenario Scenario { get; set; } = new();
+        public EnginePrediction Prediction { get; set; } = new();
         public double ConfidenceLevel { get; set; }
         public double ExpectedAccuracy { get; set; }
     }
@@ -708,13 +708,13 @@ namespace HB_NLP_Research_Lab.Core
 
     public class PredictionScenario
     {
-        public string Name { get; set; }
-        public Dictionary<string, object> Parameters { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public Dictionary<string, object> Parameters { get; set; } = new();
     }
 
     public class TestingRequirements
     {
-        public string TestType { get; set; }
-        public Dictionary<string, object> Parameters { get; set; }
+        public string TestType { get; set; } = string.Empty;
+        public Dictionary<string, object> Parameters { get; set; } = new();
     }
 } 

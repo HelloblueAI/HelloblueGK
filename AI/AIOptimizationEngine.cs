@@ -178,9 +178,9 @@ namespace HB_NLP_Research_Lab.AI
 
     public class OptimizationResult
     {
-        public EngineDesign OptimalDesign { get; set; }
-        public List<double> ConvergenceHistory { get; set; }
-        public Dictionary<string, double> OptimizationMetrics { get; set; }
+        public EngineDesign OptimalDesign { get; set; } = new();
+        public List<double> ConvergenceHistory { get; set; } = new();
+        public Dictionary<string, double> OptimizationMetrics { get; set; } = new();
         public double OptimalThrust { get; set; }
         public double OptimalEfficiency { get; set; }
         public TimeSpan OptimizationTime { get; set; }
