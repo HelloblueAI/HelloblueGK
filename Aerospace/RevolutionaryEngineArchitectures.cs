@@ -432,7 +432,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         public double InnovationLevel { get; set; }
         public CfdAnalysisResult PhysicsAnalysis { get; set; }
         public FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
-        public PerformanceMetrics PerformanceMetrics { get; set; }
+        public Models.PerformanceMetrics PerformanceMetrics { get; set; }
         public InnovationMetrics InnovationMetrics { get; set; }
         public string TechnologyReadinessLevel { get; set; }
     }
@@ -620,7 +620,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         public double InnovationLevel { get; set; }
         public CfdAnalysisResult PhysicsAnalysis { get; set; }
         public FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
-        public PerformanceMetrics PerformanceMetrics { get; set; }
+        public Models.PerformanceMetrics PerformanceMetrics { get; set; }
         public InnovationMetrics InnovationMetrics { get; set; }
         public string TechnologyReadinessLevel { get; set; }
     }

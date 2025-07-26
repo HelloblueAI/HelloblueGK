@@ -149,7 +149,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     foreach (var setting in runtimeSettings.EnumerateObject())
                     {
-                        _runtimeSettings[setting.Name] = setting.Value.GetRawText();
+                        _runtimeSettings[setting.Name] = setting.Value.GetRawText() ?? string.Empty;
                     }
                 }
 
