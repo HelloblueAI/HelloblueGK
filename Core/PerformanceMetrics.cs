@@ -8,7 +8,7 @@ namespace HB_NLP_Research_Lab.Core
     /// <summary>
     /// Advanced performance metrics system for aerospace engine monitoring
     /// </summary>
-    public class PerformanceMetrics
+    public class EnginePerformanceMetrics
     {
         public string EngineId { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; }
@@ -22,7 +22,7 @@ namespace HB_NLP_Research_Lab.Core
         public double FuelConsumption { get; set; }
         public Dictionary<string, double> CustomMetrics { get; set; } = new();
 
-        public PerformanceMetrics()
+        public EnginePerformanceMetrics()
         {
             Timestamp = DateTime.UtcNow;
         }
@@ -67,12 +67,12 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class PerformanceMonitor
     {
-        private readonly Dictionary<string, List<PerformanceMetrics>> _historicalData = new();
+        private readonly Dictionary<string, List<EnginePerformanceMetrics>> _historicalData = new();
         private readonly object _lockObject = new();
 
-        public async Task<PerformanceMetrics> CaptureMetricsAsync(string engineId, Dictionary<string, double> sensorData)
+        public async Task<EnginePerformanceMetrics> CaptureMetricsAsync(string engineId, Dictionary<string, double> sensorData)
         {
-            var metrics = new PerformanceMetrics
+            var metrics = new EnginePerformanceMetrics
             {
                 EngineId = engineId,
                 Thrust = sensorData.GetValueOrDefault("thrust", 0),
@@ -89,7 +89,7 @@ namespace HB_NLP_Research_Lab.Core
             lock (_lockObject)
             {
                 if (!_historicalData.ContainsKey(engineId))
-                    _historicalData[engineId] = new List<PerformanceMetrics>();
+                    _historicalData[engineId] = new List<EnginePerformanceMetrics>();
                 
                 _historicalData[engineId].Add(metrics);
                 
@@ -101,29 +101,39 @@ namespace HB_NLP_Research_Lab.Core
             return await Task.FromResult(metrics);
         }
 
-        public async Task<List<PerformanceMetrics>> GetHistoricalDataAsync(string engineId, int count = 100)
+        public async Task<List<EnginePerformanceMetrics>> GetHistoricalDataAsync(string engineId, int count = 100)
         {
+            List<EnginePerformanceMetrics> result;
             lock (_lockObject)
             {
                 if (_historicalData.ContainsKey(engineId))
                 {
                     var data = _historicalData[engineId];
-                    return Task.FromResult(data.TakeLast(count).ToList());
+                    result = data.TakeLast(count).ToList();
                 }
-                return Task.FromResult(new List<PerformanceMetrics>());
+                else
+                {
+                    result = new List<EnginePerformanceMetrics>();
+                }
             }
+            return await Task.FromResult(result);
         }
 
-        public async Task<PerformanceMetrics> GetLatestMetricsAsync(string engineId)
+        public async Task<EnginePerformanceMetrics> GetLatestMetricsAsync(string engineId)
         {
+            EnginePerformanceMetrics result;
             lock (_lockObject)
             {
                 if (_historicalData.ContainsKey(engineId) && _historicalData[engineId].Count > 0)
                 {
-                    return Task.FromResult(_historicalData[engineId].Last());
+                    result = _historicalData[engineId].Last();
                 }
-                return Task.FromResult(new PerformanceMetrics { EngineId = engineId });
+                else
+                {
+                    result = new EnginePerformanceMetrics { EngineId = engineId };
+                }
             }
+            return await Task.FromResult(result);
         }
 
         public async Task<double> CalculateTrendAsync(string engineId, string metric, int dataPoints = 10)
@@ -145,7 +155,7 @@ namespace HB_NLP_Research_Lab.Core
             return slope;
         }
 
-        private static double GetMetricValue(PerformanceMetrics metrics, string metric)
+        private static double GetMetricValue(EnginePerformanceMetrics metrics, string metric)
         {
             return metric.ToLower() switch
             {
