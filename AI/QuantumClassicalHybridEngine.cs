@@ -48,8 +48,21 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<QuantumHybridStatus> InitializeAsync()
         {
+            if (_isInitialized)
+            {
+                Console.WriteLine("[Quantum Hybrid] Already initialized");
+                return new QuantumHybridStatus
+                {
+                    IsInitialized = true,
+                    QuantumQubits = 50,
+                    ClassicalCores = 100,
+                    HybridEfficiency = 0.95
+                };
+            }
+            
             await Task.CompletedTask;
             Console.WriteLine("[Quantum Hybrid] ⚛️ Initializing quantum-classical hybrid system...");
+            _isInitialized = true;
             
             return new QuantumHybridStatus
             {

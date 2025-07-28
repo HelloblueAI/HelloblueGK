@@ -29,8 +29,20 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<PhysicsStatus> InitializeAsync()
         {
+            if (_isInitialized)
+            {
+                Console.WriteLine("[Advanced Physics] Already initialized");
+                return new PhysicsStatus
+                {
+                    IsInitialized = true,
+                    ActiveSolvers = new[] { "CFD", "Thermal", "Structural" },
+                    SolverCount = 3
+                };
+            }
+            
             await Task.CompletedTask;
             Console.WriteLine("[Advanced Physics] ⚛️ Initializing advanced physics engine...");
+            _isInitialized = true;
             
             return new PhysicsStatus
             {

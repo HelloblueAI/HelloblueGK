@@ -34,6 +34,12 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task InitializeAsync()
         {
+            if (_isInitialized)
+            {
+                Console.WriteLine("[Revolutionary Architectures] Already initialized");
+                return;
+            }
+            
             Console.WriteLine("[Revolutionary Architectures] Initializing revolutionary engine architectures...");
             await Task.Delay(100);
             _isInitialized = true;

@@ -158,6 +158,12 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ErrorReport> GenerateErrorReportAsync(string operationName, DateTime startTime, DateTime endTime)
         {
+            DateTime lastErrorTime = DateTime.MinValue;
+            if (_lastErrorTimes.ContainsKey(operationName))
+            {
+                lastErrorTime = _lastErrorTimes[operationName];
+            }
+
             var report = new ErrorReport
             {
                 OperationName = operationName,
@@ -165,7 +171,7 @@ namespace HB_NLP_Research_Lab.Core
                 EndTime = endTime,
                 Duration = endTime - startTime,
                 ErrorCount = _errorCounts.GetValueOrDefault(operationName, 0),
-                LastErrorTime = _lastErrorTimes.TryGetValue(operationName, out var lastErrorTime) ? lastErrorTime : DateTime.MinValue
+                LastErrorTime = lastErrorTime
             };
 
             return await Task.FromResult(report);
