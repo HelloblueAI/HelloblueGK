@@ -838,10 +838,6 @@ dotnet test --filter Category=Quantum
 
 
 
-## Why Choose Helloblue, Inc. 2025 HB-NLP Research Lab?
-
-### Technical Excellence
-
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
 │                    TECHNICAL EXCELLENCE                         │
