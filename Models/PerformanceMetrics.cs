@@ -20,6 +20,13 @@ namespace HB_NLP_Research_Lab.Models
         public float WeightToThrust { get; set; } // kg/N
         public float OverallEfficiency { get; set; }
         public EnvironmentalMetrics EnvironmentalImpact { get; set; }
+        
+        // Hardware performance metrics for Plasticity integration
+        public double ComputationSpeed { get; set; } // FLOPS
+        public double MemoryBandwidth { get; set; } // GB/s
+        public double Latency { get; set; } // seconds
+        public double Throughput { get; set; } // operations/second
+        public double Efficiency { get; set; } // percentage
     }
     
     /// <summary>

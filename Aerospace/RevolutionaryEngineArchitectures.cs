@@ -276,8 +276,8 @@ namespace HB_NLP_Research_Lab.Aerospace
                 EngineId = engineId,
                 ArchitectureType = engine.ArchitectureType,
                 InnovationLevel = engine.InnovationLevel,
-                PhysicsAnalysis = physicsResult,
-                MultiPhysicsAnalysis = multiPhysicsResult,
+                PhysicsAnalysis = (HB_NLP_Research_Lab.Models.CfdAnalysisResult)physicsResult,
+                MultiPhysicsAnalysis = (HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult)multiPhysicsResult,
                 PerformanceMetrics = new PerformanceMetrics
                 {
                     ThrustEfficiency = 0.92f,
@@ -420,8 +420,8 @@ namespace HB_NLP_Research_Lab.Aerospace
             EngineId = string.Empty;
             Name = string.Empty;
             ArchitectureType = string.Empty;
-            PhysicsAnalysis = new CfdAnalysisResult();
-            MultiPhysicsAnalysis = new FluidStructureThermalElectromagneticResult();
+            PhysicsAnalysis = new HB_NLP_Research_Lab.Models.CfdAnalysisResult();
+            MultiPhysicsAnalysis = new HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult();
             PerformanceMetrics = new PerformanceMetrics();
             InnovationMetrics = new InnovationMetrics();
             TechnologyReadinessLevel = string.Empty;
@@ -714,7 +714,7 @@ namespace HB_NLP_Research_Lab.Aerospace
     public class NuclearThermalSpecs
     {
         public double ReactorPower { get; set; }
-        public string FuelType { get; set; }
+        public string FuelType { get; set; } = string.Empty;
         public double SafetyFactor { get; set; }
         public bool EmergencySystems { get; set; }
     }
