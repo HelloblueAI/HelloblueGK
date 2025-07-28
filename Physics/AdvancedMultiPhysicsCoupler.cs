@@ -315,11 +315,13 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task<AdvancedCFDResult> UpdateCFDWithCouplingAsync(PhysicsResult cfdResult, FeedbackData feedbackData)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             // Apply structural deformation to CFD mesh
             // Apply thermal effects to fluid properties
             // Apply electromagnetic forces to fluid flow
             
-            var updatedResult = cfdResult as AdvancedCFDResult;
+            var updatedResult = cfdResult as AdvancedCFDResult ?? new AdvancedCFDResult();
             updatedResult.PressureDistribution = ApplyStructuralDeformationToPressure(updatedResult.PressureDistribution, feedbackData.StructuralDeformation);
             updatedResult.TurbulenceIntensity = ApplyThermalEffectsToTurbulence(updatedResult.TurbulenceIntensity, feedbackData.ThermalEffects);
             
@@ -328,11 +330,13 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task<AdvancedThermalResult> UpdateThermalWithCouplingAsync(PhysicsResult thermalResult, FeedbackData feedbackData)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             // Apply fluid flow effects to heat transfer
             // Apply structural deformation to thermal conductivity
             // Apply electromagnetic heating effects
             
-            var updatedResult = thermalResult as AdvancedThermalResult;
+            var updatedResult = thermalResult as AdvancedThermalResult ?? new AdvancedThermalResult();
             updatedResult.TemperatureDistribution = ApplyFluidFlowToTemperature(updatedResult.TemperatureDistribution, feedbackData.FluidFlow);
             updatedResult.HeatTransferCoefficients["Convection"] = ApplyStructuralDeformationToHeatTransfer(updatedResult.HeatTransferCoefficients["Convection"], feedbackData.StructuralDeformation);
             
@@ -341,11 +345,13 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task<AdvancedStructuralResult> UpdateStructuralWithCouplingAsync(PhysicsResult structuralResult, FeedbackData feedbackData)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             // Apply fluid pressure loads to structure
             // Apply thermal stress to structure
             // Apply electromagnetic forces to structure
             
-            var updatedResult = structuralResult as AdvancedStructuralResult;
+            var updatedResult = structuralResult as AdvancedStructuralResult ?? new AdvancedStructuralResult();
             updatedResult.StressField = ApplyFluidPressureToStress(updatedResult.StressField, feedbackData.FluidPressure);
             updatedResult.StrainField = ApplyThermalStressToStrain(updatedResult.StrainField, feedbackData.ThermalStress);
             
@@ -354,11 +360,13 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task<ElectromagneticResult> UpdateElectromagneticWithCouplingAsync(PhysicsResult electromagneticResult, FeedbackData feedbackData)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             // Apply structural deformation to electromagnetic fields
             // Apply thermal effects to electrical conductivity
             // Apply fluid flow to electromagnetic induction
             
-            var updatedResult = electromagneticResult as ElectromagneticResult;
+            var updatedResult = electromagneticResult as ElectromagneticResult ?? new ElectromagneticResult();
             updatedResult.MagneticFieldStrength = ApplyStructuralDeformationToMagneticField(updatedResult.MagneticFieldStrength, feedbackData.StructuralDeformation);
             updatedResult.ElectricFieldStrength = ApplyThermalEffectsToElectricField(updatedResult.ElectricFieldStrength, feedbackData.ThermalEffects);
             
@@ -367,11 +375,13 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task<MolecularDynamicsResult> UpdateMolecularWithCouplingAsync(PhysicsResult molecularResult, FeedbackData feedbackData)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             // Apply macroscopic forces to molecular dynamics
             // Apply thermal effects to atomic motion
             // Apply electromagnetic effects to molecular structure
             
-            var updatedResult = molecularResult as MolecularDynamicsResult;
+            var updatedResult = molecularResult as MolecularDynamicsResult ?? new MolecularDynamicsResult();
             updatedResult.AtomicStressDistribution = ApplyMacroscopicForcesToAtomicStress(updatedResult.AtomicStressDistribution, feedbackData.MacroscopicForces);
             updatedResult.MaterialProperties = ApplyThermalEffectsToMaterialProperties(updatedResult.MaterialProperties, feedbackData.ThermalEffects);
             
