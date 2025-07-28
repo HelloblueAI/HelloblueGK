@@ -65,6 +65,11 @@ namespace HB_NLP_Research_Lab.Core
             _emergencyShutdown = false;
             Console.WriteLine("[Engine Safety] 🔄 Resetting safety systems...");
         }
+
+        public bool IsEmergencyShutdownActive()
+        {
+            return _emergencyShutdown;
+        }
     }
 
     public class SafetyStatus
