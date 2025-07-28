@@ -505,11 +505,13 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task<PhysicsStatus> GetStructuralStatusAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             return new PhysicsStatus { IsReady = true, ActiveSolvers = new[] { "Structural" } };
         }
 
         private async Task<PhysicsStatus> GetElectromagneticStatusAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             return new PhysicsStatus { IsReady = true, ActiveSolvers = new[] { "Electromagnetic" } };
         }
 
