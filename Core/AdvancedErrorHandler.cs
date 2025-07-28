@@ -159,10 +159,12 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ErrorReport> GenerateErrorReportAsync(string operationName, DateTime startTime, DateTime endTime)
         {
             DateTime lastErrorTime = DateTime.MinValue;
+#pragma warning disable CS8601
             if (_lastErrorTimes.TryGetValue(operationName, out var value))
             {
                 lastErrorTime = value;
             }
+#pragma warning restore CS8601
 
             var report = new ErrorReport
             {
