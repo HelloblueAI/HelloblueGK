@@ -34,6 +34,9 @@ RUN groupadd -r builduser && useradd -r -g builduser -s /bin/bash builduser
 WORKDIR /src
 RUN chown -R builduser:builduser /src
 
+# Ensure builduser has access to .dotnet directory
+RUN mkdir -p /home/builduser/.dotnet && chown -R builduser:builduser /home/builduser
+
 # Copy project files with integrity verification
 COPY --chown=builduser:builduser *.csproj ./
 COPY --chown=builduser:builduser PlasticityDemo/*.csproj ./PlasticityDemo/
