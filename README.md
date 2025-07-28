@@ -900,6 +900,7 @@ Our aerospace engine has been successfully designed and optimized using **Plasti
 - **Efficiency**: 95.0% - Revolutionary performance
 - **Technology Readiness Level**: 9 - Production ready
 
+
 #### **🎨 Engine Visualizations**
 
 <div align="center">
@@ -908,13 +909,6 @@ Our aerospace engine has been successfully designed and optimized using **Plasti
 ![HB-NLP Engine 3D Model](HB-NLP-REV-001_3d_model.png)
 *Interactive 3D visualization of the HB-NLP Quantum-Classical Hybrid Engine*
 
-##### **Performance Dashboard**
-![HB-NLP Performance Dashboard](HB-NLP-REV-001_performance_dashboard.png)
-*Comprehensive performance metrics and material distribution analysis*
-
-##### **Engine Flow Diagram**
-![HB-NLP Flow Diagram](HB-NLP-REV-001_flow_diagram.png)
-*Propulsion cycle and component flow visualization*
 
 </div>
 
@@ -925,11 +919,6 @@ Our aerospace engine has been successfully designed and optimized using **Plasti
 - 🟢 **Injector** (Green) - Titanium alloy fuel injection system
 - 🟡 **Turbopump** (Yellow) - Inconel 718 propellant delivery system
 
-**Generate Your Own Visualizations:**
-```bash
-# Run the visualization script to generate engine graphics
-python3 engine_visualization.py
-```
 
 #### **Geometry**
 - **Chamber Diameter**: 2.5 m
