@@ -37,6 +37,9 @@ RUN chown -R builduser:builduser /src
 # Ensure builduser has access to .dotnet directory
 RUN mkdir -p /home/builduser/.dotnet && chown -R builduser:builduser /home/builduser
 
+# Create publish directory with proper permissions
+RUN mkdir -p /app/publish && chown -R builduser:builduser /app
+
 # Copy project files with integrity verification
 COPY --chown=builduser:builduser *.csproj ./
 
@@ -45,9 +48,6 @@ USER builduser
 
 # Copy source code with integrity verification
 COPY --chown=builduser:builduser . .
-
-# Create publish directory with proper permissions
-RUN mkdir -p /app/publish && chown -R builduser:builduser /app
 
 # Restore dependencies with security checks
 RUN dotnet restore --verbosity minimal
