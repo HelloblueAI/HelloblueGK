@@ -5,7 +5,7 @@ namespace HB_NLP_Research_Lab
 {
     class Program
     {
-        static async Task Main(string[] args)
+        static void Main(string[] args)
         {
             Console.WriteLine("🚀 HB-NLP Research Lab - Revolutionary Aerospace Engine Design");
             Console.WriteLine("Opening Engine Design in Plasticity v25.2.2");

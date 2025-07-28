@@ -271,13 +271,34 @@ namespace HB_NLP_Research_Lab.Aerospace
             var physicsResult = await _physicsEngine.RunCfdAnalysisAsync();
             var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(engineModel);
             
+            // Convert results to the expected types
+            var convertedPhysicsResult = new HB_NLP_Research_Lab.Models.CfdAnalysisResult
+            {
+                PressureDistribution = new Dictionary<string, double>(),
+                VelocityField = new Dictionary<string, System.Numerics.Vector3>(),
+                TemperatureField = new Dictionary<string, double>(),
+                TurbulenceIntensity = new Dictionary<string, double>(),
+                WallShearStress = new Dictionary<string, double>(),
+                ConvergenceHistory = new List<double>(),
+                PerformanceMetrics = new CfdPerformanceMetrics()
+            };
+            
+            var convertedMultiPhysicsResult = new HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult
+            {
+                FluidAnalysis = convertedPhysicsResult,
+                StructuralAnalysis = new StructuralAnalysisResult(),
+                ThermalAnalysis = new ThermalAnalysisResult(),
+                ElectromagneticAnalysis = new ElectromagneticAnalysisResult(),
+                CouplingMetrics = new CouplingMetrics()
+            };
+            
             var performance = new ArchitecturePerformance
             {
                 EngineId = engineId,
                 ArchitectureType = engine.ArchitectureType,
                 InnovationLevel = engine.InnovationLevel,
-                PhysicsAnalysis = physicsResult,
-                MultiPhysicsAnalysis = multiPhysicsResult,
+                PhysicsAnalysis = convertedPhysicsResult,
+                MultiPhysicsAnalysis = convertedMultiPhysicsResult,
                 PerformanceMetrics = new PerformanceMetrics
                 {
                     ThrustEfficiency = 0.92f,
@@ -573,8 +594,8 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class IntelligentPowerManagement
     {
-        public string Type { get; set; }
-        public string OptimizationAlgorithm { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public string OptimizationAlgorithm { get; set; } = string.Empty;
         public double Efficiency { get; set; }
         public bool AdaptiveControl { get; set; }
     }
@@ -582,25 +603,25 @@ namespace HB_NLP_Research_Lab.Aerospace
     // Nuclear Thermal Engine
     public class NuclearThermalEngine : RevolutionaryEngine
     {
-        public AdvancedNuclearReactor NuclearReactor { get; set; }
-        public ThermalPropulsionSystem ThermalPropulsion { get; set; }
-        public NuclearSafetySystems SafetySystems { get; set; }
+        public AdvancedNuclearReactor NuclearReactor { get; set; } = new();
+        public ThermalPropulsionSystem ThermalPropulsion { get; set; } = new();
+        public NuclearSafetySystems SafetySystems { get; set; } = new();
         public double NuclearEfficiency { get; set; }
     }
 
     public class AdvancedNuclearReactor
     {
         public double PowerOutput { get; set; }
-        public string FuelType { get; set; }
-        public string SafetyLevel { get; set; }
-        public string Shielding { get; set; }
+        public string FuelType { get; set; } = string.Empty;
+        public string SafetyLevel { get; set; } = string.Empty;
+        public string Shielding { get; set; } = string.Empty;
     }
 
     public class ThermalPropulsionSystem
     {
         public double Thrust { get; set; }
         public double SpecificImpulse { get; set; }
-        public string Propellant { get; set; }
+        public string Propellant { get; set; } = string.Empty;
         public double ThermalEfficiency { get; set; }
     }
 
