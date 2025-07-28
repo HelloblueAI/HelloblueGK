@@ -399,6 +399,12 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         private async Task PerformInitialAnalysisAsync(PlasticityEngineDesign design)
         {
+            // Ensure EngineModel is not null
+            if (design.EngineModel == null)
+            {
+                throw new InvalidOperationException("Engine model is not initialized");
+            }
+
             // Perform initial CFD analysis
             var cfdResult = await _plasticityEngine.PerformCfdAnalysisAsync(
                 design.EngineModel,
@@ -410,6 +416,12 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         private async Task UpdatePlasticityModelAsync(PlasticityEngineDesign design, Dictionary<string, double> optimizedParameters)
         {
+            // Ensure PlasticityModel is not null
+            if (design.PlasticityModel == null)
+            {
+                throw new InvalidOperationException("Plasticity model is not initialized");
+            }
+
             // Update 3D model with optimized parameters
             await Task.Delay(200);
             
