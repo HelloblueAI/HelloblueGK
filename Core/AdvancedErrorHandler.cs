@@ -158,14 +158,6 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ErrorReport> GenerateErrorReportAsync(string operationName, DateTime startTime, DateTime endTime)
         {
-            DateTime lastErrorTime = DateTime.MinValue;
-#pragma warning disable CS8601
-            if (_lastErrorTimes.TryGetValue(operationName, out var value))
-            {
-                lastErrorTime = value;
-            }
-#pragma warning restore CS8601
-
             var report = new ErrorReport
             {
                 OperationName = operationName,
@@ -173,8 +165,16 @@ namespace HB_NLP_Research_Lab.Core
                 EndTime = endTime,
                 Duration = endTime - startTime,
                 ErrorCount = _errorCounts.GetValueOrDefault(operationName, 0),
-                LastErrorTime = lastErrorTime
+                LastErrorTime = DateTime.MinValue
             };
+
+            // Explicitly handle the last error time assignment
+            if (_lastErrorTimes.ContainsKey(operationName))
+            {
+#pragma warning disable CS8601
+                report.LastErrorTime = _lastErrorTimes[operationName];
+#pragma warning restore CS8601
+            }
 
             return await Task.FromResult(report);
         }
