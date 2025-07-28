@@ -48,7 +48,8 @@ USER builduser
 COPY --chown=builduser:builduser . .
 
 # Restore dependencies with security checks
-RUN dotnet restore --verbosity minimal
+RUN dotnet restore --verbosity minimal && \
+    dotnet restore PlasticityDemo/ --verbosity minimal
 
 # Build with security optimizations
 RUN dotnet build --no-restore --configuration Release --verbosity minimal \
