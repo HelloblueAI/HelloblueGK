@@ -47,16 +47,7 @@ jobs:
     - name: Build main application
       run: dotnet build --no-restore --configuration Release --verbosity minimal
     
-    - name: Restore and Build PlasticityDemo
-      run: |
-        cd PlasticityDemo
-        dotnet restore
-        dotnet build --configuration Release --verbosity minimal
-    
-    - name: Test PlasticityDemo
-      run: |
-        cd PlasticityDemo
-        dotnet run --no-build --configuration Release
+
     
     - name: Validate design files
       run: |
@@ -96,8 +87,6 @@ jobs:
       with:
         name: build-artifacts
         path: |
-          PlasticityDemo/bin/
-          PlasticityDemo/obj/
           HB-NLP-REV-001*
           open_in_plasticity.py
           bandit-report.json
@@ -150,16 +139,7 @@ jobs:
         build-args: |
           BUILDKIT_INLINE_CACHE=1
     
-    - name: Build PlasticityDemo Docker image
-      uses: docker/build-push-action@v5
-      with:
-        context: ./PlasticityDemo
-        file: ./PlasticityDemo/Dockerfile
-        push: ${{ github.event_name != 'pull_request' }}
-        tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/plasticity-demo:latest
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
-        platforms: linux/amd64
+
 
   release:
     runs-on: ubuntu-latest
@@ -181,11 +161,7 @@ jobs:
       with:
         python-version: '3.11'
     
-    - name: Build PlasticityDemo for release
-      run: |
-        cd PlasticityDemo
-        dotnet build --configuration Release
-        dotnet publish --configuration Release --output ./publish
+
     
     - name: Generate design files
       run: |
@@ -194,7 +170,6 @@ jobs:
     - name: Create release package
       run: |
         mkdir -p release
-        cp -r PlasticityDemo/publish/* release/
         cp HB-NLP-REV-001* release/
         cp open_in_plasticity.py release/
         cp README.md release/
