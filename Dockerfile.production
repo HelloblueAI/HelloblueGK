@@ -61,7 +61,6 @@ RUN dotnet publish --no-restore --configuration Release --output /app/publish \
     /p:DebugType=None \
     /p:DebugSymbols=false \
     /p:PublishTrimmed=true \
-    /p:PublishSingleFile=true \
     /p:SelfContained=false
 
 # Stage 3: Runtime with Aerospace-Grade Security
