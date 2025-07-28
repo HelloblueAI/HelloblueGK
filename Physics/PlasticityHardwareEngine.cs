@@ -473,12 +473,13 @@ namespace HB_NLP_Research_Lab.Physics
                 ObjectiveValue = 0.95,
                 ConvergenceHistory = GenerateOptimizationConvergenceHistory(),
                 ConstraintViolations = new List<string>(),
-                OptimizationMetrics = new OptimizationMetrics
+                OptimizationMetrics = new HB_NLP_Research_Lab.Models.OptimizationMetrics
                 {
                     Iterations = 850,
                     ComputationTime = 1.0,
                     ConvergenceRate = 0.98,
-                    HardwareUtilization = 0.90
+                    ObjectiveImprovement = 0.15,
+                    ConvergenceAchieved = true
                 }
             };
         }

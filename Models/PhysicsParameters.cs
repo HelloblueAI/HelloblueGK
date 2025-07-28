@@ -161,6 +161,8 @@ namespace HB_NLP_Research_Lab.Models
         public double ObjectiveValue { get; set; }
         public Dictionary<string, double> OptimizedParameters { get; set; } = new();
         public OptimizationMetrics OptimizationMetrics { get; set; } = new();
+        public List<double> ConvergenceHistory { get; set; } = new();
+        public List<string> ConstraintViolations { get; set; } = new();
         public string Status { get; set; } = string.Empty;
         public string? Error { get; set; }
     }
