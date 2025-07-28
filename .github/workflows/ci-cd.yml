@@ -80,10 +80,13 @@ jobs:
         bandit -r . -f json -o bandit-report.json || echo "{}" > bandit-report.json
         safety check --json --output safety-report.json || echo "{}" > safety-report.json
     
-    - name: Run CodeQL Analysis
+    - name: Initialize CodeQL
       uses: github/codeql-action/init@v3
       with:
         languages: csharp, python
+    
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
     
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
