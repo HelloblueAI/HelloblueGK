@@ -158,16 +158,16 @@ namespace HB_NLP_Research_Lab.Physics
             
             return new MultiPhysicsResult
             {
-                CfdAnalysis = cfdResult as AdvancedCFDResult,
-                ThermalAnalysis = thermalResult as AdvancedThermalResult,
-                StructuralAnalysis = structuralResult as AdvancedStructuralResult,
-                ElectromagneticAnalysis = electromagneticResult as ElectromagneticResult,
-                MolecularAnalysis = molecularResult as MolecularDynamicsResult,
-                CouplingHistory = _couplingHistory,
+                CfdAnalysis = cfdResult as AdvancedCFDResult ?? new AdvancedCFDResult(),
+                ThermalAnalysis = thermalResult as AdvancedThermalResult ?? new AdvancedThermalResult(),
+                StructuralAnalysis = structuralResult as AdvancedStructuralResult ?? new AdvancedStructuralResult(),
+                ElectromagneticAnalysis = electromagneticResult as ElectromagneticResult ?? new ElectromagneticResult(),
+                MolecularAnalysis = molecularResult as MolecularDynamicsResult ?? new MolecularDynamicsResult(),
+                CouplingHistory = _couplingHistory ?? new List<CouplingIteration>(),
                 TotalIterations = iteration,
                 AnalysisTime = analysisTime,
                 ConvergenceAchieved = iteration < maxIterations,
-                FinalResidualNorm = _couplingHistory.Last().ConvergenceStatus.ResidualNorm,
+                FinalResidualNorm = _couplingHistory?.Last()?.ConvergenceStatus?.ResidualNorm ?? 0.0,
                 CouplingEfficiency = CalculateCouplingEfficiency(),
                 PhysicsIntegrationLevel = "Complete"
             };
