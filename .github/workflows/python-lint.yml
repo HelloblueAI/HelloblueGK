@@ -1,0 +1,56 @@
+name: Python Lint and Test
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pylint flake8 black
+    
+    - name: Lint with pylint
+      run: |
+        pylint open_in_plasticity.py || true
+        pylint --disable=all --enable=import-error open_in_plasticity.py
+    
+    - name: Lint with flake8
+      run: |
+        flake8 open_in_plasticity.py --max-line-length=120 --ignore=E501,W503
+    
+    - name: Format check with black
+      run: |
+        black --check --line-length=120 open_in_plasticity.py
+    
+    - name: Test Python script syntax
+      run: |
+        python3 -m py_compile open_in_plasticity.py
+        echo "✅ Python script syntax is valid"
+    
+    - name: Test JSON design file
+      run: |
+        python3 -c "import json; json.load(open('HB-NLP-REV-001_design.json')); print('✅ Design JSON is valid')"
+    
+    - name: Test design script generation
+      run: |
+        python3 -c "
+import open_in_plasticity
+designer = open_in_plasticity.PlasticityEngineDesigner()
+designer.create_design_file()
+designer.generate_3d_model_script()
+print('✅ Design file generation works')
+" 

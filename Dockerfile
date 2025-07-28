@@ -1,58 +1,61 @@
-# Multi-stage Dockerfile for HelloblueGK Aerospace Engine API
-# Production-ready with security, performance, and enterprise features
-
-# Stage 1: Build stage
+# Multi-stage build for HB-NLP Revolutionary Engine Design Platform
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+
+# Set working directory
 WORKDIR /src
 
 # Copy project files
-COPY ["HelloblueGK.csproj", "./"]
-COPY ["Program.cs", "./"]
-COPY ["Core/", "./Core/"]
-COPY ["Physics/", "./Physics/"]
-COPY ["AI/", "./AI/"]
-COPY ["Aerospace/", "./Aerospace/"]
-COPY ["Models/", "./Models/"]
-COPY ["Visualization/", "./Visualization/"]
+COPY *.csproj ./
+COPY PlasticityDemo/*.csproj ./PlasticityDemo/
 
 # Restore dependencies
-RUN dotnet restore "HelloblueGK.csproj"
+RUN dotnet restore
+RUN dotnet restore PlasticityDemo/
 
-# Build the application
-RUN dotnet build "HelloblueGK.csproj" -c Release -o /app/build
+# Copy source code
+COPY . .
 
-# Stage 2: Publish stage
-FROM build AS publish
-RUN dotnet publish "HelloblueGK.csproj" -c Release -o /app/publish /p:UseAppHost=false
+# Build applications
+RUN dotnet build --no-restore --configuration Release
+RUN dotnet build PlasticityDemo/ --no-restore --configuration Release
 
-# Stage 3: Runtime stage
+# Publish applications
+RUN dotnet publish --no-restore --configuration Release --output /app/publish
+RUN dotnet publish PlasticityDemo/ --no-restore --configuration Release --output /app/plasticity-demo
+
+# Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+
+# Install Python and dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    wget \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
 WORKDIR /app
 
-# Create non-root user for security
-RUN groupadd -r helloblue && useradd -r -g helloblue -s /bin/bash helloblue
+# Copy published applications
+COPY --from=build /app/publish .
+COPY --from=build /app/plasticity-demo ./plasticity-demo
 
-# Create necessary directories
-RUN mkdir -p /app/logs /app/data /app/cache && \
-    chown -R helloblue:helloblue /app
+# Copy design files and scripts
+COPY HB-NLP-REV-001* ./
+COPY open_in_plasticity.py ./
+COPY README.md ./
 
-# Copy published application
-COPY --from=publish /app/publish .
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
 
-# Set environment variables
-ENV ASPNETCORE_URLS=http://+:8080
-ENV ASPNETCORE_ENVIRONMENT=Production
-ENV DOTNET_RUNNING_IN_CONTAINER=true
-
-# Switch to non-root user
-USER helloblue
-
-# Expose port
+# Expose ports
 EXPOSE 8080
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Set entry point
-ENTRYPOINT ["dotnet", "HelloblueGK.dll"] 
+# Default command
+CMD ["dotnet", "HelloblueGK.dll"] 
