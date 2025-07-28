@@ -426,15 +426,15 @@ namespace HB_NLP_Research_Lab.Aerospace
             InnovationMetrics = new InnovationMetrics();
             TechnologyReadinessLevel = string.Empty;
         }
-        public string EngineId { get; set; }
-        public string Name { get; set; }
-        public string ArchitectureType { get; set; }
+        public string EngineId { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string ArchitectureType { get; set; } = string.Empty;
         public double InnovationLevel { get; set; }
-        public HB_NLP_Research_Lab.Models.CfdAnalysisResult PhysicsAnalysis { get; set; }
-        public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
-        public Models.PerformanceMetrics PerformanceMetrics { get; set; }
-        public InnovationMetrics InnovationMetrics { get; set; }
-        public string TechnologyReadinessLevel { get; set; }
+        public HB_NLP_Research_Lab.Models.CfdAnalysisResult PhysicsAnalysis { get; set; } = new();
+        public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; } = new();
+        public Models.PerformanceMetrics PerformanceMetrics { get; set; } = new();
+        public InnovationMetrics InnovationMetrics { get; set; } = new();
+        public string TechnologyReadinessLevel { get; set; } = string.Empty;
     }
 
     // Variable Geometry Engine
@@ -615,24 +615,24 @@ namespace HB_NLP_Research_Lab.Aerospace
     // Supporting Classes
     public class ArchitecturePerformance
     {
-        public string EngineId { get; set; }
-        public string ArchitectureType { get; set; }
+        public string EngineId { get; set; } = string.Empty;
+        public string ArchitectureType { get; set; } = string.Empty;
         public double InnovationLevel { get; set; }
-        public HB_NLP_Research_Lab.Models.CfdAnalysisResult PhysicsAnalysis { get; set; }
-        public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
-        public Models.PerformanceMetrics PerformanceMetrics { get; set; }
-        public InnovationMetrics InnovationMetrics { get; set; }
-        public string TechnologyReadinessLevel { get; set; }
+        public HB_NLP_Research_Lab.Models.CfdAnalysisResult PhysicsAnalysis { get; set; } = new();
+        public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; } = new();
+        public Models.PerformanceMetrics PerformanceMetrics { get; set; } = new();
+        public InnovationMetrics InnovationMetrics { get; set; } = new();
+        public string TechnologyReadinessLevel { get; set; } = string.Empty;
     }
 
     public class RevolutionaryArchitectureSummary
     {
         public int TotalEngines { get; set; }
-        public List<string> ArchitectureTypes { get; set; }
+        public List<string> ArchitectureTypes { get; set; } = new();
         public double AverageInnovationLevel { get; set; }
-        public Dictionary<string, ArchitecturePerformance> PerformanceData { get; set; }
-        public List<TechnologyBreakthrough> TechnologyBreakthroughs { get; set; }
-        public DevelopmentRoadmap FutureDevelopmentRoadmap { get; set; }
+        public Dictionary<string, ArchitecturePerformance> PerformanceData { get; set; } = new();
+        public List<TechnologyBreakthrough> TechnologyBreakthroughs { get; set; } = new();
+        public DevelopmentRoadmap FutureDevelopmentRoadmap { get; set; } = new();
     }
 
     public class TechnologyBreakthrough

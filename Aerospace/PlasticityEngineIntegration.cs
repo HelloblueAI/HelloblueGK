@@ -207,8 +207,8 @@ namespace HB_NLP_Research_Lab.Aerospace
             {
                 var simulation = new PlasticitySimulation
                 {
-                    DesignId = designId,
-                    Parameters = parameters,
+                    Id = designId,
+                    Type = "RealTime",
                     StartTime = DateTime.UtcNow,
                     Status = "Running"
                 };
@@ -218,7 +218,25 @@ namespace HB_NLP_Research_Lab.Aerospace
                 
                 simulation.EndTime = DateTime.UtcNow;
                 simulation.Status = "Completed";
-                simulation.Result = result;
+                
+                // Convert PlasticitySimulationResult to CfdAnalysisResult
+                simulation.Result = new HB_NLP_Research_Lab.Models.CfdAnalysisResult
+                {
+                    PressureDistribution = result.RealTimeData,
+                    VelocityField = new Dictionary<string, System.Numerics.Vector3>(),
+                    TemperatureField = new Dictionary<string, double>(),
+                    TurbulenceIntensity = new Dictionary<string, double>(),
+                    WallShearStress = new Dictionary<string, double>(),
+                    ConvergenceHistory = new List<double>(),
+                    PerformanceMetrics = new CfdPerformanceMetrics
+                    {
+                        ComputationTime = result.SimulationTime,
+                        MemoryUsage = result.PerformanceMetrics.HardwareUtilization * 8192, // Estimate memory usage
+                        ConvergenceRate = result.PerformanceMetrics.Accuracy,
+                        Accuracy = result.PerformanceMetrics.Accuracy,
+                        HardwareUtilization = result.PerformanceMetrics.HardwareUtilization
+                    }
+                };
 
                 Console.WriteLine($"[Plasticity Engine Integration] ✅ Real-time simulation completed");
                 return result;
@@ -345,17 +363,24 @@ namespace HB_NLP_Research_Lab.Aerospace
             design.EngineModel = new HB_NLP_Research_Lab.Models.EngineModel
             {
                 Name = design.Name,
-                Type = design.EngineType,
                 Parameters = new Dictionary<string, double>
                 {
                     { "Thrust", design.Specifications.Thrust },
                     { "SpecificImpulse", design.Specifications.SpecificImpulse },
                     { "ChamberPressure", design.Specifications.ChamberPressure },
-                    { "ExpansionRatio", design.Specifications.ExpansionRatio }
+                    { "ExpansionRatio", design.Specifications.ExpansionRatio },
+                    { "EngineType", design.Specifications.EngineType.GetHashCode() }
                 }
             };
 
-            await _digitalTwin.CreateDigitalTwinAsync(design.DesignId, design.EngineModel);
+            // Convert Models.EngineModel to Core.EngineModel
+            var coreEngineModel = new HB_NLP_Research_Lab.Core.EngineModel
+            {
+                Name = design.EngineModel.Name,
+                Version = design.Specifications.EngineType,
+                Parameters = design.EngineModel.Parameters
+            };
+            await _digitalTwin.CreateDigitalTwinAsync(design.DesignId, coreEngineModel);
             Console.WriteLine($"[Plasticity Engine Integration] Digital twin created for {design.Name}");
         }
 
