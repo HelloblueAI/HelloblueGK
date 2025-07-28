@@ -131,7 +131,7 @@ namespace HB_NLP_Research_Lab.Aerospace
                     CombustionEfficiency = 0.99,
                     InjectorType = "Swirl Coaxial",
                     IgnitionSystem = "Laser-Induced",
-                    ThrottleRange = new Range(0.1, 1.0),
+                    ThrottleRange = new Range(new Index(0), new Index(1)),
                     ThrottleResponseTime = 0.05 // seconds
                 },
                 
@@ -509,8 +509,8 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class AdvancedMultiPhysicsParameters : MultiPhysicsParameters
     {
-        public bool AcousticAnalysis { get; set; }
-        public bool CombustionModeling { get; set; }
+        public new bool AcousticAnalysis { get; set; }
+        public new bool CombustionModeling { get; set; }
         public new string CouplingMethod { get; set; } = string.Empty;
         public new bool RealTimeProcessing { get; set; }
     }

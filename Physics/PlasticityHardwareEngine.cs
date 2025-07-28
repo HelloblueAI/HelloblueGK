@@ -205,7 +205,7 @@ namespace HB_NLP_Research_Lab.Physics
             };
         }
 
-        public async Task<PlasticityOptimizationResult> OptimizeEngineDesignAsync(
+        public async Task<HB_NLP_Research_Lab.Models.PlasticityOptimizationResult> OptimizeEngineDesignAsync(
             HB_NLP_Research_Lab.Models.EngineModel engineModel, 
             HB_NLP_Research_Lab.Models.OptimizationParameters parameters)
         {
@@ -421,7 +421,7 @@ namespace HB_NLP_Research_Lab.Physics
                     WallShearStress = GenerateWallShearStress(),
                     ConvergenceHistory = GenerateConvergenceHistory()
                 },
-                StructuralAnalysis = new StructuralAnalysisResult
+                StructuralAnalysis = new HB_NLP_Research_Lab.Models.StructuralAnalysisResult
                 {
                     StressDistribution = GenerateStressDistribution(),
                     DisplacementField = GenerateDisplacementField(),
@@ -429,7 +429,7 @@ namespace HB_NLP_Research_Lab.Physics
                     NaturalFrequencies = GenerateNaturalFrequencies(),
                     ModalShapes = GenerateModalShapes()
                 },
-                ThermalAnalysis = new ThermalAnalysisResult
+                ThermalAnalysis = new HB_NLP_Research_Lab.Models.ThermalAnalysisResult
                 {
                     TemperatureField = GenerateTemperatureField(),
                     HeatFlux = GenerateHeatFlux(),
@@ -453,14 +453,14 @@ namespace HB_NLP_Research_Lab.Physics
             };
         }
 
-        private async Task<PlasticityOptimizationResult> ExecutePlasticityOptimizationAsync(
+        private async Task<HB_NLP_Research_Lab.Models.PlasticityOptimizationResult> ExecutePlasticityOptimizationAsync(
             HB_NLP_Research_Lab.Models.EngineModel engineModel, 
             PlasticityOptimizationParameters parameters)
         {
             // Simulate hardware-accelerated optimization
             await Task.Delay(1000); // Simulate optimization time
             
-            return new PlasticityOptimizationResult
+            return new HB_NLP_Research_Lab.Models.PlasticityOptimizationResult
             {
                 OptimizedParameters = new Dictionary<string, double>
                 {
@@ -767,7 +767,7 @@ namespace HB_NLP_Research_Lab.Physics
         public string? Error { get; set; }
         public HB_NLP_Research_Lab.Models.CfdAnalysisResult? Result { get; set; }
         public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult? MultiPhysicsResult { get; set; }
-        public PlasticityOptimizationResult? OptimizationResult { get; set; }
+        public HB_NLP_Research_Lab.Models.PlasticityOptimizationResult? OptimizationResult { get; set; }
         public TimeSpan Duration => EndTime?.Subtract(StartTime) ?? TimeSpan.Zero;
     }
 
@@ -830,15 +830,6 @@ namespace HB_NLP_Research_Lab.Physics
         public double Temperature { get; set; }
         public double PowerConsumption { get; set; }
         public PerformanceMetrics PerformanceMetrics { get; set; } = new();
-    }
-
-    public class PlasticityOptimizationResult
-    {
-        public Dictionary<string, double> OptimizedParameters { get; set; } = new();
-        public double ObjectiveValue { get; set; }
-        public List<double> ConvergenceHistory { get; set; } = new();
-        public List<string> ConstraintViolations { get; set; } = new();
-        public OptimizationMetrics OptimizationMetrics { get; set; } = new();
     }
 
     public class OptimizationMetrics

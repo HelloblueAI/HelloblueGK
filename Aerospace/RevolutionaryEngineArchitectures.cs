@@ -276,8 +276,8 @@ namespace HB_NLP_Research_Lab.Aerospace
                 EngineId = engineId,
                 ArchitectureType = engine.ArchitectureType,
                 InnovationLevel = engine.InnovationLevel,
-                PhysicsAnalysis = (HB_NLP_Research_Lab.Models.CfdAnalysisResult)physicsResult,
-                MultiPhysicsAnalysis = (HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult)multiPhysicsResult,
+                PhysicsAnalysis = physicsResult,
+                MultiPhysicsAnalysis = multiPhysicsResult,
                 PerformanceMetrics = new PerformanceMetrics
                 {
                     ThrustEfficiency = 0.92f,
@@ -637,24 +637,24 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class TechnologyBreakthrough
     {
-        public string Name { get; set; }
-        public string Description { get; set; }
-        public string Impact { get; set; }
-        public string ReadinessLevel { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Impact { get; set; } = string.Empty;
+        public string ReadinessLevel { get; set; } = string.Empty;
     }
 
     public class DevelopmentRoadmap
     {
-        public DevelopmentPhase Phase1 { get; set; }
-        public DevelopmentPhase Phase2 { get; set; }
-        public DevelopmentPhase Phase3 { get; set; }
+        public DevelopmentPhase Phase1 { get; set; } = new();
+        public DevelopmentPhase Phase2 { get; set; } = new();
+        public DevelopmentPhase Phase3 { get; set; } = new();
     }
 
     public class DevelopmentPhase
     {
-        public string Name { get; set; }
-        public string Duration { get; set; }
-        public string[] Objectives { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Duration { get; set; } = string.Empty;
+        public string[] Objectives { get; set; } = Array.Empty<string>();
     }
 
     // Specification Classes
