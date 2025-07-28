@@ -120,7 +120,8 @@ namespace HB_NLP_Research_Lab.Physics
                     double youngsModulus = YOUNGS_MODULUS_STEEL;
                     double poissonsRatio = POISSONS_RATIO_STEEL;
                     
-                    double strainValue = stress / youngsModulus;
+                    // Use Poisson's ratio in strain calculation for plane stress
+                    double strainValue = stress / youngsModulus * (1 - poissonsRatio);
                     strain[i, j] = strainValue;
                 }
             });
@@ -148,9 +149,9 @@ namespace HB_NLP_Research_Lab.Physics
                     double youngsModulus = YOUNGS_MODULUS_STEEL;
                     double poissonsRatio = POISSONS_RATIO_STEEL;
                     
-                    // Thick-walled cylinder displacement
+                    // Thick-walled cylinder displacement with Poisson's effect
                     double displacementValue = (chamberPressure * radius * radius) / 
-                                            (youngsModulus * thickness) * (1.0 - distance);
+                                            (youngsModulus * thickness) * (1.0 - distance) * (1 + poissonsRatio);
                     
                     displacement[i, j] = displacementValue;
                 }
@@ -196,9 +197,10 @@ namespace HB_NLP_Research_Lab.Physics
             double thickness = 0.01; // m
             double length = 0.5; // m
             
-            // Critical buckling pressure
+            // Critical buckling pressure with length consideration
             double criticalPressure = (youngsModulus * Math.Pow(thickness / radius, 3)) / 
-                                   (3 * (1 - POISSONS_RATIO_STEEL * POISSONS_RATIO_STEEL));
+                                   (3 * (1 - POISSONS_RATIO_STEEL * POISSONS_RATIO_STEEL)) * 
+                                   (1 + Math.Pow(radius / length, 2));
             
             double appliedPressure = 300e6; // Pa
             double bucklingSafetyFactor = criticalPressure / appliedPressure;
@@ -302,10 +304,11 @@ namespace HB_NLP_Research_Lab.Physics
             double radius = 0.1; // m
             double thickness = 0.01; // m
             
-            // Natural frequencies for different modes
+            // Natural frequencies for different modes with thickness consideration
             for (int mode = 1; mode <= 5; mode++)
             {
-                double frequency = mode * Math.Sqrt(youngsModulus / (density * radius * radius)) / (2 * Math.PI);
+                double frequency = mode * Math.Sqrt(youngsModulus / (density * radius * radius)) / (2 * Math.PI) * 
+                                 Math.Sqrt(thickness / radius);
                 frequencies.Add(frequency);
             }
             

@@ -184,8 +184,8 @@ namespace HB_NLP_Research_Lab.Physics
             // Carnot efficiency for rocket engine
             double carnotEfficiency = 1.0 - (ambientTemperature / chamberTemperature);
             
-            // Real engine efficiency (lower than Carnot due to losses)
-            return carnotEfficiency * 0.85; // 85% of Carnot efficiency
+            // Real engine efficiency with gamma correction (lower than Carnot due to losses)
+            return carnotEfficiency * 0.85 * (gamma - 1) / gamma; // 85% of Carnot efficiency with gamma effect
         }
 
         private Dictionary<string, object> AnalyzeCoolingSystem()
