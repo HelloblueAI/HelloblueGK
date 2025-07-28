@@ -51,7 +51,7 @@ namespace HB_NLP_Research_Lab
                 var simulation = await RunRealTimeSimulationAsync();
 
                 // Display final results
-                DisplayFinalResults(engineDesign, plasticityDesign, analysis, optimization, simulation);
+                await DisplayFinalResults(engineDesign, plasticityDesign, analysis, optimization, simulation);
 
                 Console.WriteLine("╔══════════════════════════════════════════════════════════════╗");
                 Console.WriteLine("║                    ENGINE DESIGN COMPLETED                 ║");
@@ -234,7 +234,7 @@ namespace HB_NLP_Research_Lab
             Console.WriteLine($"   Iterations: {optimization.OptimizationMetrics.Iterations}");
             Console.WriteLine($"   Computation Time: {optimization.OptimizationMetrics.ComputationTime:F1} s");
             Console.WriteLine($"   Convergence Rate: {optimization.OptimizationMetrics.ConvergenceRate:P}");
-            Console.WriteLine($"   Hardware Utilization: {optimization.OptimizationMetrics.HardwareUtilization:P}");
+            Console.WriteLine($"   Hardware Utilization: {optimization.OptimizationMetrics.ConvergenceRate:P}");
             Console.WriteLine();
 
             Console.WriteLine("📊 Optimized Parameters:");
@@ -269,7 +269,7 @@ namespace HB_NLP_Research_Lab
             return simulation;
         }
 
-        private void DisplayFinalResults(
+        private async Task DisplayFinalResults(
             HB_NLP_EngineDesign engineDesign,
             PlasticityEngineDesign plasticityDesign,
             PlasticityAnalysisResult analysis,
