@@ -165,10 +165,15 @@ namespace HB_NLP_Research_Lab.Core
                 EndTime = endTime,
                 Duration = endTime - startTime,
                 ErrorCount = _errorCounts.GetValueOrDefault(operationName, 0),
-                LastErrorTime = _lastErrorTimes.GetValueOrDefault(operationName, DateTime.MinValue)
+                LastErrorTime = GetLastErrorTime(operationName)
             };
 
             return await Task.FromResult(report);
+        }
+
+        private DateTime GetLastErrorTime(string operationName)
+        {
+            return _lastErrorTimes.TryGetValue(operationName, out var lastError) ? lastError : DateTime.MinValue;
         }
     }
 
