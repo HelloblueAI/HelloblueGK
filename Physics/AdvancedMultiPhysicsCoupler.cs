@@ -517,6 +517,7 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task<PhysicsStatus> GetMolecularStatusAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             return new PhysicsStatus { IsReady = true, ActiveSolvers = new[] { "Molecular Dynamics" } };
         }
 
@@ -529,31 +530,36 @@ namespace HB_NLP_Research_Lab.Physics
         private async Task<AdvancedCFDResult> RunCFDAnalysisAsync()
         {
             await Task.Delay(50);
-            return _cfdSolver.RunSimulation(null) as AdvancedCFDResult;
+            var result = _cfdSolver.RunSimulation(new object()) as AdvancedCFDResult;
+            return result ?? new AdvancedCFDResult();
         }
 
         private async Task<AdvancedThermalResult> RunThermalAnalysisAsync()
         {
             await Task.Delay(50);
-            return _thermalSolver.RunSimulation(null) as AdvancedThermalResult;
+            var result = _thermalSolver.RunSimulation(new object()) as AdvancedThermalResult;
+            return result ?? new AdvancedThermalResult();
         }
 
         private async Task<AdvancedStructuralResult> RunStructuralAnalysisAsync()
         {
             await Task.Delay(50);
-            return _structuralSolver.RunSimulation(null) as AdvancedStructuralResult;
+            var result = _structuralSolver.RunSimulation(new object()) as AdvancedStructuralResult;
+            return result ?? new AdvancedStructuralResult();
         }
 
         private async Task<ElectromagneticResult> RunElectromagneticAnalysisAsync()
         {
             await Task.Delay(50);
-            return _electromagneticSolver.RunSimulation(null) as ElectromagneticResult;
+            var result = _electromagneticSolver.RunSimulation(new object()) as ElectromagneticResult;
+            return result ?? new ElectromagneticResult();
         }
 
         private async Task<MolecularDynamicsResult> RunMolecularDynamicsAnalysisAsync()
         {
             await Task.Delay(50);
-            return _molecularSolver.RunSimulation(null) as MolecularDynamicsResult;
+            var result = _molecularSolver.RunSimulation(new object()) as MolecularDynamicsResult;
+            return result ?? new MolecularDynamicsResult();
         }
     }
 
