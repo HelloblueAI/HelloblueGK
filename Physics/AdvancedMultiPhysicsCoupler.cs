@@ -493,11 +493,13 @@ namespace HB_NLP_Research_Lab.Physics
         // Status methods for real-time coupling
         private async Task<PhysicsStatus> GetCFDStatusAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             return new PhysicsStatus { IsReady = true, ActiveSolvers = new[] { "CFD" } };
         }
 
         private async Task<PhysicsStatus> GetThermalStatusAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             return new PhysicsStatus { IsReady = true, ActiveSolvers = new[] { "Thermal" } };
         }
 
