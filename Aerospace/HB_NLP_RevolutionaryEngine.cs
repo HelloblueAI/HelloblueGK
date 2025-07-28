@@ -53,6 +53,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 throw new InvalidOperationException("HB-NLP Revolutionary Engine not initialized");
 
             Console.WriteLine("[HB-NLP Revolutionary Engine] 🔄 Creating revolutionary engine design...");
+            
+            // Simulate async design creation process
+            await Task.Delay(100);
 
             _engineDesign = new HB_NLP_EngineDesign
             {

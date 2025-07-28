@@ -459,7 +459,7 @@ namespace HB_NLP_Research_Lab.AI
     public class HybridResult
     {
         public double Accuracy { get; set; }
-        public string Performance { get; set; }
+        public string Performance { get; set; } = string.Empty;
         public double HybridEfficiency { get; set; }
     }
 
@@ -472,7 +472,7 @@ namespace HB_NLP_Research_Lab.AI
 
     public class QuantumMaterial
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
         public double Strength { get; set; }
         public double TemperatureResistance { get; set; }
     }
@@ -486,17 +486,17 @@ namespace HB_NLP_Research_Lab.AI
     // Specification classes
     public class MaterialDiscoverySpecs
     {
-        public string TargetApplication { get; set; }
+        public string TargetApplication { get; set; } = string.Empty;
         public double RequiredStrength { get; set; }
         public double RequiredTemperatureResistance { get; set; }
-        public string MaterialType { get; set; }
+        public string MaterialType { get; set; } = string.Empty;
     }
 
     public class EngineOptimizationSpecs
     {
-        public string EngineId { get; set; }
-        public Dictionary<string, double> OptimizationTargets { get; set; }
-        public Dictionary<string, double> Constraints { get; set; }
-        public string OptimizationAlgorithm { get; set; }
+        public string EngineId { get; set; } = string.Empty;
+        public Dictionary<string, double> OptimizationTargets { get; set; } = new();
+        public Dictionary<string, double> Constraints { get; set; } = new();
+        public string OptimizationAlgorithm { get; set; } = string.Empty;
     }
 } 

@@ -570,9 +570,9 @@ namespace HB_NLP_Research_Lab.Aerospace
     // Hybrid Electric Engine
     public class HybridElectricEngine : RevolutionaryEngine
     {
-        public ElectricPropulsionSystem ElectricSystem { get; set; }
-        public AdvancedCombustionSystem CombustionSystem { get; set; }
-        public IntelligentPowerManagement PowerManagement { get; set; }
+        public ElectricPropulsionSystem ElectricSystem { get; set; } = new();
+        public AdvancedCombustionSystem CombustionSystem { get; set; } = new();
+        public IntelligentPowerManagement PowerManagement { get; set; } = new();
         public double HybridEfficiency { get; set; }
     }
 
@@ -588,7 +588,7 @@ namespace HB_NLP_Research_Lab.Aerospace
     {
         public double Thrust { get; set; }
         public double Efficiency { get; set; }
-        public string FuelType { get; set; }
+        public string FuelType { get; set; } = string.Empty;
         public bool HybridMode { get; set; }
     }
 
