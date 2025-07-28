@@ -1626,6 +1626,7 @@
   "projectFileDependencyGroups": {
     "net9.0": [
       "Microsoft.Extensions.Configuration >= 9.0.0",
+      "Microsoft.Extensions.Configuration.Binder >= 9.0.0",
       "Microsoft.Extensions.Configuration.Json >= 9.0.0",
       "Microsoft.Extensions.DependencyInjection >= 9.0.0",
       "Microsoft.Extensions.Hosting >= 9.0.0",
@@ -1680,6 +1681,10 @@
         "targetAlias": "net9.0",
         "dependencies": {
           "Microsoft.Extensions.Configuration": {
+            "target": "Package",
+            "version": "[9.0.0, )"
+          },
+          "Microsoft.Extensions.Configuration.Binder": {
             "target": "Package",
             "version": "[9.0.0, )"
           },
