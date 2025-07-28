@@ -71,6 +71,7 @@ namespace HB_NLP_Research_Lab.Physics
 
         public async Task InitializeAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             Initialize();
         }
 

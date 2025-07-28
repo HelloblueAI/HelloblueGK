@@ -188,7 +188,7 @@ namespace HB_NLP_Research_Lab.AI
 
     public class TrainingData
     {
-        public EngineInputData Input { get; set; }
+        public EngineInputData Input { get; set; } = new();
         public double ExpectedOutput { get; set; }
     }
 

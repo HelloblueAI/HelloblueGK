@@ -232,6 +232,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<HealthStatus> GetComponentHealthAsync(string componentName)
         {
+            await Task.Delay(1); // Simulate async operation
             lock (_lockObject)
             {
                 return _componentHealth.GetValueOrDefault(componentName, HealthStatus.Unknown);
@@ -240,6 +241,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<DateTime> GetLastCheckTimeAsync(string componentName)
         {
+            await Task.Delay(1); // Simulate async operation
             lock (_lockObject)
             {
                 return _lastCheckTimes.GetValueOrDefault(componentName, DateTime.MinValue);
@@ -248,6 +250,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<List<string>> GetUnhealthyComponentsAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             lock (_lockObject)
             {
                 return _componentHealth
