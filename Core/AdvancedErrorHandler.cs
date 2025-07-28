@@ -165,15 +165,22 @@ namespace HB_NLP_Research_Lab.Core
                 EndTime = endTime,
                 Duration = endTime - startTime,
                 ErrorCount = _errorCounts.GetValueOrDefault(operationName, 0),
-                LastErrorTime = DateTime.MinValue
+                LastErrorTime = GetLastErrorTimeSafe(operationName)
             };
 
-            if (_lastErrorTimes.ContainsKey(operationName))
-            {
-                report.LastErrorTime = _lastErrorTimes[operationName];
-            }
-
             return await Task.FromResult(report);
+        }
+
+        private DateTime GetLastErrorTimeSafe(string operationName)
+        {
+            try
+            {
+                return _lastErrorTimes[operationName];
+            }
+            catch (KeyNotFoundException)
+            {
+                return DateTime.MinValue;
+            }
         }
     }
 
