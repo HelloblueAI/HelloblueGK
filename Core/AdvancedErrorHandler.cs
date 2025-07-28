@@ -12,7 +12,7 @@ namespace HB_NLP_Research_Lab.Core
     {
         private readonly ILogger<AdvancedErrorHandler> _logger;
         private readonly Dictionary<string, int> _errorCounts = new();
-        private readonly Dictionary<string, DateTime> _lastErrorTimes = new();
+        private readonly Dictionary<string, DateTime?> _lastErrorTimes = new();
         private readonly object _lockObject = new();
 
         public AdvancedErrorHandler(ILogger<AdvancedErrorHandler> logger)
@@ -67,8 +67,8 @@ namespace HB_NLP_Research_Lab.Core
             {
                 if (_errorCounts.ContainsKey(operationName) && _errorCounts[operationName] >= failureThreshold)
                 {
-                    if (_lastErrorTimes.ContainsKey(operationName) && 
-                        DateTime.UtcNow - _lastErrorTimes[operationName] < resetTimeout)
+                    if (_lastErrorTimes.TryGetValue(operationName, out var lastErrorTime) && lastErrorTime.HasValue &&
+                        DateTime.UtcNow - lastErrorTime.Value < resetTimeout)
                     {
                         throw new CircuitBreakerOpenException($"Circuit breaker for {operationName} is open");
                     }
@@ -158,6 +158,12 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ErrorReport> GenerateErrorReportAsync(string operationName, DateTime startTime, DateTime endTime)
         {
+            DateTime lastErrorTime = DateTime.MinValue;
+            if (_lastErrorTimes.TryGetValue(operationName, out var value) && value.HasValue)
+            {
+                lastErrorTime = value.Value;
+            }
+
             var report = new ErrorReport
             {
                 OperationName = operationName,
@@ -165,16 +171,8 @@ namespace HB_NLP_Research_Lab.Core
                 EndTime = endTime,
                 Duration = endTime - startTime,
                 ErrorCount = _errorCounts.GetValueOrDefault(operationName, 0),
-                LastErrorTime = DateTime.MinValue
+                LastErrorTime = lastErrorTime
             };
-
-            // Explicitly handle the last error time assignment
-            if (_lastErrorTimes.ContainsKey(operationName))
-            {
-#pragma warning disable CS8601
-                report.LastErrorTime = _lastErrorTimes[operationName];
-#pragma warning restore CS8601
-            }
 
             return await Task.FromResult(report);
         }
