@@ -99,13 +99,22 @@ namespace HB_NLP_Research_Lab.Core
             _logger.LogDebug("Runtime setting updated: {Key} = {Value}", key, value);
         }
 
-        public T GetRuntimeSetting<T>(string key, T defaultValue = default)
+        public T GetRuntimeSetting<T>(string key, T defaultValue)
         {
             if (_runtimeSettings.TryGetValue(key, out var value) && value is T typedValue)
             {
                 return typedValue;
             }
             return defaultValue;
+        }
+
+        public T GetRuntimeSetting<T>(string key)
+        {
+            if (_runtimeSettings.TryGetValue(key, out var value) && value is T typedValue)
+            {
+                return typedValue;
+            }
+            return default(T)!;
         }
 
         public async Task SaveConfigurationAsync(string filePath)
