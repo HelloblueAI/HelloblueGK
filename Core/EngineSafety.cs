@@ -55,12 +55,14 @@ namespace HB_NLP_Research_Lab.Core
         public async Task InitiateEmergencyShutdownAsync()
         {
             await Task.CompletedTask;
+            _emergencyShutdown = true;
             Console.WriteLine("[Engine Safety] 🚨 Initiating emergency shutdown...");
         }
 
         public async Task ResetSafetySystemsAsync()
         {
             await Task.CompletedTask;
+            _emergencyShutdown = false;
             Console.WriteLine("[Engine Safety] 🔄 Resetting safety systems...");
         }
     }
