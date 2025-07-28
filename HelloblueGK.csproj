@@ -5,15 +5,9 @@
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <AssemblyTitle>HelloblueGK Aerospace Engine Simulation Platform</AssemblyTitle>
-    <AssemblyDescription>Advanced aerospace engine simulation with multi-physics coupling and AI optimization</AssemblyDescription>
-    <AssemblyCompany>Helloblue, Inc.</AssemblyCompany>
-    <AssemblyProduct>HelloblueGK</AssemblyProduct>
-    <AssemblyCopyright>Copyright © 2025 Helloblue, Inc. HB-NLP Research Lab</AssemblyCopyright>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
-    <Version>1.0.0</Version>
     <StartupObject>HB_NLP_Research_Lab.Program</StartupObject>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <ItemGroup>

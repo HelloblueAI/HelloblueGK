@@ -286,8 +286,8 @@ namespace HB_NLP_Research_Lab.Aerospace
             var convertedMultiPhysicsResult = new HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult
             {
                 FluidAnalysis = convertedPhysicsResult,
-                StructuralAnalysis = new StructuralAnalysisResult(),
-                ThermalAnalysis = new ThermalAnalysisResult(),
+                StructuralAnalysis = new HB_NLP_Research_Lab.Models.StructuralAnalysisResult(),
+                ThermalAnalysis = new HB_NLP_Research_Lab.Models.ThermalAnalysisResult(),
                 ElectromagneticAnalysis = new ElectromagneticAnalysisResult(),
                 CouplingMetrics = new CouplingMetrics()
             };

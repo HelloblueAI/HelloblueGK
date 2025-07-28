@@ -638,10 +638,13 @@ namespace HB_NLP_Research_Lab.Aerospace
             return new InnovationMetrics
             {
                 TechnologyReadinessLevel = "TRL 8",
-                InnovationScore = 0.95f,
-                NoveltyFactor = 0.90f,
-                MarketPotential = 0.85f,
-                CompetitiveAdvantage = 0.95f
+                NoveltyScore = 0.95f,
+                DisruptivePotential = 0.90f,
+                MarketImpact = 0.85f,
+                Patentability = 0.95f,
+                CostEffectiveness = 0.88f,
+                Scalability = 0.92f,
+                Sustainability = 0.94f
             };
         }
 
