@@ -502,7 +502,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
     public class AdvancedCfdParameters : CfdParameters
     {
-        public string TurbulenceModel { get; set; } = string.Empty;
+        public new string TurbulenceModel { get; set; } = string.Empty;
         public bool AdaptiveMeshRefinement { get; set; }
         public bool RealTimeVisualization { get; set; }
     }
@@ -511,14 +511,14 @@ namespace HB_NLP_Research_Lab.Aerospace
     {
         public bool AcousticAnalysis { get; set; }
         public bool CombustionModeling { get; set; }
-        public string CouplingMethod { get; set; } = string.Empty;
-        public bool RealTimeProcessing { get; set; }
+        public new string CouplingMethod { get; set; } = string.Empty;
+        public new bool RealTimeProcessing { get; set; }
     }
 
     public class RevolutionaryOptimizationParameters : OptimizationParameters
     {
-        public string OptimizationAlgorithm { get; set; } = string.Empty;
-        public bool HardwareAcceleration { get; set; }
-        public bool RealTimeOptimization { get; set; }
+        public new string OptimizationAlgorithm { get; set; } = string.Empty;
+        public new bool HardwareAcceleration { get; set; }
+        public new bool RealTimeOptimization { get; set; }
     }
 } 

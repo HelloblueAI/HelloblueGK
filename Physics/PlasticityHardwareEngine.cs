@@ -92,7 +92,7 @@ namespace HB_NLP_Research_Lab.Physics
             return result;
         }
 
-        public async Task<HB_NLP_Research_Lab.Models.CfdAnalysisResult> PerformCfdAnalysisAsync(HB_NLP_Research_Lab.Models.EngineModel engineModel, CfdParameters parameters)
+        public async Task<HB_NLP_Research_Lab.Models.CfdAnalysisResult> PerformCfdAnalysisAsync(HB_NLP_Research_Lab.Models.EngineModel engineModel, HB_NLP_Research_Lab.Models.CfdParameters parameters)
         {
             if (!_isInitialized)
                 throw new InvalidOperationException("Plasticity Hardware Engine not initialized");
@@ -140,7 +140,7 @@ namespace HB_NLP_Research_Lab.Physics
 
         public async Task<HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult> PerformMultiPhysicsAnalysisAsync(
             HB_NLP_Research_Lab.Models.EngineModel engineModel, 
-            MultiPhysicsParameters parameters)
+            HB_NLP_Research_Lab.Models.MultiPhysicsParameters parameters)
         {
             if (!_isInitialized)
                 throw new InvalidOperationException("Plasticity Hardware Engine not initialized");
@@ -207,7 +207,7 @@ namespace HB_NLP_Research_Lab.Physics
 
         public async Task<PlasticityOptimizationResult> OptimizeEngineDesignAsync(
             HB_NLP_Research_Lab.Models.EngineModel engineModel, 
-            OptimizationParameters parameters)
+            HB_NLP_Research_Lab.Models.OptimizationParameters parameters)
         {
             if (!_isInitialized)
                 throw new InvalidOperationException("Plasticity Hardware Engine not initialized");
@@ -322,7 +322,7 @@ namespace HB_NLP_Research_Lab.Physics
             Console.WriteLine("[Plasticity Hardware Engine] Diagnostics system ready");
         }
 
-        private PlasticityCfdParameters ConvertToPlasticityCfdParams(CfdParameters parameters)
+        private PlasticityCfdParameters ConvertToPlasticityCfdParams(HB_NLP_Research_Lab.Models.CfdParameters parameters)
         {
             return new PlasticityCfdParameters
             {
@@ -344,7 +344,7 @@ namespace HB_NLP_Research_Lab.Physics
             };
         }
 
-        private PlasticityMultiPhysicsParameters ConvertToPlasticityMultiPhysicsParams(MultiPhysicsParameters parameters)
+        private PlasticityMultiPhysicsParameters ConvertToPlasticityMultiPhysicsParams(HB_NLP_Research_Lab.Models.MultiPhysicsParameters parameters)
         {
             return new PlasticityMultiPhysicsParameters
             {
@@ -361,7 +361,7 @@ namespace HB_NLP_Research_Lab.Physics
             };
         }
 
-        private PlasticityOptimizationParameters ConvertToPlasticityOptimizationParams(OptimizationParameters parameters)
+        private PlasticityOptimizationParameters ConvertToPlasticityOptimizationParams(HB_NLP_Research_Lab.Models.OptimizationParameters parameters)
         {
             return new PlasticityOptimizationParameters
             {
@@ -454,7 +454,7 @@ namespace HB_NLP_Research_Lab.Physics
         }
 
         private async Task<PlasticityOptimizationResult> ExecutePlasticityOptimizationAsync(
-            EngineModel engineModel, 
+            HB_NLP_Research_Lab.Models.EngineModel engineModel, 
             PlasticityOptimizationParameters parameters)
         {
             // Simulate hardware-accelerated optimization
@@ -758,9 +758,9 @@ namespace HB_NLP_Research_Lab.Physics
         public string Id { get; set; } = string.Empty;
         public string Type { get; set; } = string.Empty;
         public HB_NLP_Research_Lab.Models.EngineModel EngineModel { get; set; } = new();
-        public CfdParameters? Parameters { get; set; }
-        public MultiPhysicsParameters? MultiPhysicsParameters { get; set; }
-        public OptimizationParameters? OptimizationParameters { get; set; }
+        public HB_NLP_Research_Lab.Models.CfdParameters? Parameters { get; set; }
+        public HB_NLP_Research_Lab.Models.MultiPhysicsParameters? MultiPhysicsParameters { get; set; }
+        public HB_NLP_Research_Lab.Models.OptimizationParameters? OptimizationParameters { get; set; }
         public DateTime StartTime { get; set; }
         public DateTime? EndTime { get; set; }
         public string Status { get; set; } = string.Empty;

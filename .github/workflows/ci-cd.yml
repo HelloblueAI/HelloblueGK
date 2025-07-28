@@ -48,10 +48,11 @@ jobs:
       run: dotnet build --no-restore --configuration Release --verbosity minimal
       continue-on-error: true
     
-    - name: Build PlasticityDemo
+    - name: Restore and Build PlasticityDemo
       run: |
         cd PlasticityDemo
-        dotnet build --no-restore --configuration Release --verbosity minimal
+        dotnet restore
+        dotnet build --configuration Release --verbosity minimal
     
     - name: Test PlasticityDemo
       run: |
