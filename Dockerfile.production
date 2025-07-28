@@ -58,9 +58,14 @@ RUN dotnet build --no-restore --configuration Release --verbosity minimal \
     /p:OptimizeImplicitlyTriggeredBuild=true \
     /p:UseRazorBuildServer=false
 
-RUN dotnet build PlasticityDemo/ --no-restore --configuration Release --verbosity minimal \
+# Build PlasticityDemo separately
+WORKDIR /src/PlasticityDemo
+RUN dotnet build --no-restore --configuration Release --verbosity minimal \
     /p:DebugType=None \
     /p:DebugSymbols=false
+
+# Return to main directory
+WORKDIR /src
 
 # Publish with security hardening
 RUN dotnet publish --no-restore --configuration Release --output /app/publish \
