@@ -100,7 +100,7 @@ namespace HB_NLP_Research_Lab.Core
                         _errorCounts[operationName] = 0;
                     
                     _errorCounts[operationName]++;
-                    _lastErrorTimes[operationName] = DateTime.UtcNow;
+                    _lastErrorTimes[operationName] = (DateTime?)DateTime.UtcNow;
                 }
                 
                 LogError(ex, operationName, 1, 1);
@@ -141,7 +141,7 @@ namespace HB_NLP_Research_Lab.Core
                 ["MaxRetries"] = maxRetries,
                 ["ErrorType"] = ex.GetType().Name,
                 ["ErrorMessage"] = ex.Message,
-                ["StackTrace"] = ex.StackTrace
+                ["StackTrace"] = ex.StackTrace ?? string.Empty
             };
 
             _logger.LogError(ex, "Error in {OperationName} (attempt {Attempt}/{MaxRetries}): {ErrorMessage}", 
@@ -158,12 +158,6 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ErrorReport> GenerateErrorReportAsync(string operationName, DateTime startTime, DateTime endTime)
         {
-            DateTime lastErrorTime = DateTime.MinValue;
-            if (_lastErrorTimes.TryGetValue(operationName, out var value) && value.HasValue)
-            {
-                lastErrorTime = value.Value;
-            }
-
             var report = new ErrorReport
             {
                 OperationName = operationName,
@@ -171,10 +165,19 @@ namespace HB_NLP_Research_Lab.Core
                 EndTime = endTime,
                 Duration = endTime - startTime,
                 ErrorCount = _errorCounts.GetValueOrDefault(operationName, 0),
-                LastErrorTime = lastErrorTime
+                LastErrorTime = GetLastErrorTimeSafely(operationName)
             };
 
             return await Task.FromResult(report);
+        }
+
+        private DateTime GetLastErrorTimeSafely(string operationName)
+        {
+            if (_lastErrorTimes.TryGetValue(operationName, out var value) && value.HasValue)
+            {
+                return value.Value;
+            }
+            return DateTime.MinValue;
         }
     }
 
