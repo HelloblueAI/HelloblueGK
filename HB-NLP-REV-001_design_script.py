@@ -39,25 +39,8 @@ turbopump = create_cylinder(
 )
 
 # Assembly
-engine = assemble([chamber, throat, nozzle, injector, turbopump])
+engine_assembly = union([chamber, throat, nozzle, injector, turbopump])
 
-# Apply materials and properties
-set_material_properties(engine, {
-    "density": 8000,  # kg/m³
-    "thermal_conductivity": 25,  # W/m·K
-    "yield_strength": 500e6,  # 500 MPa
-    "temperature_limit": 2500  # K
-})
-
-# Set analysis parameters
-set_analysis_parameters({
-    "cfd_enabled": True,
-    "thermal_analysis": True,
-    "structural_analysis": True,
-    "mesh_resolution": "fine",
-    "convergence_criteria": 1e-6
-})
-
-# Export model
-export_model("HB-NLP-REV-001_3d_model.stl")
-print("✅ HB-NLP Revolutionary Engine 3D model created successfully!")
+# Export
+export_stl(engine_assembly, "HB-NLP-REV-001_3d_model.stl")
+export_step(engine_assembly, "HB-NLP-REV-001_3d_model.step")
