@@ -276,6 +276,8 @@ namespace HB_NLP_Research_Lab.AI
 
         private async Task<TestAnalysis> AnalyzeTestResultsAsync(List<TestResult> results)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             var passedTests = results.Count(r => r.Passed);
             var totalTests = results.Count;
             
@@ -493,6 +495,8 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<FailurePrediction> PredictFailureAsync(SelfOptimizedEngine engine)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             Console.WriteLine($"[Failure Predictor] 🔮 Predicting failure for {engine.Id}...");
             
             var prediction = new FailurePrediction
