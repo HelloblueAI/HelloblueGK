@@ -46,7 +46,6 @@ jobs:
     
     - name: Build main application
       run: dotnet build --no-restore --configuration Release --verbosity minimal
-      continue-on-error: true
     
     - name: Restore and Build PlasticityDemo
       run: |
