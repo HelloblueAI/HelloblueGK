@@ -39,7 +39,6 @@ RUN mkdir -p /home/builduser/.dotnet && chown -R builduser:builduser /home/build
 
 # Copy project files with integrity verification
 COPY --chown=builduser:builduser *.csproj ./
-COPY --chown=builduser:builduser PlasticityDemo/*.csproj ./PlasticityDemo/
 
 # Switch to build user for security
 USER builduser
@@ -48,8 +47,7 @@ USER builduser
 COPY --chown=builduser:builduser . .
 
 # Restore dependencies with security checks
-RUN dotnet restore --verbosity minimal && \
-    dotnet restore PlasticityDemo/ --verbosity minimal
+RUN dotnet restore --verbosity minimal
 
 # Build with security optimizations
 RUN dotnet build --no-restore --configuration Release --verbosity minimal \
@@ -58,24 +56,8 @@ RUN dotnet build --no-restore --configuration Release --verbosity minimal \
     /p:OptimizeImplicitlyTriggeredBuild=true \
     /p:UseRazorBuildServer=false
 
-# Build PlasticityDemo separately
-WORKDIR /src/PlasticityDemo
-RUN dotnet build --no-restore --configuration Release --verbosity minimal \
-    /p:DebugType=None \
-    /p:DebugSymbols=false
-
-# Return to main directory
-WORKDIR /src
-
 # Publish with security hardening
 RUN dotnet publish --no-restore --configuration Release --output /app/publish \
-    /p:DebugType=None \
-    /p:DebugSymbols=false \
-    /p:PublishTrimmed=true \
-    /p:PublishSingleFile=true \
-    /p:SelfContained=false
-
-RUN dotnet publish PlasticityDemo/ --no-restore --configuration Release --output /app/plasticity-demo \
     /p:DebugType=None \
     /p:DebugSymbols=false \
     /p:PublishTrimmed=true \
@@ -114,7 +96,6 @@ RUN mkdir -p /app/logs /app/data /app/cache /app/temp && \
 
 # Copy published applications with integrity verification
 COPY --from=build --chown=aerospace:aerospace /app/publish .
-COPY --from=build --chown=aerospace:aerospace /app/plasticity-demo ./plasticity-demo
 
 # Copy design files with integrity verification
 COPY --chown=aerospace:aerospace HB-NLP-REV-001* ./
@@ -124,7 +105,6 @@ COPY --chown=aerospace:aerospace README.md ./
 # Set secure file permissions
 RUN chmod 755 /app && \
     chmod 644 /app/*.dll && \
-    chmod 755 /app/plasticity-demo && \
     chmod 644 /app/HB-NLP-REV-001* && \
     chmod 755 /app/open_in_plasticity.py
 
