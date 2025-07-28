@@ -1090,5 +1090,3 @@ python3 open_in_plasticity.py
 </div>
 
 ---
-
-# Test workflow trigger
