@@ -158,6 +158,12 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ErrorReport> GenerateErrorReportAsync(string operationName, DateTime startTime, DateTime endTime)
         {
+            DateTime lastErrorTime = DateTime.MinValue;
+            if (_lastErrorTimes.TryGetValue(operationName, out var value))
+            {
+                lastErrorTime = value;
+            }
+
             var report = new ErrorReport
             {
                 OperationName = operationName,
@@ -165,22 +171,10 @@ namespace HB_NLP_Research_Lab.Core
                 EndTime = endTime,
                 Duration = endTime - startTime,
                 ErrorCount = _errorCounts.GetValueOrDefault(operationName, 0),
-                LastErrorTime = GetLastErrorTimeSafe(operationName)
+                LastErrorTime = lastErrorTime
             };
 
             return await Task.FromResult(report);
-        }
-
-        private DateTime GetLastErrorTimeSafe(string operationName)
-        {
-            try
-            {
-                return _lastErrorTimes[operationName];
-            }
-            catch (KeyNotFoundException)
-            {
-                return DateTime.MinValue;
-            }
         }
     }
 
