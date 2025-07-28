@@ -211,4 +211,12 @@ Thumbs.db
 *.zip
 *.tar.gz
 *.rar
-*.7z 
+*.7z plasticity_25.2.2_amd64.deb
+
+# Build artifacts
+bin/
+obj/
+*.dll
+*.pdb
+*.exe
+*.deb

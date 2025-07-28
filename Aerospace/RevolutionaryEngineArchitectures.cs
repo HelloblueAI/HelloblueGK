@@ -430,8 +430,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public string Name { get; set; }
         public string ArchitectureType { get; set; }
         public double InnovationLevel { get; set; }
-        public CfdAnalysisResult PhysicsAnalysis { get; set; }
-        public FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
+        public HB_NLP_Research_Lab.Models.CfdAnalysisResult PhysicsAnalysis { get; set; }
+        public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
         public Models.PerformanceMetrics PerformanceMetrics { get; set; }
         public InnovationMetrics InnovationMetrics { get; set; }
         public string TechnologyReadinessLevel { get; set; }
@@ -618,8 +618,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public string EngineId { get; set; }
         public string ArchitectureType { get; set; }
         public double InnovationLevel { get; set; }
-        public CfdAnalysisResult PhysicsAnalysis { get; set; }
-        public FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
+        public HB_NLP_Research_Lab.Models.CfdAnalysisResult PhysicsAnalysis { get; set; }
+        public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; }
         public Models.PerformanceMetrics PerformanceMetrics { get; set; }
         public InnovationMetrics InnovationMetrics { get; set; }
         public string TechnologyReadinessLevel { get; set; }
