@@ -66,13 +66,7 @@ jobs:
     
     - name: Test design generation
       run: |
-        python3 -c "
-import open_in_plasticity
-designer = open_in_plasticity.PlasticityEngineDesigner()
-designer.create_design_file()
-designer.generate_3d_model_script()
-print('✅ Design generation works')
-"
+        python3 -c "import open_in_plasticity; designer = open_in_plasticity.PlasticityEngineDesigner(); designer.create_design_file(); designer.generate_3d_model_script(); print('✅ Design generation works')"
     
     - name: Lint Python code
       run: |
