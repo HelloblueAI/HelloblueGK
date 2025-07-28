@@ -349,6 +349,8 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<DigitalTwinSummary> GenerateDigitalTwinSummaryAsync()
         {
+            await Task.Delay(1); // Simulate async operation
+            
             Console.WriteLine("[Digital Twin] 📊 Generating Comprehensive Digital Twin Summary...");
 
             // Defensive: handle empty or null lists
@@ -386,6 +388,8 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<LearningPerformanceReport> GenerateLearningPerformanceReportAsync(string engineId)
         {
+            await Task.Delay(1); // Simulate async operation
+            
             if (_learningHistories == null || !_learningHistories.ContainsKey(engineId))
                 throw new ArgumentException($"Learning history not found for engine: {engineId}");
 
