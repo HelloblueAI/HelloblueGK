@@ -909,13 +909,13 @@ RAS
 
     public class PressureData
     {
-        public double[,] Distribution { get; set; }
+        public double[,] Distribution { get; set; } = new double[0,0];
         public double MaxPressure { get; set; }
     }
 
     public class VelocityData
     {
-        public double[,,] Field { get; set; }
+        public double[,,] Field { get; set; } = new double[0,0,0];
         public double MaxVelocity { get; set; }
     }
 
