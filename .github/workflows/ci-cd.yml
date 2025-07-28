@@ -17,6 +17,7 @@ permissions:
   packages: write
   security-events: write
   actions: read
+  deployments: write
 
 jobs:
   build-test-security:
@@ -240,6 +241,8 @@ jobs:
     needs: [build-test-security, docker]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     name: Deploy to Production
+    permissions:
+      deployments: write
     
     steps:
     - name: Checkout code
