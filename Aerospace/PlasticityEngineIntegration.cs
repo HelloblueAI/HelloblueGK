@@ -121,6 +121,12 @@ namespace HB_NLP_Research_Lab.Aerospace
 
             try
             {
+                // Ensure EngineModel is not null
+                if (design.EngineModel == null)
+                {
+                    throw new InvalidOperationException("Engine model is not initialized");
+                }
+
                 // CFD Analysis using Plasticity hardware
                 var cfdResult = await _plasticityEngine.PerformCfdAnalysisAsync(
                     design.EngineModel, 
@@ -172,6 +178,12 @@ namespace HB_NLP_Research_Lab.Aerospace
 
             try
             {
+                // Ensure EngineModel is not null
+                if (design.EngineModel == null)
+                {
+                    throw new InvalidOperationException("Engine model is not initialized");
+                }
+
                 // Perform hardware-accelerated optimization
                 var result = await _plasticityEngine.OptimizeEngineDesignAsync(design.EngineModel, parameters);
                 
@@ -255,6 +267,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<List<PlasticityEngineDesign>> GetActiveDesignsAsync()
         {
+            await Task.Delay(1); // Simulate async operation
             return _activeDesigns.Values.ToList();
         }
 

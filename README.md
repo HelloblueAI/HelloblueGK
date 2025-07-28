@@ -901,25 +901,6 @@ Our aerospace engine has been successfully designed and optimized using **Plasti
 - **Technology Readiness Level**: 9 - Production ready
 
 
-#### **🎨 Engine Visualizations**
-
-<div align="center">
-
-##### **3D Engine Model**
-![HB-NLP Engine 3D Model](HB-NLP-REV-001_3d_model.png)
-*Interactive 3D visualization of the HB-NLP Quantum-Classical Hybrid Engine*
-
-
-</div>
-
-**Visualization Features:**
-- 🔴 **Chamber** (Red) - Main combustion chamber with advanced superalloy
-- 🔵 **Throat** (Teal) - Critical flow constriction for optimal performance
-- 🔵 **Nozzle** (Blue) - Carbon-carbon composite expansion nozzle
-- 🟢 **Injector** (Green) - Titanium alloy fuel injection system
-- 🟡 **Turbopump** (Yellow) - Inconel 718 propellant delivery system
-
-
 #### **Geometry**
 - **Chamber Diameter**: 2.5 m
 - **Chamber Length**: 3.0 m

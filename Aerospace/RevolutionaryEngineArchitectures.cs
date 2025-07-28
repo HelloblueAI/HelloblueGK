@@ -335,6 +335,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         {
             Console.WriteLine("[Revolutionary Architectures] 📋 Generating Comprehensive Architecture Summary...");
             
+            await Task.Delay(1); // Simulate async operation
+            
             var summary = new RevolutionaryArchitectureSummary
             {
                 TotalEngines = _revolutionaryEngines.Count,
