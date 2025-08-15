@@ -641,9 +641,9 @@ namespace HB_NLP_Research_Lab.Aerospace
             };
         }
 
-        private PerformanceMetrics CalculatePerformanceMetrics(PlasticityEngineDesign design)
+        private HB_NLP_Research_Lab.Models.PerformanceMetrics CalculatePerformanceMetrics(PlasticityEngineDesign design)
         {
-            return new PerformanceMetrics
+            return new HB_NLP_Research_Lab.Models.PerformanceMetrics
             {
                 ThrustEfficiency = 0.95f,
                 FuelConsumption = 2.5f, // g/kN·s
@@ -767,7 +767,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         public HB_NLP_Research_Lab.Models.CfdAnalysisResult CfdAnalysis { get; set; } = new();
         public HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult MultiPhysicsAnalysis { get; set; } = new();
         public HB_NLP_Research_Lab.Models.PlasticityOptimizationResult OptimizationResult { get; set; } = new();
-        public PerformanceMetrics PerformanceMetrics { get; set; } = new();
+        public HB_NLP_Research_Lab.Models.PerformanceMetrics PerformanceMetrics { get; set; } = new();
         public InnovationMetrics InnovationMetrics { get; set; } = new();
         public string TechnologyReadinessLevel { get; set; } = string.Empty;
     }

@@ -1,7 +1,7 @@
 using System;
-using System.Threading.Tasks;
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading.Tasks;
+using HB_NLP_Research_Lab.Core;
 
 namespace HB_NLP_Research_Lab.Core
 {
@@ -16,10 +16,60 @@ namespace HB_NLP_Research_Lab.Core
             
             return new OptimizationResult
             {
-                OptimalThrust = 1500000,
-                OptimalEfficiency = 0.95,
-                OptimizationTime = TimeSpan.FromMinutes(2),
-                ConvergenceHistory = new List<double> { 0.8, 0.85, 0.9, 0.92, 0.95 }
+                OverallImprovement = 15.0,
+                InnovationScore = 85.0,
+                OptimizationDate = DateTime.UtcNow,
+                OriginalParameters = new EngineDesignParameters
+                {
+                    Thrust = 1000000,
+                    SpecificImpulse = 300,
+                    ChamberPressure = 200,
+                    Efficiency = 0.80
+                },
+                OptimizedParameters = new EngineDesignParameters
+                {
+                    Thrust = 1150000,
+                    SpecificImpulse = 315,
+                    ChamberPressure = 210,
+                    Efficiency = 0.85
+                },
+                PerformancePrediction = new PerformancePrediction
+                {
+                    PredictedThrust = 1150000,
+                    PredictedSpecificImpulse = 315,
+                    PredictedEfficiency = 0.85,
+                    ConfidenceLevel = 0.92,
+                    PredictionDate = DateTime.UtcNow
+                },
+                OptimizationStages = new[]
+                {
+                    new StageResult
+                    {
+                        StageName = "Initial Optimization",
+                        ImprovementPercentage = 8.0,
+                        ExecutionTime = TimeSpan.FromMinutes(1),
+                        OptimizedParameters = new EngineDesignParameters
+                        {
+                            Thrust = 1080000,
+                            SpecificImpulse = 306,
+                            ChamberPressure = 204,
+                            Efficiency = 0.82
+                        }
+                    },
+                    new StageResult
+                    {
+                        StageName = "Advanced Optimization",
+                        ImprovementPercentage = 15.0,
+                        ExecutionTime = TimeSpan.FromMinutes(2),
+                        OptimizedParameters = new EngineDesignParameters
+                        {
+                            Thrust = 1150000,
+                            SpecificImpulse = 315,
+                            ChamberPressure = 210,
+                            Efficiency = 0.85
+                        }
+                    }
+                }
             };
         }
 
@@ -49,17 +99,6 @@ namespace HB_NLP_Research_Lab.Core
                 Recommendations = new List<string> { "Monitor turbopump vibration", "Check nozzle erosion" }
             };
         }
-    }
-
-    public class OptimizationResult
-    {
-        public List<EngineOptimization> Optimizations { get; set; } = new List<EngineOptimization>();
-        public bool AnalysisComplete { get; set; }
-        public double EstimatedImprovement { get; set; }
-        public double OptimalThrust { get; set; }
-        public double OptimalEfficiency { get; set; }
-        public TimeSpan OptimizationTime { get; set; }
-        public List<double> ConvergenceHistory { get; set; } = new List<double>();
     }
 
     public class EngineOptimization

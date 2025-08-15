@@ -310,6 +310,14 @@ namespace HB_NLP_Research_Lab.Core
 
     public class OptimizationResult
     {
+        public OptimizationResult()
+        {
+            OriginalParameters = new EngineDesignParameters();
+            OptimizedParameters = new EngineDesignParameters();
+            PerformancePrediction = new PerformancePrediction();
+            OptimizationStages = Array.Empty<StageResult>();
+        }
+        
         public EngineDesignParameters OriginalParameters { get; set; }
         public EngineDesignParameters OptimizedParameters { get; set; }
         public double OverallImprovement { get; set; }
@@ -321,6 +329,12 @@ namespace HB_NLP_Research_Lab.Core
 
     public class StageResult
     {
+        public StageResult()
+        {
+            StageName = string.Empty;
+            OptimizedParameters = new EngineDesignParameters();
+        }
+        
         public string StageName { get; set; }
         public double ImprovementPercentage { get; set; }
         public EngineDesignParameters OptimizedParameters { get; set; }
@@ -338,6 +352,11 @@ namespace HB_NLP_Research_Lab.Core
 
     public class InnovationReport
     {
+        public InnovationReport()
+        {
+            InnovationFactors = Array.Empty<string>();
+        }
+        
         public double InnovationScore { get; set; }
         public double NoveltyScore { get; set; }
         public double FeasibilityScore { get; set; }
