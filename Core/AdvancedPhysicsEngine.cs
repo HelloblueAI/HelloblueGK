@@ -169,6 +169,9 @@ namespace HB_NLP_Research_Lab.Core
         public double MaxVelocity { get; set; }
         public double MeshQuality { get; set; }
         public double SimulationTime { get; set; }
+        public long CalculationCount { get; set; }
+        public double Accuracy { get; set; }
+        public int ConvergenceIterations { get; set; }
     }
 
     public class ThermalAnalysisResult
@@ -182,6 +185,9 @@ namespace HB_NLP_Research_Lab.Core
         public double HeatTransferRate { get; set; }
         public int ThermalNodes { get; set; }
         public double HeatTransferEfficiency { get; set; }
+        public long CalculationCount { get; set; }
+        public double Accuracy { get; set; }
+        public int ConvergenceIterations { get; set; }
     }
 
     public class StructuralAnalysisResult
@@ -195,6 +201,9 @@ namespace HB_NLP_Research_Lab.Core
         public double SafetyFactor { get; set; }
         public int StructuralElements { get; set; }
         public double MaxDisplacement { get; set; }
+        public long CalculationCount { get; set; }
+        public double Accuracy { get; set; }
+        public int ConvergenceIterations { get; set; }
     }
 
     public class PhysicsStatus
@@ -209,6 +218,8 @@ namespace HB_NLP_Research_Lab.Core
         public string[] ActiveSolvers { get; set; }
         public string ValidationStatus { get; set; }
         public bool IsReady { get; set; }
+        public PerformanceMetrics PerformanceMetrics { get; set; } = new();
+        public int OptimizationLevel { get; set; }
     }
 
     public interface IAdvancedPhysicsEngine

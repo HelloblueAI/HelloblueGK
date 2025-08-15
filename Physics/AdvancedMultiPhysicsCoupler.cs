@@ -635,6 +635,14 @@ namespace HB_NLP_Research_Lab.Physics
         public int TotalIterations { get; set; }
         public bool ConvergenceAchieved { get; set; }
         public double CouplingEfficiency { get; set; }
+        
+        // Properties needed by HighPerformancePhysicsEngine
+        public CfdAnalysisResult CfdResult { get; set; } = new();
+        public ThermalAnalysisResult ThermalResult { get; set; } = new();
+        public StructuralAnalysisResult StructuralResult { get; set; } = new();
+        public long TotalCalculationCount { get; set; }
+        public TimeSpan ExecutionTime { get; set; }
+        public double CalculationsPerSecond { get; set; }
     }
 
     public class FluidStructureThermalElectromagneticResult

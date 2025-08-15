@@ -521,10 +521,10 @@ namespace HB_NLP_Research_Lab.Physics
             return 350.0; // 350W
         }
 
-        private async Task<PerformanceMetrics> GetPerformanceMetricsAsync()
+        private async Task<HB_NLP_Research_Lab.Models.PerformanceMetrics> GetPerformanceMetricsAsync()
         {
             await Task.Delay(10);
-            return new PerformanceMetrics
+            return new HB_NLP_Research_Lab.Models.PerformanceMetrics
             {
                 ComputationSpeed = 1.5e12, // 1.5 TFLOPS
                 MemoryBandwidth = 1008, // GB/s
@@ -831,7 +831,7 @@ namespace HB_NLP_Research_Lab.Physics
         public double CpuUtilization { get; set; }
         public double Temperature { get; set; }
         public double PowerConsumption { get; set; }
-        public PerformanceMetrics PerformanceMetrics { get; set; } = new();
+        public HB_NLP_Research_Lab.Models.PerformanceMetrics PerformanceMetrics { get; set; } = new();
     }
 
     public class OptimizationMetrics

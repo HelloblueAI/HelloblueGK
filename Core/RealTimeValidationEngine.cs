@@ -1,7 +1,7 @@
 using System;
-using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text.Json;
 using HB_NLP_Research_Lab.Core;
@@ -58,9 +58,95 @@ namespace HB_NLP_Research_Lab.Core
             return await CreateValidationReportAsync(engineModel, validationResult);
         }
 
+        public async Task<ValidationResult> ValidateEngineAsync(string engineModel)
+        {
+            Console.WriteLine($"[Real-Time Validation] 🔍 Validating engine: {engineModel}");
+            
+            // Check cache first
+            if (_validationCache.TryGetValue(engineModel, out var cachedResult))
+            {
+                return cachedResult;
+            }
+
+            // Perform real-time validation
+            var validationResult = await PerformRealTimeValidationAsync(engineModel);
+            
+            // Cache the result
+            lock (_cacheLock)
+            {
+                _validationCache[engineModel] = validationResult;
+            }
+            
+            return validationResult;
+        }
+
+        public async Task<ValidationSummary> GenerateValidationSummaryAsync()
+        {
+            Console.WriteLine("[Real-Time Validation] 📊 Generating validation summary...");
+            
+            // Simulate async operation
+            await Task.Delay(5);
+            
+            var validatedEngines = _validationCache.Keys.ToList();
+            var totalEngines = validatedEngines.Count;
+            
+            if (totalEngines == 0)
+            {
+                return new ValidationSummary
+                {
+                    TotalEnginesValidated = 0,
+                    AverageAccuracy = 0.0,
+                    HighestAccuracy = 0.0,
+                    LowestAccuracy = 0.0,
+                    ValidatedEngines = new List<string>(),
+                    ValidationTimestamp = DateTime.UtcNow,
+                    IsValid = false,
+                    ValidationScore = 0.0,
+                    CriticalIssues = 0,
+                    Warnings = 0
+                };
+            }
+            
+            var accuracies = validatedEngines.Select(engine => _validationCache[engine].Accuracy).ToList();
+            var averageAccuracy = accuracies.Average();
+            var highestAccuracy = accuracies.Max();
+            var lowestAccuracy = accuracies.Min();
+            
+            return new ValidationSummary
+            {
+                TotalEnginesValidated = totalEngines,
+                AverageAccuracy = averageAccuracy,
+                HighestAccuracy = highestAccuracy,
+                LowestAccuracy = lowestAccuracy,
+                ValidatedEngines = validatedEngines,
+                ValidationTimestamp = DateTime.UtcNow,
+                IsValid = averageAccuracy > 90.0,
+                ValidationScore = averageAccuracy,
+                CriticalIssues = 0,
+                Warnings = 0
+            };
+        }
+
+        public async Task<List<ValidationResult>> GetValidationHistoryAsync()
+        {
+            Console.WriteLine("[Real-Time Validation] 📚 Retrieving validation history...");
+            
+            await Task.Delay(1);
+            return _validationCache.Values.ToList();
+        }
+
+        public async Task<bool> IsEngineValidatedAsync(string engineModel)
+        {
+            await Task.Delay(1);
+            return _validationCache.ContainsKey(engineModel);
+        }
+
         private async Task<ValidationResult> PerformRealTimeValidationAsync(string engineModel)
         {
             Console.WriteLine($"[Real-Time Validation] 🔍 Performing real-time validation for {engineModel}");
+            
+            // Simulate async operation
+            await Task.Delay(10);
             
             // Collect real-time data from multiple sources
             var validationTasks = new[]
@@ -84,6 +170,9 @@ namespace HB_NLP_Research_Lab.Core
         private async Task<ValidationResult> ValidateAgainstFlightDataAsync(string engineModel)
         {
             Console.WriteLine($"[Real-Time Validation] ✈️ Validating against flight data for {engineModel}");
+            
+            // Simulate async operation
+            await Task.Delay(5);
             
             try
             {
@@ -122,6 +211,9 @@ namespace HB_NLP_Research_Lab.Core
         {
             Console.WriteLine($"[Real-Time Validation] 🧪 Validating against test stand data for {engineModel}");
             
+            // Simulate async operation
+            await Task.Delay(5);
+            
             try
             {
                 // Simulate real-time test stand data collection
@@ -158,6 +250,9 @@ namespace HB_NLP_Research_Lab.Core
         private async Task<ValidationResult> ValidateAgainstIndustryStandardsAsync(string engineModel)
         {
             Console.WriteLine($"[Real-Time Validation] 📊 Validating against industry standards for {engineModel}");
+            
+            // Simulate async operation
+            await Task.Delay(5);
             
             try
             {
@@ -196,9 +291,12 @@ namespace HB_NLP_Research_Lab.Core
         {
             Console.WriteLine($"[Real-Time Validation] 💻 Validating against simulation data for {engineModel}");
             
+            // Simulate async operation
+            await Task.Delay(5);
+            
             try
             {
-                // Get simulation data
+                // Simulate async operation
                 var simulationData = await _validationDatabase.GetSimulationDataAsync(engineModel);
                 
                 if (simulationData != null)
@@ -278,6 +376,7 @@ namespace HB_NLP_Research_Lab.Core
 
         private async Task<PerformanceMetrics> GetPerformanceMetricsAsync()
         {
+            await Task.Delay(1);
             return new PerformanceMetrics
             {
                 TotalCalculations = 0,
@@ -290,7 +389,7 @@ namespace HB_NLP_Research_Lab.Core
             };
         }
 
-        private void OnValidationDataReceived(object sender, ValidationDataEventArgs e)
+        private void OnValidationDataReceived(object? sender, ValidationDataEventArgs e)
         {
             Console.WriteLine($"[Real-Time Validation] 📡 Received validation data: {e.DataType} for {e.EngineModel}");
             
@@ -328,7 +427,7 @@ namespace HB_NLP_Research_Lab.Core
     // Real-time data collector
     public class RealTimeDataCollector
     {
-        public event EventHandler<ValidationDataEventArgs> DataReceived;
+        public event EventHandler<ValidationDataEventArgs> DataReceived = null!;
         
         public async Task<FlightData> CollectFlightDataAsync(string engineModel)
         {
@@ -444,6 +543,12 @@ namespace HB_NLP_Research_Lab.Core
     // Data models
     public class FlightData
     {
+        public FlightData()
+        {
+            EngineModel = string.Empty;
+            FlightNumber = string.Empty;
+        }
+        
         public string EngineModel { get; set; }
         public string FlightNumber { get; set; }
         public double Thrust { get; set; }
@@ -454,6 +559,12 @@ namespace HB_NLP_Research_Lab.Core
 
     public class TestStandData
     {
+        public TestStandData()
+        {
+            EngineModel = string.Empty;
+            TestNumber = string.Empty;
+        }
+        
         public string EngineModel { get; set; }
         public string TestNumber { get; set; }
         public double Thrust { get; set; }
@@ -464,6 +575,11 @@ namespace HB_NLP_Research_Lab.Core
 
     public class IndustryStandardsData
     {
+        public IndustryStandardsData()
+        {
+            EngineModel = string.Empty;
+        }
+        
         public string EngineModel { get; set; }
         public double StandardThrust { get; set; }
         public double StandardSpecificImpulse { get; set; }
@@ -472,6 +588,11 @@ namespace HB_NLP_Research_Lab.Core
 
     public class SimulationData
     {
+        public SimulationData()
+        {
+            EngineModel = string.Empty;
+        }
+        
         public string EngineModel { get; set; }
         public double SimulatedThrust { get; set; }
         public double SimulatedSpecificImpulse { get; set; }
@@ -480,20 +601,18 @@ namespace HB_NLP_Research_Lab.Core
 
     public class ValidationDataEventArgs : EventArgs
     {
+        public ValidationDataEventArgs()
+        {
+            DataType = string.Empty;
+            EngineModel = string.Empty;
+        }
+        
         public string DataType { get; set; }
         public string EngineModel { get; set; }
         public DateTime Timestamp { get; set; }
     }
 
-    public class ValidationResult
-    {
-        public string ValidationType { get; set; }
-        public double Accuracy { get; set; }
-        public string DataSource { get; set; }
-        public DateTime ValidationDate { get; set; }
-        public double ConfidenceLevel { get; set; }
-        public double OverallAccuracy => Accuracy;
-    }
+
 
     public class ValidationOptions
     {

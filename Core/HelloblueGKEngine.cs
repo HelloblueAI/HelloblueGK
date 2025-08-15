@@ -3,6 +3,7 @@ using System.Numerics;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.Physics;
 
 namespace HB_NLP_Research_Lab.Core
 {
@@ -146,23 +147,27 @@ namespace HB_NLP_Research_Lab.Core
 
     public class ComprehensiveAnalysisResult
     {
-        public ThrustAnalysis ThrustAnalysis { get; set; } = new ThrustAnalysis();
-        public ThermalAnalysis ThermalAnalysis { get; set; } = new ThermalAnalysis();
-        public StructuralAnalysis StructuralAnalysis { get; set; } = new StructuralAnalysis();
-        public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
+        public ComprehensiveAnalysisResult()
+        {
+            ThrustAnalysis = new ThrustAnalysis();
+            ThermalAnalysis = new ThermalAnalysis();
+            StructuralAnalysis = new StructuralAnalysis();
+            PerformanceMetrics = new Dictionary<string, double>();
+            MultiPhysicsResult = new MultiPhysicsResult();
+            ValidationReport = new ValidationReport();
+            OptimizationResult = new OptimizationResult();
+            InnovationReport = new InnovationReport();
+        }
+        
+        public ThrustAnalysis ThrustAnalysis { get; set; }
+        public ThermalAnalysis ThermalAnalysis { get; set; }
+        public StructuralAnalysis StructuralAnalysis { get; set; }
+        public Dictionary<string, double> PerformanceMetrics { get; set; }
         public MultiPhysicsResult MultiPhysicsResult { get; set; }
         public ValidationReport ValidationReport { get; set; }
         public OptimizationResult OptimizationResult { get; set; }
         public InnovationReport InnovationReport { get; set; }
     }
 
-    public class ValidationSummary
-    {
-        public bool IsValid { get; set; }
-        public double ValidationScore { get; set; }
-        public int CriticalIssues { get; set; }
-        public int Warnings { get; set; }
-        public string ValidationSource { get; set; }
-        public double ConfidenceLevel { get; set; }
-    }
+
 } 

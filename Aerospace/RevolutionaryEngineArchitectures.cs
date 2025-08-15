@@ -305,7 +305,7 @@ namespace HB_NLP_Research_Lab.Aerospace
                 InnovationLevel = engine.InnovationLevel,
                 PhysicsAnalysis = convertedPhysicsResult,
                 MultiPhysicsAnalysis = convertedMultiPhysicsResult,
-                PerformanceMetrics = new PerformanceMetrics
+                PerformanceMetrics = new HB_NLP_Research_Lab.Models.PerformanceMetrics
                 {
                     ThrustEfficiency = 0.92f,
                     FuelConsumption = 0.85f,
@@ -451,7 +451,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             ArchitectureType = string.Empty;
             PhysicsAnalysis = new HB_NLP_Research_Lab.Models.CfdAnalysisResult();
             MultiPhysicsAnalysis = new HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult();
-            PerformanceMetrics = new PerformanceMetrics();
+            PerformanceMetrics = new HB_NLP_Research_Lab.Models.PerformanceMetrics();
             InnovationMetrics = new InnovationMetrics();
             TechnologyReadinessLevel = string.Empty;
         }
