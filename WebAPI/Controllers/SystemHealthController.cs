@@ -76,7 +76,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     Status = healthReport.OverallStatus.ToString(),
                     Timestamp = healthReport.Timestamp,
-                    IsHealthy = healthReport.OverallStatus == HealthStatus.Healthy,
+                    IsHealthy = healthReport.OverallStatus == AdvancedHealthStatus.Healthy,
                     ComponentCount = 5, // System, Application, Dependencies, Performance, Security
                     ErrorCount = healthReport.Errors.Count,
                     WarningCount = healthReport.SystemResources.Warnings.Count + 
@@ -133,8 +133,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <returns>Performance health status</returns>
         /// <response code="200">Performance health retrieved successfully</response>
         [HttpGet("performance")]
-        [ProducesResponseType(typeof(ComponentHealth), 200)]
-        public async Task<ActionResult<ComponentHealth>> GetPerformanceHealth()
+        [ProducesResponseType(typeof(AdvancedComponentHealth), 200)]
+        public async Task<ActionResult<AdvancedComponentHealth>> GetPerformanceHealth()
         {
             try
             {
@@ -159,8 +159,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <returns>Security health status</returns>
         /// <response code="200">Security health retrieved successfully</response>
         [HttpGet("security")]
-        [ProducesResponseType(typeof(ComponentHealth), 200)]
-        public async Task<ActionResult<ComponentHealth>> GetSecurityHealth()
+        [ProducesResponseType(typeof(AdvancedComponentHealth), 200)]
+        public async Task<ActionResult<AdvancedComponentHealth>> GetSecurityHealth()
         {
             try
             {

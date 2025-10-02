@@ -34,7 +34,7 @@ namespace HB_NLP_Research_Lab.Core
             var report = new SystemHealthReport
             {
                 Timestamp = DateTime.UtcNow,
-                OverallStatus = HealthStatus.Healthy
+                OverallStatus = AdvancedHealthStatus.Healthy
             };
 
             try
@@ -71,7 +71,7 @@ namespace HB_NLP_Research_Lab.Core
             catch (Exception ex)
             {
                 _logger.LogError(ex, "System health check failed");
-                report.OverallStatus = HealthStatus.Unhealthy;
+                report.OverallStatus = AdvancedHealthStatus.Unhealthy;
                 report.Errors.Add($"Health check failed: {ex.Message}");
                 return report;
             }
@@ -82,7 +82,7 @@ namespace HB_NLP_Research_Lab.Core
             var resourceHealth = new ResourceHealth
             {
                 Component = "System Resources",
-                Status = HealthStatus.Healthy,
+                Status = AdvancedHealthStatus.Healthy,
                 Timestamp = DateTime.UtcNow
             };
 
@@ -108,13 +108,13 @@ namespace HB_NLP_Research_Lab.Core
                 // Determine health based on thresholds
                 if (workingSet > 2000) // 2GB
                 {
-                    resourceHealth.Status = HealthStatus.Degraded;
+                    resourceHealth.Status = AdvancedHealthStatus.Degraded;
                     resourceHealth.Issues.Add($"High memory usage: {workingSet}MB");
                 }
 
                 if (process.Threads.Count > 500)
                 {
-                    resourceHealth.Status = HealthStatus.Degraded;
+                    resourceHealth.Status = AdvancedHealthStatus.Degraded;
                     resourceHealth.Issues.Add($"High thread count: {process.Threads.Count}");
                 }
 
@@ -128,18 +128,18 @@ namespace HB_NLP_Research_Lab.Core
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check system resources");
-                resourceHealth.Status = HealthStatus.Unhealthy;
+                resourceHealth.Status = AdvancedHealthStatus.Unhealthy;
                 resourceHealth.Issues.Add($"Resource check failed: {ex.Message}");
                 return resourceHealth;
             }
         }
 
-        private async Task<ComponentHealth> CheckApplicationHealthAsync()
+        private async Task<AdvancedComponentHealth> CheckApplicationHealthAsync()
         {
-            var appHealth = new ComponentHealth
+            var appHealth = new AdvancedComponentHealth
             {
                 Component = "Application",
-                Status = HealthStatus.Healthy,
+                Status = AdvancedHealthStatus.Healthy,
                 Timestamp = DateTime.UtcNow
             };
 
@@ -159,18 +159,18 @@ namespace HB_NLP_Research_Lab.Core
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check application health");
-                appHealth.Status = HealthStatus.Unhealthy;
+                appHealth.Status = AdvancedHealthStatus.Unhealthy;
                 appHealth.Issues.Add($"Application check failed: {ex.Message}");
                 return appHealth;
             }
         }
 
-        private async Task<ComponentHealth> CheckExternalDependenciesAsync()
+        private async Task<AdvancedComponentHealth> CheckExternalDependenciesAsync()
         {
-            var depsHealth = new ComponentHealth
+            var depsHealth = new AdvancedComponentHealth
             {
                 Component = "External Dependencies",
-                Status = HealthStatus.Healthy,
+                Status = AdvancedHealthStatus.Healthy,
                 Timestamp = DateTime.UtcNow
             };
 
@@ -182,7 +182,7 @@ namespace HB_NLP_Research_Lab.Core
 
                 if (!networkCheck)
                 {
-                    depsHealth.Status = HealthStatus.Degraded;
+                    depsHealth.Status = AdvancedHealthStatus.Degraded;
                     depsHealth.Issues.Add("Network connectivity issues detected");
                 }
 
@@ -191,7 +191,7 @@ namespace HB_NLP_Research_Lab.Core
                 depsHealth.Metrics["DiskSpaceGB"] = diskSpace;
                 if (diskSpace < 1) // Less than 1GB
                 {
-                    depsHealth.Status = HealthStatus.Degraded;
+                    depsHealth.Status = AdvancedHealthStatus.Degraded;
                     depsHealth.Issues.Add($"Low disk space: {diskSpace}GB");
                 }
 
@@ -200,18 +200,18 @@ namespace HB_NLP_Research_Lab.Core
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check external dependencies");
-                depsHealth.Status = HealthStatus.Unhealthy;
+                depsHealth.Status = AdvancedHealthStatus.Unhealthy;
                 depsHealth.Issues.Add($"Dependencies check failed: {ex.Message}");
                 return depsHealth;
             }
         }
 
-        private async Task<ComponentHealth> CheckPerformanceHealthAsync()
+        private async Task<AdvancedComponentHealth> CheckPerformanceHealthAsync()
         {
-            var perfHealth = new ComponentHealth
+            var perfHealth = new AdvancedComponentHealth
             {
                 Component = "Performance",
-                Status = HealthStatus.Healthy,
+                Status = AdvancedHealthStatus.Healthy,
                 Timestamp = DateTime.UtcNow
             };
 
@@ -228,7 +228,7 @@ namespace HB_NLP_Research_Lab.Core
                 // Check for performance issues
                 if (snapshot.SystemMetrics.CPUUsage > 80)
                 {
-                    perfHealth.Status = HealthStatus.Degraded;
+                    perfHealth.Status = AdvancedHealthStatus.Degraded;
                     perfHealth.Issues.Add($"High CPU usage: {snapshot.SystemMetrics.CPUUsage:F1}%");
                 }
 
@@ -247,18 +247,18 @@ namespace HB_NLP_Research_Lab.Core
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check performance health");
-                perfHealth.Status = HealthStatus.Unhealthy;
+                perfHealth.Status = AdvancedHealthStatus.Unhealthy;
                 perfHealth.Issues.Add($"Performance check failed: {ex.Message}");
                 return perfHealth;
             }
         }
 
-        private async Task<ComponentHealth> CheckSecurityHealthAsync()
+        private async Task<AdvancedComponentHealth> CheckSecurityHealthAsync()
         {
-            var secHealth = new ComponentHealth
+            var secHealth = new AdvancedComponentHealth
             {
                 Component = "Security",
-                Status = HealthStatus.Healthy,
+                Status = AdvancedHealthStatus.Healthy,
                 Timestamp = DateTime.UtcNow
             };
 
@@ -291,7 +291,7 @@ namespace HB_NLP_Research_Lab.Core
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check security health");
-                secHealth.Status = HealthStatus.Unhealthy;
+                secHealth.Status = AdvancedHealthStatus.Unhealthy;
                 secHealth.Issues.Add($"Security check failed: {ex.Message}");
                 return secHealth;
             }
@@ -324,9 +324,9 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private HealthStatus DetermineOverallStatus(SystemHealthReport report)
+        private AdvancedHealthStatus DetermineOverallStatus(SystemHealthReport report)
         {
-            var statuses = new List<HealthStatus>
+            var statuses = new List<AdvancedHealthStatus>
             {
                 report.SystemResources.Status,
                 report.ApplicationHealth.Status,
@@ -335,13 +335,13 @@ namespace HB_NLP_Research_Lab.Core
                 report.SecurityHealth.Status
             };
 
-            if (statuses.Any(s => s == HealthStatus.Unhealthy))
-                return HealthStatus.Unhealthy;
+            if (statuses.Any(s => s == AdvancedHealthStatus.Unhealthy))
+                return AdvancedHealthStatus.Unhealthy;
 
-            if (statuses.Any(s => s == HealthStatus.Degraded))
-                return HealthStatus.Degraded;
+            if (statuses.Any(s => s == AdvancedHealthStatus.Degraded))
+                return AdvancedHealthStatus.Degraded;
 
-            return HealthStatus.Healthy;
+            return AdvancedHealthStatus.Healthy;
         }
 
         private List<string> GenerateRecommendations(SystemHealthReport report)
@@ -382,12 +382,12 @@ namespace HB_NLP_Research_Lab.Core
     public class SystemHealthReport
     {
         public DateTime Timestamp { get; set; }
-        public HealthStatus OverallStatus { get; set; }
+        public AdvancedHealthStatus OverallStatus { get; set; }
         public ResourceHealth SystemResources { get; set; } = new();
-        public ComponentHealth ApplicationHealth { get; set; } = new();
-        public ComponentHealth ExternalDependencies { get; set; } = new();
-        public ComponentHealth PerformanceHealth { get; set; } = new();
-        public ComponentHealth SecurityHealth { get; set; } = new();
+        public AdvancedComponentHealth ApplicationHealth { get; set; } = new();
+        public AdvancedComponentHealth ExternalDependencies { get; set; } = new();
+        public AdvancedComponentHealth PerformanceHealth { get; set; } = new();
+        public AdvancedComponentHealth SecurityHealth { get; set; } = new();
         public ConfigurationHealth ConfigurationHealth { get; set; } = new();
         public List<string> Recommendations { get; set; } = new();
         public List<string> Errors { get; set; } = new();
@@ -396,24 +396,24 @@ namespace HB_NLP_Research_Lab.Core
     public class ResourceHealth
     {
         public string Component { get; set; } = string.Empty;
-        public HealthStatus Status { get; set; }
+        public AdvancedHealthStatus Status { get; set; }
         public DateTime Timestamp { get; set; }
         public Dictionary<string, object> Metrics { get; set; } = new();
         public List<string> Issues { get; set; } = new();
         public List<string> Warnings { get; set; } = new();
     }
 
-    public class ComponentHealth
+    public class AdvancedComponentHealth
     {
         public string Component { get; set; } = string.Empty;
-        public HealthStatus Status { get; set; }
+        public AdvancedHealthStatus Status { get; set; }
         public DateTime Timestamp { get; set; }
         public Dictionary<string, object> Metrics { get; set; } = new();
         public List<string> Issues { get; set; } = new();
         public List<string> Warnings { get; set; } = new();
     }
 
-    public enum HealthStatus
+    public enum AdvancedHealthStatus
     {
         Healthy,
         Degraded,

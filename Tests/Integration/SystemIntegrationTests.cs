@@ -99,7 +99,7 @@ public class SystemIntegrationTests
         rateLimitReport.TotalActiveBuckets.Should().BeGreaterThan(0, "Should have active rate limit buckets");
         
         healthReport.Should().NotBeNull("Health report should be generated");
-        healthReport.OverallStatus.Should().BeOneOf(HealthStatus.Healthy, HealthStatus.Degraded, "System should be healthy or degraded");
+        healthReport.OverallStatus.Should().BeOneOf(AdvancedHealthStatus.Healthy, AdvancedHealthStatus.Degraded, "System should be healthy or degraded");
         
         configValidation.Should().NotBeNull("Configuration validation should complete");
         

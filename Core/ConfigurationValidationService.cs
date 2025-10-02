@@ -20,9 +20,9 @@ namespace HB_NLP_Research_Lab.Core
             _logger = logger;
         }
 
-        public async Task<ValidationResult> ValidateConfigurationAsync()
+        public async Task<ConfigurationValidationResult> ValidateConfigurationAsync()
         {
-            var result = new ValidationResult
+            var result = new ConfigurationValidationResult
             {
                 IsValid = true,
                 ValidationTimestamp = DateTime.UtcNow
@@ -75,15 +75,15 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private void ValidateEngineConfiguration(ValidationResult result)
+        private void ValidateEngineConfiguration(ConfigurationValidationResult result)
         {
             _logger.LogDebug("Validating engine configuration...");
 
-            var engineConfig = new EngineConfiguration();
+            var engineConfig = new AdvancedEngineConfiguration();
             _configuration.GetSection("EngineConfiguration").Bind(engineConfig);
 
             // Validate using data annotations
-            var validationResults = new List<ValidationResult>();
+            var validationResults = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
             var validationContext = new ValidationContext(engineConfig);
 
             if (!Validator.TryValidateObject(engineConfig, validationContext, validationResults, true))
@@ -111,7 +111,7 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private void ValidateApiConfiguration(ValidationResult result)
+        private void ValidateApiConfiguration(ConfigurationValidationResult result)
         {
             _logger.LogDebug("Validating API configuration...");
 
@@ -134,7 +134,7 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private void ValidatePerformanceMonitoringConfiguration(ValidationResult result)
+        private void ValidatePerformanceMonitoringConfiguration(ConfigurationValidationResult result)
         {
             _logger.LogDebug("Validating performance monitoring configuration...");
 
@@ -152,7 +152,7 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private void ValidateRateLimitingConfiguration(ValidationResult result)
+        private void ValidateRateLimitingConfiguration(ConfigurationValidationResult result)
         {
             _logger.LogDebug("Validating rate limiting configuration...");
 
@@ -170,7 +170,7 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private void ValidateLoggingConfiguration(ValidationResult result)
+        private void ValidateLoggingConfiguration(ConfigurationValidationResult result)
         {
             _logger.LogDebug("Validating logging configuration...");
 
@@ -187,7 +187,7 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private void ValidateSecurityConfiguration(ValidationResult result)
+        private void ValidateSecurityConfiguration(ConfigurationValidationResult result)
         {
             _logger.LogDebug("Validating security configuration...");
 
@@ -210,7 +210,7 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private void ValidateDatabaseConfiguration(ValidationResult result)
+        private void ValidateDatabaseConfiguration(ConfigurationValidationResult result)
         {
             _logger.LogDebug("Validating database configuration...");
 
@@ -266,7 +266,7 @@ namespace HB_NLP_Research_Lab.Core
         }
     }
 
-    public class ValidationResult
+    public class ConfigurationValidationResult
     {
         public bool IsValid { get; set; }
         public DateTime ValidationTimestamp { get; set; }
@@ -285,7 +285,7 @@ namespace HB_NLP_Research_Lab.Core
         public Dictionary<string, object> ConfigurationSections { get; set; } = new();
     }
 
-    public class EngineConfiguration
+    public class AdvancedEngineConfiguration
     {
         [Required]
         public string DefaultEngineType { get; set; } = string.Empty;
