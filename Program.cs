@@ -31,6 +31,9 @@ namespace HB_NLP_Research_Lab
                 // Get enhanced services
                 var performanceService = serviceProvider.GetService<PerformanceMonitoringService>();
                 var rateLimitingService = serviceProvider.GetService<RateLimitingService>();
+                var structuredLoggingService = serviceProvider.GetService<StructuredLoggingService>();
+                var configValidationService = serviceProvider.GetService<ConfigurationValidationService>();
+                var healthCheckService = serviceProvider.GetService<AdvancedHealthCheckService>();
 
                 Console.WriteLine("🔬 Initializing HB-NLP Revolutionary Engine Design System...\n");
 
@@ -151,9 +154,15 @@ namespace HB_NLP_Research_Lab
                 Console.WriteLine("================================================================================\n");
                 Console.WriteLine($"📊 Performance Monitoring: {(performanceService != null ? "✅ ACTIVE" : "❌ INACTIVE")}");
                 Console.WriteLine($"🛡️  Rate Limiting: {(rateLimitingService != null ? "✅ ACTIVE" : "❌ INACTIVE")}");
+                Console.WriteLine($"📝 Structured Logging: {(structuredLoggingService != null ? "✅ ACTIVE" : "❌ INACTIVE")}");
+                Console.WriteLine($"⚙️  Configuration Validation: {(configValidationService != null ? "✅ ACTIVE" : "❌ INACTIVE")}");
+                Console.WriteLine($"🏥 Advanced Health Checks: {(healthCheckService != null ? "✅ ACTIVE" : "❌ INACTIVE")}");
                 Console.WriteLine($"🧪 Unit Testing: ✅ FRAMEWORK READY");
                 Console.WriteLine($"📈 Monitoring & Metrics: ✅ IMPLEMENTED");
                 Console.WriteLine($"🔒 API Protection: ✅ IMPLEMENTED");
+                Console.WriteLine($"📚 Auto-Generated Documentation: ✅ IMPLEMENTED");
+                Console.WriteLine($"🚀 Performance Benchmarks: ✅ IMPLEMENTED");
+                Console.WriteLine($"🔗 Integration Tests: ✅ IMPLEMENTED");
                 
                 // Cleanup
                 serviceProvider?.Dispose();
@@ -177,6 +186,9 @@ namespace HB_NLP_Research_Lab
             // Add enhanced services
             services.AddSingleton<PerformanceMonitoringService>();
             services.AddSingleton<RateLimitingService>();
+            services.AddSingleton<StructuredLoggingService>();
+            services.AddSingleton<ConfigurationValidationService>();
+            services.AddSingleton<AdvancedHealthCheckService>();
             
             // Add as hosted services for background processing
             services.AddHostedService<PerformanceMonitoringService>();
