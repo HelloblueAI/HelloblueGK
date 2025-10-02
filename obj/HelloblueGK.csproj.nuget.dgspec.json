@@ -44,45 +44,65 @@
         "net9.0": {
           "targetAlias": "net9.0",
           "dependencies": {
-            "Microsoft.Extensions.Configuration": {
+            "AspNetCoreRateLimit": {
+              "target": "Package",
+              "version": "[5.0.0, )"
+            },
+            "Microsoft.AspNetCore.Http.Abstractions": {
+              "target": "Package",
+              "version": "[2.2.0, )"
+            },
+            "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
               "version": "[9.0.0, )"
+            },
+            "Microsoft.Extensions.Configuration": {
+              "target": "Package",
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.Configuration.Binder": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.Configuration.Json": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.DependencyInjection": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.Hosting": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.Logging": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.Logging.Abstractions": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.Logging.Console": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
+            },
+            "Swashbuckle.AspNetCore": {
+              "target": "Package",
+              "version": "[7.2.0, )"
+            },
+            "System.Diagnostics.PerformanceCounter": {
+              "target": "Package",
+              "version": "[8.0.0, )"
             },
             "System.Numerics.Vectors": {
               "target": "Package",
-              "version": "[4.5.0, )"
+              "version": "[4.6.1, )"
             },
             "System.Text.Json": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             }
           },
           "imports": [
@@ -97,6 +117,9 @@
           "assetTargetFallback": true,
           "warn": true,
           "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             }

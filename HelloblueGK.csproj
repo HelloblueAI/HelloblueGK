@@ -21,11 +21,18 @@
     <PackageReference Include="System.Text.Json" Version="9.0.9" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
+    <!-- Performance Monitoring -->
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.2.0" />
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="8.0.0" />
+    <!-- API Rate Limiting -->
+    <PackageReference Include="AspNetCoreRateLimit" Version="5.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <!-- Exclude PlasticityDemo from main project build -->
     <Compile Remove="PlasticityDemo/**/*.cs" />
+    <!-- Exclude Tests from main project build -->
+    <Compile Remove="Tests/**/*.cs" />
   </ItemGroup>
 
 </Project> 
