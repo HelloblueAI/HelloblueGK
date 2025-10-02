@@ -252,10 +252,10 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                    PERFORMANCE METRICS                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  Simulation Speed: 10K-100K calc/sec │  CFD Accuracy: 95-98%      │
-│  Scalability: Enterprise Grade       │  Code Quality: 95% coverage │
-│  Cloud Ready                         │  Industry Standards         │
-│  Validated Algorithms                │  Production Hardened        │
+│ Simulation Speed: 10K-100K calc/sec │ CFD Accuracy: 95-98%      │
+│ Scalability: Enterprise Grade       │ Code Quality: 95% coverage│
+│ Cloud Ready                         │ Industry Standards        │
+│ Validated Algorithms                │ Production Hardened       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
