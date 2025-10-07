@@ -86,3 +86,15 @@
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/Debug/net9.0/MvcTestingAppManifest.json
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/HelloblueGK.Tests.csproj.nuget.dgspec.json
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/project.assets.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/appsettings.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/HB-NLP-REV-001_design.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/HelloblueGK.deps.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/HelloblueGK.runtimeconfig.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/HelloblueGK.staticwebassets.endpoints.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/HelloblueGK.Tests.deps.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/HelloblueGK.Tests.runtimeconfig.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/MvcTestingAppManifest.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/Debug/net9.0/HelloblueGK.Tests.sourcelink.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/Debug/net9.0/MvcTestingAppManifest.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/HelloblueGK.Tests.csproj.nuget.dgspec.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/project.assets.json
