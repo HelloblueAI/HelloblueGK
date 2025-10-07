@@ -6,6 +6,7 @@ using HB_NLP_Research_Lab.Physics;
 using HB_NLP_Research_Lab.Models;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Configuration;
 
 namespace HB_NLP_Research_Lab
 {
@@ -176,6 +177,15 @@ namespace HB_NLP_Research_Lab
 
         static void ConfigureServices(ServiceCollection services)
         {
+            // Add configuration
+            var configuration = new ConfigurationBuilder()
+                .SetBasePath(Directory.GetCurrentDirectory())
+                .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+                .AddEnvironmentVariables()
+                .Build();
+            
+            services.AddSingleton<IConfiguration>(configuration);
+            
             // Add logging
             services.AddLogging(builder =>
             {

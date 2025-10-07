@@ -69,7 +69,6 @@
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/System.Configuration.ConfigurationManager.dll
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/System.Diagnostics.PerformanceCounter.dll
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/System.Security.Cryptography.ProtectedData.dll
-/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/runtimes/win/lib/net8.0/System.Diagnostics.PerformanceCounter.dll
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/obj/HelloblueGK.Tests.csproj.nuget.dgspec.json
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/obj/project.assets.json
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/obj/Debug/net9.0/HelloblueGK.Tests.sourcelink.json
@@ -98,3 +97,4 @@
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/Debug/net9.0/MvcTestingAppManifest.json
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/HelloblueGK.Tests.csproj.nuget.dgspec.json
 /home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/bin/Debug/net9.0/Tests/obj/project.assets.json
+/home/pejmanhaghighatnia/Documents/PicoGK/bin/Debug/net9.0/runtimes/win/lib/net9.0/System.Diagnostics.PerformanceCounter.dll

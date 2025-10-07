@@ -48,13 +48,9 @@
               "target": "Package",
               "version": "[5.0.0, )"
             },
-            "Microsoft.AspNetCore.Http.Abstractions": {
-              "target": "Package",
-              "version": "[2.2.0, )"
-            },
             "Microsoft.AspNetCore.OpenApi": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[9.0.9, )"
             },
             "Microsoft.Extensions.Configuration": {
               "target": "Package",
@@ -90,11 +86,11 @@
             },
             "Swashbuckle.AspNetCore": {
               "target": "Package",
-              "version": "[7.2.0, )"
+              "version": "[9.0.6, )"
             },
             "System.Diagnostics.PerformanceCounter": {
               "target": "Package",
-              "version": "[8.0.0, )"
+              "version": "[9.0.9, )"
             },
             "System.Numerics.Vectors": {
               "target": "Package",
