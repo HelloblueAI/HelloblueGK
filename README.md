@@ -11,6 +11,12 @@
 
 ### Try the Interactive Demo
 
+**🚀 Live Demo:** [https://hellobluegk-demo-production.up.railway.app](https://hellobluegk-demo-production.up.railway.app)
+
+- **Swagger UI:** [https://hellobluegk-demo-production.up.railway.app/swagger](https://hellobluegk-demo-production.up.railway.app/swagger)
+- **Health Check:** [https://hellobluegk-demo-production.up.railway.app/Health](https://hellobluegk-demo-production.up.railway.app/Health)
+
+**Run Locally:**
 ```bash
 # Clone the repository
 git clone https://github.com/HelloblueAI/HelloblueGK.git
@@ -24,6 +30,8 @@ dotnet run
 ```
 
 See [DEMO.md](DEMO.md) for detailed demo instructions.
+
+**📸 Screenshots:** Add screenshots of Swagger UI here after taking them
 
 ### Install
 
