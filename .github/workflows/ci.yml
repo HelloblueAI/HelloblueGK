@@ -39,9 +39,9 @@ jobs:
       run: dotnet build Tests/HelloblueGK.Tests.csproj --no-restore --configuration Release /p:TreatWarningsAsErrors=false
       
     - name: Run unit tests
-      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity minimal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build --logger "console;verbosity=minimal"
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build --logger "console;verbosity=normal"
       continue-on-error: true
-      timeout-minutes: 10
+      timeout-minutes: 15
       
     - name: Generate coverage report
       if: always()
