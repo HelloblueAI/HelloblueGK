@@ -118,7 +118,8 @@ public class RealTimeValidationEngineTests : IDisposable
 
     public void Dispose()
     {
-        _validationEngine?.Dispose();
+        // RealTimeValidationEngine doesn't implement IDisposable
+        // No cleanup needed
     }
 }
 
