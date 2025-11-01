@@ -197,7 +197,8 @@ namespace HB_NLP_Research_Lab.Core
                 RecordMetric("GC_Gen0_Collections", gen0Collections, "Memory");
                 RecordMetric("GC_Gen1_Collections", gen1Collections, "Memory");
                 RecordMetric("GC_Gen2_Collections", gen2Collections, "Memory");
-                RecordMetric("GC_Total_Memory", GC.GetTotalMemory(false) / 1024 / 1024, "Memory"); // MB
+                // Explicit cast to double to avoid precision loss warning (intentional conversion from bytes to MB)
+                RecordMetric("GC_Total_Memory", (double)GC.GetTotalMemory(false) / 1024.0 / 1024.0, "Memory"); // MB
             }
             catch (Exception ex)
             {
