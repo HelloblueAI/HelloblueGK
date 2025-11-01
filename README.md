@@ -2,7 +2,7 @@
 ### HelloblueGK - Advanced Aerospace Engine Simulation Platform
 
 <div align="left">
-<img src="HB-NLP-Advanced-Engine-Design.png?v=4" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
+<img src="Assets/Images/HB-NLP-Advanced-Engine-Design.png?v=4" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
 
 ```ascii
     ╔══════════════════════════════════════════════════════════════╗
@@ -304,7 +304,7 @@
 4. **Open Engine Design in Plasticity**
    ```bash
    # Generate and open design in Plasticity
-   python3 open_in_plasticity.py
+   python3 Scripts/Integration/open_in_plasticity.py
    ```
 
 5. **Build the main application (optional)**
@@ -362,25 +362,25 @@ To visualize and analyze the engine design in Plasticity:
 
 ```bash
 # Generate design files and open in Plasticity
-python3 open_in_plasticity.py
+python3 Scripts/Integration/open_in_plasticity.py
 ```
 
 This will:
-- ✅ Create engine design specifications (`HB-NLP-REV-001_design.json`)
-- ✅ Generate 3D model script (`HB-NLP-REV-001_design_script.py`)
+- ✅ Create engine design specifications (`Docs/Designs/HB-NLP-REV-001/design.json`)
+- ✅ Generate 3D model script (`Docs/Designs/HB-NLP-REV-001/design_script.py`)
 - ✅ Launch Plasticity with the design
 - ✅ Provide step-by-step instructions
 
 #### **3. Working with Design Files**
 
 **Generated Files:**
-- `HB-NLP-REV-001_design.json` - Complete engine specifications
-- `HB-NLP-REV-001_design_script.py` - Plasticity 3D model generation script
-- `HB-NLP-REV-001_design_summary.md` - Comprehensive design documentation
+- `Docs/Designs/HB-NLP-REV-001/design.json` - Complete engine specifications
+- `Docs/Designs/HB-NLP-REV-001/design_script.py` - Plasticity 3D model generation script
+- `Docs/Designs/HB-NLP-REV-001/design_summary.md` - Comprehensive design documentation
 
 **Using the Design Script in Plasticity:**
 1. Open Plasticity software
-2. Load `HB-NLP-REV-001_design_script.py`
+2. Load `Docs/Designs/HB-NLP-REV-001/design_script.py`
 3. Run the script to generate the 3D model
 4. Analyze CFD, thermal, and structural properties
 5. Optimize design parameters
@@ -391,7 +391,7 @@ This will:
 You can modify the engine specifications by editing the design files:
 
 ```python
-# Edit HB-NLP-REV-001_design.json to change specifications
+# Edit Docs/Designs/HB-NLP-REV-001/design.json to change specifications
 {
   "specifications": {
     "thrust": 2000000,  # Modify thrust (N)
@@ -867,14 +867,19 @@ dotnet test --filter Category=Quantum
 
 ## Additional Documentation
 
+For detailed documentation, see the [Docs/](Docs/) directory.
+
 ### **Validation and Benchmarks**
-For detailed performance metrics, validation results, and industry benchmarks, see [VALIDATION_AND_BENCHMARKS.md](VALIDATION_AND_BENCHMARKS.md).
+For detailed performance metrics, validation results, and industry benchmarks, see [Docs/Technical/VALIDATION_AND_BENCHMARKS.md](Docs/Technical/VALIDATION_AND_BENCHMARKS.md).
 
 ### **Technical Limitations and Roadmap**
-For an honest assessment of current limitations and future development plans, see [TECHNICAL_LIMITATIONS_AND_ROADMAP.md](TECHNICAL_LIMITATIONS_AND_ROADMAP.md).
+For an honest assessment of current limitations and future development plans, see [Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md](Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md).
 
 ### **Professional Summary**
-For a comprehensive overview of what we've actually built and why it's impressive, see [PROFESSIONAL_SUMMARY.md](PROFESSIONAL_SUMMARY.md).
+For a comprehensive overview of what we've actually built and why it's impressive, see [Docs/Project/PROFESSIONAL_SUMMARY.md](Docs/Project/PROFESSIONAL_SUMMARY.md).
+
+### **Project Health Report**
+For current project status and health metrics, see [Docs/Project/PROJECT_HEALTH_REPORT.md](Docs/Project/PROJECT_HEALTH_REPORT.md).
 
 ---
 
@@ -999,14 +1004,14 @@ Our aerospace engine has been successfully designed and optimized using **Plasti
 - **Quantum-classical Hybrid**: ONLINE
 
 ### **Design Files Generated**
-- `HB-NLP-REV-001_design.json` - Engine specifications
-- `HB-NLP-REV-001_design_script.py` - Plasticity 3D model script
-- `HB-NLP-REV-001_design_summary.md` - Comprehensive design summary
+- `Docs/Designs/HB-NLP-REV-001/design.json` - Engine specifications
+- `Docs/Designs/HB-NLP-REV-001/design_script.py` - Plasticity 3D model script
+- `Docs/Designs/HB-NLP-REV-001/design_summary.md` - Comprehensive design summary
 
 ### **Opening Design in Plasticity**
 ```bash
 # Generate and open design in Plasticity
-python3 open_in_plasticity.py
+python3 Scripts/Integration/open_in_plasticity.py
 ```
 
 ##  Plasticity Integration Status
