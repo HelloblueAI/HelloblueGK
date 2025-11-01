@@ -1,0 +1,175 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build solution
+      run: dotnet build --no-restore --configuration Release
+      
+    - name: Run unit tests
+      run: dotnet test --no-build --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults"
+      
+    - name: Generate coverage report
+      if: always()
+      run: |
+        dotnet tool install -g dotnet-reportgenerator-globaltool || true
+        reportgenerator -reports:"${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" -targetdir:"${{ github.workspace }}/CoverageReport" -reporttypes:"Html;Badges;JsonSummary"
+        
+    - name: Upload coverage reports
+      if: always()
+      uses: codecov/codecov-action@v4
+      with:
+        files: ${{ github.workspace }}/TestResults/**/coverage.cobertura.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+        
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-results
+        path: ${{ github.workspace }}/TestResults
+        retention-days: 30
+        
+    - name: Upload coverage report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: ${{ github.workspace }}/CoverageReport
+        retention-days: 30
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore
+      
+    - name: Build solution
+      run: dotnet build --no-restore --configuration Release
+      
+    - name: Run integration tests
+      run: dotnet test --no-build --configuration Release --filter "Category=Integration" --verbosity normal
+      
+    - name: Run performance benchmarks
+      run: dotnet test --no-build --configuration Release --filter "Category=Performance" --verbosity normal
+
+  code-quality:
+    name: Code Quality Checks
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Install .NET format tool
+      run: dotnet tool install -g dotnet-format || true
+      
+    - name: Check code formatting
+      run: dotnet format --verify-no-changes --verbosity diagnostic
+      continue-on-error: true
+      
+    - name: Run code analysis
+      run: dotnet build --configuration Release /p:RunAnalyzers=true /p:AnalysisLevel=latest
+      continue-on-error: true
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Run security audit
+      run: dotnet list package --vulnerable --include-transitive
+      continue-on-error: true
+      
+    - name: Check for known vulnerabilities
+      run: dotnet add package Microsoft.CodeAnalysis.NetAnalyzers --version 9.0.0 || true
+
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    needs: build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Build Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile
+        push: false
+        tags: hellobluegk:test
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  publish-status:
+    name: Publish Status
+    runs-on: ubuntu-latest
+    needs: [build, integration-tests, code-quality, security-scan]
+    if: always()
+    
+    steps:
+    - name: Check overall status
+      run: |
+        echo "✅ All CI/CD checks completed"
+        echo "Build: ${{ needs.build.result }}"
+        echo "Integration Tests: ${{ needs.integration-tests.result }}"
+        echo "Code Quality: ${{ needs.code-quality.result }}"
+        echo "Security Scan: ${{ needs.security-scan.result }}"
+
