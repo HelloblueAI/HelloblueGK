@@ -1,6 +1,7 @@
 services:
   - type: web
     name: hellobluegk-demo
+    env: docker
     dockerfilePath: Dockerfile.render
     dockerContext: .
     envVars:
