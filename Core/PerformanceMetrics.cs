@@ -107,14 +107,10 @@ namespace HB_NLP_Research_Lab.Core
             lock (_lockObject)
             {
                 // Use TryGetValue instead of ContainsKey + indexer for efficiency
-                if (_historicalData.TryGetValue(engineId, out var data))
-                {
-                    result = data.TakeLast(count).ToList();
-                }
-                else
-                {
-                    result = new List<EnginePerformanceMetrics>();
-                }
+                // Use ternary operator for clarity
+                result = _historicalData.TryGetValue(engineId, out var data)
+                    ? data.TakeLast(count).ToList()
+                    : new List<EnginePerformanceMetrics>();
             }
             return await Task.FromResult(result);
         }
@@ -125,14 +121,10 @@ namespace HB_NLP_Research_Lab.Core
             lock (_lockObject)
             {
                 // Use TryGetValue instead of ContainsKey + indexer for efficiency
-                if (_historicalData.TryGetValue(engineId, out var data) && data.Count > 0)
-                {
-                    result = data.Last();
-                }
-                else
-                {
-                    result = new EnginePerformanceMetrics { EngineId = engineId };
-                }
+                // Use ternary operator for clarity
+                result = _historicalData.TryGetValue(engineId, out var data) && data.Count > 0
+                    ? data.Last()
+                    : new EnginePerformanceMetrics { EngineId = engineId };
             }
             return await Task.FromResult(result);
         }
