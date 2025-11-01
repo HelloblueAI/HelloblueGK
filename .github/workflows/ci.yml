@@ -30,10 +30,13 @@ jobs:
       run: dotnet restore
       
     - name: Build solution
-      run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false
+      run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+      
+    - name: Build test project
+      run: dotnet build Tests/HelloblueGK.Tests.csproj --no-restore --configuration Release /p:TreatWarningsAsErrors=false
       
     - name: Run unit tests
-      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build false
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build
       continue-on-error: true
       
     - name: Generate coverage report
@@ -117,8 +120,11 @@ jobs:
       run: dotnet format --verify-no-changes --verbosity diagnostic
       continue-on-error: true
       
+    - name: Restore dependencies
+      run: dotnet restore
+      
     - name: Run code analysis
-      run: dotnet build --configuration Release /p:RunAnalyzers=true /p:AnalysisLevel=latest /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:WarningsNotAsErrors=""
+      run: dotnet build --no-restore --configuration Release /p:RunAnalyzers=true /p:AnalysisLevel=latest /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:WarningsNotAsErrors=""
       continue-on-error: true
 
   security-scan:

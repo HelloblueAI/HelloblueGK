@@ -43,7 +43,7 @@ COPY --from=build /app/plasticity-demo ./plasticity-demo
 
 # Copy design files and scripts
 COPY HB-NLP-REV-001* ./
-COPY open_in_plasticity.py ./
+COPY Scripts/Integration/open_in_plasticity.py ./open_in_plasticity.py
 COPY README.md ./
 
 # Create non-root user
