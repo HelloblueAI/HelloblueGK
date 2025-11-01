@@ -274,8 +274,8 @@ namespace HB_NLP_Research_Lab.Aerospace
             var engineModel = new HB_NLP_Research_Lab.Physics.EngineModel { Name = engine.Name };
             
             // Run comprehensive analysis
-            var physicsResult = await _physicsEngine.RunCfdAnalysisAsync();
-            var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(engineModel);
+            await _physicsEngine.RunCfdAnalysisAsync();
+            await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(engineModel);
             
             // Convert results to the expected types
             var convertedPhysicsResult = new HB_NLP_Research_Lab.Models.CfdAnalysisResult

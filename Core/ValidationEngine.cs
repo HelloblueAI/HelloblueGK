@@ -121,7 +121,7 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(10);
             
             // Create synthetic validation for now
-            var syntheticData = CreateSyntheticTestData(engineModel, new SimulationResults());
+            CreateSyntheticTestData(engineModel, new SimulationResults());
             var metrics = new ValidationMetrics
             {
                 ThrustAccuracy = 95.5,

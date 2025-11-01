@@ -63,7 +63,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public void RecordMetric(string name, double value, string category = "General")
         {
-            var metric = _metrics.AddOrUpdate(name, 
+            _metrics.AddOrUpdate(name, 
                 new PerformanceMetric { Name = name, Category = category, Value = value, Count = 1, LastUpdated = DateTime.UtcNow },
                 (key, existing) => 
                 {
@@ -156,7 +156,8 @@ namespace HB_NLP_Research_Lab.Core
                 MetricName = metricName,
                 Direction = secondHalf > firstHalf ? TrendDirection.Increasing : 
                            secondHalf < firstHalf ? TrendDirection.Decreasing : TrendDirection.Stable,
-                ChangePercentage = firstHalf != 0 ? ((secondHalf - firstHalf) / firstHalf) * 100 : 0,
+                // Use epsilon comparison for floating point equality check
+                ChangePercentage = Math.Abs(firstHalf) > double.Epsilon ? ((secondHalf - firstHalf) / firstHalf) * 100 : 0,
                 AverageValue = recentSamples.Average(s => s.Value),
                 MinValue = recentSamples.Min(s => s.Value),
                 MaxValue = recentSamples.Max(s => s.Value),

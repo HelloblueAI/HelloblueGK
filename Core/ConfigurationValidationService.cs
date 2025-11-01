@@ -138,7 +138,7 @@ namespace HB_NLP_Research_Lab.Core
         {
             _logger.LogDebug("Validating performance monitoring configuration...");
 
-            var enablePerformanceMonitoring = _configuration.GetValue<bool>("EnablePerformanceMonitoring", true);
+            _configuration.GetValue<bool>("EnablePerformanceMonitoring", true);
             var metricsInterval = _configuration.GetValue<int>("MetricsInterval", 5000);
 
             if (metricsInterval < 1000)
@@ -156,7 +156,7 @@ namespace HB_NLP_Research_Lab.Core
         {
             _logger.LogDebug("Validating rate limiting configuration...");
 
-            var enableRateLimiting = _configuration.GetValue<bool>("EnableRateLimiting", true);
+            _configuration.GetValue<bool>("EnableRateLimiting", true);
             var defaultRateLimit = _configuration.GetValue<int>("DefaultRateLimit", 100);
 
             if (defaultRateLimit <= 0)

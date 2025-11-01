@@ -187,7 +187,7 @@ namespace HB_NLP_Research_Lab.Core
                     };
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Silently handle errors to prevent log spam
             }
@@ -225,7 +225,7 @@ namespace HB_NLP_Research_Lab.Core
                     };
                 }
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Silently handle errors to prevent log spam
             }

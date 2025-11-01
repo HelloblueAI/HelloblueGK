@@ -214,7 +214,7 @@ namespace HB_NLP_Research_Lab.Physics
             var result = await RunCoupledAnalysisAsync(engineModel);
             
             // Extract specific coupled results
-            var fluidStructureResult = new FluidStructureThermalElectromagneticResult
+            return new FluidStructureThermalElectromagneticResult
             {
                 FluidStructureCoupling = new FluidStructureCoupling
                 {

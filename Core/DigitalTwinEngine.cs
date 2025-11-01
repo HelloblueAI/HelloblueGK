@@ -239,7 +239,7 @@ namespace HB_NLP_Research_Lab.Core
             
             // Get current digital twin
             var digitalTwin = _digitalTwins[engineId];
-            var predictionAccuracy = _predictionAccuracies[engineId];
+            _predictionAccuracies[engineId]; // Access for validation
             
             // Run predictive analysis
             var prediction = await _predictiveTwin.PredictEngineBehaviorAsync(engineId, scenario);
