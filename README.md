@@ -1,3 +1,53 @@
+# HelloblueGK - Advanced Aerospace Engine Simulation Platform
+
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![.NET](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/)
+[![CI/CD](https://github.com/HelloblueAI/HelloblueGK/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions)
+[![CodeQL](https://github.com/HelloblueAI/HelloblueGK/workflows/CodeQL%20Security%20Analysis/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/security/code-scanning)
+
+> **Open-source aerospace engine simulation platform** with multi-physics coupling, AI optimization, and enterprise-grade compliance.
+
+## 🚀 Quick Start
+
+### Try the Interactive Demo
+
+```bash
+# Clone the repository
+git clone https://github.com/HelloblueAI/HelloblueGK.git
+cd HelloblueGK
+
+# Run the demo
+cd WebAPI
+dotnet run
+
+# Open http://localhost:5000/swagger in your browser
+```
+
+See [DEMO.md](DEMO.md) for detailed demo instructions.
+
+### Install
+
+```bash
+# Install .NET 9.0 SDK (if not already installed)
+# Visit: https://dotnet.microsoft.com/download
+
+# Clone and build
+git clone https://github.com/HelloblueAI/HelloblueGK.git
+cd HelloblueGK
+dotnet restore
+dotnet build
+dotnet test
+```
+
+## 🤝 Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 📄 License
+
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+---
 
 ### HelloblueGK - Advanced Aerospace Engine Simulation Platform
 
