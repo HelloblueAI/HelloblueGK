@@ -79,7 +79,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting metric {MetricName}", metricName);
+                var sanitizedMetricName = LogSanitizer.Sanitize(metricName);
+                _logger.LogError(ex, "Error getting metric {MetricName}", sanitizedMetricName);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -99,7 +100,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting metrics for category {Category}", category);
+                var sanitizedCategory = LogSanitizer.Sanitize(category);
+                _logger.LogError(ex, "Error getting metrics for category {Category}", sanitizedCategory);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -121,7 +123,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting trend analysis for metric {MetricName}", metricName);
+                var sanitizedMetricName = LogSanitizer.Sanitize(metricName);
+                _logger.LogError(ex, "Error getting trend analysis for metric {MetricName}", sanitizedMetricName);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -146,7 +149,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error recording metric {MetricName}", request.Name);
+                var sanitizedMetricName = LogSanitizer.Sanitize(request.Name);
+                _logger.LogError(ex, "Error recording metric {MetricName}", sanitizedMetricName);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -172,7 +176,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error recording execution time for operation {OperationName}", request.OperationName);
+                var sanitizedOperationName = LogSanitizer.Sanitize(request.OperationName);
+                _logger.LogError(ex, "Error recording execution time for operation {OperationName}", sanitizedOperationName);
                 return StatusCode(500, "Internal server error");
             }
         }

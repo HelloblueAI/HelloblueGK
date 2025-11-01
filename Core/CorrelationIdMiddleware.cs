@@ -31,19 +31,25 @@ namespace HB_NLP_Research_Lab.Core
             // Set correlation ID in trace context
             Activity.Current?.SetTag("correlation_id", correlationId);
             
+            // Sanitize user input for safe logging
+            var sanitizedPath = LogSanitizer.SanitizePath(context.Request.Path);
+            var sanitizedMethod = LogSanitizer.Sanitize(context.Request.Method);
+            var sanitizedUserAgent = LogSanitizer.Sanitize(context.Request.Headers.UserAgent.ToString());
+            var sanitizedRemoteIp = LogSanitizer.Sanitize(context.Connection.RemoteIpAddress?.ToString() ?? "unknown");
+
             // Create structured logging scope
             using var scope = _logger.BeginScope(new Dictionary<string, object>
             {
                 ["CorrelationId"] = correlationId,
                 ["RequestId"] = context.TraceIdentifier,
-                ["RequestPath"] = context.Request.Path,
-                ["RequestMethod"] = context.Request.Method,
-                ["UserAgent"] = context.Request.Headers.UserAgent.ToString(),
-                ["RemoteIpAddress"] = context.Connection.RemoteIpAddress?.ToString() ?? "unknown"
+                ["RequestPath"] = sanitizedPath,
+                ["RequestMethod"] = sanitizedMethod,
+                ["UserAgent"] = sanitizedUserAgent,
+                ["RemoteIpAddress"] = sanitizedRemoteIp
             });
 
             _logger.LogInformation("Request started {RequestPath} {RequestMethod}", 
-                context.Request.Path, context.Request.Method);
+                sanitizedPath, sanitizedMethod);
 
             var stopwatch = Stopwatch.StartNew();
             
@@ -52,15 +58,19 @@ namespace HB_NLP_Research_Lab.Core
                 await _next(context);
                 stopwatch.Stop();
                 
+                var sanitizedPath = LogSanitizer.SanitizePath(context.Request.Path);
+                var sanitizedMethod = LogSanitizer.Sanitize(context.Request.Method);
                 _logger.LogInformation("Request completed {RequestPath} {RequestMethod} {StatusCode} {ElapsedMs}ms", 
-                    context.Request.Path, context.Request.Method, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
+                    sanitizedPath, sanitizedMethod, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 
+                var sanitizedPath = LogSanitizer.SanitizePath(context.Request.Path);
+                var sanitizedMethod = LogSanitizer.Sanitize(context.Request.Method);
                 _logger.LogError(ex, "Request failed {RequestPath} {RequestMethod} {StatusCode} {ElapsedMs}ms", 
-                    context.Request.Path, context.Request.Method, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
+                    sanitizedPath, sanitizedMethod, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
                 
                 throw;
             }

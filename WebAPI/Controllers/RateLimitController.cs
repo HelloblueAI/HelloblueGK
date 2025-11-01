@@ -36,7 +36,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error getting rate limit status for {Identifier}", identifier);
+                var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
+                _logger.LogError(ex, "Error getting rate limit status for {Identifier}", sanitizedIdentifier);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -71,12 +72,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             try
             {
                 await _rateLimitingService.ResetRateLimitAsync(identifier);
-                _logger.LogInformation("Rate limit reset for {Identifier}", identifier);
+                var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
+                _logger.LogInformation("Rate limit reset for {Identifier}", sanitizedIdentifier);
                 return Ok(new { message = $"Rate limit reset for {identifier}" });
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error resetting rate limit for {Identifier}", identifier);
+                var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
+                _logger.LogError(ex, "Error resetting rate limit for {Identifier}", sanitizedIdentifier);
                 return StatusCode(500, "Internal server error");
             }
         }
@@ -123,7 +126,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error testing rate limit for {Identifier}", request.Identifier);
+                var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(request.Identifier);
+                _logger.LogError(ex, "Error testing rate limit for {Identifier}", sanitizedIdentifier);
                 return StatusCode(500, "Internal server error");
             }
         }

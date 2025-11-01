@@ -211,11 +211,12 @@ namespace HB_NLP_Research_Lab.Core
             {
                 CPUUsage = _cpuCounter?.NextValue() ?? 0,
                 AvailableMemory = _memoryCounter?.NextValue() ?? 0,
-                ProcessWorkingSet = _currentProcess.WorkingSet64 / 1024 / 1024,
-                ProcessPrivateMemory = _currentProcess.PrivateMemorySize64 / 1024 / 1024,
+                // Explicit cast to double for division to avoid precision loss warning (intentional conversion from bytes to MB)
+                ProcessWorkingSet = (double)_currentProcess.WorkingSet64 / 1024.0 / 1024.0,
+                ProcessPrivateMemory = (double)_currentProcess.PrivateMemorySize64 / 1024.0 / 1024.0,
                 ThreadCount = _currentProcess.Threads.Count,
                 HandleCount = _currentProcess.HandleCount,
-                GCMemory = GC.GetTotalMemory(false) / 1024 / 1024,
+                GCMemory = (double)GC.GetTotalMemory(false) / 1024.0 / 1024.0,
                 Gen0Collections = GC.CollectionCount(0),
                 Gen1Collections = GC.CollectionCount(1),
                 Gen2Collections = GC.CollectionCount(2)
