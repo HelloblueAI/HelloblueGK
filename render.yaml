@@ -1,6 +1,7 @@
 services:
   - type: web
     name: hellobluegk-demo
+    env: docker
     dockerfilePath: Dockerfile.render
     dockerContext: .
     envVars:
@@ -9,4 +10,3 @@ services:
       - key: ASPNETCORE_URLS
         value: http://0.0.0.0:$PORT
     healthCheckPath: /Health
-
