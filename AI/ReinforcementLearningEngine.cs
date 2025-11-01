@@ -111,7 +111,8 @@ namespace HB_NLP_Research_Lab.AI
             foreach (var action in actions)
             {
                 var stateKey = $"{state}_{action}";
-                var qValue = _qTable.ContainsKey(stateKey) ? _qTable[stateKey] : 0.0;
+                // Use TryGetValue instead of ContainsKey + indexer for efficiency
+                var qValue = _qTable.TryGetValue(stateKey, out var value) ? value : 0.0;
                 
                 if (qValue > bestQ)
                 {

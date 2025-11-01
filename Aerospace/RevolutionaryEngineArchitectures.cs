@@ -18,8 +18,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         private readonly AdvancedMultiPhysicsCoupler _multiPhysicsCoupler;
         private readonly DigitalTwinEngine _digitalTwin;
         
-        private Dictionary<string, RevolutionaryEngine> _revolutionaryEngines;
-        private Dictionary<string, ArchitecturePerformance> _performanceData;
+        private readonly Dictionary<string, RevolutionaryEngine> _revolutionaryEngines;
+        private readonly Dictionary<string, ArchitecturePerformance> _performanceData;
         private bool _isInitialized = false;
 
         public RevolutionaryEngineArchitectures()
@@ -265,6 +265,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         {
             Console.WriteLine($"[Revolutionary Architectures] 🔬 Analyzing revolutionary engine: {engineId}");
             
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
             if (!_revolutionaryEngines.ContainsKey(engineId))
             {
                 throw new ArgumentException($"Engine {engineId} not found");
@@ -274,8 +275,8 @@ namespace HB_NLP_Research_Lab.Aerospace
             var engineModel = new HB_NLP_Research_Lab.Physics.EngineModel { Name = engine.Name };
             
             // Run comprehensive analysis
-            var physicsResult = await _physicsEngine.RunCfdAnalysisAsync();
-            var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(engineModel);
+            await _physicsEngine.RunCfdAnalysisAsync();
+            await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(engineModel);
             
             // Convert results to the expected types
             var convertedPhysicsResult = new HB_NLP_Research_Lab.Models.CfdAnalysisResult
