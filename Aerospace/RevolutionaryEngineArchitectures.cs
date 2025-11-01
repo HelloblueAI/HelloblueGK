@@ -18,8 +18,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         private readonly AdvancedMultiPhysicsCoupler _multiPhysicsCoupler;
         private readonly DigitalTwinEngine _digitalTwin;
         
-        private Dictionary<string, RevolutionaryEngine> _revolutionaryEngines;
-        private Dictionary<string, ArchitecturePerformance> _performanceData;
+        private readonly Dictionary<string, RevolutionaryEngine> _revolutionaryEngines;
+        private readonly Dictionary<string, ArchitecturePerformance> _performanceData;
         private bool _isInitialized = false;
 
         public RevolutionaryEngineArchitectures()

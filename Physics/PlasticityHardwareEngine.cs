@@ -23,7 +23,7 @@ namespace HB_NLP_Research_Lab.Physics
         
         private PlasticityConfiguration _config;
         private PlasticityHardwareState _hardwareState;
-        private Dictionary<string, PlasticitySimulation> _activeSimulations;
+        private readonly Dictionary<string, PlasticitySimulation> _activeSimulations;
         private bool _isInitialized = false;
         private bool _isHardwareAvailable = false;
 

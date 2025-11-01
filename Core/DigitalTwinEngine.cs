@@ -24,9 +24,9 @@ namespace HB_NLP_Research_Lab.Core
         private readonly AutonomousTestingSystem _autonomousTesting;
         private readonly RealTimeLearningEngine _learningEngine;
         
-        private Dictionary<string, EngineDigitalTwin> _digitalTwins;
-        private Dictionary<string, LearningHistory> _learningHistories;
-        private Dictionary<string, PredictionAccuracy> _predictionAccuracies;
+        private readonly Dictionary<string, EngineDigitalTwin> _digitalTwins;
+        private readonly Dictionary<string, LearningHistory> _learningHistories;
+        private readonly Dictionary<string, PredictionAccuracy> _predictionAccuracies;
         
         private bool _isInitialized = false;
 

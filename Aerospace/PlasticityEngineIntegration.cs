@@ -23,7 +23,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         private readonly DigitalTwinEngine _digitalTwin;
         
         private PlasticityConnection _plasticityConnection;
-        private Dictionary<string, PlasticityEngineDesign> _activeDesigns;
+        private readonly Dictionary<string, PlasticityEngineDesign> _activeDesigns;
         private bool _isInitialized = false;
 
         public PlasticityEngineIntegration()
