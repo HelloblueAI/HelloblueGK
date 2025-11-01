@@ -27,7 +27,7 @@ public class ConfigurationValidationServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        result.IsValid.Should().BeOneOf(true, false);
+        // IsValid is already typed as bool, so we just verify the result structure
         result.ValidationTimestamp.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
     }
 
@@ -38,8 +38,8 @@ public class ConfigurationValidationServiceTests
         var result = await _service.ValidateConfigurationAsync();
 
         // Assert
-        result.ValidationDetails.Should().NotBeNull();
-        result.Issues.Should().NotBeNull();
+        result.Errors.Should().NotBeNull();
+        result.Warnings.Should().NotBeNull();
     }
 
     [Fact]

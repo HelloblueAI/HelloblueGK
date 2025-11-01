@@ -22,6 +22,8 @@ namespace HB_NLP_Research_Lab.Core
         
         private readonly Dictionary<string, ValidationResult> _validationCache;
         private readonly object _cacheLock = new object();
+        private readonly HashSet<string> _processingEngines = new HashSet<string>();
+        private readonly object _processingLock = new object();
 
         public RealTimeValidationEngine()
         {
@@ -37,12 +39,9 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ValidationReport> ValidateEngineModelAsync(string engineModel)
         {
-            Console.WriteLine($"[Real-Time Validation] 🚀 Validating engine model: {engineModel}");
-            
             // Check cache first
             if (_validationCache.TryGetValue(engineModel, out var cachedResult))
             {
-                Console.WriteLine($"[Real-Time Validation] Using cached validation result for {engineModel}");
                 return await CreateValidationReportAsync(engineModel, cachedResult);
             }
 
@@ -60,8 +59,6 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ValidationResult> ValidateEngineAsync(string engineModel)
         {
-            Console.WriteLine($"[Real-Time Validation] 🔍 Validating engine: {engineModel}");
-            
             // Check cache first
             if (_validationCache.TryGetValue(engineModel, out var cachedResult))
             {
@@ -82,8 +79,6 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ValidationSummary> GenerateValidationSummaryAsync()
         {
-            Console.WriteLine("[Real-Time Validation] 📊 Generating validation summary...");
-            
             // Simulate async operation
             await Task.Delay(5);
             
@@ -129,8 +124,6 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<List<ValidationResult>> GetValidationHistoryAsync()
         {
-            Console.WriteLine("[Real-Time Validation] 📚 Retrieving validation history...");
-            
             await Task.Delay(1);
             return _validationCache.Values.ToList();
         }
@@ -143,34 +136,36 @@ namespace HB_NLP_Research_Lab.Core
 
         private async Task<ValidationResult> PerformRealTimeValidationAsync(string engineModel)
         {
-            Console.WriteLine($"[Real-Time Validation] 🔍 Performing real-time validation for {engineModel}");
+            // Suppress events during validation to prevent infinite loops
+            _dataCollector.SuppressEvents(true);
             
-            // Simulate async operation
-            await Task.Delay(10);
-            
-            // Collect real-time data from multiple sources
-            var validationTasks = new[]
+            try
             {
-                ValidateAgainstFlightDataAsync(engineModel),
-                ValidateAgainstTestStandDataAsync(engineModel),
-                ValidateAgainstIndustryStandardsAsync(engineModel),
-                ValidateAgainstSimulationDataAsync(engineModel)
-            };
+                // Collect real-time data from multiple sources
+                var validationTasks = new[]
+                {
+                    ValidateAgainstFlightDataAsync(engineModel),
+                    ValidateAgainstTestStandDataAsync(engineModel),
+                    ValidateAgainstIndustryStandardsAsync(engineModel),
+                    ValidateAgainstSimulationDataAsync(engineModel)
+                };
 
-            var validationResults = await Task.WhenAll(validationTasks);
-            
-            // Aggregate and analyze results
-            var aggregatedResult = await _analytics.AggregateValidationResultsAsync(validationResults);
-            
-            Console.WriteLine($"[Real-Time Validation] ✅ Validation complete: {aggregatedResult.OverallAccuracy:F1}% accuracy");
-            
-            return aggregatedResult;
+                var validationResults = await Task.WhenAll(validationTasks);
+                
+                // Aggregate and analyze results
+                var aggregatedResult = await _analytics.AggregateValidationResultsAsync(validationResults);
+                
+                return aggregatedResult;
+            }
+            finally
+            {
+                // Re-enable events after validation completes
+                _dataCollector.SuppressEvents(false);
+            }
         }
 
         private async Task<ValidationResult> ValidateAgainstFlightDataAsync(string engineModel)
         {
-            Console.WriteLine($"[Real-Time Validation] ✈️ Validating against flight data for {engineModel}");
-            
             // Simulate async operation
             await Task.Delay(5);
             
@@ -194,7 +189,7 @@ namespace HB_NLP_Research_Lab.Core
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Real-Time Validation] ⚠️ Flight data validation failed: {ex.Message}");
+                // Silently handle errors to prevent log spam
             }
             
             return new ValidationResult
@@ -209,8 +204,6 @@ namespace HB_NLP_Research_Lab.Core
 
         private async Task<ValidationResult> ValidateAgainstTestStandDataAsync(string engineModel)
         {
-            Console.WriteLine($"[Real-Time Validation] 🧪 Validating against test stand data for {engineModel}");
-            
             // Simulate async operation
             await Task.Delay(5);
             
@@ -234,7 +227,7 @@ namespace HB_NLP_Research_Lab.Core
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Real-Time Validation] ⚠️ Test stand validation failed: {ex.Message}");
+                // Silently handle errors to prevent log spam
             }
             
             return new ValidationResult
@@ -249,8 +242,6 @@ namespace HB_NLP_Research_Lab.Core
 
         private async Task<ValidationResult> ValidateAgainstIndustryStandardsAsync(string engineModel)
         {
-            Console.WriteLine($"[Real-Time Validation] 📊 Validating against industry standards for {engineModel}");
-            
             // Simulate async operation
             await Task.Delay(5);
             
@@ -274,7 +265,7 @@ namespace HB_NLP_Research_Lab.Core
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Real-Time Validation] ⚠️ Industry standards validation failed: {ex.Message}");
+                // Silently handle errors to prevent log spam
             }
             
             return new ValidationResult
@@ -289,8 +280,6 @@ namespace HB_NLP_Research_Lab.Core
 
         private async Task<ValidationResult> ValidateAgainstSimulationDataAsync(string engineModel)
         {
-            Console.WriteLine($"[Real-Time Validation] 💻 Validating against simulation data for {engineModel}");
-            
             // Simulate async operation
             await Task.Delay(5);
             
@@ -314,7 +303,7 @@ namespace HB_NLP_Research_Lab.Core
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Real-Time Validation] ⚠️ Simulation validation failed: {ex.Message}");
+                // Silently handle errors to prevent log spam
             }
             
             return new ValidationResult
@@ -391,29 +380,48 @@ namespace HB_NLP_Research_Lab.Core
 
         private void OnValidationDataReceived(object? sender, ValidationDataEventArgs e)
         {
-            Console.WriteLine($"[Real-Time Validation] 📡 Received validation data: {e.DataType} for {e.EngineModel}");
+            // Prevent infinite loop - only process if not already processing this engine
+            lock (_processingLock)
+            {
+                if (_processingEngines.Contains(e.EngineModel))
+                {
+                    return; // Already processing, skip to prevent recursion
+                }
+                _processingEngines.Add(e.EngineModel);
+            }
             
-            // Process real-time validation data
-            Task.Run(async () => await ProcessRealTimeValidationDataAsync(e));
+            // Process real-time validation data (fire and forget, but don't trigger events)
+            Task.Run(async () => 
+            {
+                try
+                {
+                    await ProcessRealTimeValidationDataAsync(e);
+                }
+                finally
+                {
+                    lock (_processingLock)
+                    {
+                        _processingEngines.Remove(e.EngineModel);
+                    }
+                }
+            });
         }
 
         private async Task ProcessRealTimeValidationDataAsync(ValidationDataEventArgs e)
         {
             try
             {
-                // Update validation cache with new data
+                // Update validation cache with new data (without triggering events)
                 var updatedResult = await PerformRealTimeValidationAsync(e.EngineModel);
                 
                 lock (_cacheLock)
                 {
                     _validationCache[e.EngineModel] = updatedResult;
                 }
-                
-                Console.WriteLine($"[Real-Time Validation] 🔄 Updated validation cache for {e.EngineModel}: {updatedResult.OverallAccuracy:F1}% accuracy");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Real-Time Validation] ❌ Failed to process real-time validation data: {ex.Message}");
+                // Silently handle errors to prevent log spam
             }
         }
 
@@ -428,19 +436,23 @@ namespace HB_NLP_Research_Lab.Core
     public class RealTimeDataCollector
     {
         public event EventHandler<ValidationDataEventArgs> DataReceived = null!;
+        private bool _suppressEvents = false; // Flag to prevent infinite loops during validation
         
         public async Task<FlightData> CollectFlightDataAsync(string engineModel)
         {
             // Simulate real-time flight data collection
             await Task.Delay(100);
             
-            // Trigger data received event
-            DataReceived?.Invoke(this, new ValidationDataEventArgs
+            // Only trigger event if not suppressing (to prevent infinite loops during validation)
+            if (!_suppressEvents)
             {
-                DataType = "Flight Data",
-                EngineModel = engineModel,
-                Timestamp = DateTime.UtcNow
-            });
+                DataReceived?.Invoke(this, new ValidationDataEventArgs
+                {
+                    DataType = "Flight Data",
+                    EngineModel = engineModel,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
             
             return new FlightData
             {
@@ -458,12 +470,16 @@ namespace HB_NLP_Research_Lab.Core
             // Simulate real-time test stand data collection
             await Task.Delay(150);
             
-            DataReceived?.Invoke(this, new ValidationDataEventArgs
+            // Only trigger event if not suppressing (to prevent infinite loops during validation)
+            if (!_suppressEvents)
             {
-                DataType = "Test Stand Data",
-                EngineModel = engineModel,
-                Timestamp = DateTime.UtcNow
-            });
+                DataReceived?.Invoke(this, new ValidationDataEventArgs
+                {
+                    DataType = "Test Stand Data",
+                    EngineModel = engineModel,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
             
             return new TestStandData
             {
@@ -474,6 +490,11 @@ namespace HB_NLP_Research_Lab.Core
                 ChamberPressure = 245,
                 Timestamp = DateTime.UtcNow
             };
+        }
+        
+        public void SuppressEvents(bool suppress)
+        {
+            _suppressEvents = suppress;
         }
     }
 

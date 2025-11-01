@@ -188,10 +188,10 @@ public class PerformanceBenchmarkTests
             tasks.Add(task);
         }
 
-        var allTasksCompleted = await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks);
 
         // Assert
-        allTasksCompleted.Should().AllSatisfy(task => task.Status.Should().Be(TaskStatus.RanToCompletion));
+        tasks.Should().AllSatisfy(task => task.Status.Should().Be(TaskStatus.RanToCompletion));
     }
 
     [Fact]
@@ -257,8 +257,8 @@ public class PerformanceBenchmarkTests
         // Act - Create and dispose many services
         for (int i = 0; i < 100; i++)
         {
-            using var mockLogger = new Mock<ILogger<PerformanceMonitoringService>>();
-            using var service = new PerformanceMonitoringService(mockLogger.Object);
+            var mockLogger = new Mock<ILogger<PerformanceMonitoringService>>();
+            var service = new PerformanceMonitoringService(mockLogger.Object);
             
             service.RecordMetric($"CleanupTest_{i}", i, "CleanupTest");
         }

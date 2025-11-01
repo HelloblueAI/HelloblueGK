@@ -38,8 +38,10 @@ public class RealTimeValidationEngineTests : IDisposable
 
         // Assert
         result.Should().NotBeNull();
-        result.EngineId.Should().Be(engineModel);
+        // RealTimeValidationEngine.ValidateEngineAsync returns ValidationResult which doesn't have EngineId property
+        // It has ValidationType, DataSource, Accuracy, etc.
         result.Accuracy.Should().BeGreaterThanOrEqualTo(0).And.BeLessThanOrEqualTo(100);
+        result.ValidationType.Should().NotBeNullOrEmpty();
     }
 
     [Fact]
@@ -118,7 +120,8 @@ public class RealTimeValidationEngineTests : IDisposable
 
     public void Dispose()
     {
-        _validationEngine?.Dispose();
+        // RealTimeValidationEngine doesn't implement IDisposable
+        // No cleanup needed
     }
 }
 
