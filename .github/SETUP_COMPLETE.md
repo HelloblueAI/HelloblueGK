@@ -100,6 +100,26 @@ Your pipelines are now running! Check:
 - **CI/CD Pipeline**: https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml
 - **CodeQL Security**: https://github.com/HelloblueAI/HelloblueGK/actions/workflows/codeql.yml
 
+### ⚠️ Multiple Workflows Issue - RESOLVED
+
+**Problem**: Multiple CI/CD workflows were triggering simultaneously because:
+- Old workflow (`ci-cd.yml`) was still active
+- New workflow (`ci.yml`) was added
+- Both triggered on the same events
+
+**Solution**: 
+- ✅ Removed duplicate `ci-cd.yml` workflow
+- ✅ Kept the comprehensive `ci.yml` workflow
+- ✅ Kept separate `codeql.yml` for security analysis
+- ✅ Kept `release.yml` for release automation
+
+**Current Active Workflows**:
+1. **ci.yml** - Main CI/CD pipeline (build, test, coverage, quality checks)
+2. **codeql.yml** - Security analysis (CodeQL)
+3. **release.yml** - Release automation (when tags are pushed)
+
+Each workflow now has a distinct purpose and won't conflict.
+
 ## 📋 Next Steps Summary
 
 1. ✅ **Done**: Code pushed, CI/CD active
