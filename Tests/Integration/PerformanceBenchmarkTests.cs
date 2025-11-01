@@ -191,7 +191,7 @@ public class PerformanceBenchmarkTests
         await Task.WhenAll(tasks);
 
         // Assert
-        allTasksCompleted.Should().AllSatisfy(task => task.Status.Should().Be(TaskStatus.RanToCompletion));
+        tasks.Should().AllSatisfy(task => task.Status.Should().Be(TaskStatus.RanToCompletion));
     }
 
     [Fact]
