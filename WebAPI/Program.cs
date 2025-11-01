@@ -29,11 +29,22 @@ builder.Services.AddSwaggerGen(c =>
     });
     
     // Include XML comments if available
-    var xmlFile = $"{System.Reflection.Assembly.GetExecutingAssembly().GetName().Name}.xml";
-    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-    if (File.Exists(xmlPath))
+    var assemblyName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
+    if (!string.IsNullOrEmpty(assemblyName))
     {
-        c.IncludeXmlComments(xmlPath);
+        // Ensure xmlFile is relative (no path separators) to prevent Path.Combine issues
+        var xmlFile = $"{assemblyName}.xml";
+        // Sanitize: remove any path separators that might have been injected
+        xmlFile = xmlFile.Replace(Path.DirectorySeparatorChar, '_')
+                        .Replace(Path.AltDirectorySeparatorChar, '_')
+                        .Replace("..", string.Empty);
+        
+        // Safely combine paths - xmlFile is guaranteed to be relative
+        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+        if (File.Exists(xmlPath))
+        {
+            c.IncludeXmlComments(xmlPath);
+        }
     }
     
     // Ignore type conflicts - use the types from this assembly
