@@ -1,5 +1,6 @@
 using FluentAssertions;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.AI;
 
 namespace HelloblueGK.Tests.Unit.Core;
 

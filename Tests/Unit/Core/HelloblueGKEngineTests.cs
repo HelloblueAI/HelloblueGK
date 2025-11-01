@@ -15,6 +15,7 @@ public class HelloblueGKEngineTests : IDisposable
         _engine = new HelloblueGKEngine();
     }
 
+
     [Fact]
     public async Task AnalyzeEngineAsync_ShouldReturnComprehensiveAnalysis()
     {

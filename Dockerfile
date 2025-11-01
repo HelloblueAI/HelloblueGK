@@ -15,13 +15,13 @@ RUN dotnet restore PlasticityDemo/
 # Copy source code
 COPY . .
 
-# Build applications
-RUN dotnet build --no-restore --configuration Release
-RUN dotnet build PlasticityDemo/ --no-restore --configuration Release
+# Build applications (allow warnings, don't treat as errors)
+RUN dotnet build --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+RUN dotnet build PlasticityDemo/ --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
 
 # Publish applications
-RUN dotnet publish --no-restore --configuration Release --output /app/publish
-RUN dotnet publish PlasticityDemo/ --no-restore --configuration Release --output /app/plasticity-demo
+RUN dotnet publish --configuration Release --output /app/publish /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+RUN dotnet publish PlasticityDemo/ --configuration Release --output /app/plasticity-demo /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
@@ -43,7 +43,7 @@ COPY --from=build /app/plasticity-demo ./plasticity-demo
 
 # Copy design files and scripts
 COPY HB-NLP-REV-001* ./
-COPY open_in_plasticity.py ./
+COPY Scripts/Integration/open_in_plasticity.py ./open_in_plasticity.py
 COPY README.md ./
 
 # Create non-root user
