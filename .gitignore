@@ -1,4 +1,4 @@
-# .NET build artifacts
+## .NET / C# ##
 bin/
 obj/
 *.dll
@@ -6,14 +6,7 @@ obj/
 *.pdb
 *.so
 *.dylib
-
-# Visual Studio / VS Code
-.vs/
-.vscode/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
+*.cache
 
 # Build results
 [Dd]ebug/
@@ -27,9 +20,12 @@ bld/
 [Bb]in/
 [Oo]bj/
 [Oo]ut/
+
+# MSBuild
 msbuild.log
 msbuild.err
 msbuild.wrn
+*.binlog
 
 # NuGet
 *.nupkg
@@ -38,167 +34,78 @@ msbuild.wrn
 !**/packages/build/
 *.nuget.props
 *.nuget.targets
+project.lock.json
+project.fragment.lock.json
+artifacts/
 
-# User-specific files
+# .NET Core / .NET 9.0
+.vs/
+.vscode/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
 *.rsuser
+*.userprefs
+
+# Test Results
+TestResults/
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+coverage.cobertura.xml
+CoverageReport/
+.coverage/
+
+# Code Coverage
+*.lcov
+coverage.json
+coverage-summary.json
+
+## Visual Studio ##
+.vs/
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
+*.userprefs
+*.vsidx
+*.vspscc
+*.vspx
+*.scc
 
-# Mono auto generated files
+## Visual Studio Code ##
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+## JetBrains Rider ##
+.idea/
+*.sln.iml
+*.iml
+*.ipr
+*.iws
+
+## Mono ##
 mono_crash.*
 
-# Windows image file caches
+## Windows ##
 Thumbs.db
 ehthumbs.db
-
-# Folder config file
 Desktop.ini
-
-# Recycle Bin used on file shares
 $RECYCLE.BIN/
-
-# Windows Installer files
 *.cab
 *.msi
 *.msix
 *.msm
 *.msp
-
-# Windows shortcuts
 *.lnk
 
-# JetBrains Rider
-.idea/
-*.sln.iml
-
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-
-# Icon must end with two \r
-Icon
-
-# Thumbnails
-._*
-
-# Files that might appear in the root of a volume
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-
-# Directories potentially created on remote AFP share
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-# Linux
-*~
-
-# temporary files which can be created if a process still has a handle open of a deleted file
-.fuse_hidden*
-
-# KDE directory preferences
-.directory
-
-# Linux trash folder which might appear on any partition or disk
-.Trash-*
-
-# .nfs files are created when an open file is removed but is still being accessed
-.nfs*
-
-# Binary files and executables
-kubectl
-kubectl.exe
-*.exe
-*.bin
-*.app
-
-# Logs
-*.log
-logs/
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
-coverage/
-
-# nyc test coverage
-.nyc_output
-
-# Dependency directories
-node_modules/
-jspm_packages/
-
-# Optional npm cache directory
-.npm
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# dotenv environment variables file
-.env
-.env.test
-.env.production
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# next.js build output
-.next
-
-# nuxt.js build output
-.nuxt
-
-# vuepress build output
-.vuepress/dist
-
-# Serverless directories
-.serverless/
-
-# FuseBox cache
-.fusebox/
-
-# DynamoDB Local files
-.dynamodb/
-
-# TernJS port file
-.tern-port
-
-# Stores VSCode versions used for testing VSCode extensions
-.vscode-test
-
-# Temporary folders
-tmp/
-temp/
-
-# Editor directories and files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
+## macOS ##
 .DS_Store
 .DS_Store?
 ._*
@@ -206,17 +113,98 @@ temp/
 .Trashes
 ehthumbs.db
 Thumbs.db
+.AppleDouble
+.LSOverride
+Icon
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+.VolumeIcon.icns
 
-# Large files that should be downloaded separately
+## Linux ##
+*~
+.directory
+.Trash-*
+.fuse_hidden*
+.nfs*
+
+## Python (for scripts) ##
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+*.egg
+
+## Docker ##
+.dockerignore
+
+## Logs ##
+*.log
+logs/
+*.log.*
+
+## Environment Variables ##
+.env
+.env.local
+.env.test
+.env.production
+.env.*.local
+
+## Temporary Files ##
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.backup
+
+## Archives ##
 *.zip
 *.tar.gz
+*.tar
 *.rar
-*.7z plasticity_25.2.2_amd64.deb
-
-# Build artifacts
-bin/
-obj/
-*.dll
-*.pdb
-*.exe
+*.7z
 *.deb
+*.rpm
+*.dmg
+
+## Large Binary Files ##
+plasticity_25.2.2_amd64.deb
+*.deb
+*.rpm
+*.dmg
+*.iso
+
+## Executables ##
+kubectl
+kubectl.exe
+*.bin
+*.app
+
+## Editor backups ##
+*~
+*.swp
+*.swo
+*.bak
+
+## OS Files ##
+.DS_Store
+Thumbs.db
+Desktop.ini
