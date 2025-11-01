@@ -348,23 +348,23 @@ namespace HB_NLP_Research_Lab.Core
         {
             var recommendations = new List<string>();
 
-            // System resource recommendations
-            if (report.SystemResources.Metrics.ContainsKey("WorkingSetMB") && 
-                (double)report.SystemResources.Metrics["WorkingSetMB"] > 1500)
+            // System resource recommendations - Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (report.SystemResources.Metrics.TryGetValue("WorkingSetMB", out var workingSetMB) && 
+                (double)workingSetMB > 1500)
             {
                 recommendations.Add("Consider optimizing memory usage or increasing available memory");
             }
 
-            // Performance recommendations
-            if (report.PerformanceHealth.Metrics.ContainsKey("SystemCPUUsage") && 
-                (double)report.PerformanceHealth.Metrics["SystemCPUUsage"] > 70)
+            // Performance recommendations - Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (report.PerformanceHealth.Metrics.TryGetValue("SystemCPUUsage", out var cpuUsage) && 
+                (double)cpuUsage > 70)
             {
                 recommendations.Add("High CPU usage detected, consider performance optimization");
             }
 
-            // Security recommendations
-            if (report.SecurityHealth.Metrics.ContainsKey("BlockRate") && 
-                (double)report.SecurityHealth.Metrics["BlockRate"] > 0.05)
+            // Security recommendations - Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (report.SecurityHealth.Metrics.TryGetValue("BlockRate", out var blockRate) && 
+                (double)blockRate > 0.05)
             {
                 recommendations.Add("High rate limiting activity, review API usage patterns");
             }

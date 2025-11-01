@@ -106,9 +106,9 @@ namespace HB_NLP_Research_Lab.Core
             List<EnginePerformanceMetrics> result;
             lock (_lockObject)
             {
-                if (_historicalData.ContainsKey(engineId))
+                // Use TryGetValue instead of ContainsKey + indexer for efficiency
+                if (_historicalData.TryGetValue(engineId, out var data))
                 {
-                    var data = _historicalData[engineId];
                     result = data.TakeLast(count).ToList();
                 }
                 else
@@ -124,9 +124,10 @@ namespace HB_NLP_Research_Lab.Core
             EnginePerformanceMetrics result;
             lock (_lockObject)
             {
-                if (_historicalData.ContainsKey(engineId) && _historicalData[engineId].Count > 0)
+                // Use TryGetValue instead of ContainsKey + indexer for efficiency
+                if (_historicalData.TryGetValue(engineId, out var data) && data.Count > 0)
                 {
-                    result = _historicalData[engineId].Last();
+                    result = data.Last();
                 }
                 else
                 {

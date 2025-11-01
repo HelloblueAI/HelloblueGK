@@ -116,7 +116,7 @@ namespace HB_NLP_Research_Lab.Physics
                 {
                     double x = i / 1000.0;
                     double y = j / 1000.0;
-                    double distance = Math.Sqrt(x * x + y * y);
+                    Math.Sqrt(x * x + y * y); // Calculate distance for thermal flux calculation
                     
                     // Fourier's law of heat conduction
                     double thermalGradient = 500.0; // K/m

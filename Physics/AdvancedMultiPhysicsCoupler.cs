@@ -25,8 +25,8 @@ namespace HB_NLP_Research_Lab.Physics
         private readonly ConvergenceMonitor _convergenceMonitor;
         
         private bool _isInitialized = false;
-        private Dictionary<string, object> _couplingData;
-        private List<CouplingIteration> _couplingHistory;
+        private readonly Dictionary<string, object> _couplingData;
+        private readonly List<CouplingIteration> _couplingHistory;
 
         public AdvancedMultiPhysicsCoupler()
         {
@@ -214,7 +214,7 @@ namespace HB_NLP_Research_Lab.Physics
             var result = await RunCoupledAnalysisAsync(engineModel);
             
             // Extract specific coupled results
-            var fluidStructureResult = new FluidStructureThermalElectromagneticResult
+            return new FluidStructureThermalElectromagneticResult
             {
                 FluidStructureCoupling = new FluidStructureCoupling
                 {

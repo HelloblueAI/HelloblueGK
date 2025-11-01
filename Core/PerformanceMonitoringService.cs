@@ -63,7 +63,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public void RecordMetric(string name, double value, string category = "General")
         {
-            var metric = _metrics.AddOrUpdate(name, 
+            _metrics.AddOrUpdate(name, 
                 new PerformanceMetric { Name = name, Category = category, Value = value, Count = 1, LastUpdated = DateTime.UtcNow },
                 (key, existing) => 
                 {
@@ -156,7 +156,8 @@ namespace HB_NLP_Research_Lab.Core
                 MetricName = metricName,
                 Direction = secondHalf > firstHalf ? TrendDirection.Increasing : 
                            secondHalf < firstHalf ? TrendDirection.Decreasing : TrendDirection.Stable,
-                ChangePercentage = firstHalf != 0 ? ((secondHalf - firstHalf) / firstHalf) * 100 : 0,
+                // Use epsilon comparison for floating point equality check
+                ChangePercentage = Math.Abs(firstHalf) > double.Epsilon ? ((secondHalf - firstHalf) / firstHalf) * 100 : 0,
                 AverageValue = recentSamples.Average(s => s.Value),
                 MinValue = recentSamples.Min(s => s.Value),
                 MaxValue = recentSamples.Max(s => s.Value),
@@ -197,7 +198,8 @@ namespace HB_NLP_Research_Lab.Core
                 RecordMetric("GC_Gen0_Collections", gen0Collections, "Memory");
                 RecordMetric("GC_Gen1_Collections", gen1Collections, "Memory");
                 RecordMetric("GC_Gen2_Collections", gen2Collections, "Memory");
-                RecordMetric("GC_Total_Memory", GC.GetTotalMemory(false) / 1024 / 1024, "Memory"); // MB
+                // Explicit cast to double to avoid precision loss warning (intentional conversion from bytes to MB)
+                RecordMetric("GC_Total_Memory", (double)GC.GetTotalMemory(false) / 1024.0 / 1024.0, "Memory"); // MB
             }
             catch (Exception ex)
             {
@@ -211,11 +213,12 @@ namespace HB_NLP_Research_Lab.Core
             {
                 CPUUsage = _cpuCounter?.NextValue() ?? 0,
                 AvailableMemory = _memoryCounter?.NextValue() ?? 0,
-                ProcessWorkingSet = _currentProcess.WorkingSet64 / 1024 / 1024,
-                ProcessPrivateMemory = _currentProcess.PrivateMemorySize64 / 1024 / 1024,
+                // Explicit cast to double for division to avoid precision loss warning (intentional conversion from bytes to MB)
+                ProcessWorkingSet = (double)_currentProcess.WorkingSet64 / 1024.0 / 1024.0,
+                ProcessPrivateMemory = (double)_currentProcess.PrivateMemorySize64 / 1024.0 / 1024.0,
                 ThreadCount = _currentProcess.Threads.Count,
                 HandleCount = _currentProcess.HandleCount,
-                GCMemory = GC.GetTotalMemory(false) / 1024 / 1024,
+                GCMemory = (double)GC.GetTotalMemory(false) / 1024.0 / 1024.0,
                 Gen0Collections = GC.CollectionCount(0),
                 Gen1Collections = GC.CollectionCount(1),
                 Gen2Collections = GC.CollectionCount(2)
@@ -297,14 +300,13 @@ namespace HB_NLP_Research_Lab.Core
                 recommendations.Add("Frequent garbage collections detected. Consider object pooling and memory management optimization.");
             }
 
-            // Check for performance trends
-            var trends = GetPerformanceTrends();
-            foreach (var trend in trends.Take(3))
+            // Check for performance trends - Use Where instead of foreach for efficiency
+            var criticalTrends = GetPerformanceTrends()
+                .Where(trend => trend.Direction == TrendDirection.Increasing && trend.ChangePercentage > 20)
+                .Take(3);
+            foreach (var trend in criticalTrends)
             {
-                if (trend.Direction == TrendDirection.Increasing && trend.ChangePercentage > 20)
-                {
-                    recommendations.Add($"Performance degradation detected in {trend.MetricName}. Consider investigation.");
-                }
+                recommendations.Add($"Performance degradation detected in {trend.MetricName}. Consider investigation.");
             }
 
             return recommendations;

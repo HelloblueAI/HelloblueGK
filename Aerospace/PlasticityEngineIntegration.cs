@@ -23,7 +23,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         private readonly DigitalTwinEngine _digitalTwin;
         
         private PlasticityConnection _plasticityConnection;
-        private Dictionary<string, PlasticityEngineDesign> _activeDesigns;
+        private readonly Dictionary<string, PlasticityEngineDesign> _activeDesigns;
         private bool _isInitialized = false;
 
         public PlasticityEngineIntegration()
@@ -113,10 +113,9 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<PlasticityAnalysisResult> PerformComprehensiveAnalysisAsync(string designId)
         {
-            if (!_activeDesigns.ContainsKey(designId))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_activeDesigns.TryGetValue(designId, out var design))
                 throw new ArgumentException($"Design {designId} not found");
-
-            var design = _activeDesigns[designId];
             Console.WriteLine($"[Plasticity Engine Integration] 🔄 Performing comprehensive analysis for {design.Name}");
 
             try
@@ -170,10 +169,9 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<HB_NLP_Research_Lab.Models.PlasticityOptimizationResult> OptimizeEngineDesignAsync(string designId, OptimizationParameters parameters)
         {
-            if (!_activeDesigns.ContainsKey(designId))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_activeDesigns.TryGetValue(designId, out var design))
                 throw new ArgumentException($"Design {designId} not found");
-
-            var design = _activeDesigns[designId];
             Console.WriteLine($"[Plasticity Engine Integration] 🔄 Optimizing engine design: {design.Name}");
 
             try
@@ -209,10 +207,9 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<PlasticitySimulationResult> RunRealTimeSimulationAsync(string designId, SimulationParameters parameters)
         {
-            if (!_activeDesigns.ContainsKey(designId))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_activeDesigns.TryGetValue(designId, out var design))
                 throw new ArgumentException($"Design {designId} not found");
-
-            var design = _activeDesigns[designId];
             Console.WriteLine($"[Plasticity Engine Integration] 🔄 Running real-time simulation for {design.Name}");
 
             try

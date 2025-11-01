@@ -29,14 +29,15 @@ namespace HB_NLP_Research_Lab.Core
             var now = DateTime.UtcNow;
             var result = bucket.CheckLimit(now);
             
+            var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
             if (result.IsAllowed)
             {
-                _logger.LogDebug("Rate limit check passed for {Identifier}", identifier);
+                _logger.LogDebug("Rate limit check passed for {Identifier}", sanitizedIdentifier);
             }
             else
             {
                 _logger.LogWarning("Rate limit exceeded for {Identifier}. Limit: {Limit}, Remaining: {Remaining}, ResetAt: {ResetAt}", 
-                    identifier, policy.RequestsPerWindow, result.RemainingRequests, result.ResetTime);
+                    sanitizedIdentifier, policy.RequestsPerWindow, result.RemainingRequests, result.ResetTime);
             }
 
             return await Task.FromResult(result);
@@ -113,7 +114,8 @@ namespace HB_NLP_Research_Lab.Core
         {
             if (_buckets.TryRemove(identifier, out var bucket))
             {
-                _logger.LogInformation("Rate limit reset for {Identifier}", identifier);
+                var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
+                _logger.LogInformation("Rate limit reset for {Identifier}", sanitizedIdentifier);
             }
 
             await Task.CompletedTask;

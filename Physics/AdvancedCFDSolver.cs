@@ -78,7 +78,8 @@ namespace HB_NLP_Research_Lab.Physics
                 for (int j = 0; j < 1000; j++)
                 {
                     // Isentropic flow relations
-                    double mach = Math.Sqrt(i * i + j * j) / 1000.0;
+                    // Explicit cast to double to avoid precision loss warning
+                    double mach = Math.Sqrt((double)(i * i + j * j)) / 1000.0;
                     double pressureRatio = Math.Pow(1 + 0.5 * (GAMMA - 1) * mach * mach, GAMMA / (GAMMA - 1));
                     pressure[i, j] = 101325.0 * pressureRatio; // Pa
                 }
@@ -116,7 +117,8 @@ namespace HB_NLP_Research_Lab.Physics
             {
                 for (int j = 0; j < 1000; j++)
                 {
-                    double velocity = Math.Sqrt(i * i + j * j) / 1000.0 * 340.0;
+                    // Explicit cast to double to avoid precision loss warning
+                    double velocity = Math.Sqrt((double)(i * i + j * j)) / 1000.0 * 340.0;
                     turbulentKineticEnergy += 0.5 * velocity * velocity;
                     dissipationRate += velocity * velocity * velocity / 1000.0;
                 }

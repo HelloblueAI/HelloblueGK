@@ -17,12 +17,13 @@ namespace HB_NLP_Research_Lab
             Console.WriteLine("🚀 HB-NLP Research Lab - Revolutionary Aerospace Engine Design Platform");
             Console.WriteLine("================================================================================\n");
 
+            ServiceProvider? serviceProvider = null;
             try
             {
                 // Configure services for enhanced functionality
                 var services = new ServiceCollection();
                 ConfigureServices(services);
-                var serviceProvider = services.BuildServiceProvider();
+                serviceProvider = services.BuildServiceProvider();
 
                 // Initialize core systems
                 var engine = new HelloblueGKEngine();
@@ -164,14 +165,19 @@ namespace HB_NLP_Research_Lab
                 Console.WriteLine($"📚 Auto-Generated Documentation: ✅ IMPLEMENTED");
                 Console.WriteLine($"🚀 Performance Benchmarks: ✅ IMPLEMENTED");
                 Console.WriteLine($"🔗 Integration Tests: ✅ IMPLEMENTED");
-                
-                // Cleanup
-                serviceProvider?.Dispose();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ Error during assessment: {ex.Message}");
                 Console.WriteLine($"   Stack trace: {ex.StackTrace}");
+            }
+            finally
+            {
+                // Ensure Dispose is always called, even if exception occurs
+                if (serviceProvider != null)
+                {
+                    serviceProvider.Dispose();
+                }
             }
         }
 
