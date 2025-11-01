@@ -1,9 +1,8 @@
 services:
   - type: web
     name: hellobluegk-demo
-    runtime: dotnet
-    buildCommand: cd WebAPI && dotnet publish -c Release -o ./publish
-    startCommand: cd WebAPI/publish && dotnet HelloblueGK.WebAPI.dll
+    dockerfilePath: Dockerfile.render
+    dockerContext: .
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
