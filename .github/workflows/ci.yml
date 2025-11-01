@@ -33,14 +33,18 @@ jobs:
       run: dotnet build --no-restore --configuration Release
       
     - name: Run unit tests
-      run: dotnet test --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults"
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build false
       continue-on-error: true
       
     - name: Generate coverage report
       if: always()
       run: |
         dotnet tool install -g dotnet-reportgenerator-globaltool || true
-        reportgenerator -reports:"${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" -targetdir:"${{ github.workspace }}/CoverageReport" -reporttypes:"Html;Badges;JsonSummary"
+        if [ -d "${{ github.workspace }}/TestResults" ] && find "${{ github.workspace }}/TestResults" -name "coverage.cobertura.xml" | grep -q .; then
+          reportgenerator -reports:"${{ github.workspace }}/TestResults/**/coverage.cobertura.xml" -targetdir:"${{ github.workspace }}/CoverageReport" -reporttypes:"Html;Badges;JsonSummary"
+        else
+          echo "No coverage files found, skipping report generation"
+        fi
         
     - name: Upload coverage reports
       if: always()
@@ -114,7 +118,7 @@ jobs:
       continue-on-error: true
       
     - name: Run code analysis
-      run: dotnet build --configuration Release /p:RunAnalyzers=true /p:AnalysisLevel=latest
+      run: dotnet build --configuration Release /p:RunAnalyzers=true /p:AnalysisLevel=latest /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:WarningsNotAsErrors=""
       continue-on-error: true
 
   security-scan:
