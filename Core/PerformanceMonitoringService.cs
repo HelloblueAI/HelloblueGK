@@ -300,14 +300,13 @@ namespace HB_NLP_Research_Lab.Core
                 recommendations.Add("Frequent garbage collections detected. Consider object pooling and memory management optimization.");
             }
 
-            // Check for performance trends
-            var trends = GetPerformanceTrends();
-            foreach (var trend in trends.Take(3))
+            // Check for performance trends - Use Where instead of foreach for efficiency
+            var criticalTrends = GetPerformanceTrends()
+                .Where(trend => trend.Direction == TrendDirection.Increasing && trend.ChangePercentage > 20)
+                .Take(3);
+            foreach (var trend in criticalTrends)
             {
-                if (trend.Direction == TrendDirection.Increasing && trend.ChangePercentage > 20)
-                {
-                    recommendations.Add($"Performance degradation detected in {trend.MetricName}. Consider investigation.");
-                }
+                recommendations.Add($"Performance degradation detected in {trend.MetricName}. Consider investigation.");
             }
 
             return recommendations;

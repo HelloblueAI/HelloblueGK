@@ -65,7 +65,8 @@ namespace HB_NLP_Research_Lab.Core
 
             lock (_lockObject)
             {
-                if (_errorCounts.ContainsKey(operationName) && _errorCounts[operationName] >= failureThreshold)
+                // Use TryGetValue instead of ContainsKey + indexer for efficiency
+                if (_errorCounts.TryGetValue(operationName, out var errorCount) && errorCount >= failureThreshold)
                 {
                     if (_lastErrorTimes.TryGetValue(operationName, out var lastErrorTime) && lastErrorTime.HasValue &&
                         DateTime.UtcNow - lastErrorTime.Value < resetTimeout)
@@ -88,8 +89,9 @@ namespace HB_NLP_Research_Lab.Core
                 // Reset error count on success
                 lock (_lockObject)
                 {
+                    // Use TryGetValue instead of ContainsKey + indexer for efficiency
                     if (_errorCounts.ContainsKey(operationName))
-                        _errorCounts[operationName] = 0;
+                        _errorCounts[operationName] = 0; // Need to set value, so indexer is appropriate
                 }
             }
             catch (Exception ex)

@@ -265,6 +265,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         {
             Console.WriteLine($"[Revolutionary Architectures] 🔬 Analyzing revolutionary engine: {engineId}");
             
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
             if (!_revolutionaryEngines.ContainsKey(engineId))
             {
                 throw new ArgumentException($"Engine {engineId} not found");

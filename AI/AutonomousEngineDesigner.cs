@@ -20,9 +20,9 @@ namespace HB_NLP_Research_Lab.AI
         private readonly AdvancedPhysicsEngine _physicsEngine;
         private readonly ValidationEngine _validationEngine;
         
-        private List<EngineArchitecture> _generatedArchitectures;
-        private Dictionary<string, EnginePerformance> _optimizationHistory;
-        private Dictionary<string, FailurePrediction> _failurePredictions;
+        private readonly List<EngineArchitecture> _generatedArchitectures;
+        private readonly Dictionary<string, EnginePerformance> _optimizationHistory;
+        private readonly Dictionary<string, FailurePrediction> _failurePredictions;
         private bool _isInitialized = false;
 
         public AutonomousEngineDesigner()
@@ -206,13 +206,10 @@ namespace HB_NLP_Research_Lab.AI
             // AI designs comprehensive test scenarios
             var testScenarios = await _generativeAI.DesignTestScenariosAsync(engine);
             
-            // Run autonomous testing
-            var testResults = new List<TestResult>();
-            foreach (var scenario in testScenarios)
-            {
-                var result = await RunAutonomousTestAsync(engine, scenario);
-                testResults.Add(result);
-            }
+            // Run autonomous testing - Use Select for async operations
+            var testResults = await Task.WhenAll(
+                testScenarios.Select(scenario => RunAutonomousTestAsync(engine, scenario))
+            );
             
             // Analyze test results and update models
             var analysis = await AnalyzeTestResultsAsync(testResults);

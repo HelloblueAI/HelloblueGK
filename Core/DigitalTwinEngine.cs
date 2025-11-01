@@ -148,6 +148,7 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Debug] Entered LearnFromTestFlightAsync for engineId: {engineId}");
             if (string.IsNullOrWhiteSpace(engineId))
                 throw new ArgumentException("engineId cannot be null or empty");
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
             if (!_digitalTwins.ContainsKey(engineId))
             {
                 Console.WriteLine($"[Digital Twin] ERROR: Digital twin not found for engine: {engineId}");
@@ -158,7 +159,8 @@ namespace HB_NLP_Research_Lab.Core
                 Console.WriteLine("[Digital Twin] ERROR: flightData is null");
                 throw new ArgumentNullException(nameof(flightData));
             }
-            if (!_learningHistories.ContainsKey(engineId) || _learningHistories[engineId] == null)
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_learningHistories.TryGetValue(engineId, out var learningHistory) || learningHistory == null)
             {
                 Console.WriteLine($"[Digital Twin] WARNING: Learning history missing for {engineId}, initializing new history.");
                 _learningHistories[engineId] = new LearningHistory
@@ -169,7 +171,8 @@ namespace HB_NLP_Research_Lab.Core
                     PredictionHistory = new List<PredictionRecord>()
                 };
             }
-            if (!_predictionAccuracies.ContainsKey(engineId) || _predictionAccuracies[engineId] == null)
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_predictionAccuracies.TryGetValue(engineId, out var predictionAccuracy) || predictionAccuracy == null)
             {
                 Console.WriteLine($"[Digital Twin] WARNING: Prediction accuracy missing for {engineId}, initializing default accuracy.");
                 _predictionAccuracies[engineId] = new PredictionAccuracy
@@ -231,15 +234,15 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<EnginePrediction> PredictEngineBehaviorAsync(string engineId, PredictionScenario scenario)
         {
-            if (!_digitalTwins.ContainsKey(engineId))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
                 throw new ArgumentException($"Digital twin not found for engine: {engineId}");
 
             Console.WriteLine($"[Digital Twin] 🔮 Predicting Engine Behavior for {engineId}...");
             Console.WriteLine($"[Digital Twin] Scenario: {scenario.Name}");
             
-            // Get current digital twin
-            var digitalTwin = _digitalTwins[engineId];
-            _predictionAccuracies[engineId]; // Access for validation
+            // Access prediction accuracy for validation
+            _predictionAccuracies.TryGetValue(engineId, out _);
             
             // Run predictive analysis
             var prediction = await _predictiveTwin.PredictEngineBehaviorAsync(engineId, scenario);
@@ -265,12 +268,11 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<AutonomousTestingResult> RunAutonomousTestsAsync(string engineId, TestingRequirements requirements)
         {
-            if (!_digitalTwins.ContainsKey(engineId))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
                 throw new ArgumentException($"Digital twin not found for engine: {engineId}");
 
             Console.WriteLine($"[Digital Twin] 🧪 Running Autonomous Tests for {engineId}...");
-            
-            var digitalTwin = _digitalTwins[engineId];
             var engineArchitecture = new EngineArchitecture
             {
                 Id = engineId,
@@ -390,12 +392,13 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.Delay(1); // Simulate async operation
             
-            if (_learningHistories == null || !_learningHistories.ContainsKey(engineId))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (_learningHistories == null || !_learningHistories.TryGetValue(engineId, out var history))
                 throw new ArgumentException($"Learning history not found for engine: {engineId}");
 
-            var history = _learningHistories[engineId];
-            var accuracy = _predictionAccuracies != null && _predictionAccuracies.ContainsKey(engineId)
-                ? _predictionAccuracies[engineId]
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            var accuracy = _predictionAccuracies != null && _predictionAccuracies.TryGetValue(engineId, out var acc)
+                ? acc
                 : new PredictionAccuracy { OverallAccuracy = 0.0 };
 
             int totalLearningEvents = history.LearningEvents != null ? history.LearningEvents.Count : 0;

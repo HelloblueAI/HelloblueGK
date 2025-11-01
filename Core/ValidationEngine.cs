@@ -62,15 +62,11 @@ namespace HB_NLP_Research_Lab.Core
         {
             Console.WriteLine($"[Validation] Validating {engineModel} against real-world test data...");
             
-            TestData testData;
-            if (!_testDataDatabase.ContainsKey(engineModel))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency
+            if (!_testDataDatabase.TryGetValue(engineModel, out var testData))
             {
                 Console.WriteLine($"[Validation] No real-world test data available for {engineModel}, creating synthetic validation...");
                 testData = CreateSyntheticTestData(engineModel, simulationResults);
-            }
-            else
-            {
-                testData = _testDataDatabase[engineModel];
             }
 
             var metrics = new ValidationMetrics();

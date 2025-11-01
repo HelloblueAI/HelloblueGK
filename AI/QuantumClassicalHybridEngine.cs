@@ -23,9 +23,9 @@ namespace HB_NLP_Research_Lab.AI
         private readonly AdvancedPhysicsEngine _classicalPhysics;
         private readonly AdvancedMultiPhysicsCoupler _classicalMultiPhysics;
         
-        private Dictionary<string, QuantumSimulationResult> _quantumResults;
-        private Dictionary<string, HybridOptimizationResult> _hybridResults;
-        private Dictionary<string, MaterialDiscoveryResult> _materialResults;
+        private readonly Dictionary<string, QuantumSimulationResult> _quantumResults;
+        private readonly Dictionary<string, HybridOptimizationResult> _hybridResults;
+        private readonly Dictionary<string, MaterialDiscoveryResult> _materialResults;
         
         private bool _isInitialized = false;
 
