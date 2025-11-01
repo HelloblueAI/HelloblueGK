@@ -1,0 +1,25 @@
+# Dockerfile for Render deployment
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution and project files
+COPY *.csproj ./
+COPY WebAPI/*.csproj ./WebAPI/
+RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
+
+# Copy everything else
+COPY . .
+
+# Build and publish WebAPI
+WORKDIR /src/WebAPI
+RUN dotnet publish -c Release -o /app/publish
+
+# Runtime stage
+FROM mcr.microsoft.com/dotnet/aspnet:9.0
+WORKDIR /app
+COPY --from=build /app/publish .
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_URLS=http://0.0.0.0:8080
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=10s CMD curl -f http://localhost:8080/Health || exit 1
+ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]

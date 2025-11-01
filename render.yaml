@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: hellobluegk-demo
+    runtime: dotnet
+    buildCommand: cd WebAPI && dotnet publish -c Release -o ./publish
+    startCommand: cd WebAPI/publish && dotnet HelloblueGK.WebAPI.dll
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: ASPNETCORE_URLS
+        value: http://0.0.0.0:$PORT
+    healthCheckPath: /Health
+
