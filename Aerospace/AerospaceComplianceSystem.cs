@@ -87,9 +87,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             _certifications["SystemInitialized"] = new CertificationDocument 
             { 
                 Type = "SystemInfo",
-                Name = "SystemInitialized",
-                Status = "Active",
-                IssueDate = DateTime.UtcNow
+                Status = "Active"
             };
         }
 

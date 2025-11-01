@@ -17,8 +17,8 @@ namespace HB_NLP_Research_Lab
             Console.WriteLine("🚀 HB-NLP Research Lab - Revolutionary Aerospace Engine Design Platform");
             Console.WriteLine("================================================================================\n");
 
-            // Use using statement for automatic disposal
-            using var services = new ServiceCollection();
+            // Configure services and use using statement for ServiceProvider disposal
+            var services = new ServiceCollection();
             ConfigureServices(services);
             using var serviceProvider = services.BuildServiceProvider();
             try
