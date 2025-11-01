@@ -29,6 +29,9 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
       
+    - name: Restore test project dependencies
+      run: dotnet restore Tests/HelloblueGK.Tests.csproj
+      
     - name: Build solution
       run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
       
