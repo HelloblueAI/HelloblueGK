@@ -164,14 +164,16 @@ namespace HB_NLP_Research_Lab
                 Console.WriteLine($"📚 Auto-Generated Documentation: ✅ IMPLEMENTED");
                 Console.WriteLine($"🚀 Performance Benchmarks: ✅ IMPLEMENTED");
                 Console.WriteLine($"🔗 Integration Tests: ✅ IMPLEMENTED");
-                
-                // Cleanup
-                serviceProvider?.Dispose();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"❌ Error during assessment: {ex.Message}");
                 Console.WriteLine($"   Stack trace: {ex.StackTrace}");
+            }
+            finally
+            {
+                // Ensure Dispose is always called, even if exception occurs
+                serviceProvider?.Dispose();
             }
         }
 

@@ -100,7 +100,7 @@ namespace HB_NLP_Research_Lab.Core
                         _errorCounts[operationName] = 0;
                     
                     _errorCounts[operationName]++;
-                    _lastErrorTimes[operationName] = (DateTime?)DateTime.UtcNow;
+                    _lastErrorTimes[operationName] = DateTime.UtcNow; // Remove unnecessary nullable cast
                 }
                 
                 LogError(ex, operationName, 1, 1);
