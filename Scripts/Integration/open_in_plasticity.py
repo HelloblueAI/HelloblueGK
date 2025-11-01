@@ -6,6 +6,7 @@ Opens the revolutionary HB-NLP engine design in Plasticity v25.2.2
 
 import subprocess
 import json
+from pathlib import Path
 
 
 class PlasticityEngineDesigner:
@@ -13,6 +14,11 @@ class PlasticityEngineDesigner:
 
     def __init__(self):
         self.engine_name = "HB-NLP-REV-001"
+        # Set up organized directory structure
+        self.base_dir = Path(__file__).parent.parent.parent  # Go up to project root
+        self.design_dir = self.base_dir / "Docs" / "Designs" / self.engine_name
+        self.design_dir.mkdir(parents=True, exist_ok=True)
+        
         self.design_data = {
             "name": "HB-NLP Quantum-Classical Hybrid Engine",
             "version": "v25.2.2",
@@ -50,7 +56,7 @@ class PlasticityEngineDesigner:
 
     def create_design_file(self):
         """Create a JSON design file for Plasticity."""
-        design_file = f"{self.engine_name}_design.json"
+        design_file = self.design_dir / "design.json"
 
         with open(design_file, "w", encoding="utf-8") as f:
             json.dump(self.design_data, f, indent=2)
@@ -108,7 +114,7 @@ export_stl(engine_assembly, "{self.engine_name}_3d_model.stl")
 export_step(engine_assembly, "{self.engine_name}_3d_model.step")
 """
 
-        script_file = f"{self.engine_name}_design_script.py"
+        script_file = self.design_dir / "design_script.py"
         with open(script_file, "w", encoding="utf-8") as f:
             f.write(script_content)
 
@@ -119,13 +125,13 @@ export_step(engine_assembly, "{self.engine_name}_3d_model.step")
         """Open the design in Plasticity software."""
         try:
             # Try to open Plasticity with the design file
-            design_file = f"{self.engine_name}_design.json"
-            script_file = f"{self.engine_name}_design_script.py"
+            design_file = self.design_dir / "design.json"
+            script_file = self.design_dir / "design_script.py"
 
             # Create files if they don't exist
-            if not design_file:
+            if not design_file.exists():
                 self.create_design_file()
-            if not script_file:
+            if not script_file.exists():
                 self.generate_3d_model_script()
 
             # Try to open with Plasticity (adjust path as needed)
@@ -138,7 +144,7 @@ export_step(engine_assembly, "{self.engine_name}_3d_model.step")
 
             for path in plasticity_paths:
                 try:
-                    subprocess.run([path, design_file], check=True)
+                    subprocess.run([path, str(design_file)], check=True)
                     print("✅ Opened design in Plasticity")
                     return True
                 except (subprocess.CalledProcessError, FileNotFoundError):
@@ -190,7 +196,7 @@ export_step(engine_assembly, "{self.engine_name}_3d_model.step")
 ## Status: PRODUCTION READY ✅
 """
 
-        summary_file = f"{self.engine_name}_design_summary.md"
+        summary_file = self.design_dir / "design_summary.md"
         with open(summary_file, "w", encoding="utf-8") as f:
             f.write(summary)
 

@@ -1,0 +1,88 @@
+PicoGK Project Directory Structure
+====================================
+
+ROOT: /home/pejmanhaghighatnia/Documents/PicoGK/
+
+📁 Documentation & Content
+└── Docs/
+    ├── README.md .......................... Documentation index
+    ├── Project/ .......................... Project-level documentation
+    │   ├── PROFESSIONAL_SUMMARY.md ....... Project capabilities overview
+    │   └── PROJECT_HEALTH_REPORT.md ...... Current project status
+    ├── Technical/ ........................ Technical documentation
+    │   ├── TECHNICAL_LIMITATIONS_AND_ROADMAP.md .. Limitations & future plans
+    │   └── VALIDATION_AND_BENCHMARKS.md ........... Performance metrics
+    └── Designs/ .......................... Design documentation
+        └── HB-NLP-REV-001/ ............... Revolutionary engine design
+            ├── design_summary.md ......... Design documentation
+            ├── design.json ............... Design specifications
+            ├── design_script.py .......... Plasticity 3D script
+            ├── 3d_model.png .............. 3D visualization
+            ├── flow_diagram.png .......... Process diagrams
+            └── performance_dashboard.png . Performance visuals
+
+📁 Automation & Utilities
+└── Scripts/
+    ├── README.md .......................... Scripts documentation
+    ├── Visualization/ ..................... Visualization utilities
+    │   ├── engine_visualization.py ........ Core visualization
+    │   └── generate_engine_image.py ....... Image generation
+    └── Integration/ ....................... External integrations
+        └── open_in_plasticity.py .......... Plasticity launcher
+
+📁 Media & Resources
+└── Assets/
+    ├── README.md .......................... Assets documentation
+    └── Images/ ............................ General images
+        └── HB-NLP-Advanced-Engine-Design.png
+
+📁 Source Code (C#)
+├── Aerospace/ ............................ Aerospace engine models
+├── AI/ ................................... AI optimization engines
+├── Core/ ................................. Core system components
+├── Models/ ............................... Data models
+├── Physics/ .............................. Physics solvers
+├── Tests/ ................................ Unit & integration tests
+├── Visualization/ ........................ Visualization components
+└── WebAPI/ ............................... Web API controllers
+
+📁 Demo Projects
+└── PlasticityDemo/
+    ├── README.md .......................... Demo documentation
+    ├── Program.cs ......................... Demo application
+    └── PlasticityDemo.csproj .............. Project file
+
+📁 Infrastructure & Configuration
+├── bin/ .................................. Build outputs
+├── obj/ .................................. Build artifacts
+├── Dockerfile ............................ Docker configuration
+├── Dockerfile.production ................. Production Docker config
+├── k8s-deployment.yaml ................... Kubernetes deployment
+├── deploy-production.sh .................. Deployment script
+├── appsettings.json ...................... Application settings
+├── HelloblueGK.csproj .................... Main project file
+└── LICENSE ............................... Apache 2.0 License
+
+📄 Key Files in Root
+├── README.md ............................. Main project documentation
+├── REORGANIZATION_SUMMARY.md ............. Reorganization guide
+├── DIRECTORY_STRUCTURE.txt ............... This file
+├── Program.cs ............................ Main application entry
+└── OpenEngineInPlasticity.cs ............. Plasticity integration
+
+====================================
+Legend:
+📁 = Directory
+📄 = File
+... = Path continuation
+====================================
+
+Quick Navigation:
+- Documentation: cd Docs/
+- Scripts: cd Scripts/
+- Assets: cd Assets/
+- Source Code: ls -d */  (in root)
+- Design Files: cd Docs/Designs/HB-NLP-REV-001/
+
+====================================
+
