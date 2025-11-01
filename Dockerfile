@@ -9,15 +9,15 @@ COPY *.csproj ./
 COPY PlasticityDemo/*.csproj ./PlasticityDemo/
 
 # Restore dependencies
-RUN dotnet restore
-RUN dotnet restore PlasticityDemo/
+RUN dotnet restore || true
+RUN dotnet restore PlasticityDemo/ || true
 
 # Copy source code
 COPY . .
 
 # Build applications (allow warnings, don't treat as errors)
-RUN dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false || dotnet build --configuration Release /p:TreatWarningsAsErrors=false
-RUN dotnet build PlasticityDemo/ --no-restore --configuration Release /p:TreatWarningsAsErrors=false || dotnet build PlasticityDemo/ --configuration Release /p:TreatWarningsAsErrors=false
+RUN dotnet build --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+RUN dotnet build PlasticityDemo/ --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
 
 # Publish applications
 RUN dotnet publish --no-restore --configuration Release --output /app/publish
