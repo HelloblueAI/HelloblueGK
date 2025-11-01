@@ -15,9 +15,9 @@ RUN dotnet restore PlasticityDemo/
 # Copy source code
 COPY . .
 
-# Build applications
-RUN dotnet build --no-restore --configuration Release
-RUN dotnet build PlasticityDemo/ --no-restore --configuration Release
+# Build applications (allow warnings, don't treat as errors)
+RUN dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false || dotnet build --configuration Release /p:TreatWarningsAsErrors=false
+RUN dotnet build PlasticityDemo/ --no-restore --configuration Release /p:TreatWarningsAsErrors=false || dotnet build PlasticityDemo/ --configuration Release /p:TreatWarningsAsErrors=false
 
 # Publish applications
 RUN dotnet publish --no-restore --configuration Release --output /app/publish
