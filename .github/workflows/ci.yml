@@ -99,11 +99,11 @@ jobs:
       run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false
       
     - name: Run integration tests
-      run: dotnet test Tests/HelloblueGK.Tests.csproj --no-build --configuration Release --filter "Category=Integration" --verbosity normal /p:TreatWarningsAsErrors=false
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --no-build --configuration Release --filter "Category=Integration" --verbosity minimal --logger "console;verbosity=minimal"
       continue-on-error: true
       
     - name: Run performance benchmarks
-      run: dotnet test Tests/HelloblueGK.Tests.csproj --no-build --configuration Release --filter "Category=Performance" --verbosity normal /p:TreatWarningsAsErrors=false
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --no-build --configuration Release --filter "Category=Performance" --verbosity minimal --logger "console;verbosity=minimal"
       continue-on-error: true
 
   code-quality:
