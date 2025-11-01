@@ -17,12 +17,13 @@ namespace HB_NLP_Research_Lab
             Console.WriteLine("🚀 HB-NLP Research Lab - Revolutionary Aerospace Engine Design Platform");
             Console.WriteLine("================================================================================\n");
 
+            ServiceProvider? serviceProvider = null;
             try
             {
                 // Configure services for enhanced functionality
                 var services = new ServiceCollection();
                 ConfigureServices(services);
-                var serviceProvider = services.BuildServiceProvider();
+                serviceProvider = services.BuildServiceProvider();
 
                 // Initialize core systems
                 var engine = new HelloblueGKEngine();
@@ -173,7 +174,10 @@ namespace HB_NLP_Research_Lab
             finally
             {
                 // Ensure Dispose is always called, even if exception occurs
-                serviceProvider?.Dispose();
+                if (serviceProvider != null)
+                {
+                    serviceProvider.Dispose();
+                }
             }
         }
 

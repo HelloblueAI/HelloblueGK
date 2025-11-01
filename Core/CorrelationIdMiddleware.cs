@@ -58,19 +58,21 @@ namespace HB_NLP_Research_Lab.Core
                 await _next(context);
                 stopwatch.Stop();
                 
-                var sanitizedPath = LogSanitizer.SanitizePath(context.Request.Path);
-                var sanitizedMethod = LogSanitizer.Sanitize(context.Request.Method);
+                // Re-sanitize for logging (paths may have changed during request)
+                var completedPath = LogSanitizer.SanitizePath(context.Request.Path);
+                var completedMethod = LogSanitizer.Sanitize(context.Request.Method);
                 _logger.LogInformation("Request completed {RequestPath} {RequestMethod} {StatusCode} {ElapsedMs}ms", 
-                    sanitizedPath, sanitizedMethod, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
+                    completedPath, completedMethod, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 
-                var sanitizedPath = LogSanitizer.SanitizePath(context.Request.Path);
-                var sanitizedMethod = LogSanitizer.Sanitize(context.Request.Method);
+                // Re-sanitize for logging (paths may have changed during request)
+                var failedPath = LogSanitizer.SanitizePath(context.Request.Path);
+                var failedMethod = LogSanitizer.Sanitize(context.Request.Method);
                 _logger.LogError(ex, "Request failed {RequestPath} {RequestMethod} {StatusCode} {ElapsedMs}ms", 
-                    sanitizedPath, sanitizedMethod, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
+                    failedPath, failedMethod, context.Response.StatusCode, stopwatch.ElapsedMilliseconds);
                 
                 throw;
             }

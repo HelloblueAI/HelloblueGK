@@ -241,8 +241,11 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Digital Twin] 🔮 Predicting Engine Behavior for {engineId}...");
             Console.WriteLine($"[Digital Twin] Scenario: {scenario.Name}");
             
-            // Access prediction accuracy for validation
-            _predictionAccuracies.TryGetValue(engineId, out _);
+            // Get prediction accuracy for validation
+            if (!_predictionAccuracies.TryGetValue(engineId, out var predictionAccuracy))
+            {
+                predictionAccuracy = new PredictionAccuracy { OverallAccuracy = 0.0 };
+            }
             
             // Run predictive analysis
             var prediction = await _predictiveTwin.PredictEngineBehaviorAsync(engineId, scenario);

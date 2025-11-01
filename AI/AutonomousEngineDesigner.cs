@@ -207,9 +207,10 @@ namespace HB_NLP_Research_Lab.AI
             var testScenarios = await _generativeAI.DesignTestScenariosAsync(engine);
             
             // Run autonomous testing - Use Select for async operations
-            var testResults = await Task.WhenAll(
+            var testResultsArray = await Task.WhenAll(
                 testScenarios.Select(scenario => RunAutonomousTestAsync(engine, scenario))
             );
+            var testResults = testResultsArray.ToList();
             
             // Analyze test results and update models
             var analysis = await AnalyzeTestResultsAsync(testResults);
