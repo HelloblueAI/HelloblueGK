@@ -19,7 +19,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:9.0
 WORKDIR /app
 COPY --from=build /app/publish .
 ENV ASPNETCORE_ENVIRONMENT=Production
-ENV ASPNETCORE_URLS=http://0.0.0.0:8080
-EXPOSE 8080
-HEALTHCHECK --interval=30s --timeout=10s CMD curl -f http://localhost:8080/Health || exit 1
+# PORT will be set by Render dynamically via environment variable
+EXPOSE 10000
+# Health check - Render will override PORT, but we use default for Docker healthcheck
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD curl -f http://localhost:10000/Health || exit 1
 ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]
