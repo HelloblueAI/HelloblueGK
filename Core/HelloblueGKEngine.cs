@@ -37,6 +37,9 @@ namespace HB_NLP_Research_Lab.Core
         {
             Console.WriteLine("[HelloblueGK] 🔬 Analyzing engine model with high-performance physics...");
             
+            // Ensure physics engine is initialized
+            await _physicsEngine.InitializeAsync();
+            
             // Run high-performance multi-physics analysis
             var multiPhysicsResult = await _physicsEngine.RunMultiPhysicsAnalysisAsync();
             
@@ -97,6 +100,8 @@ namespace HB_NLP_Research_Lab.Core
         /// </summary>
         public async Task<PerformanceMetrics> GetPerformanceMetricsAsync()
         {
+            // Ensure physics engine is initialized
+            await _physicsEngine.InitializeAsync();
             return await _physicsEngine.GetPerformanceMetricsAsync();
         }
 
@@ -113,6 +118,8 @@ namespace HB_NLP_Research_Lab.Core
         /// </summary>
         public async Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync()
         {
+            // Ensure physics engine is initialized
+            await _physicsEngine.InitializeAsync();
             return await _physicsEngine.RunMultiPhysicsAnalysisAsync();
         }
         
