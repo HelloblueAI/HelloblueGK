@@ -1,0 +1,26 @@
+# Code Owners for HelloblueGK
+# This file defines code owners who will be requested for review on PRs
+
+# Core system components
+/Core/ @HelloblueAI/hb-nlp-research-lab
+/Aerospace/ @HelloblueAI/hb-nlp-research-lab
+/Physics/ @HelloblueAI/hb-nlp-research-lab
+/AI/ @HelloblueAI/hb-nlp-research-lab
+
+# Infrastructure and CI/CD
+/.github/ @HelloblueAI/hb-nlp-research-lab
+/Dockerfile @HelloblueAI/hb-nlp-research-lab
+/k8s-deployment.yaml @HelloblueAI/hb-nlp-research-lab
+
+# Tests
+/Tests/ @HelloblueAI/hb-nlp-research-lab
+
+# Documentation
+/Docs/ @HelloblueAI/hb-nlp-research-lab
+/README.md @HelloblueAI/hb-nlp-research-lab
+
+# Configuration files
+/*.csproj @HelloblueAI/hb-nlp-research-lab
+/appsettings.json @HelloblueAI/hb-nlp-research-lab
+/codecov.yml @HelloblueAI/hb-nlp-research-lab
+
