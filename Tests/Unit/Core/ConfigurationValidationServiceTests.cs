@@ -27,8 +27,7 @@ public class ConfigurationValidationServiceTests
 
         // Assert
         result.Should().NotBeNull();
-        // IsValid is already typed as bool - just verify it exists
-        result.IsValid.Should().BeOneOf(new[] { true, false });
+        // IsValid is already typed as bool, so we just verify the result structure
         result.ValidationTimestamp.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
     }
 
