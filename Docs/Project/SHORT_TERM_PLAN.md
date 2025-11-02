@@ -14,7 +14,7 @@
 - **Customer base**: No paying customers yet
 - **Market validation**: Not proven in real-world use
 - **Industry recognition**: Unknown in aerospace industry
-- **Revolutionary breakthroughs**: Standard industry capabilities
+- **Unproven technology**: Standard industry capabilities
 
 ---
 
