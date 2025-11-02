@@ -116,7 +116,11 @@ app.UseSwaggerUI(c =>
 });
 
 app.UseCors();
-app.UseHttpsRedirection();
+// Only use HTTPS redirection in Development when certificate is available
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseAuthorization();
 app.MapControllers();
 

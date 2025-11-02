@@ -25,7 +25,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 status = "Healthy",
                 timestamp = DateTime.UtcNow,
-                service = "HB-NLP Revolutionary Engine Design Platform",
+                service = "HB-NLP Advanced Engine Design Platform",
                 version = "1.0.0",
                 environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development"
             });
@@ -43,7 +43,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 status = "Healthy",
                 timestamp = DateTime.UtcNow,
-                service = "HB-NLP Revolutionary Engine Design Platform",
+                service = "HB-NLP Advanced Engine Design Platform",
                 version = "1.0.0",
                 environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development",
                 system = new
@@ -97,7 +97,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     status = isHealthy ? "Healthy" : "Degraded",
                     timestamp = DateTime.UtcNow,
-                    engine = "HB-NLP Revolutionary Engine",
+                    engine = "HB-NLP Advanced Engine",
                     memoryUsageMB = memoryUsageMB,
                     issues = issues,
                     recommendations = issues.Any() ? new[] { "Monitor memory usage", "Check system resources" } : new string[0]
