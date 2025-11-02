@@ -5,7 +5,10 @@ using System.Reflection;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container
-builder.Services.AddControllers();
+// Only discover controllers from this assembly (HelloblueGK.WebAPI)
+var mvcBuilder = builder.Services.AddControllers();
+mvcBuilder.PartManager.ApplicationParts.Clear();
+mvcBuilder.AddApplicationPart(typeof(Program).Assembly);
 builder.Services.AddEndpointsApiExplorer();
 
 // Configure Swagger/OpenAPI
