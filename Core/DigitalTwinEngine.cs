@@ -9,8 +9,8 @@ using HB_NLP_Research_Lab.AI;
 namespace HB_NLP_Research_Lab.Core
 {
     /// <summary>
-    /// Revolutionary Digital Twin Engine with Real-Time Learning
-    /// World's First Predictive Digital Twin for Aerospace Engines
+    /// Digital Twin Engine with Real-Time Learning
+    /// Predictive Digital Twin for Aerospace Engines
     /// </summary>
     public class DigitalTwinEngine : IDisposable
     {
@@ -49,7 +49,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<DigitalTwinStatus> InitializeAsync()
         {
-            Console.WriteLine("[Digital Twin] 🤖 Initializing Revolutionary Digital Twin Engine...");
+            Console.WriteLine("[Digital Twin] 🤖 Initializing Digital Twin Engine...");
             Console.WriteLine("[Digital Twin] Live Learning System Enabled");
             Console.WriteLine("[Digital Twin] Predictive Capabilities Active");
             

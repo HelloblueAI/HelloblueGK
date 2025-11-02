@@ -32,18 +32,23 @@ builder.Services.AddSwaggerGen(c =>
     var assemblyName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
     if (!string.IsNullOrEmpty(assemblyName))
     {
-        // Ensure xmlFile is relative (no path separators) to prevent Path.Combine issues
+        // Sanitize assembly name to prevent Path.Combine path traversal
         var xmlFile = $"{assemblyName}.xml";
-        // Sanitize: remove any path separators that might have been injected
         xmlFile = xmlFile.Replace(Path.DirectorySeparatorChar, '_')
                         .Replace(Path.AltDirectorySeparatorChar, '_')
-                        .Replace("..", string.Empty);
+                        .Replace("..", string.Empty)
+                        .Replace("/", "_")
+                        .Replace("\\", "_");
         
-        // Safely combine paths - xmlFile is guaranteed to be relative
-        var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-        if (File.Exists(xmlPath))
+        // Additional validation: only combine if xmlFile is a simple filename
+        if (!Path.IsPathRooted(xmlFile) && !xmlFile.Contains(Path.DirectorySeparatorChar) && 
+            !xmlFile.Contains(Path.AltDirectorySeparatorChar))
         {
-            c.IncludeXmlComments(xmlPath);
+            var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+            if (File.Exists(xmlPath))
+            {
+                c.IncludeXmlComments(xmlPath);
+            }
         }
     }
     

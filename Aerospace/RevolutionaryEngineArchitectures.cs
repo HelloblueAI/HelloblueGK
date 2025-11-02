@@ -36,11 +36,11 @@ namespace HB_NLP_Research_Lab.Aerospace
         {
             if (_isInitialized)
             {
-                Console.WriteLine("[Revolutionary Architectures] Already initialized");
+                Console.WriteLine("[Engine Architectures] Already initialized");
                 return;
             }
             
-            Console.WriteLine("[Revolutionary Architectures] Initializing revolutionary engine architectures...");
+            Console.WriteLine("[Engine Architectures] Initializing engine architectures...");
             await Task.Delay(100);
             _isInitialized = true;
         }
@@ -48,8 +48,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateVariableGeometryEngineAsync(string engineId, VariableGeometrySpecs specs)
         {
             await Task.CompletedTask;
-            Console.WriteLine($"[Revolutionary Architectures] 🔄 Creating Variable Geometry Engine: {engineId}");
-            Console.WriteLine("[Revolutionary Architectures] Shape-Shifting Engine Technology");
+            Console.WriteLine($"[Engine Architectures] 🔄 Creating Variable Geometry Engine: {engineId}");
+            Console.WriteLine("[Engine Architectures] Shape-Shifting Engine Technology");
             
             var engine = new VariableGeometryEngine
             {
@@ -85,9 +85,9 @@ namespace HB_NLP_Research_Lab.Aerospace
             var engineModel = new HB_NLP_Research_Lab.Core.EngineModel { Name = engine.Name };
             await _digitalTwin.CreateDigitalTwinAsync(engineId, engineModel);
             
-            Console.WriteLine($"[Revolutionary Architectures] Variable geometry engine created successfully");
-            Console.WriteLine($"[Revolutionary Architectures] Geometry states: {engine.GeometryStates.Count}");
-            Console.WriteLine($"[Revolutionary Architectures] Morphing response time: {engine.MorphingMechanism.ResponseTime:F3} s");
+            Console.WriteLine($"[Engine Architectures] Variable geometry engine created successfully");
+            Console.WriteLine($"[Engine Architectures] Geometry states: {engine.GeometryStates.Count}");
+            Console.WriteLine($"[Engine Architectures] Morphing response time: {engine.MorphingMechanism.ResponseTime:F3} s");
             
             return engine;
         }
@@ -95,8 +95,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateModularEngineSystemAsync(string engineId, ModularSystemSpecs specs)
         {
             await Task.CompletedTask;
-            Console.WriteLine($"[Revolutionary Architectures] 🧩 Creating Modular Engine System: {engineId}");
-            Console.WriteLine("[Revolutionary Architectures] Standardized Component Architecture");
+            Console.WriteLine($"[Engine Architectures] 🧩 Creating Modular Engine System: {engineId}");
+            Console.WriteLine("[Engine Architectures] Standardized Component Architecture");
             
             var engine = new ModularEngineSystem
             {
@@ -124,9 +124,9 @@ namespace HB_NLP_Research_Lab.Aerospace
             
             _revolutionaryEngines[engineId] = engine;
             
-            Console.WriteLine($"[Revolutionary Architectures] Modular engine system created successfully");
-            Console.WriteLine($"[Revolutionary Architectures] Modules: {engine.Modules.Count}");
-            Console.WriteLine($"[Revolutionary Architectures] Standardization level: {engine.StandardizationLevel:P1}");
+            Console.WriteLine($"[Engine Architectures] Modular engine system created successfully");
+            Console.WriteLine($"[Engine Architectures] Modules: {engine.Modules.Count}");
+            Console.WriteLine($"[Engine Architectures] Standardization level: {engine.StandardizationLevel:P1}");
             
             return engine;
         }
@@ -134,8 +134,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateDistributedPropulsionSystemAsync(string engineId, DistributedPropulsionSpecs specs)
         {
             await Task.CompletedTask;
-            Console.WriteLine($"[Revolutionary Architectures] 🔄 Creating Distributed Propulsion System: {engineId}");
-            Console.WriteLine("[Revolutionary Architectures] Multi-Engine Coordination Technology");
+            Console.WriteLine($"[Engine Architectures] 🔄 Creating Distributed Propulsion System: {engineId}");
+            Console.WriteLine("[Engine Architectures] Multi-Engine Coordination Technology");
             
             var engine = new DistributedPropulsionSystem
             {
@@ -164,9 +164,9 @@ namespace HB_NLP_Research_Lab.Aerospace
             
             _revolutionaryEngines[engineId] = engine;
             
-            Console.WriteLine($"[Revolutionary Architectures] Distributed propulsion system created successfully");
-            Console.WriteLine($"[Revolutionary Architectures] Sub-engines: {engine.Engines.Count}");
-            Console.WriteLine($"[Revolutionary Architectures] Coordination efficiency: {engine.CoordinationEfficiency:P1}");
+            Console.WriteLine($"[Engine Architectures] Distributed propulsion system created successfully");
+            Console.WriteLine($"[Engine Architectures] Sub-engines: {engine.Engines.Count}");
+            Console.WriteLine($"[Engine Architectures] Coordination efficiency: {engine.CoordinationEfficiency:P1}");
             
             return engine;
         }
@@ -174,8 +174,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateHybridElectricEngineAsync(string engineId, HybridElectricSpecs specs)
         {
             await Task.CompletedTask;
-            Console.WriteLine($"[Revolutionary Architectures] ⚡ Creating Hybrid Electric Engine: {engineId}");
-            Console.WriteLine("[Revolutionary Architectures] Electric-Combustion Hybrid Technology");
+            Console.WriteLine($"[Engine Architectures] ⚡ Creating Hybrid Electric Engine: {engineId}");
+            Console.WriteLine("[Engine Architectures] Electric-Combustion Hybrid Technology");
             
             var engine = new HybridElectricEngine
             {
@@ -209,9 +209,9 @@ namespace HB_NLP_Research_Lab.Aerospace
             
             _revolutionaryEngines[engineId] = engine;
             
-            Console.WriteLine($"[Revolutionary Architectures] Hybrid electric engine created successfully");
-            Console.WriteLine($"[Revolutionary Architectures] Electric power: {engine.ElectricSystem.PowerOutput / 1000:F0} kW");
-            Console.WriteLine($"[Revolutionary Architectures] Hybrid efficiency: {engine.HybridEfficiency:P1}");
+            Console.WriteLine($"[Engine Architectures] Hybrid electric engine created successfully");
+            Console.WriteLine($"[Engine Architectures] Electric power: {engine.ElectricSystem.PowerOutput / 1000:F0} kW");
+            Console.WriteLine($"[Engine Architectures] Hybrid efficiency: {engine.HybridEfficiency:P1}");
             
             return engine;
         }
@@ -219,8 +219,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateNuclearThermalEngineAsync(string engineId, NuclearThermalSpecs specs)
         {
             await Task.CompletedTask;
-            Console.WriteLine($"[Revolutionary Architectures] ☢️ Creating Nuclear Thermal Engine: {engineId}");
-            Console.WriteLine("[Revolutionary Architectures] Nuclear Propulsion Technology");
+            Console.WriteLine($"[Engine Architectures] ☢️ Creating Nuclear Thermal Engine: {engineId}");
+            Console.WriteLine("[Engine Architectures] Nuclear Propulsion Technology");
             
             var engine = new NuclearThermalEngine
             {
@@ -254,16 +254,16 @@ namespace HB_NLP_Research_Lab.Aerospace
             
             _revolutionaryEngines[engineId] = engine;
             
-            Console.WriteLine($"[Revolutionary Architectures] Nuclear thermal engine created successfully");
-            Console.WriteLine($"[Revolutionary Architectures] Nuclear power: {engine.NuclearReactor.PowerOutput / 1000000:F0} MW");
-            Console.WriteLine($"[Revolutionary Architectures] Nuclear efficiency: {engine.NuclearEfficiency:P1}");
+            Console.WriteLine($"[Engine Architectures] Nuclear thermal engine created successfully");
+            Console.WriteLine($"[Engine Architectures] Nuclear power: {engine.NuclearReactor.PowerOutput / 1000000:F0} MW");
+            Console.WriteLine($"[Engine Architectures] Nuclear efficiency: {engine.NuclearEfficiency:P1}");
             
             return engine;
         }
 
         public async Task<ArchitecturePerformance> AnalyzeRevolutionaryEngineAsync(string engineId)
         {
-            Console.WriteLine($"[Revolutionary Architectures] 🔬 Analyzing revolutionary engine: {engineId}");
+            Console.WriteLine($"[Engine Architectures] 🔬 Analyzing revolutionary engine: {engineId}");
             
             // Use TryGetValue instead of ContainsKey + indexer for efficiency
             if (!_revolutionaryEngines.ContainsKey(engineId))
@@ -331,16 +331,16 @@ namespace HB_NLP_Research_Lab.Aerospace
             
             _performanceData[engineId] = performance;
             
-            Console.WriteLine($"[Revolutionary Architectures] Analysis complete for {engineId}");
-            Console.WriteLine($"[Revolutionary Architectures] Innovation level: {engine.InnovationLevel:P1}");
-            Console.WriteLine($"[Revolutionary Architectures] Technology readiness: {performance.TechnologyReadinessLevel}");
+            Console.WriteLine($"[Engine Architectures] Analysis complete for {engineId}");
+            Console.WriteLine($"[Engine Architectures] Innovation level: {engine.InnovationLevel:P1}");
+            Console.WriteLine($"[Engine Architectures] Technology readiness: {performance.TechnologyReadinessLevel}");
             
             return performance;
         }
 
         public async Task<RevolutionaryArchitectureSummary> GenerateArchitectureSummaryAsync()
         {
-            Console.WriteLine("[Revolutionary Architectures] 📋 Generating Comprehensive Architecture Summary...");
+            Console.WriteLine("[Engine Architectures] 📋 Generating Comprehensive Architecture Summary...");
             
             await Task.Delay(1); // Simulate async operation
             
@@ -354,9 +354,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 FutureDevelopmentRoadmap = GenerateDevelopmentRoadmap()
             };
             
-            Console.WriteLine($"[Revolutionary Architectures] Summary generated successfully");
-            Console.WriteLine($"[Revolutionary Architectures] Total engines: {summary.TotalEngines}");
-            Console.WriteLine($"[Revolutionary Architectures] Average innovation: {summary.AverageInnovationLevel:P1}");
+            Console.WriteLine($"[Engine Architectures] Summary generated successfully");
+            Console.WriteLine($"[Engine Architectures] Total engines: {summary.TotalEngines}");
+            Console.WriteLine($"[Engine Architectures] Average innovation: {summary.AverageInnovationLevel:P1}");
             
             return summary;
         }
