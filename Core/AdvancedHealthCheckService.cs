@@ -348,23 +348,20 @@ namespace HB_NLP_Research_Lab.Core
         {
             var recommendations = new List<string>();
 
-            // System resource recommendations - Use TryGetValue instead of ContainsKey + indexer for efficiency
-            if (report.SystemResources.Metrics.TryGetValue("WorkingSetMB", out var workingSetMB) && 
-                (double)workingSetMB > 1500)
+            if (TryGetMetricAsDouble(report.SystemResources.Metrics, "WorkingSetMB", out var workingSetMB) &&
+                workingSetMB > 1500)
             {
                 recommendations.Add("Consider optimizing memory usage or increasing available memory");
             }
 
-            // Performance recommendations - Use TryGetValue instead of ContainsKey + indexer for efficiency
-            if (report.PerformanceHealth.Metrics.TryGetValue("SystemCPUUsage", out var cpuUsage) && 
-                (double)cpuUsage > 70)
+            if (TryGetMetricAsDouble(report.PerformanceHealth.Metrics, "SystemCPUUsage", out var cpuUsage) &&
+                cpuUsage > 70)
             {
                 recommendations.Add("High CPU usage detected, consider performance optimization");
             }
 
-            // Security recommendations - Use TryGetValue instead of ContainsKey + indexer for efficiency
-            if (report.SecurityHealth.Metrics.TryGetValue("BlockRate", out var blockRate) && 
-                (double)blockRate > 0.05)
+            if (TryGetMetricAsDouble(report.SecurityHealth.Metrics, "BlockRate", out var blockRate) &&
+                blockRate > 0.05)
             {
                 recommendations.Add("High rate limiting activity, review API usage patterns");
             }
@@ -376,6 +373,40 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             return recommendations;
+        }
+
+        private static bool TryGetMetricAsDouble(Dictionary<string, object> metrics, string key, out double value)
+        {
+            value = 0;
+
+            if (!metrics.TryGetValue(key, out var metricValue) || metricValue is null)
+            {
+                return false;
+            }
+
+            switch (metricValue)
+            {
+                case double doubleValue:
+                    value = doubleValue;
+                    return true;
+                case float floatValue:
+                    value = floatValue;
+                    return true;
+                case int intValue:
+                    value = intValue;
+                    return true;
+                case long longValue:
+                    value = longValue;
+                    return true;
+                case decimal decimalValue:
+                    value = (double)decimalValue;
+                    return true;
+                case string stringValue when double.TryParse(stringValue, out var parsed):
+                    value = parsed;
+                    return true;
+                default:
+                    return false;
+            }
         }
     }
 
