@@ -86,19 +86,30 @@ builder.Services.AddSwaggerGen(c =>
     if (!string.IsNullOrEmpty(assemblyName))
     {
         var xmlFile = $"{assemblyName}.xml";
+        // Sanitize filename to prevent path traversal attacks
         xmlFile = xmlFile.Replace(Path.DirectorySeparatorChar, '_')
                         .Replace(Path.AltDirectorySeparatorChar, '_')
                         .Replace("..", string.Empty)
                         .Replace("/", "_")
                         .Replace("\\", "_");
 
-        if (!Path.IsPathRooted(xmlFile) && !xmlFile.Contains(Path.DirectorySeparatorChar) &&
-            !xmlFile.Contains(Path.AltDirectorySeparatorChar))
+        // Additional validation: ensure filename contains only safe characters
+        if (!Path.IsPathRooted(xmlFile) && 
+            !xmlFile.Contains(Path.DirectorySeparatorChar) &&
+            !xmlFile.Contains(Path.AltDirectorySeparatorChar) &&
+            !xmlFile.Contains("..") &&
+            xmlFile.IndexOfAny(Path.GetInvalidFileNameChars()) < 0)
         {
             var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
-            if (File.Exists(xmlPath))
+            
+            // Security: Ensure the resolved path is within the base directory (prevent path traversal)
+            var baseDir = Path.GetFullPath(AppContext.BaseDirectory);
+            var resolvedPath = Path.GetFullPath(xmlPath);
+            
+            if (resolvedPath.StartsWith(baseDir, StringComparison.OrdinalIgnoreCase) && 
+                File.Exists(resolvedPath))
             {
-                c.IncludeXmlComments(xmlPath);
+                c.IncludeXmlComments(resolvedPath);
             }
         }
     }
