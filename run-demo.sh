@@ -3,19 +3,45 @@
 # HelloblueGK Demo Runner Script
 # This script runs the Web API demo with Swagger UI
 
+# Source shell profile to get dotnet in PATH (for zsh/bash)
+if [ -f "$HOME/.zshrc" ]; then
+    source "$HOME/.zshrc" 2>/dev/null || true
+elif [ -f "$HOME/.bashrc" ]; then
+    source "$HOME/.bashrc" 2>/dev/null || true
+elif [ -f "$HOME/.profile" ]; then
+    source "$HOME/.profile" 2>/dev/null || true
+fi
+
 echo "🚀 Starting HelloblueGK Demo..."
 echo ""
 
 # Check if .NET SDK is installed
-if ! command -v dotnet &> /dev/null; then
+# Try multiple methods to find dotnet
+DOTNET_CMD=""
+if command -v dotnet &> /dev/null; then
+    DOTNET_CMD="dotnet"
+elif [ -f "$HOME/.dotnet/dotnet" ]; then
+    DOTNET_CMD="$HOME/.dotnet/dotnet"
+elif [ -f "/usr/local/bin/dotnet" ]; then
+    DOTNET_CMD="/usr/local/bin/dotnet"
+elif [ -f "/usr/bin/dotnet" ]; then
+    DOTNET_CMD="/usr/bin/dotnet"
+fi
+
+if [ -z "$DOTNET_CMD" ] || ! $DOTNET_CMD --version &> /dev/null; then
     echo "❌ .NET SDK not found. Please install .NET 9.0 SDK:"
     echo "   https://dotnet.microsoft.com/download"
+    echo ""
+    echo "   Or ensure dotnet is in your PATH"
+    echo ""
+    echo "   If dotnet is installed, try running manually:"
+    echo "   cd WebAPI && dotnet run"
     exit 1
 fi
 
 # Check .NET version
-DOTNET_VERSION=$(dotnet --version)
-echo "✅ Found .NET SDK: $DOTNET_VERSION"
+DOTNET_VERSION=$($DOTNET_CMD --version)
+echo "✅ Found .NET SDK: $DOTNET_VERSION (using: $DOTNET_CMD)"
 echo ""
 
 # Check if WebAPI directory exists
@@ -33,11 +59,11 @@ fi
 
 # Restore dependencies
 echo "📦 Restoring dependencies..."
-dotnet restore
+$DOTNET_CMD restore
 
 # Build the solution
 echo "🔨 Building solution..."
-dotnet build --configuration Release
+$DOTNET_CMD build --configuration Release
 
 # Check if build succeeded
 if [ $? -ne 0 ]; then
@@ -58,12 +84,12 @@ echo ""
 # Run the Web API if Program.cs exists in WebAPI, otherwise use main project
 if [ -f "WebAPI/Program.cs" ] && [ -f "WebAPI/HelloblueGK.WebAPI.csproj" ]; then
     cd WebAPI
-    dotnet run
+    $DOTNET_CMD run
 else
     # Use the main project - we'll need to modify it to support web mode
     # For now, just run the console app and inform user
     echo "⚠️  WebAPI project not fully configured. Running main application..."
     echo "   To run as Web API, ensure WebAPI/Program.cs is configured."
-    dotnet run --project HelloblueGK.csproj
+    $DOTNET_CMD run --project HelloblueGK.csproj
 fi
 

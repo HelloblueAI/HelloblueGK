@@ -1,0 +1,19 @@
+[Unit]
+Description=HelloblueGK Aerospace Engine Simulation API
+After=network.target
+
+[Service]
+Type=notify
+WorkingDirectory=/home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
+ExecStart=/usr/bin/dotnet /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI/bin/Release/net9.0/HelloblueGK.WebAPI.dll
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+SyslogIdentifier=hellobluegk
+User=pejmanhaghighatnia
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Environment=DOTNET_ROOT=/usr/share/dotnet
+
+[Install]
+WantedBy=multi-user.target
+
