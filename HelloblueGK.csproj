@@ -32,6 +32,8 @@
     <Compile Remove="PlasticityDemo/**/*.cs" />
     <!-- Exclude Tests from main project build -->
     <Compile Remove="Tests/**/*.cs" />
+    <!-- Exclude WebAPI from main project build -->
+    <Compile Remove="WebAPI/**/*.cs" />
   </ItemGroup>
 
 </Project> 

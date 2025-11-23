@@ -2,7 +2,26 @@
 
 This guide will help you run the interactive demo of the HelloblueGK aerospace engine simulation platform.
 
+## Prerequisites
+
+- **.NET 9.0 SDK** must be installed
+- If you see "command not found: dotnet", see [INSTALL_DOTNET.md](INSTALL_DOTNET.md)
+
 ## Quick Start
+
+### Option 0: Install .NET SDK First
+
+If `dotnet` command is not found:
+```bash
+# Quick install
+curl -sSL https://dot.net/v1/dotnet-install.sh | bash /dev/stdin --channel 9.0
+export PATH="$HOME/.dotnet:$PATH"
+
+# Verify
+dotnet --version
+```
+
+See [INSTALL_DOTNET.md](INSTALL_DOTNET.md) for detailed installation instructions.
 
 ### Option 1: Run with Docker (Recommended)
 

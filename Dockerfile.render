@@ -1,27 +1,44 @@
-# Dockerfile for Render deployment
+# Production Dockerfile for Render Deployment
+# Optimized for HelloblueGK WebAPI
+
+# Build stage
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy solution and project files
-COPY *.csproj ./
-COPY WebAPI/*.csproj ./WebAPI/
+# Copy solution and project files for dependency restoration
+COPY HelloblueGK.csproj ./
+COPY WebAPI/HelloblueGK.WebAPI.csproj ./WebAPI/
+
+# Restore dependencies (restore main project first, then WebAPI)
+RUN dotnet restore HelloblueGK.csproj
 RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
 
-# Copy everything else
+# Copy all source files
 COPY . .
 
-# Build and publish WebAPI
+# Build and publish WebAPI (includes main project as dependency)
 WORKDIR /src/WebAPI
-RUN dotnet publish -c Release -o /app/publish
+RUN dotnet publish -c Release -o /app/publish --no-restore
 
-# Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:9.0
+# Runtime stage - optimized production image
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 WORKDIR /app
+
+# Copy published application
 COPY --from=build /app/publish .
+
+# Set production environment
 ENV ASPNETCORE_ENVIRONMENT=Production
-# PORT will be set by Render dynamically via environment variable
+ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=true
+
+# Render sets PORT dynamically, but we expose a default
 EXPOSE 10000
-# Health check - Render will override PORT, but we use default for Docker healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD curl -f http://localhost:10000/Health || exit 1
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT:-10000}/Health || exit 1
+
+# Start the application
+# PORT is set by Render via environment variable
 ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]
