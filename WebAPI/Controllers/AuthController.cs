@@ -65,6 +65,16 @@ public class AuthController : ControllerBase
             });
         }
 
+        // Upgrade legacy SHA256 password hash to secure PBKDF2 on successful login
+        var isLegacyHash = !user.PasswordHash.Contains(':', StringComparison.Ordinal) || 
+                          user.PasswordHash.Split(':').Length != 3;
+        if (isLegacyHash)
+        {
+            _logger.LogInformation("Upgrading legacy password hash to PBKDF2 for user: {Username}", user.Username);
+            user.PasswordHash = HashPassword(request.Password);
+            user.UpdatedAt = DateTime.UtcNow;
+        }
+
         // Update last login
         user.LastLoginAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -181,17 +191,74 @@ public class AuthController : ControllerBase
         });
     }
 
+    /// <summary>
+    /// Hash password using PBKDF2 with HMAC-SHA256 (secure, salted password hashing)
+    /// Format: iterations:salt:hash (all base64 encoded)
+    /// </summary>
     private static string HashPassword(string password)
     {
-        using var sha256 = SHA256.Create();
-        var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-        return Convert.ToBase64String(hashedBytes);
+        // Generate a random salt for each password
+        var salt = new byte[32]; // 256-bit salt
+        using (var rng = RandomNumberGenerator.Create())
+        {
+            rng.GetBytes(salt);
+        }
+
+        // PBKDF2 with 100,000 iterations (adjustable based on performance requirements)
+        const int iterations = 100000;
+        var hash = Rfc2898DeriveBytes.Pbkdf2(
+            password: Encoding.UTF8.GetBytes(password),
+            salt: salt,
+            iterations: iterations,
+            hashAlgorithm: HashAlgorithmName.SHA256,
+            outputLength: 32); // 256-bit hash
+
+        // Format: iterations:salt:hash (all base64 encoded for storage)
+        return $"{iterations}:{Convert.ToBase64String(salt)}:{Convert.ToBase64String(hash)}";
     }
 
-    private static bool VerifyPassword(string password, string hash)
+    /// <summary>
+    /// Verify password against stored hash (supports both new PBKDF2 and legacy SHA256 for migration)
+    /// </summary>
+    private static bool VerifyPassword(string password, string storedHash)
     {
-        var passwordHash = HashPassword(password);
-        return passwordHash == hash;
+        if (string.IsNullOrWhiteSpace(storedHash))
+        {
+            return false;
+        }
+
+        // Check if this is a new PBKDF2 hash (format: iterations:salt:hash)
+        var parts = storedHash.Split(':');
+        if (parts.Length == 3 && int.TryParse(parts[0], out var iterations))
+        {
+            // New PBKDF2 format
+            var salt = Convert.FromBase64String(parts[1]);
+            var hash = Convert.FromBase64String(parts[2]);
+
+            // Compute hash with the same salt and iterations
+            var computedHash = Rfc2898DeriveBytes.Pbkdf2(
+                password: Encoding.UTF8.GetBytes(password),
+                salt: salt,
+                iterations: iterations,
+                hashAlgorithm: HashAlgorithmName.SHA256,
+                outputLength: hash.Length);
+
+            // Constant-time comparison to prevent timing attacks
+            return CryptographicOperations.FixedTimeEquals(hash, computedHash);
+        }
+        else
+        {
+            // Legacy SHA256 format (for backward compatibility during migration)
+            // In production, you should force password reset for legacy hashes
+            using var sha256 = SHA256.Create();
+            var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+            var passwordHash = Convert.ToBase64String(hashedBytes);
+            
+            // Constant-time comparison
+            return CryptographicOperations.FixedTimeEquals(
+                Encoding.UTF8.GetBytes(passwordHash),
+                Encoding.UTF8.GetBytes(storedHash));
+        }
     }
 }
 

@@ -29,9 +29,14 @@ public class Engine
     // Metadata
     public string? Description { get; set; }
     public string? CreatedBy { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public bool IsActive { get; set; } = true;
+
+    public Engine()
+    {
+        CreatedAt = DateTime.UtcNow;
+    }
 
     // Navigation properties
     public ICollection<EngineSimulation> Simulations { get; set; } = new List<EngineSimulation>();

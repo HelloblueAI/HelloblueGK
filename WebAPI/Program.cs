@@ -135,23 +135,64 @@ builder.Services.AddCors(options =>
 });
 
 // Configure Entity Framework Core
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
-    ?? "Data Source=hellobluegk.db"; // Fallback to SQLite for development
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    // Fallback: Use SQLite for development, but require configuration in production
+    if (builder.Environment.IsDevelopment())
+    {
+        connectionString = "Data Source=hellobluegk.db"; // SQLite for development
+    }
+    else
+    {
+        throw new InvalidOperationException(
+            "DefaultConnection string must be configured in production. " +
+            "Please set ConnectionStrings:DefaultConnection in your configuration. " +
+            "For SQL Server, use: Server=your-server;Database=HelloblueGK;...");
+    }
+}
 
-// Use SQLite for development, SQL Server for production
-if (builder.Environment.IsDevelopment())
+// Auto-detect database provider from connection string format
+// Check for SQL Server-specific keywords first (highest priority)
+bool hasSqlServerKeywords = connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("Database=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("Integrated Security=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("Trusted_Connection=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase);
+
+// Check for SQLite-specific indicators
+bool hasSqliteFileExtension = connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
+bool hasSqliteFilenameKeyword = connectionString.StartsWith("Filename=", StringComparison.OrdinalIgnoreCase);
+
+// For "Data Source=" strings, only treat as SQLite if it clearly points to a file (.db extension)
+// SQL Server can use "Data Source=server" without other keywords, so we must be careful
+bool isDataSourceWithDbFile = connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase) &&
+                              connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
+
+// Use SQLite only if clear SQLite indicators exist and no SQL Server keywords
+// Default to SQL Server if ambiguous (e.g., "Data Source=.\sqlexpress" will use SQL Server)
+bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSourceWithDbFile) && 
+                 !hasSqlServerKeywords;
+
+if (useSqlite)
 {
     builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
         options.UseSqlite(connectionString));
 }
 else
 {
+    // SQL Server or other providers - default to SQL Server if ambiguous
     builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
         options.UseSqlServer(connectionString));
 }
 
 // Add JWT Authentication
-var jwtKey = builder.Configuration["Jwt:Key"] ?? "your-super-secret-jwt-key-change-in-production-min-32-chars";
+// Use same default key as JwtService to maintain consistency
+// Default key should only be used in development - production must configure a secure key
+const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
+var jwtKey = builder.Configuration["Jwt:Key"] ?? defaultJwtKey;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
 
@@ -202,13 +243,33 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();
 
-// Ensure database is created (for development)
-if (app.Environment.IsDevelopment())
+// Ensure database is created and initialized
+// This runs in both Development and Production to ensure database tables exist
+using (var scope = app.Services.CreateScope())
 {
-    using (var scope = app.Services.CreateScope())
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+    var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+    
+    try
     {
-        var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
-        dbContext.Database.EnsureCreated();
+        // Attempt to ensure database and tables are created
+        // In Production, consider using migrations (Database.Migrate()) instead
+        // EnsureCreated() is simpler but doesn't track schema changes like migrations do
+        var databaseCreated = dbContext.Database.EnsureCreated();
+        
+        if (databaseCreated)
+        {
+            logger.LogInformation("Database and tables created successfully");
+        }
+        else
+        {
+            logger.LogInformation("Database already exists - skipping creation");
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Failed to initialize database. The application will continue, but database operations may fail.");
+        // Don't throw - allow application to start and fail gracefully if database operations are attempted
     }
 }
 
@@ -266,15 +327,8 @@ app.MapGet("/Health", () => Results.Ok(new {
 // Root redirect to Swagger
 app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 
-// Prometheus metrics endpoint (alternative route)
-app.MapGet("/metrics", async context =>
-{
-    using var stream = new MemoryStream();
-    await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream, context.RequestAborted);
-    stream.Position = 0;
-    context.Response.ContentType = "text/plain; version=0.0.4";
-    await stream.CopyToAsync(context.Response.Body);
-}).AllowAnonymous();
+// Note: /metrics endpoint is already provided by app.UseMetricServer() at line 279
+// No need for a manual MapGet definition - UseMetricServer() handles it automatically
 
 Console.WriteLine("🚀 HelloblueGK Web API Server Starting...");
 Console.WriteLine("📚 API Documentation: http://localhost:5000/swagger");

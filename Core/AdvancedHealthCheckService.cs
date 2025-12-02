@@ -77,7 +77,10 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private Task<ResourceHealth> CheckSystemResourcesAsync()
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
+        private async Task<ResourceHealth> CheckSystemResourcesAsync()
         {
             var resourceHealth = new ResourceHealth
             {
@@ -123,18 +126,22 @@ namespace HB_NLP_Research_Lab.Core
                     resourceHealth.Warnings.Add($"High GC memory usage: {gcMemory}MB");
                 }
 
-                return Task.FromResult(resourceHealth);
+                return resourceHealth;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check system resources");
                 resourceHealth.Status = AdvancedHealthStatus.Unhealthy;
                 resourceHealth.Issues.Add($"Resource check failed: {ex.Message}");
-                return Task.FromResult(resourceHealth);
+                return resourceHealth;
             }
         }
+#pragma warning restore CS1998
 
-        private Task<AdvancedComponentHealth> CheckApplicationHealthAsync()
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
+        private async Task<AdvancedComponentHealth> CheckApplicationHealthAsync()
         {
             var appHealth = new AdvancedComponentHealth
             {
@@ -154,16 +161,17 @@ namespace HB_NLP_Research_Lab.Core
                 var uptime = DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime();
                 appHealth.Metrics["UptimeSeconds"] = uptime.TotalSeconds;
 
-                return Task.FromResult(appHealth);
+                return appHealth;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check application health");
                 appHealth.Status = AdvancedHealthStatus.Unhealthy;
                 appHealth.Issues.Add($"Application check failed: {ex.Message}");
-                return Task.FromResult(appHealth);
+                return appHealth;
             }
         }
+#pragma warning restore CS1998
 
         private async Task<AdvancedComponentHealth> CheckExternalDependenciesAsync()
         {
