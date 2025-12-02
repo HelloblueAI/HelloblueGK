@@ -6,7 +6,7 @@ services:
     dockerContext: .
     plan: free  # Start with free tier, upgrade when needed
     region: oregon  # US West - change to your preferred region
-    branch: main  # Auto-deploy from main branch
+    branch: production-deployment  # Auto-deploy from production-deployment branch
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
