@@ -315,14 +315,6 @@ app.MapControllers();
 // Serve static files for demo
 app.UseStaticFiles();
 
-// Health check endpoint (for Render and monitoring)
-app.MapGet("/Health", () => Results.Ok(new { 
-    status = "Healthy", 
-    timestamp = DateTime.UtcNow,
-    service = "HelloblueGK WebAPI",
-    version = "1.0.0"
-})).AllowAnonymous();
-
 // Root redirect to Swagger
 app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 
