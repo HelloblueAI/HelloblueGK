@@ -234,7 +234,12 @@ namespace HB_NLP_Research_Lab.Core
                 ["StartTime"] = DateTime.UtcNow
             };
 
-            return _logger.BeginScope(scopeData);
+            return _logger.BeginScope(scopeData) ?? new NullDisposable();
+        }
+        
+        private class NullDisposable : IDisposable
+        {
+            public void Dispose() { }
         }
 
         public void LogOperationComplete(string operationType, string operationId, TimeSpan duration, bool success = true, object? result = null)

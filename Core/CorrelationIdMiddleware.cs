@@ -120,7 +120,12 @@ namespace HB_NLP_Research_Lab.Core
             return logger.BeginScope(new Dictionary<string, object>
             {
                 ["CorrelationId"] = correlationId
-            });
+            }) ?? new NullDisposable();
+        }
+        
+        private class NullDisposable : IDisposable
+        {
+            public void Dispose() { }
         }
     }
 }
