@@ -209,7 +209,10 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private Task<SystemMetrics> GetSystemMetricsAsync()
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
+        private async Task<SystemMetrics> GetSystemMetricsAsync()
         {
             var metrics = new SystemMetrics
             {
@@ -229,8 +232,9 @@ namespace HB_NLP_Research_Lab.Core
                 Gen2Collections = GC.CollectionCount(2)
             };
             
-            return Task.FromResult(metrics);
+            return metrics;
         }
+#pragma warning restore CS1998
 
         private ApplicationMetrics GetApplicationMetrics()
         {

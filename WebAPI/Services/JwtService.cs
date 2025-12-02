@@ -30,7 +30,17 @@ public class JwtService : IJwtService
 
     public string GenerateToken(User user)
     {
-        var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key not configured");
+        // Use same default key as Program.cs to maintain consistency
+        // Default key should only be used in development - production must configure a secure key
+        const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
+        var jwtKey = _configuration["Jwt:Key"] ?? defaultJwtKey;
+        
+        // Log warning if using default key (security risk in production)
+        if (jwtKey == defaultJwtKey)
+        {
+            _logger.LogWarning("Using default JWT key. This should be changed in production configuration!");
+        }
+        
         var jwtIssuer = _configuration["Jwt:Issuer"] ?? "hellobluegk";
         var jwtAudience = _configuration["Jwt:Audience"] ?? "hellobluegk-api";
         var expirationHours = int.Parse(_configuration["Jwt:TokenExpirationHours"] ?? "24");
@@ -71,7 +81,10 @@ public class JwtService : IJwtService
     {
         try
         {
-            var jwtKey = _configuration["Jwt:Key"] ?? throw new InvalidOperationException("JWT Key not configured");
+            // Use same default key as Program.cs to maintain consistency
+            // This ensures token validation matches token generation
+            const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
+            var jwtKey = _configuration["Jwt:Key"] ?? defaultJwtKey;
             var jwtIssuer = _configuration["Jwt:Issuer"] ?? "hellobluegk";
             var jwtAudience = _configuration["Jwt:Audience"] ?? "hellobluegk-api";
 

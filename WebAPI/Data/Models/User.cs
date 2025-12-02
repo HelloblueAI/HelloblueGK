@@ -31,9 +31,14 @@ public class User
     public bool IsAdmin { get; set; } = false;
 
     // Metadata
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
     public DateTime? LastLoginAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
+
+    public User()
+    {
+        CreatedAt = DateTime.UtcNow;
+    }
 
     // Navigation properties
     public ICollection<ApiKey> ApiKeys { get; set; } = new List<ApiKey>();

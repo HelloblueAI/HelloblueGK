@@ -20,7 +20,10 @@ namespace HB_NLP_Research_Lab.Core
             _logger = logger;
         }
 
-        public Task<ConfigurationValidationResult> ValidateConfigurationAsync()
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
+        public async Task<ConfigurationValidationResult> ValidateConfigurationAsync()
         {
             var result = new ConfigurationValidationResult
             {
@@ -64,16 +67,17 @@ namespace HB_NLP_Research_Lab.Core
                     _logger.LogWarning("Configuration validation completed with {ErrorCount} errors", result.Errors.Count);
                 }
 
-                return Task.FromResult(result);
+                return result;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Configuration validation failed");
                 result.IsValid = false;
                 result.Errors.Add($"Validation process failed: {ex.Message}");
-                return Task.FromResult(result);
+                return result;
             }
         }
+#pragma warning restore CS1998
 
         private void ValidateEngineConfiguration(ConfigurationValidationResult result)
         {

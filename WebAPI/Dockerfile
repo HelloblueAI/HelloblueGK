@@ -1,23 +1,23 @@
 # Build stage
+# NOTE: This Dockerfile assumes the build context is at the repository root
+# Build with: docker build -f WebAPI/Dockerfile .
 FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy solution and project files
-COPY *.csproj ./
-COPY ../HelloblueGK.csproj ../HelloblueGK.csproj
-COPY ../*.csproj ../
+# Copy solution and project files for dependency restoration
+COPY HelloblueGK.csproj ./
+COPY WebAPI/HelloblueGK.WebAPI.csproj ./WebAPI/
 
-# Restore dependencies
-RUN dotnet restore HelloblueGK.WebAPI.csproj
-RUN dotnet restore ../HelloblueGK.csproj
+# Restore dependencies (restore main project first, then WebAPI)
+RUN dotnet restore HelloblueGK.csproj
+RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
 
-# Copy everything else
+# Copy all source files
 COPY . .
-COPY .. ../
 
-# Build and publish
-WORKDIR /src
-RUN dotnet publish HelloblueGK.WebAPI.csproj -c Release -o /app/publish
+# Build and publish WebAPI (includes main project as dependency)
+WORKDIR /src/WebAPI
+RUN dotnet publish -c Release -o /app/publish --no-restore
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:9.0

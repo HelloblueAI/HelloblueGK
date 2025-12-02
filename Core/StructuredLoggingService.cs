@@ -246,12 +246,12 @@ namespace HB_NLP_Research_Lab.Core
         {
             var logData = new Dictionary<string, object>
             {
-                ["OperationType"] = operationType,
+                ["OperationType"] = "OperationComplete",
+                ["Operation"] = operationType,
                 ["OperationId"] = operationId,
                 ["Duration"] = duration.TotalMilliseconds,
                 ["Success"] = success,
-                ["Timestamp"] = DateTime.UtcNow,
-                ["OperationType"] = "OperationComplete"
+                ["Timestamp"] = DateTime.UtcNow
             };
 
             if (result != null)
@@ -260,7 +260,7 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             var level = success ? LogLevel.Information : LogLevel.Warning;
-            _logger.Log(level, "Operation completed: {OperationType} {OperationId} in {Duration}ms (Success: {Success})", 
+            _logger.Log(level, "Operation completed: {Operation} {OperationId} in {Duration}ms (Success: {Success})", 
                 operationType, operationId, duration.TotalMilliseconds, success);
             LogStructuredData(logData, level);
         }

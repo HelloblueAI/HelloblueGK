@@ -32,10 +32,15 @@ public class EngineSimulation
     public string? StackTrace { get; set; }
 
     // Metadata
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime CreatedAt { get; set; }
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
     public string? CreatedBy { get; set; }
+
+    public EngineSimulation()
+    {
+        CreatedAt = DateTime.UtcNow;
+    }
 
     // Navigation properties
     public Engine Engine { get; set; } = null!;
