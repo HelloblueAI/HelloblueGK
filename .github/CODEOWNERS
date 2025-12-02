@@ -9,7 +9,7 @@
 
 # Infrastructure and CI/CD
 /.github/ @HelloblueAI/hb-nlp-research-lab
-/Dockerfile @HelloblueAI/hb-nlp-research-lab
+/Docker/ @HelloblueAI/hb-nlp-research-lab
 /k8s-deployment.yaml @HelloblueAI/hb-nlp-research-lab
 
 # Tests
