@@ -175,8 +175,10 @@ namespace HB_NLP_Research_Lab.Core
                 // Collect system metrics (Windows only for performance counters)
                 if (_cpuCounter != null && _memoryCounter != null)
                 {
+#pragma warning disable CA1416 // Platform-specific API
                     var cpuUsage = _cpuCounter.NextValue();
                     var availableMemory = _memoryCounter.NextValue();
+#pragma warning restore CA1416
                     RecordMetric("System_CPU_Usage", cpuUsage, "System");
                     RecordMetric("System_Available_Memory", availableMemory, "System");
                 }
@@ -207,12 +209,18 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
         private async Task<SystemMetrics> GetSystemMetricsAsync()
         {
-            return new SystemMetrics
+            var metrics = new SystemMetrics
             {
+                // Windows-specific performance counters (null on Linux/macOS) - suppress warning
+#pragma warning disable CA1416
                 CPUUsage = _cpuCounter?.NextValue() ?? 0,
                 AvailableMemory = _memoryCounter?.NextValue() ?? 0,
+#pragma warning restore CA1416
                 // Explicit cast to double for division to avoid precision loss warning (intentional conversion from bytes to MB)
                 ProcessWorkingSet = (double)_currentProcess.WorkingSet64 / 1024.0 / 1024.0,
                 ProcessPrivateMemory = (double)_currentProcess.PrivateMemorySize64 / 1024.0 / 1024.0,
@@ -223,7 +231,10 @@ namespace HB_NLP_Research_Lab.Core
                 Gen1Collections = GC.CollectionCount(1),
                 Gen2Collections = GC.CollectionCount(2)
             };
+            
+            return metrics;
         }
+#pragma warning restore CS1998
 
         private ApplicationMetrics GetApplicationMetrics()
         {

@@ -1,0 +1,34 @@
+{
+  "name": "HB-NLP Quantum-Classical Hybrid Engine",
+  "version": "v25.2.2",
+  "specifications": {
+    "thrust": 2000000,
+    "specific_impulse": 450,
+    "chamber_pressure": 300,
+    "expansion_ratio": 25.0,
+    "efficiency": 0.95,
+    "technology_readiness_level": 9
+  },
+  "geometry": {
+    "chamber_diameter": 2.5,
+    "chamber_length": 3.0,
+    "throat_diameter": 0.8,
+    "exit_diameter": 4.0,
+    "nozzle_length": 6.0,
+    "expansion_angle": 15.0
+  },
+  "materials": {
+    "chamber": "Advanced Superalloy",
+    "nozzle": "Carbon-Carbon Composite",
+    "injector": "Titanium Alloy",
+    "turbopump": "Inconel 718"
+  },
+  "performance_metrics": {
+    "cfd_convergence": 0.998,
+    "hardware_utilization": 0.87,
+    "computation_speed": 1500000000000.0,
+    "memory_usage": 8.2,
+    "temperature": 45.2,
+    "power_consumption": 320
+  }
+}
