@@ -6,10 +6,10 @@
 
 1. **Render Deployment** ✅
    - `render.yaml` - Auto-configuration
-   - `Dockerfile.render` - Optimized production build
+   - `Docker/Dockerfile.render` - Optimized production build
    - `WebAPI/DEPLOY_TO_RENDER.md` - Complete guide
-   - `QUICK_DEPLOY.md` - 15-minute quick start
-   - `DEPLOY_NOW.md` - Step-by-step instructions
+   - `Docs/Deployment/QUICK_DEPLOY.md` - 15-minute quick start
+   - `Docs/Deployment/DEPLOY_NOW.md` - Step-by-step instructions
 
 2. **Systemd Service** ✅
    - `WebAPI/hellobluegk.service` - Linux service
@@ -17,7 +17,7 @@
    - `WebAPI/PRODUCTION_SETUP.md` - Detailed guide
 
 3. **Docker Support** ✅
-   - `Dockerfile.render` - Render deployment
+   - `Docker/Dockerfile.render` - Render deployment
    - `WebAPI/Dockerfile` - Standard Docker
    - `WebAPI/Dockerfile.simple` - Simplified version
 
@@ -35,7 +35,7 @@
 - ✅ `WebAPI/DEPLOY_TO_RENDER.md` - Complete Render guide
 - ✅ `WebAPI/DEPLOYMENT_RECOMMENDATION.md` - Why this approach
 - ✅ `WebAPI/PRODUCTION_SETUP.md` - Systemd setup
-- ✅ `DEPLOYMENT_SUCCESS.md` - Success checklist
+- ✅ `Docs/Deployment/DEPLOYMENT_SUCCESS.md` - Success checklist
 
 ### Enterprise Documentation
 - ✅ `Docs/Technical/ENTERPRISE_DEPLOYMENT.md` - Big tech comparison
@@ -64,7 +64,7 @@ git push origin main
 # 4. Done! Your API is live!
 ```
 
-**See:** [QUICK_DEPLOY.md](QUICK_DEPLOY.md)
+**See:** [QUICK_DEPLOY.md](../Deployment/QUICK_DEPLOY.md)
 
 ### Option 2: Systemd (Your Server)
 **Best for:** Your own VPS/server

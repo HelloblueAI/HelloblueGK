@@ -18,7 +18,7 @@ render services create web \
   --name "$UNIQUE_NAME" \
   --repo https://github.com/HelloblueAI/HelloblueGK \
   --branch main \
-  --dockerfile-path Dockerfile.render \
+  --dockerfile-path Docker/Dockerfile.render \
   --region oregon
 
 echo ""

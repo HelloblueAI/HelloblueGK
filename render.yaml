@@ -2,7 +2,7 @@ services:
   - type: web
     name: hellobluegk-production
     env: docker
-    dockerfilePath: Dockerfile.render
+    dockerfilePath: Docker/Dockerfile.render
     dockerContext: .
     plan: free  # Start with free tier, upgrade when needed
     region: oregon  # US West - change to your preferred region

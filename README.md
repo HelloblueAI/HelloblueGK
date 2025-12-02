@@ -11,14 +11,14 @@
 
 ### Try the Interactive Demo
 
-**🚀 Live Demo:** Deploy to Render in 15 minutes! See [QUICK_DEPLOY.md](QUICK_DEPLOY.md)
+**🚀 Live Demo:** Deploy to Render in 15 minutes! See [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md)
 
 **Previous Demo:** [https://hellobluegk-demo-production.up.railway.app](https://hellobluegk-demo-production.up.railway.app)
 
 - **Swagger UI:** [https://hellobluegk-demo-production.up.railway.app/swagger](https://hellobluegk-demo-production.up.railway.app/swagger)
 - **Health Check:** [https://hellobluegk-demo-production.up.railway.app/Health](https://hellobluegk-demo-production.up.railway.app/Health)
 
-**🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](QUICK_DEPLOY.md) for 15-minute production deployment!
+**🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
 
 **Run Locally:**
 ```bash
@@ -33,7 +33,7 @@ dotnet run
 # Open http://localhost:5000/swagger in your browser
 ```
 
-See [DEMO.md](DEMO.md) for detailed demo instructions.
+See [DEMO.md](Docs/Project/DEMO.md) for detailed demo instructions.
 
 **📸 Screenshots:** Add screenshots of Swagger UI here after taking them
 

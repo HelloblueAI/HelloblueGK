@@ -30,7 +30,7 @@ git push origin main
 - **Repository:** `HelloblueAI/HelloblueGK`
 - **Name:** `hellobluegk-production`
 - **Runtime:** `Docker`
-- **Dockerfile:** `Dockerfile.render`
+- **Dockerfile:** `Docker/Dockerfile.render`
 - **Docker Context:** `.`
 - **Health Check:** `/Health`
 - **Auto-Deploy:** ✅ Yes
