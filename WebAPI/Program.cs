@@ -275,12 +275,11 @@ using (var scope = app.Services.CreateScope())
 
 // Configure the HTTP request pipeline
 
-// Prometheus metrics
-app.UseMetricServer(); // Exposes /metrics endpoint
-app.UseHttpMetrics(); // Tracks HTTP metrics
-
 // Global exception handler (must be early in pipeline)
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+
+// Prometheus HTTP metrics tracking (tracks HTTP requests)
+app.UseHttpMetrics();
 
 app.UseSwagger();
 app.UseSwaggerUI(c =>
@@ -327,8 +326,8 @@ app.MapGet("/Health", () => Results.Ok(new {
 // Root redirect to Swagger
 app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
 
-// Note: /metrics endpoint is already provided by app.UseMetricServer() at line 279
-// No need for a manual MapGet definition - UseMetricServer() handles it automatically
+// Map Prometheus metrics endpoint - must be after MapControllers for endpoint routing
+app.MapMetrics(); // Exposes /metrics endpoint in Prometheus format
 
 Console.WriteLine("🚀 HelloblueGK Web API Server Starting...");
 Console.WriteLine("📚 API Documentation: http://localhost:5000/swagger");
