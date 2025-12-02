@@ -9,16 +9,17 @@ WORKDIR /src
 COPY HelloblueGK.csproj ./
 COPY WebAPI/HelloblueGK.WebAPI.csproj ./WebAPI/
 
-# Restore dependencies (restore main project first, then WebAPI)
-RUN dotnet restore HelloblueGK.csproj
+# Restore dependencies - restore WebAPI project which will automatically restore its dependencies
+# This ensures all transitive dependencies are properly resolved
 RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
 
 # Copy all source files
 COPY . .
 
 # Build and publish WebAPI (includes main project as dependency)
+# Remove --no-restore to allow full dependency resolution
 WORKDIR /src/WebAPI
-RUN dotnet publish -c Release -o /app/publish --no-restore
+RUN dotnet publish -c Release -o /app/publish
 
 # Runtime stage - optimized production image
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
