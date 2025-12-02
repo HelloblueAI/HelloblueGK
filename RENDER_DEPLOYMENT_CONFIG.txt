@@ -1,0 +1,55 @@
+═══════════════════════════════════════════════════════════════
+RENDER MANUAL DEPLOYMENT CONFIGURATION
+Copy and paste these exact values into Render's form
+═══════════════════════════════════════════════════════════════
+
+SERVICE TYPE:
+  ☑ Web Service
+
+BASIC SETTINGS:
+  Name: hellobluegk-demo-$(date +%s)
+  Region: oregon
+  Repository: https://github.com/HelloblueAI/HelloblueGK
+  Branch: main
+  Root Directory: (leave empty)
+
+DOCKER CONFIGURATION:
+  Runtime: Docker
+  Dockerfile Path: Dockerfile.render
+  Docker Context: .
+  Build Command: (leave empty)
+  Start Command: (leave empty)
+
+ENVIRONMENT VARIABLES (add these two):
+  1. Key: ASPNETCORE_ENVIRONMENT
+     Value: Production
+
+  2. Key: ASPNETCORE_URLS
+     Value: http://0.0.0.0:$PORT
+
+HEALTH CHECK:
+  Health Check Path: /Health
+
+AUTO-DEPLOY:
+  ☑ Auto-Deploy: Yes (deploy on every push to main)
+
+═══════════════════════════════════════════════════════════════
+STEP-BY-STEP INSTRUCTIONS:
+═══════════════════════════════════════════════════════════════
+
+1. Go to: https://dashboard.render.com/new/web-service
+
+2. Connect Repository:
+   - Select: HelloblueAI/HelloblueGK
+   - Or paste: https://github.com/HelloblueAI/HelloblueGK
+
+3. Fill in the form with values above
+
+4. Click "Create Web Service"
+
+5. Wait 3-5 minutes for deployment
+
+6. Get your live URL!
+
+═══════════════════════════════════════════════════════════════
+

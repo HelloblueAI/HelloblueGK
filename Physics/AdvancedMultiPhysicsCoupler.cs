@@ -259,6 +259,7 @@ namespace HB_NLP_Research_Lab.Physics
                 }
             };
             
+            // Log completion message
             Console.WriteLine($"[Multi-Physics Coupler] Complete physics integration achieved");
             Console.WriteLine($"[Multi-Physics Coupler] Coupling efficiency: {result.CouplingEfficiency:P2}");
             Console.WriteLine($"[Multi-Physics Coupler] Analysis time: {result.AnalysisTime.TotalSeconds:F2} seconds");

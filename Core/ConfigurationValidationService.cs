@@ -20,6 +20,9 @@ namespace HB_NLP_Research_Lab.Core
             _logger = logger;
         }
 
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
         public async Task<ConfigurationValidationResult> ValidateConfigurationAsync()
         {
             var result = new ConfigurationValidationResult
@@ -74,6 +77,7 @@ namespace HB_NLP_Research_Lab.Core
                 return result;
             }
         }
+#pragma warning restore CS1998
 
         private void ValidateEngineConfiguration(ConfigurationValidationResult result)
         {

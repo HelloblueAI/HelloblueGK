@@ -77,6 +77,9 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
         private async Task<ResourceHealth> CheckSystemResourcesAsync()
         {
             var resourceHealth = new ResourceHealth
@@ -133,7 +136,11 @@ namespace HB_NLP_Research_Lab.Core
                 return resourceHealth;
             }
         }
+#pragma warning restore CS1998
 
+        // Quick synchronous operation maintained as async for consistency with async chain
+        // CS1998 warning suppressed - this method is intentionally synchronous but part of async pattern
+#pragma warning disable CS1998 // Async method lacks 'await' operators
         private async Task<AdvancedComponentHealth> CheckApplicationHealthAsync()
         {
             var appHealth = new AdvancedComponentHealth
@@ -164,6 +171,7 @@ namespace HB_NLP_Research_Lab.Core
                 return appHealth;
             }
         }
+#pragma warning restore CS1998
 
         private async Task<AdvancedComponentHealth> CheckExternalDependenciesAsync()
         {

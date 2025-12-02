@@ -1,0 +1,20 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore": "Information"
+    }
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Data Source=hellobluegk.db"
+  },
+  "Jwt": {
+    "Key": "your-development-jwt-secret-key-minimum-32-characters-long",
+    "Issuer": "hellobluegk-dev",
+    "Audience": "hellobluegk-api-dev",
+    "TokenExpirationHours": "24"
+  },
+  "AllowedHosts": "*"
+}
+

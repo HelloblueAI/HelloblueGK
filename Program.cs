@@ -20,7 +20,9 @@ namespace HB_NLP_Research_Lab
             // Configure services and use using statement for ServiceProvider disposal
             var services = new ServiceCollection();
             ConfigureServices(services);
+#pragma warning disable ASP0000 // Calling BuildServiceProvider from application code
             using var serviceProvider = services.BuildServiceProvider();
+#pragma warning restore ASP0000
             try
             {
 

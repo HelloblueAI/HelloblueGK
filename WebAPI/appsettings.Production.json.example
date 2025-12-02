@@ -1,0 +1,24 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning",
+      "Microsoft.EntityFrameworkCore": "Warning"
+    }
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=your-server;Database=HelloblueGK;User Id=your-user;Password=your-password;TrustServerCertificate=true",
+    "PostgreSQLConnection": "Host=your-host;Database=hellobluegk;Username=your-user;Password=your-password"
+  },
+  "Jwt": {
+    "Key": "CHANGE-THIS-TO-A-SECURE-RANDOM-STRING-MINIMUM-32-CHARACTERS-LONG",
+    "Issuer": "https://api.helloblue.com",
+    "Audience": "https://app.helloblue.com",
+    "TokenExpirationHours": "24"
+  },
+  "AllowedHosts": "*.helloblue.com",
+  "Cors": {
+    "Origins": "https://app.helloblue.com,https://www.helloblue.com"
+  }
+}
+

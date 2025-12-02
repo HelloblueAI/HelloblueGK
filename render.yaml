@@ -1,12 +1,20 @@
 services:
   - type: web
-    name: hellobluegk-demo
+    name: hellobluegk-production
     env: docker
     dockerfilePath: Dockerfile.render
     dockerContext: .
+    plan: free  # Start with free tier, upgrade when needed
+    region: oregon  # US West - change to your preferred region
+    branch: production-deployment  # Auto-deploy from production-deployment branch
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
       - key: ASPNETCORE_URLS
         value: http://0.0.0.0:$PORT
+      - key: DOTNET_SKIP_FIRST_TIME_EXPERIENCE
+        value: "true"
+      - key: DOTNET_CLI_TELEMETRY_OPTOUT
+        value: "true"
     healthCheckPath: /Health
+    autoDeploy: true  # Auto-deploy on every push to main

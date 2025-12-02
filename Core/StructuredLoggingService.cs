@@ -234,19 +234,24 @@ namespace HB_NLP_Research_Lab.Core
                 ["StartTime"] = DateTime.UtcNow
             };
 
-            return _logger.BeginScope(scopeData);
+            return _logger.BeginScope(scopeData) ?? new NullDisposable();
+        }
+        
+        private class NullDisposable : IDisposable
+        {
+            public void Dispose() { }
         }
 
         public void LogOperationComplete(string operationType, string operationId, TimeSpan duration, bool success = true, object? result = null)
         {
             var logData = new Dictionary<string, object>
             {
-                ["OperationType"] = operationType,
+                ["OperationType"] = "OperationComplete",
+                ["Operation"] = operationType,
                 ["OperationId"] = operationId,
                 ["Duration"] = duration.TotalMilliseconds,
                 ["Success"] = success,
-                ["Timestamp"] = DateTime.UtcNow,
-                ["OperationType"] = "OperationComplete"
+                ["Timestamp"] = DateTime.UtcNow
             };
 
             if (result != null)
@@ -255,7 +260,7 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             var level = success ? LogLevel.Information : LogLevel.Warning;
-            _logger.Log(level, "Operation completed: {OperationType} {OperationId} in {Duration}ms (Success: {Success})", 
+            _logger.Log(level, "Operation completed: {Operation} {OperationId} in {Duration}ms (Success: {Success})", 
                 operationType, operationId, duration.TotalMilliseconds, success);
             LogStructuredData(logData, level);
         }

@@ -155,14 +155,14 @@ namespace HB_NLP_Research_Lab.Core
 
         private void AddRateLimitHeaders(HttpResponse response, RateLimitResult result)
         {
-            response.Headers.Add("X-RateLimit-Limit", result.TotalRequests.ToString());
-            response.Headers.Add("X-RateLimit-Remaining", result.RemainingRequests.ToString());
-            response.Headers.Add("X-RateLimit-Reset", ((DateTimeOffset)result.ResetTime).ToUnixTimeSeconds().ToString());
+            response.Headers["X-RateLimit-Limit"] = result.TotalRequests.ToString();
+            response.Headers["X-RateLimit-Remaining"] = result.RemainingRequests.ToString();
+            response.Headers["X-RateLimit-Reset"] = ((DateTimeOffset)result.ResetTime).ToUnixTimeSeconds().ToString();
 
             if (!result.IsAllowed)
             {
                 var retryAfter = (int)(result.ResetTime - DateTime.UtcNow).TotalSeconds;
-                response.Headers.Add("Retry-After", retryAfter.ToString());
+                response.Headers["Retry-After"] = retryAfter.ToString();
             }
         }
 
