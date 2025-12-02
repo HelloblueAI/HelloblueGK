@@ -55,23 +55,23 @@ namespace HB_NLP_Research_Lab.Core
             return await CheckRateLimitAsync(identifier, policy);
         }
 
-        public async Task<RateLimitStatus> GetRateLimitStatusAsync(string identifier)
+        public Task<RateLimitStatus> GetRateLimitStatusAsync(string identifier)
         {
             if (!_buckets.TryGetValue(identifier, out var bucket))
             {
-                return new RateLimitStatus
+                return Task.FromResult(new RateLimitStatus
                 {
                     Identifier = identifier,
                     IsActive = false,
                     RemainingRequests = 0,
                     ResetTime = DateTime.UtcNow
-                };
+                });
             }
 
             var now = DateTime.UtcNow;
             var result = bucket.CheckLimit(now);
 
-            return new RateLimitStatus
+            return Task.FromResult(new RateLimitStatus
             {
                 Identifier = identifier,
                 IsActive = true,
@@ -79,7 +79,7 @@ namespace HB_NLP_Research_Lab.Core
                 ResetTime = result.ResetTime,
                 TotalRequests = result.TotalRequests,
                 Policy = bucket.Policy
-            };
+            });
         }
 
         public async Task<RateLimitReport> GenerateReportAsync()

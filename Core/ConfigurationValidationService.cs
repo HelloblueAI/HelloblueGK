@@ -20,7 +20,7 @@ namespace HB_NLP_Research_Lab.Core
             _logger = logger;
         }
 
-        public async Task<ConfigurationValidationResult> ValidateConfigurationAsync()
+        public Task<ConfigurationValidationResult> ValidateConfigurationAsync()
         {
             var result = new ConfigurationValidationResult
             {
@@ -64,14 +64,14 @@ namespace HB_NLP_Research_Lab.Core
                     _logger.LogWarning("Configuration validation completed with {ErrorCount} errors", result.Errors.Count);
                 }
 
-                return result;
+                return Task.FromResult(result);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Configuration validation failed");
                 result.IsValid = false;
                 result.Errors.Add($"Validation process failed: {ex.Message}");
-                return result;
+                return Task.FromResult(result);
             }
         }
 

@@ -77,7 +77,7 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task<ResourceHealth> CheckSystemResourcesAsync()
+        private Task<ResourceHealth> CheckSystemResourcesAsync()
         {
             var resourceHealth = new ResourceHealth
             {
@@ -123,18 +123,18 @@ namespace HB_NLP_Research_Lab.Core
                     resourceHealth.Warnings.Add($"High GC memory usage: {gcMemory}MB");
                 }
 
-                return resourceHealth;
+                return Task.FromResult(resourceHealth);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check system resources");
                 resourceHealth.Status = AdvancedHealthStatus.Unhealthy;
                 resourceHealth.Issues.Add($"Resource check failed: {ex.Message}");
-                return resourceHealth;
+                return Task.FromResult(resourceHealth);
             }
         }
 
-        private async Task<AdvancedComponentHealth> CheckApplicationHealthAsync()
+        private Task<AdvancedComponentHealth> CheckApplicationHealthAsync()
         {
             var appHealth = new AdvancedComponentHealth
             {
@@ -154,14 +154,14 @@ namespace HB_NLP_Research_Lab.Core
                 var uptime = DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime();
                 appHealth.Metrics["UptimeSeconds"] = uptime.TotalSeconds;
 
-                return appHealth;
+                return Task.FromResult(appHealth);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to check application health");
                 appHealth.Status = AdvancedHealthStatus.Unhealthy;
                 appHealth.Issues.Add($"Application check failed: {ex.Message}");
-                return appHealth;
+                return Task.FromResult(appHealth);
             }
         }
 
