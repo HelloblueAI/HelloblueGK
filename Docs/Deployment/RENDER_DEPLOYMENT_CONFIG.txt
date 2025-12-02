@@ -15,7 +15,7 @@ BASIC SETTINGS:
 
 DOCKER CONFIGURATION:
   Runtime: Docker
-  Dockerfile Path: Dockerfile.render
+  Dockerfile Path: Docker/Dockerfile.render
   Docker Context: .
   Build Command: (leave empty)
   Start Command: (leave empty)

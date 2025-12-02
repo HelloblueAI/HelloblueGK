@@ -13,7 +13,7 @@ Since Render doesn't have .NET in the language dropdown, use **Docker**.
 - **Instance Type:** `Free` (for demo)
 
 ### Build & Deploy
-- **Dockerfile Path:** `Dockerfile.render` (or create one in root)
+- **Dockerfile Path:** `Docker/Dockerfile.render`
 - **Docker Build Context:** `.` (root directory)
 
 ### Environment Variables
@@ -29,7 +29,7 @@ Add these:
 
 The Dockerfile should be in the **root directory** (not WebAPI folder).
 
-We created `Dockerfile.render` in the root - use that!
+We created `Docker/Dockerfile.render` - use that!
 
 ## After Deployment
 

@@ -31,7 +31,7 @@ Use this checklist to verify your deployment is ready and working correctly.
 - [ ] Go to https://dashboard.render.com
 - [ ] Create new Web Service
 - [ ] Connect GitHub repository
-- [ ] Configure Dockerfile: `Dockerfile.render`
+- [ ] Configure Dockerfile: `Docker/Dockerfile.render`
 - [ ] Set environment variables
 - [ ] Set health check path: `/Health`
 - [ ] Click "Create Web Service"
@@ -44,7 +44,7 @@ Use this checklist to verify your deployment is ready and working correctly.
 - [ ] Enable auto-start: `sudo systemctl enable hellobluegk`
 
 **Option C: Docker**
-- [ ] Build image: `docker build -t hellobluegk -f Dockerfile.render .`
+- [ ] Build image: `docker build -t hellobluegk -f Docker/Dockerfile.render .`
 - [ ] Run container: `docker run -d -p 5000:5000 hellobluegk`
 - [ ] Verify: `curl http://localhost:5000/Health`
 
