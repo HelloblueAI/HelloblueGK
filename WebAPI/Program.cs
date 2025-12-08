@@ -40,9 +40,6 @@ builder.Services.AddEndpointsApiExplorer();
 // Configure Swagger/OpenAPI with versioning
 builder.Services.AddSwaggerGen(c =>
 {
-    // Configure Swagger to use versioned API explorer
-    c.EnableAnnotations();
-    
     // Configure Swagger to discover endpoints from both versioned and non-versioned controllers
     // Include all endpoints in v1 document (both versioned and non-versioned)
     c.DocInclusionPredicate((docName, apiDesc) =>
