@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -39,6 +40,22 @@ builder.Services.AddEndpointsApiExplorer();
 // Configure Swagger/OpenAPI with versioning
 builder.Services.AddSwaggerGen(c =>
 {
+    // Configure Swagger to use versioned API explorer
+    c.EnableAnnotations();
+    
+    // Configure Swagger to discover endpoints from both versioned and non-versioned controllers
+    // Include all endpoints in v1 document (both versioned and non-versioned)
+    c.DocInclusionPredicate((docName, apiDesc) =>
+    {
+        // If endpoint has a group name (versioned), include it if it matches the doc name
+        if (!string.IsNullOrEmpty(apiDesc.GroupName))
+        {
+            return apiDesc.GroupName == docName;
+        }
+        // For non-versioned endpoints, include them in v1
+        return docName == "v1";
+    });
+    
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "HelloblueGK Aerospace Engine Simulation API",
@@ -245,10 +262,10 @@ var app = builder.Build();
 
 // Ensure database is created and initialized
 // This runs in both Development and Production to ensure database tables exist
-using (var scope = app.Services.CreateScope())
-{
+    using (var scope = app.Services.CreateScope())
+    {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
     
     try
     {
