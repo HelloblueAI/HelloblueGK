@@ -10,6 +10,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     /// </summary>
     [ApiController]
     [Route("api/v1/[controller]")]
+    [Tags("Rate Limiting")]
     public class RateLimitController : ControllerBase
     {
         private readonly ILogger<RateLimitController> _logger;

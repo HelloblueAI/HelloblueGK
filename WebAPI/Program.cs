@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -39,6 +40,19 @@ builder.Services.AddEndpointsApiExplorer();
 // Configure Swagger/OpenAPI with versioning
 builder.Services.AddSwaggerGen(c =>
 {
+    // Configure Swagger to discover endpoints from both versioned and non-versioned controllers
+    // Include all endpoints in v1 document (both versioned and non-versioned)
+    c.DocInclusionPredicate((docName, apiDesc) =>
+    {
+        // If endpoint has a group name (versioned), include it if it matches the doc name
+        if (!string.IsNullOrEmpty(apiDesc.GroupName))
+        {
+            return apiDesc.GroupName == docName;
+        }
+        // For non-versioned endpoints, include them in v1
+        return docName == "v1";
+    });
+    
     c.SwaggerDoc("v1", new OpenApiInfo
     {
         Title = "HelloblueGK Aerospace Engine Simulation API",
@@ -245,10 +259,10 @@ var app = builder.Build();
 
 // Ensure database is created and initialized
 // This runs in both Development and Production to ensure database tables exist
-using (var scope = app.Services.CreateScope())
-{
+    using (var scope = app.Services.CreateScope())
+    {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-    var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+        var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
     
     try
     {
@@ -281,6 +295,16 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 // Prometheus HTTP metrics tracking (tracks HTTP requests)
 app.UseHttpMetrics();
 
+// Authentication and Authorization
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Swagger/OpenAPI documentation
+// Industry-standard approach (like SpaceX, GitHub, Stripe, AWS):
+// - Swagger UI is PUBLICLY ACCESSIBLE - anyone can view the documentation
+// - Swagger JSON spec is publicly accessible (for API discovery and tooling)
+// - API endpoints themselves require authentication (handled by [Authorize] attributes)
+// - Users can browse docs freely, but need to login to use "Try it out" feature
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -296,6 +320,7 @@ app.UseSwaggerUI(c =>
     c.DefaultModelsExpandDepth(2);
     c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
 
+    // Enable "Try it out" - users can test endpoints, but will need to authenticate
     c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
     c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
 });
@@ -307,24 +332,31 @@ if (app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-app.UseAuthentication();
-app.UseAuthorization();
-
 app.MapControllers();
 
 // Serve static files for demo
 app.UseStaticFiles();
 
-// Health check endpoint (for Render and monitoring)
-app.MapGet("/Health", () => Results.Ok(new { 
-    status = "Healthy", 
-    timestamp = DateTime.UtcNow,
-    service = "HelloblueGK WebAPI",
-    version = "1.0.0"
-})).AllowAnonymous();
-
-// Root redirect to Swagger
-app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+// Root endpoint - redirect to Swagger in development, show info in production
+app.MapGet("/", () =>
+{
+    if (app.Environment.IsDevelopment())
+    {
+        return Results.Redirect("/swagger");
+    }
+    else
+    {
+        return Results.Json(new
+        {
+            service = "HelloblueGK Aerospace Engine Simulation API",
+            version = "v1",
+            status = "operational",
+            documentation = "API documentation is available in development mode only",
+            health = "/Health",
+            metrics = "/metrics"
+        });
+    }
+}).ExcludeFromDescription();
 
 // Map Prometheus metrics endpoint - must be after MapControllers for endpoint routing
 app.MapMetrics(); // Exposes /metrics endpoint in Prometheus format

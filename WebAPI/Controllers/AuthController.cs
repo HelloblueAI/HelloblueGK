@@ -16,6 +16,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers;
 [ApiController]
 [Route("api/v{version:apiVersion}/[controller]")]
 [ApiVersion("1.0")]
+[Tags("Auth")]
 public class AuthController : ControllerBase
 {
     private readonly HelloblueGKDbContext _context;
@@ -39,64 +40,91 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
-    public async Task<IActionResult> Login([FromBody] LoginRequest request)
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> Login([FromBody] LoginRequest? request)
     {
-        if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+        try
         {
-            return Unauthorized(new ErrorResponse
+            // Validate request is not null
+            if (request == null)
             {
-                StatusCode = 401,
-                Message = "Username and password are required",
-                Timestamp = DateTime.UtcNow
-            });
-        }
-
-        var user = await _context.Users
-            .FirstOrDefaultAsync(u => u.Username == request.Username && u.IsActive);
-
-        if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
-        {
-            _logger.LogWarning("Failed login attempt for username: {Username}", request.Username);
-            return Unauthorized(new ErrorResponse
-            {
-                StatusCode = 401,
-                Message = "Invalid username or password",
-                Timestamp = DateTime.UtcNow
-            });
-        }
-
-        // Upgrade legacy SHA256 password hash to secure PBKDF2 on successful login
-        var isLegacyHash = !user.PasswordHash.Contains(':', StringComparison.Ordinal) || 
-                          user.PasswordHash.Split(':').Length != 3;
-        if (isLegacyHash)
-        {
-            _logger.LogInformation("Upgrading legacy password hash to PBKDF2 for user: {Username}", user.Username);
-            user.PasswordHash = HashPassword(request.Password);
-            user.UpdatedAt = DateTime.UtcNow;
-        }
-
-        // Update last login
-        user.LastLoginAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
-
-        var token = _jwtService.GenerateToken(user);
-        var refreshToken = _jwtService.GenerateRefreshToken();
-
-        _logger.LogInformation("User {Username} logged in successfully", user.Username);
-
-        return Ok(new LoginResponse
-        {
-            Token = token,
-            RefreshToken = refreshToken,
-            ExpiresIn = 86400, // 24 hours in seconds
-            User = new UserInfo
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                IsAdmin = user.IsAdmin
+                return BadRequest(new ErrorResponse
+                {
+                    StatusCode = 400,
+                    Message = "Request body is required",
+                    Timestamp = DateTime.UtcNow,
+                    Path = Request.Path,
+                    Method = Request.Method
+                });
             }
-        });
+
+            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            {
+                return Unauthorized(new ErrorResponse
+                {
+                    StatusCode = 401,
+                    Message = "Username and password are required",
+                    Timestamp = DateTime.UtcNow,
+                    Path = Request.Path,
+                    Method = Request.Method
+                });
+            }
+
+            var user = await _context.Users
+                .FirstOrDefaultAsync(u => u.Username == request.Username && u.IsActive);
+
+            if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
+            {
+                _logger.LogWarning("Failed login attempt for username: {Username}", request.Username);
+                return Unauthorized(new ErrorResponse
+                {
+                    StatusCode = 401,
+                    Message = "Invalid username or password",
+                    Timestamp = DateTime.UtcNow,
+                    Path = Request.Path,
+                    Method = Request.Method
+                });
+            }
+
+            // Upgrade legacy SHA256 password hash to secure PBKDF2 on successful login
+            var isLegacyHash = !user.PasswordHash.Contains(':', StringComparison.Ordinal) || 
+                              user.PasswordHash.Split(':').Length != 3;
+            if (isLegacyHash)
+            {
+                _logger.LogInformation("Upgrading legacy password hash to PBKDF2 for user: {Username}", user.Username);
+                user.PasswordHash = HashPassword(request.Password);
+                user.UpdatedAt = DateTime.UtcNow;
+            }
+
+            // Update last login
+            user.LastLoginAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            var token = _jwtService.GenerateToken(user);
+            var refreshToken = _jwtService.GenerateRefreshToken();
+
+            _logger.LogInformation("User {Username} logged in successfully", user.Username);
+
+            return Ok(new LoginResponse
+            {
+                Token = token,
+                RefreshToken = refreshToken,
+                ExpiresIn = 86400, // 24 hours in seconds
+                User = new UserInfo
+                {
+                    Id = user.Id,
+                    Username = user.Username,
+                    Email = user.Email,
+                    IsAdmin = user.IsAdmin
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during login for username: {Username}", request?.Username ?? "unknown");
+            // Let the global exception handler catch this, but log it first
+            throw;
+        }
     }
 
     /// <summary>
