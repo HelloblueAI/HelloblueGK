@@ -295,18 +295,16 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 // Prometheus HTTP metrics tracking (tracks HTTP requests)
 app.UseHttpMetrics();
 
-// Authentication must come BEFORE Swagger protection middleware
+// Authentication and Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Swagger authentication middleware (protects Swagger UI in production)
-// Must come AFTER UseAuthentication/UseAuthorization
-app.UseMiddleware<SwaggerAuthMiddleware>();
-
 // Swagger/OpenAPI documentation
-// Industry-standard approach (like SpaceX, GitHub, Stripe):
-// - Swagger JSON spec is publicly accessible (for API discovery)
-// - Swagger UI requires authentication in production (for interactive testing)
+// Industry-standard approach (like SpaceX, GitHub, Stripe, AWS):
+// - Swagger UI is PUBLICLY ACCESSIBLE - anyone can view the documentation
+// - Swagger JSON spec is publicly accessible (for API discovery and tooling)
+// - API endpoints themselves require authentication (handled by [Authorize] attributes)
+// - Users can browse docs freely, but need to login to use "Try it out" feature
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -322,6 +320,7 @@ app.UseSwaggerUI(c =>
     c.DefaultModelsExpandDepth(2);
     c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
 
+    // Enable "Try it out" - users can test endpoints, but will need to authenticate
     c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
     c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
 });
