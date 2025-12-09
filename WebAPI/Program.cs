@@ -295,24 +295,30 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 // Prometheus HTTP metrics tracking (tracks HTTP requests)
 app.UseHttpMetrics();
 
-app.UseSwagger();
-app.UseSwaggerUI(c =>
+// Swagger/OpenAPI documentation
+// SECURITY: Only enable Swagger in Development or when explicitly enabled in production
+if (app.Environment.IsDevelopment() || 
+    app.Configuration.GetValue<bool>("EnableSwaggerInProduction", false))
 {
-    c.SwaggerEndpoint("/swagger/v1/swagger.json", "HelloblueGK API v1");
-    c.RoutePrefix = app.Environment.IsDevelopment() ? string.Empty : "swagger";
-    c.DocumentTitle = "HelloblueGK API Documentation";
+    app.UseSwagger();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "HelloblueGK API v1");
+        c.RoutePrefix = app.Environment.IsDevelopment() ? string.Empty : "swagger";
+        c.DocumentTitle = "HelloblueGK API Documentation";
 
-    c.EnableDeepLinking();
-    c.EnableFilter();
-    c.DisplayRequestDuration();
-    c.EnableValidator();
+        c.EnableDeepLinking();
+        c.EnableFilter();
+        c.DisplayRequestDuration();
+        c.EnableValidator();
 
-    c.DefaultModelsExpandDepth(2);
-    c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
+        c.DefaultModelsExpandDepth(2);
+        c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
 
-    c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
-    c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
-});
+        c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
+        c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
+    });
+}
 
 app.UseCors();
 
@@ -329,8 +335,26 @@ app.MapControllers();
 // Serve static files for demo
 app.UseStaticFiles();
 
-// Root redirect to Swagger
-app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+// Root endpoint - redirect to Swagger in development, show info in production
+app.MapGet("/", () =>
+{
+    if (app.Environment.IsDevelopment())
+    {
+        return Results.Redirect("/swagger");
+    }
+    else
+    {
+        return Results.Json(new
+        {
+            service = "HelloblueGK Aerospace Engine Simulation API",
+            version = "v1",
+            status = "operational",
+            documentation = "API documentation is available in development mode only",
+            health = "/Health",
+            metrics = "/metrics"
+        });
+    }
+}).ExcludeFromDescription();
 
 // Map Prometheus metrics endpoint - must be after MapControllers for endpoint routing
 app.MapMetrics(); // Exposes /metrics endpoint in Prometheus format
