@@ -1,4 +1,4 @@
-# HelloblueGK - Advanced Aerospace Engine Simulation Platform
+## HelloblueGK - Advanced Aerospace Engine Simulation Platform
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/)
@@ -11,14 +11,14 @@
 
 ### Try the Interactive Demo
 
-**🚀 Live Demo:** Deploy to Render in 15 minutes! See [QUICK_DEPLOY.md](QUICK_DEPLOY.md)
+**🚀 Live Demo:** Deploy to Render in 15 minutes! See [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md)
 
 **Previous Demo:** [https://hellobluegk-demo-production.up.railway.app](https://hellobluegk-demo-production.up.railway.app)
 
 - **Swagger UI:** [https://hellobluegk-demo-production.up.railway.app/swagger](https://hellobluegk-demo-production.up.railway.app/swagger)
 - **Health Check:** [https://hellobluegk-demo-production.up.railway.app/Health](https://hellobluegk-demo-production.up.railway.app/Health)
 
-**🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](QUICK_DEPLOY.md) for 15-minute production deployment!
+**🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
 
 **Run Locally:**
 ```bash
@@ -33,7 +33,7 @@ dotnet run
 # Open http://localhost:5000/swagger in your browser
 ```
 
-See [DEMO.md](DEMO.md) for detailed demo instructions.
+See [DEMO.md](Docs/Project/DEMO.md) for detailed demo instructions.
 
 **📸 Screenshots:** Add screenshots of Swagger UI here after taking them
 
@@ -51,17 +51,11 @@ dotnet build
 dotnet test
 ```
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-## 📄 License
-
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
-
----
-
-### HelloblueGK - Advanced Aerospace Engine Simulation Platform
+## HelloblueGK - Advanced Aerospace Engine Simulation Platform
 
 <div align="left">
 <img src="Assets/Images/HB-NLP-Advanced-Engine-Design.png?v=4" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
@@ -213,7 +207,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 └─────────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                    Engine Architecture Types                 │
+│                    Engine Architecture Types                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
 │  │   Variable  │  │   Modular   │  │ Distributed │          │
 │  │  Geometry   │  │   Systems   │  │ Propulsion  │          │
@@ -255,7 +249,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Features
 
-### Physics Engine Integration
+## Physics Engine Integration
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
@@ -274,7 +268,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - **Structural Analysis**: Finite element analysis for stress, strain, and fatigue with material property databases
 - **Modular Architecture**: Easy integration of real physics solvers (OpenFOAM, ANSYS, Abaqus, etc.)
 
-### Optimization Algorithms
+## Optimization Algorithms
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
@@ -293,7 +287,7 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 - **Machine Learning**: Predictive models for engine performance and reliability using neural networks
 - **Convergence Tracking**: Real-time optimization progress monitoring with Pareto front visualization
 
-### Parametric Design System
+## Parametric Design System
 - **Custom Engine Creation**: Define engines by thrust, ISP, propellant, dimensions with constraint validation
 - **Batch Simulation**: Run thousands of engine configurations simultaneously using parallel processing
 - **Design Validation**: Automatic verification of design constraints and manufacturability analysis
@@ -301,14 +295,14 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Enterprise Integration
 
-### Industry Standards Compliance
+## Industry Standards Compliance
 - **SpaceX Compatibility**: Raptor engine analysis and optimization with methane/LOX propellant systems
 - **Boeing Standards**: Aerospace industry requirements met with AS9100 compliance
 - **NASA Requirements**: Space exploration mission ready with human-rating standards
 - **Real-time Telemetry**: Live engine monitoring and diagnostics with 100Hz sampling rates
 - **Predictive Maintenance**: AI-driven failure prediction with 99.9% accuracy
 
-### Performance Benchmarks
+## Performance Benchmarks
 
 ```ascii
 ┌─────────────────────────────────────────────────────────────────┐
@@ -328,14 +322,14 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Installation & Setup
 
-### Prerequisites
+## Prerequisites
 
 - **.NET 9.0 SDK** (Latest framework)
 - **Docker** (for containerized deployment)
 - **Kubernetes** (for production deployment)
 - **OpenFOAM 8** (for CFD simulations)
 
-### Quick Start
+## Quick Start
 
 1. **Clone the repository**
    ```bash

@@ -58,7 +58,7 @@ You now have a **production-ready, enterprise-grade API** that follows the same 
 4. Use `Dockerfile.render`
 5. Done!
 
-**See:** [QUICK_DEPLOY.md](QUICK_DEPLOY.md)
+**See:** [QUICK_DEPLOY.md](./QUICK_DEPLOY.md)
 
 ### Option 2: Systemd Service
 **Best for:** Your own server/VPS
