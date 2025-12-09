@@ -1,4 +1,4 @@
-# HelloblueGK - Advanced Aerospace Engine Simulation Platform
+## HelloblueGK - Advanced Aerospace Engine Simulation Platform
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/)
@@ -51,7 +51,7 @@ dotnet build
 dotnet test
 ```
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
