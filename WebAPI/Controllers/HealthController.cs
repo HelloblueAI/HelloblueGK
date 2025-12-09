@@ -6,6 +6,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
     [ApiController]
     [Route("[controller]")]
+    [Tags("Health")]
     public class HealthController : ControllerBase
     {
         private readonly HelloblueGKEngine _engine;

@@ -10,6 +10,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     /// </summary>
     [ApiController]
     [Route("api/v1/[controller]")]
+    [Tags("Performance")]
     public class PerformanceController : ControllerBase
     {
         private readonly ILogger<PerformanceController> _logger;
