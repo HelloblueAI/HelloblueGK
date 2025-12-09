@@ -11,6 +11,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     [ApiController]
     [Route("api/v1/[controller]")]
     [Produces("application/json")]
+    [Tags("Health")]
     public class SystemHealthController : ControllerBase
     {
         private readonly ILogger<SystemHealthController> _logger;

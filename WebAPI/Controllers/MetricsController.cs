@@ -10,6 +10,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers;
 [ApiController]
 [Route("api/v{version:apiVersion}/[controller]")]
 [ApiVersion("1.0")]
+[Tags("Metrics")]
 public class MetricsController : ControllerBase
 {
     private static readonly Counter ApiRequestsTotal = Metrics
