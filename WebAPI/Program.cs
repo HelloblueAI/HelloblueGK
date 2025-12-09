@@ -295,30 +295,36 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 // Prometheus HTTP metrics tracking (tracks HTTP requests)
 app.UseHttpMetrics();
 
+// Authentication must come BEFORE Swagger protection middleware
+app.UseAuthentication();
+app.UseAuthorization();
+
+// Swagger authentication middleware (protects Swagger UI in production)
+// Must come AFTER UseAuthentication/UseAuthorization
+app.UseMiddleware<SwaggerAuthMiddleware>();
+
 // Swagger/OpenAPI documentation
-// SECURITY: Only enable Swagger in Development or when explicitly enabled in production
-if (app.Environment.IsDevelopment() || 
-    app.Configuration.GetValue<bool>("EnableSwaggerInProduction", false))
+// Industry-standard approach (like SpaceX, GitHub, Stripe):
+// - Swagger JSON spec is publicly accessible (for API discovery)
+// - Swagger UI requires authentication in production (for interactive testing)
+app.UseSwagger();
+app.UseSwaggerUI(c =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "HelloblueGK API v1");
-        c.RoutePrefix = app.Environment.IsDevelopment() ? string.Empty : "swagger";
-        c.DocumentTitle = "HelloblueGK API Documentation";
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "HelloblueGK API v1");
+    c.RoutePrefix = app.Environment.IsDevelopment() ? string.Empty : "swagger";
+    c.DocumentTitle = "HelloblueGK API Documentation";
 
-        c.EnableDeepLinking();
-        c.EnableFilter();
-        c.DisplayRequestDuration();
-        c.EnableValidator();
+    c.EnableDeepLinking();
+    c.EnableFilter();
+    c.DisplayRequestDuration();
+    c.EnableValidator();
 
-        c.DefaultModelsExpandDepth(2);
-        c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
+    c.DefaultModelsExpandDepth(2);
+    c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
 
-        c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
-        c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
-    });
-}
+    c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
+    c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
+});
 
 app.UseCors();
 
@@ -326,9 +332,6 @@ if (app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
 }
-
-app.UseAuthentication();
-app.UseAuthorization();
 
 app.MapControllers();
 
