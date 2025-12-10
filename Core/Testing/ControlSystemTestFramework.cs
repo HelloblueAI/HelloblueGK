@@ -53,6 +53,21 @@ namespace HB_NLP_Research_Lab.Core.Testing
                     result.Status = TestStatus.Passed;
                 }
             }
+            catch (InvalidOperationException ex)
+            {
+                result.Status = TestStatus.Failed;
+                result.Failures.Add($"Invalid operation: {ex.Message}");
+            }
+            catch (TimeoutException ex)
+            {
+                result.Status = TestStatus.Failed;
+                result.Failures.Add($"Timeout: {ex.Message}");
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                result.Status = TestStatus.Failed;
+                result.Failures.Add($"Data error: {ex.Message}");
+            }
             catch (Exception ex)
             {
                 result.Status = TestStatus.Failed;
