@@ -27,10 +27,10 @@ namespace HB_NLP_Research_Lab.Core.Control
         private readonly ControlConstraints _constraints;
         
         // State
-        private double[] _stateVector;               // Current state estimate
-        private double[] _referenceTrajectory;      // Desired trajectory
-        private Queue<double[]> _controlHistory;     // Past control actions
-        private Queue<double[]> _stateHistory;       // Past state measurements
+        private double[] _stateVector;               // Current state estimate (mutable)
+        private readonly double[] _referenceTrajectory;      // Desired trajectory (set once)
+        private readonly Queue<double[]> _controlHistory;     // Past control actions
+        private readonly Queue<double[]> _stateHistory;       // Past state measurements
         
         public ModelPredictiveController(
             IActuator actuator,
@@ -110,8 +110,24 @@ namespace HB_NLP_Research_Lab.Core.Control
                 if (_controlHistory.Count > _controlHorizon)
                     _controlHistory.Dequeue();
             }
+            catch (OperationCanceledException)
+            {
+                // Operation was cancelled - expected behavior
+                throw; // Re-throw cancellation
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Invalid operation during control
+                OnControlError(ex);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                // Data validation errors
+                OnControlError(ex);
+            }
             catch (Exception ex)
             {
+                // Catch-all for unexpected errors
                 OnControlError(ex);
             }
         }

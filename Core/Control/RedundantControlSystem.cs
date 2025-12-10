@@ -121,6 +121,16 @@ namespace HB_NLP_Research_Lab.Core.Control
                     
                     await Task.Delay(10); // 100 Hz monitoring
                 }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine($"[Redundant Control] ⚠️ Invalid operation in voting: {ex.Message}");
+                    await Task.Delay(100);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    Console.WriteLine($"[Redundant Control] ⚠️ Data error in voting: {ex.Message}");
+                    await Task.Delay(100);
+                }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Redundant Control] ❌ Error in voting: {ex.Message}");

@@ -125,18 +125,15 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
                 
                 try
                 {
-                    // Run diagnostic rules
-                    foreach (var rule in _diagnosticRules)
+                    // Run diagnostic rules that apply to this component
+                    var applicableRules = _diagnosticRules
+                        .Where(rule => rule.AppliesTo(componentId, health))
+                        .Select(rule => rule.Evaluate(health))
+                        .Where(result => result.Severity > DiagnosticSeverity.Info);
+                    
+                    foreach (var result in applicableRules)
                     {
-                        if (rule.AppliesTo(componentId, health))
-                        {
-                            var result = rule.Evaluate(health);
-                            
-                            if (result.Severity > DiagnosticSeverity.Info)
-                            {
-                                HandleDiagnosticResult(componentId, result);
-                            }
-                        }
+                        HandleDiagnosticResult(componentId, result);
                     }
                 }
                 catch (InvalidOperationException ex)

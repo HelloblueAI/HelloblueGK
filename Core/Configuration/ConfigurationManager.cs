@@ -80,6 +80,26 @@ namespace HB_NLP_Research_Lab.Core.Configuration
                 
                 return config;
             }
+            catch (FileNotFoundException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Configuration file not found: {configName} - {ex.Message}");
+                return new T();
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Invalid JSON in configuration: {configName} - {ex.Message}");
+                return new T();
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Invalid operation loading {configName}: {ex.Message}");
+                return new T();
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Data error loading {configName}: {ex.Message}");
+                return new T();
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"[Configuration] ❌ Error loading {configName}: {ex.Message}");
