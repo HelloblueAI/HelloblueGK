@@ -5,6 +5,7 @@ using System.IO;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Text.Json.Serialization;
 
 namespace HB_NLP_Research_Lab.Core.Configuration
 {
@@ -78,6 +79,26 @@ namespace HB_NLP_Research_Lab.Core.Configuration
                 Console.WriteLine($"[Configuration] Loaded: {configName}");
                 
                 return config;
+            }
+            catch (FileNotFoundException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Configuration file not found: {configName} - {ex.Message}");
+                return new T();
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Invalid JSON in configuration: {configName} - {ex.Message}");
+                return new T();
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Invalid operation loading {configName}: {ex.Message}");
+                return new T();
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Data error loading {configName}: {ex.Message}");
+                return new T();
             }
             catch (Exception ex)
             {
@@ -160,7 +181,8 @@ namespace HB_NLP_Research_Lab.Core.Configuration
             await _reloadLock.WaitAsync();
             try
             {
-                var config = await LoadConfigurationAsync<T>(configName);
+                // Load configuration to ensure it's valid
+                await LoadConfigurationAsync<T>(configName);
                 
                 ConfigurationChanged?.Invoke(this, new ConfigurationChangedEventArgs
                 {
@@ -193,6 +215,22 @@ namespace HB_NLP_Research_Lab.Core.Configuration
                     ConfigName = configName,
                     ConfigType = "Unknown"
                 });
+            }
+            catch (FileNotFoundException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Configuration file not found: {configName} - {ex.Message}");
+            }
+            catch (JsonException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Invalid JSON in configuration: {configName} - {ex.Message}");
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Invalid operation reloading {configName}: {ex.Message}");
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Data error reloading {configName}: {ex.Message}");
             }
             catch (Exception ex)
             {

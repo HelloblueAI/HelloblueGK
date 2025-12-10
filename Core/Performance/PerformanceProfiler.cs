@@ -71,7 +71,7 @@ namespace HB_NLP_Research_Lab.Core.Performance
                 RecordMetric(operationName, stopwatch.Elapsed.TotalMilliseconds);
                 return result;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 stopwatch.Stop();
                 RecordMetric(operationName, stopwatch.Elapsed.TotalMilliseconds, failed: true);
@@ -93,7 +93,7 @@ namespace HB_NLP_Research_Lab.Core.Performance
                 RecordMetric(operationName, stopwatch.Elapsed.TotalMilliseconds);
                 return result;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 stopwatch.Stop();
                 RecordMetric(operationName, stopwatch.Elapsed.TotalMilliseconds, failed: true);
@@ -153,8 +153,19 @@ namespace HB_NLP_Research_Lab.Core.Performance
                 var threadCount = process.Threads.Count;
                 RecordMetric("System.Threads", threadCount);
             }
+            catch (InvalidOperationException ex)
+            {
+                // Performance counter may not be available on all platforms
+                Console.WriteLine($"[Performance] ⚠️ Performance counter unavailable: {ex.Message}");
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                // Windows-specific performance counter errors
+                Console.WriteLine($"[Performance] ⚠️ Windows performance counter error: {ex.Message}");
+            }
             catch (Exception ex)
             {
+                // Catch-all for unexpected errors
                 Console.WriteLine($"[Performance] ❌ Error sampling metrics: {ex.Message}");
             }
         }

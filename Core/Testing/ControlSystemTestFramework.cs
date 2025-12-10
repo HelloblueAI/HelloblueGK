@@ -38,20 +38,36 @@ namespace HB_NLP_Research_Lab.Core.Testing
                 await testCase.Execute();
                 
                 // Verify assertions
-                foreach (var assertion in testCase.Assertions)
+                var failedAssertions = await Task.WhenAll(
+                    testCase.Assertions.Select(async assertion => await assertion())
+                );
+                
+                var failedResults = failedAssertions.Where(a => !a.Passed).ToList();
+                if (failedResults.Count > 0)
                 {
-                    var assertionResult = await assertion();
-                    if (!assertionResult.Passed)
-                    {
-                        result.Status = TestStatus.Failed;
-                        result.Failures.Add(assertionResult.Message);
-                    }
+                    result.Status = TestStatus.Failed;
+                    result.Failures.AddRange(failedResults.Select(a => a.Message));
                 }
                 
                 if (result.Status == TestStatus.Running)
                 {
                     result.Status = TestStatus.Passed;
                 }
+            }
+            catch (InvalidOperationException ex)
+            {
+                result.Status = TestStatus.Failed;
+                result.Failures.Add($"Invalid operation: {ex.Message}");
+            }
+            catch (TimeoutException ex)
+            {
+                result.Status = TestStatus.Failed;
+                result.Failures.Add($"Timeout: {ex.Message}");
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                result.Status = TestStatus.Failed;
+                result.Failures.Add($"Data error: {ex.Message}");
             }
             catch (Exception ex)
             {
@@ -85,11 +101,10 @@ namespace HB_NLP_Research_Lab.Core.Testing
                 StartTime = DateTime.UtcNow
             };
             
-            foreach (var testCase in testCases)
-            {
-                var result = await RunTestAsync(testCase);
-                suiteResult.Results.Add(result);
-            }
+            var results = await Task.WhenAll(
+                testCases.Select(async testCase => await RunTestAsync(testCase))
+            );
+            suiteResult.Results.AddRange(results);
             
             suiteResult.EndTime = DateTime.UtcNow;
             suiteResult.Duration = suiteResult.EndTime - suiteResult.StartTime;

@@ -125,19 +125,24 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
                 
                 try
                 {
-                    // Run diagnostic rules
-                    foreach (var rule in _diagnosticRules)
+                    // Run diagnostic rules that apply to this component
+                    var applicableRules = _diagnosticRules
+                        .Where(rule => rule.AppliesTo(componentId, health))
+                        .Select(rule => rule.Evaluate(health))
+                        .Where(result => result.Severity > DiagnosticSeverity.Info);
+                    
+                    foreach (var result in applicableRules)
                     {
-                        if (rule.AppliesTo(componentId, health))
-                        {
-                            var result = rule.Evaluate(health);
-                            
-                            if (result.Severity > DiagnosticSeverity.Info)
-                            {
-                                HandleDiagnosticResult(componentId, result);
-                            }
-                        }
+                        HandleDiagnosticResult(componentId, result);
                     }
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Invalid operation diagnosing {componentId}: {ex.Message}");
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Data error diagnosing {componentId}: {ex.Message}");
                 }
                 catch (Exception ex)
                 {
@@ -167,6 +172,16 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
                 catch (OperationCanceledException)
                 {
                     break;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Invalid operation during monitoring: {ex.Message}");
+                    await Task.Delay(5000, _cancellationTokenSource.Token);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Data error during monitoring: {ex.Message}");
+                    await Task.Delay(5000, _cancellationTokenSource.Token);
                 }
                 catch (Exception ex)
                 {
