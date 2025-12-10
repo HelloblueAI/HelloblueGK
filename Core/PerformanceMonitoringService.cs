@@ -203,9 +203,21 @@ namespace HB_NLP_Research_Lab.Core
                 // Explicit cast to double to avoid precision loss warning (intentional conversion from bytes to MB)
                 RecordMetric("GC_Total_Memory", (double)GC.GetTotalMemory(false) / 1024.0 / 1024.0, "Memory"); // MB
             }
+            catch (InvalidOperationException ex)
+            {
+                // Performance counter may not be available on all platforms
+                _logger.LogWarning(ex, "Performance counter unavailable - metrics collection skipped");
+            }
+            catch (System.ComponentModel.Win32Exception ex)
+            {
+                // Windows-specific performance counter errors
+                _logger.LogWarning(ex, "Windows performance counter error - metrics collection skipped");
+            }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error collecting performance metrics");
+                // Catch-all for unexpected errors to prevent service crash
+                // Logging the full exception for debugging while maintaining service availability
+                _logger.LogError(ex, "Unexpected error collecting performance metrics");
             }
         }
 
