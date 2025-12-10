@@ -203,7 +203,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Tracking error cost
             for (int k = 0; k < _predictionHorizon; k++)
             {
-                var error = predictedStates[k] - _referenceTrajectory[k];
+                // Calculate error: use first state element or sum of all state elements
+                var stateValue = predictedStates[k].Length > 0 ? predictedStates[k][0] : 0.0;
+                var error = stateValue - _referenceTrajectory[k];
                 cost += error * error; // Q weight = 1.0
             }
             

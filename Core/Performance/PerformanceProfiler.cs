@@ -109,7 +109,7 @@ namespace HB_NLP_Research_Lab.Core.Performance
             return new PerformanceScope(this, operationName);
         }
         
-        private void RecordMetric(string operationName, double milliseconds, bool failed = false)
+        internal void RecordMetric(string operationName, double milliseconds, bool failed = false)
         {
             var metric = _metrics.GetOrAdd(operationName, _ => new PerformanceMetric
             {
