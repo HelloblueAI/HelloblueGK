@@ -1,0 +1,58 @@
+# Production Dockerfile for Railway Deployment
+# This file is a copy of Docker/Dockerfile.render for Railway compatibility
+# Railway requires the Dockerfile to be in the root directory
+# Source: Docker/Dockerfile.render
+
+# Build stage
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+# Copy solution and project files for dependency restoration
+COPY HelloblueGK.csproj ./
+COPY WebAPI/HelloblueGK.WebAPI.csproj ./WebAPI/
+
+# Restore dependencies - restore WebAPI project which will automatically restore its dependencies
+# This ensures all transitive dependencies are properly resolved
+RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
+
+# Copy all source files
+COPY . .
+
+# Build and publish WebAPI (includes main project as dependency)
+# Remove --no-restore to allow full dependency resolution
+WORKDIR /src/WebAPI
+RUN dotnet publish -c Release -o /app/publish
+
+# Runtime stage - optimized production image
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+WORKDIR /app
+
+# Install curl for health checks (minimal .NET runtime image doesn't include it by default)
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy published application
+COPY --from=build /app/publish .
+
+# Set production environment
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=true
+
+# Railway sets PORT dynamically at runtime
+# Application reads PORT env var (defaults to 5000 per Program.cs)
+# We can't hardcode EXPOSE since PORT is dynamic, but Docker requires it
+EXPOSE 5000
+
+# Health check endpoint
+# Railway sets PORT dynamically at runtime - must read it from environment at runtime, not build time
+# Application listens on PORT env var (default 5000 per Program.cs:241)
+# Using shell to expand PORT variable at container runtime, ensuring it matches the app's listening port
+# Using curl instead of wget (curl is more commonly available in minimal .NET runtime images)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD ["/bin/sh", "-c", "port=${PORT:-5000} && curl -f http://localhost:${port}/Health || exit 1"]
+
+# Start the application
+# PORT is set by Railway via environment variable
+ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]
+
