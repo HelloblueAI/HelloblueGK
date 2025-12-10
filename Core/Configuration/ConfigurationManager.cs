@@ -100,6 +100,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
                 Console.WriteLine($"[Configuration] ⚠️ Data error loading {configName}: {ex.Message}");
                 return new T();
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 Console.WriteLine($"[Configuration] ❌ Error loading {configName}: {ex.Message}");
@@ -232,6 +233,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
             {
                 Console.WriteLine($"[Configuration] ⚠️ Data error reloading {configName}: {ex.Message}");
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 Console.WriteLine($"[Configuration] ❌ Error reloading {configName}: {ex.Message}");

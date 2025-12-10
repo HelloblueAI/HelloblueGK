@@ -220,6 +220,7 @@ namespace HB_NLP_Research_Lab.Core.Telemetry
                     // Data validation errors
                     Console.WriteLine($"[Telemetry] ⚠️ Channel {channel.Name} data error: {ex.Message}");
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     // Catch-all for unexpected errors
@@ -270,6 +271,7 @@ namespace HB_NLP_Research_Lab.Core.Telemetry
                     Console.WriteLine($"[Telemetry] ⚠️ Data validation error: {ex.Message}");
                     await Task.Delay(1000, _cancellationTokenSource.Token);
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     // Catch-all for unexpected errors

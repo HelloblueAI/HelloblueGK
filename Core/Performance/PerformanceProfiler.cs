@@ -163,6 +163,7 @@ namespace HB_NLP_Research_Lab.Core.Performance
                 // Windows-specific performance counter errors
                 Console.WriteLine($"[Performance] ⚠️ Windows performance counter error: {ex.Message}");
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 // Catch-all for unexpected errors

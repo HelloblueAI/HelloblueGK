@@ -144,6 +144,7 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
                 {
                     Console.WriteLine($"[Diagnostics] ⚠️ Data error diagnosing {componentId}: {ex.Message}");
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Diagnostics] ❌ Error diagnosing {componentId}: {ex.Message}");
@@ -183,6 +184,7 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
                     Console.WriteLine($"[Diagnostics] ⚠️ Data error during monitoring: {ex.Message}");
                     await Task.Delay(5000, _cancellationTokenSource.Token);
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Diagnostics] ❌ Monitoring error: {ex.Message}");
