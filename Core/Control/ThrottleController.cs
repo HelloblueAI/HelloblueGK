@@ -121,6 +121,7 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // Data validation errors
                 OnControlError(ex);
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 // Catch-all for unexpected errors

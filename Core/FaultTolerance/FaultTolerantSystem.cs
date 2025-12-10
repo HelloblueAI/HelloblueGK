@@ -121,6 +121,7 @@ namespace HB_NLP_Research_Lab.Core.FaultTolerance
                         SelectActiveComponent();
                     }
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     lastException = ex;
@@ -356,6 +357,7 @@ namespace HB_NLP_Research_Lab.Core.FaultTolerance
                 Status = ComponentStatus.Failed;
                 Console.WriteLine($"[Fault Tolerance] ⚠️ Component initialization data error: {Name} - {ex.Message}");
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 Status = ComponentStatus.Failed;
@@ -397,6 +399,7 @@ namespace HB_NLP_Research_Lab.Core.FaultTolerance
                 Console.WriteLine($"[Fault Tolerance] ⚠️ Recovery data error: {Name} - {ex.Message}");
                 return false;
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 Console.WriteLine($"[Fault Tolerance] ❌ Recovery failed: {Name} - {ex.Message}");

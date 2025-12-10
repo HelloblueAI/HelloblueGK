@@ -69,6 +69,7 @@ namespace HB_NLP_Research_Lab.Core.Testing
                 result.Status = TestStatus.Failed;
                 result.Failures.Add($"Data error: {ex.Message}");
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 result.Status = TestStatus.Failed;
