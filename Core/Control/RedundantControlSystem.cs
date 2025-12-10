@@ -121,6 +121,16 @@ namespace HB_NLP_Research_Lab.Core.Control
                     
                     await Task.Delay(10); // 100 Hz monitoring
                 }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine($"[Redundant Control] ⚠️ Invalid operation in voting: {ex.Message}");
+                    await Task.Delay(100);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    Console.WriteLine($"[Redundant Control] ⚠️ Data error in voting: {ex.Message}");
+                    await Task.Delay(100);
+                }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Redundant Control] ❌ Error in voting: {ex.Message}");
@@ -137,7 +147,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             // This is simplified - in production, control loops would expose their outputs
             // For demonstration, we'll use a placeholder
-            foreach (var loop in _controlLoops)
+            // Note: In production, would get actual control output from each loop
+            for (int i = 0; i < _controlLoops.Count; i++)
             {
                 // Would get actual control output from loop
                 // For now, use a simulated value
@@ -192,10 +203,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             var sorted = outputs.OrderBy(v => v).ToList();
             int mid = sorted.Count / 2;
             
-            if (sorted.Count % 2 == 0)
-                return (sorted[mid - 1] + sorted[mid]) / 2.0;
-            else
-                return sorted[mid];
+            return sorted.Count % 2 == 0
+                ? (sorted[mid - 1] + sorted[mid]) / 2.0
+                : sorted[mid];
         }
         
         private double AverageVote(List<double> outputs)
@@ -217,10 +227,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             var min = outputs.Min();
             var max = outputs.Max();
             
-            if (max - min <= tolerance)
-                return outputs.Average();
-            else
-                return null; // No consensus
+            return max - min <= tolerance
+                ? outputs.Average()
+                : (double?)null; // No consensus
         }
         
         private List<Fault> DetectFaults(List<double> outputs)

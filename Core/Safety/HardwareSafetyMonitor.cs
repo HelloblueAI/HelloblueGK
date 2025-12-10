@@ -89,17 +89,33 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     var sensorName = sensor.Name;
                     
                     // Check against safety limits
-                    if (_safetyLimits.TryGetValue(sensorName, out var limit))
+                    if (_safetyLimits.TryGetValue(sensorName, out var limit) && 
+                        (value < limit.Min || value > limit.Max))
                     {
-                        if (value < limit.Min || value > limit.Max)
-                        {
-                            await HandleSafetyViolationAsync(sensorName, value, limit, cancellationToken);
-                        }
+                        await HandleSafetyViolationAsync(sensorName, value, limit, cancellationToken);
                     }
+                }
+                catch (InvalidOperationException ex)
+                {
+                    // Sensor not available or not initialized
+                    Console.WriteLine($"[Safety Monitor] ⚠️ Sensor {sensor.Name} not available: {ex.Message}");
+                    await HandleSensorFailureAsync(sensor.Name, cancellationToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    // Sensor read timeout - treat as critical
+                    Console.WriteLine($"[Safety Monitor] ⚠️ Sensor {sensor.Name} read timeout");
+                    await HandleSensorFailureAsync(sensor.Name, cancellationToken);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    // Sensor data validation errors - treat as critical
+                    Console.WriteLine($"[Safety Monitor] ❌ Sensor {sensor.Name} data error: {ex.Message}");
+                    await HandleSensorFailureAsync(sensor.Name, cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    // Sensor read failure - treat as critical
+                    // Catch-all for unexpected sensor errors - treat as critical
                     Console.WriteLine($"[Safety Monitor] ❌ Sensor {sensor.Name} read failure: {ex.Message}");
                     await HandleSensorFailureAsync(sensor.Name, cancellationToken);
                 }
@@ -159,8 +175,24 @@ namespace HB_NLP_Research_Lab.Core.Safety
                 {
                     await _emergencyShutdownActuator.SetPositionAsync(1.0, cancellationToken); // Activate shutdown
                 }
+                catch (InvalidOperationException ex)
+                {
+                    // Actuator not ready or not initialized
+                    Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown actuator not ready: {ex.Message}");
+                }
+                catch (TaskCanceledException)
+                {
+                    // Actuator command timeout
+                    Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown command timeout");
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is ArgumentOutOfRangeException)
+                {
+                    // Invalid actuator command
+                    Console.WriteLine($"[Safety Monitor] ⚠️ Invalid shutdown command: {ex.Message}");
+                }
                 catch (Exception ex)
                 {
+                    // Catch-all for unexpected actuator errors
                     Console.WriteLine($"[Safety Monitor] ❌ Failed to activate hardware shutdown: {ex.Message}");
                 }
             }
