@@ -85,20 +85,51 @@ namespace HB_NLP_Research_Lab.Core.FaultTolerance
                     
                     return await operation(component);
                 }
+                catch (InvalidOperationException ex)
+                {
+                    lastException = ex;
+                    attempts++;
+                    Console.WriteLine($"[Fault Tolerance] ⚠️ Invalid operation (attempt {attempts}/{maxRetries}): {ex.Message}");
+                    MarkComponentFailed();
+                    if (attempts < maxRetries)
+                    {
+                        await Task.Delay(100 * attempts);
+                        SelectActiveComponent();
+                    }
+                }
+                catch (TimeoutException ex)
+                {
+                    lastException = ex;
+                    attempts++;
+                    Console.WriteLine($"[Fault Tolerance] ⚠️ Operation timeout (attempt {attempts}/{maxRetries}): {ex.Message}");
+                    MarkComponentFailed();
+                    if (attempts < maxRetries)
+                    {
+                        await Task.Delay(100 * attempts);
+                        SelectActiveComponent();
+                    }
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    lastException = ex;
+                    attempts++;
+                    Console.WriteLine($"[Fault Tolerance] ⚠️ Data error (attempt {attempts}/{maxRetries}): {ex.Message}");
+                    MarkComponentFailed();
+                    if (attempts < maxRetries)
+                    {
+                        await Task.Delay(100 * attempts);
+                        SelectActiveComponent();
+                    }
+                }
                 catch (Exception ex)
                 {
                     lastException = ex;
                     attempts++;
-                    
                     Console.WriteLine($"[Fault Tolerance] ⚠️ Operation failed (attempt {attempts}/{maxRetries}): {ex.Message}");
-                    
-                    // Mark component as failed
                     MarkComponentFailed();
-                    
-                    // Try to switch to backup
                     if (attempts < maxRetries)
                     {
-                        await Task.Delay(100 * attempts); // Exponential backoff
+                        await Task.Delay(100 * attempts);
                         SelectActiveComponent();
                     }
                 }
@@ -315,6 +346,16 @@ namespace HB_NLP_Research_Lab.Core.FaultTolerance
                 Status = ComponentStatus.Healthy;
                 Console.WriteLine($"[Fault Tolerance] Component initialized: {Name}");
             }
+            catch (InvalidOperationException ex)
+            {
+                Status = ComponentStatus.Failed;
+                Console.WriteLine($"[Fault Tolerance] ⚠️ Component initialization invalid: {Name} - {ex.Message}");
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                Status = ComponentStatus.Failed;
+                Console.WriteLine($"[Fault Tolerance] ⚠️ Component initialization data error: {Name} - {ex.Message}");
+            }
             catch (Exception ex)
             {
                 Status = ComponentStatus.Failed;
@@ -340,6 +381,21 @@ namespace HB_NLP_Research_Lab.Core.FaultTolerance
                 Status = ComponentStatus.Healthy;
                 Console.WriteLine($"[Fault Tolerance] ✅ Component recovered: {Name}");
                 return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                Console.WriteLine($"[Fault Tolerance] ⚠️ Recovery invalid operation: {Name} - {ex.Message}");
+                return false;
+            }
+            catch (TimeoutException ex)
+            {
+                Console.WriteLine($"[Fault Tolerance] ⚠️ Recovery timeout: {Name} - {ex.Message}");
+                return false;
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                Console.WriteLine($"[Fault Tolerance] ⚠️ Recovery data error: {Name} - {ex.Message}");
+                return false;
             }
             catch (Exception ex)
             {

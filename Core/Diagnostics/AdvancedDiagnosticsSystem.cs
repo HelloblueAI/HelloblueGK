@@ -139,6 +139,14 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
                         }
                     }
                 }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Invalid operation diagnosing {componentId}: {ex.Message}");
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Data error diagnosing {componentId}: {ex.Message}");
+                }
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Diagnostics] ❌ Error diagnosing {componentId}: {ex.Message}");
@@ -167,6 +175,16 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
                 catch (OperationCanceledException)
                 {
                     break;
+                }
+                catch (InvalidOperationException ex)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Invalid operation during monitoring: {ex.Message}");
+                    await Task.Delay(5000, _cancellationTokenSource.Token);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    Console.WriteLine($"[Diagnostics] ⚠️ Data error during monitoring: {ex.Message}");
+                    await Task.Delay(5000, _cancellationTokenSource.Token);
                 }
                 catch (Exception ex)
                 {

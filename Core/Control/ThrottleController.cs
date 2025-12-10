@@ -76,21 +76,16 @@ namespace HB_NLP_Research_Lab.Core.Control
             {
                 // Read current sensor values
                 var currentThrust = await _thrustSensor.ReadAsync(cancellationToken);
-                var chamberPressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
+                // Note: Chamber pressure available but not used in current control algorithm
+                // await _chamberPressureSensor.ReadAsync(cancellationToken);
                 
                 // Calculate throttle command
                 double throttleCommand;
                 
-                if (_targetThrust > 0)
-                {
-                    // Closed-loop control: adjust throttle to achieve target thrust
-                    throttleCommand = CalculateThrottleFromThrust(currentThrust, _targetThrust);
-                }
-                else
-                {
-                    // Open-loop control: use commanded throttle directly
-                    throttleCommand = _commandedThrottle;
-                }
+                // Use ternary for cleaner code
+                throttleCommand = _targetThrust > 0
+                    ? CalculateThrottleFromThrust(currentThrust, _targetThrust)  // Closed-loop control
+                    : _commandedThrottle;  // Open-loop control
                 
                 // Apply rate limiting for safety
                 throttleCommand = ApplyRateLimit(throttleCommand);
@@ -111,9 +106,24 @@ namespace HB_NLP_Research_Lab.Core.Control
                     OnActuatorError();
                 }
             }
+            catch (OperationCanceledException)
+            {
+                // Operation was cancelled - expected behavior
+                throw; // Re-throw cancellation
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Invalid operation (e.g., actuator not ready)
+                OnControlError(ex);
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                // Data validation errors
+                OnControlError(ex);
+            }
             catch (Exception ex)
             {
-                // Log error and continue
+                // Catch-all for unexpected errors
                 OnControlError(ex);
             }
         }

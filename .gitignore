@@ -209,6 +209,13 @@ kubectl.exe
 Thumbs.db
 Desktop.ini
 
+## Build artifacts / Publish folders ##
+**/publish/
+**/bin/
+**/obj/
+**/web.config
+!WebAPI/web.config
+
 # Internal documentation files
 *_STATUS*.md
 *_SUMMARY*.md

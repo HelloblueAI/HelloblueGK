@@ -206,8 +206,24 @@ namespace HB_NLP_Research_Lab.Core.Telemetry
                     
                     _totalSamples++;
                 }
+                catch (InvalidOperationException ex)
+                {
+                    // Sensor not available or not initialized
+                    Console.WriteLine($"[Telemetry] ⚠️ Channel {channel.Name} not available: {ex.Message}");
+                }
+                catch (TaskCanceledException)
+                {
+                    // Sensor read timeout
+                    Console.WriteLine($"[Telemetry] ⚠️ Channel {channel.Name} read timeout");
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    // Data validation errors
+                    Console.WriteLine($"[Telemetry] ⚠️ Channel {channel.Name} data error: {ex.Message}");
+                }
                 catch (Exception ex)
                 {
+                    // Catch-all for unexpected errors
                     Console.WriteLine($"[Telemetry] ❌ Error sampling channel {channel.Name}: {ex.Message}");
                 }
             }
@@ -243,8 +259,21 @@ namespace HB_NLP_Research_Lab.Core.Telemetry
                 {
                     break;
                 }
+                catch (InvalidOperationException ex)
+                {
+                    // Invalid operation during processing
+                    Console.WriteLine($"[Telemetry] ⚠️ Processing error: {ex.Message}");
+                    await Task.Delay(1000, _cancellationTokenSource.Token);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+                {
+                    // Data validation errors
+                    Console.WriteLine($"[Telemetry] ⚠️ Data validation error: {ex.Message}");
+                    await Task.Delay(1000, _cancellationTokenSource.Token);
+                }
                 catch (Exception ex)
                 {
+                    // Catch-all for unexpected errors
                     Console.WriteLine($"[Telemetry] ❌ Processing error: {ex.Message}");
                     await Task.Delay(1000, _cancellationTokenSource.Token);
                 }
