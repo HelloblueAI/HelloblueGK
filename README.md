@@ -1,4 +1,4 @@
-## HelloblueGK - Advanced Aerospace Engine Simulation Platform
+## HelloblueGK - Aerospace Engine Simulation Platform
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET](https://img.shields.io/badge/.NET-9.0-purple.svg)](https://dotnet.microsoft.com/)
