@@ -20,9 +20,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         private double _targetThrust = 0.0; // Newtons
         
         // PID Controller parameters
-        private double _kp = 0.5;  // Proportional gain
-        private double _ki = 0.1;  // Integral gain
-        private double _kd = 0.05; // Derivative gain
+        private readonly double _kp = 0.5;  // Proportional gain
+        private readonly double _ki = 0.1;  // Integral gain
+        private readonly double _kd = 0.05; // Derivative gain
         
         private double _integral = 0.0;
         private double _lastError = 0.0;

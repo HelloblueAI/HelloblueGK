@@ -149,12 +149,11 @@ namespace HB_NLP_Research_Lab.Core.Telemetry
             
             var timestamp = DateTime.UtcNow;
             
-            foreach (var kvp in _channels)
+            // Process only enabled channels
+            var enabledChannels = _channels.Values.Where(channel => channel.Enabled);
+            
+            foreach (var channel in enabledChannels)
             {
-                var channel = kvp.Value;
-                
-                if (!channel.Enabled)
-                    continue;
                 
                 try
                 {

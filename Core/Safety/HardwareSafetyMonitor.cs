@@ -89,12 +89,10 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     var sensorName = sensor.Name;
                     
                     // Check against safety limits
-                    if (_safetyLimits.TryGetValue(sensorName, out var limit))
+                    if (_safetyLimits.TryGetValue(sensorName, out var limit) && 
+                        (value < limit.Min || value > limit.Max))
                     {
-                        if (value < limit.Min || value > limit.Max)
-                        {
-                            await HandleSafetyViolationAsync(sensorName, value, limit, cancellationToken);
-                        }
+                        await HandleSafetyViolationAsync(sensorName, value, limit, cancellationToken);
                     }
                 }
                 catch (InvalidOperationException ex)
