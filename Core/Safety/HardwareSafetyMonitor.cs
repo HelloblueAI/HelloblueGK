@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using HB_NLP_Research_Lab.Core.Hardware;
+using HB_NLP_Research_Lab.Core.Control;
 
 namespace HB_NLP_Research_Lab.Core.Safety
 {
