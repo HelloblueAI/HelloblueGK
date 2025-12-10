@@ -113,6 +113,7 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     Console.WriteLine($"[Safety Monitor] ❌ Sensor {sensor.Name} data error: {ex.Message}");
                     await HandleSensorFailureAsync(sensor.Name, cancellationToken);
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     // Catch-all for unexpected sensor errors - treat as critical
@@ -190,6 +191,7 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     // Invalid actuator command
                     Console.WriteLine($"[Safety Monitor] ⚠️ Invalid shutdown command: {ex.Message}");
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     // Catch-all for unexpected actuator errors

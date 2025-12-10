@@ -213,6 +213,7 @@ namespace HB_NLP_Research_Lab.Core
                 // Windows-specific performance counter errors
                 _logger.LogWarning(ex, "Windows performance counter error - metrics collection skipped");
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 // Catch-all for unexpected errors to prevent service crash

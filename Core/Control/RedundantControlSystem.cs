@@ -131,6 +131,7 @@ namespace HB_NLP_Research_Lab.Core.Control
                     Console.WriteLine($"[Redundant Control] ⚠️ Data error in voting: {ex.Message}");
                     await Task.Delay(100);
                 }
+                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
                 catch (Exception ex)
                 {
                     Console.WriteLine($"[Redundant Control] ❌ Error in voting: {ex.Message}");
