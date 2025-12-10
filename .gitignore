@@ -208,3 +208,13 @@ kubectl.exe
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Internal documentation files
+*_STATUS*.md
+*_SUMMARY*.md
+*_VERIFICATION*.md
+*_COMPLETE*.md
+*_REPORT.md
+HOW_TO_*.md
+BRANCH_STRATEGY*.md
+CEO_UPDATE_EMAIL.md

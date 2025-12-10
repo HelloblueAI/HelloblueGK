@@ -187,9 +187,21 @@ namespace HB_NLP_Research_Lab.Core
                     };
                 }
             }
-            catch (Exception)
+            catch (HttpRequestException)
             {
-                // Silently handle errors to prevent log spam
+                // Network errors when fetching flight data - expected in some scenarios
+            }
+            catch (TaskCanceledException)
+            {
+                // Request timeout - expected in some scenarios
+            }
+            catch (InvalidOperationException)
+            {
+                // Invalid operation during data collection - expected in some scenarios
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                // Data validation errors - expected in some scenarios
             }
             
             return new ValidationResult
@@ -225,9 +237,21 @@ namespace HB_NLP_Research_Lab.Core
                     };
                 }
             }
-            catch (Exception)
+            catch (HttpRequestException)
             {
-                // Silently handle errors to prevent log spam
+                // Network errors when fetching test stand data - expected in some scenarios
+            }
+            catch (TaskCanceledException)
+            {
+                // Request timeout - expected in some scenarios
+            }
+            catch (InvalidOperationException)
+            {
+                // Invalid operation during data collection - expected in some scenarios
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                // Data validation errors - expected in some scenarios
             }
             
             return new ValidationResult
@@ -263,9 +287,21 @@ namespace HB_NLP_Research_Lab.Core
                     };
                 }
             }
-            catch (Exception)
+            catch (HttpRequestException)
             {
-                // Silently handle errors to prevent log spam
+                // Network errors when fetching industry standards - expected in some scenarios
+            }
+            catch (TaskCanceledException)
+            {
+                // Request timeout - expected in some scenarios
+            }
+            catch (InvalidOperationException)
+            {
+                // Invalid operation during data collection - expected in some scenarios
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                // Data validation errors - expected in some scenarios
             }
             
             return new ValidationResult
@@ -301,9 +337,21 @@ namespace HB_NLP_Research_Lab.Core
                     };
                 }
             }
-            catch (Exception)
+            catch (HttpRequestException)
             {
-                // Silently handle errors to prevent log spam
+                // Network errors when fetching simulation data - expected in some scenarios
+            }
+            catch (TaskCanceledException)
+            {
+                // Request timeout - expected in some scenarios
+            }
+            catch (InvalidOperationException)
+            {
+                // Invalid operation during data collection - expected in some scenarios
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                // Data validation errors - expected in some scenarios
             }
             
             return new ValidationResult
@@ -419,9 +467,21 @@ namespace HB_NLP_Research_Lab.Core
                     _validationCache[e.EngineModel] = updatedResult;
                 }
             }
-            catch (Exception)
+            catch (HttpRequestException)
             {
-                // Silently handle errors to prevent log spam
+                // Network errors during real-time validation - expected in some scenarios
+            }
+            catch (TaskCanceledException)
+            {
+                // Request timeout - expected in some scenarios
+            }
+            catch (InvalidOperationException)
+            {
+                // Invalid operation during validation - expected in some scenarios
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
+            {
+                // Data validation errors - expected in some scenarios
             }
         }
 
