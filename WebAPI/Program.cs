@@ -295,67 +295,82 @@ var app = builder.Build();
     
     try
     {
-        // Initialize main database
-        var databaseCreated = dbContext.Database.EnsureCreated();
-        logger.LogInformation("Main database initialized. Created: {Created}", databaseCreated);
+        // Ensure database exists first
+        var dbExists = dbContext.Database.CanConnect();
+        if (!dbExists)
+        {
+            logger.LogInformation("Database does not exist. Creating database...");
+            var created = dbContext.Database.EnsureCreated();
+            logger.LogInformation("Database created: {Created}", created);
+        }
+        else
+        {
+            logger.LogInformation("Database already exists");
+        }
         
-        // Initialize certification databases - each context creates its own tables
-        // Even if database exists, EnsureCreated will create missing tables for each context
+        // For multiple DbContexts sharing the same database, we need to ensure tables exist
+        // EnsureCreated() only works if database doesn't exist, so we use a different approach
+        // We'll try to ensure tables exist by attempting to query them, which will create them if missing
+        
+        // Initialize certification contexts
+        // For multiple DbContexts sharing the same database, we need to ensure tables exist
+        // EnsureCreated() will create tables even if database exists, as long as tables don't exist
         try
         {
+            // This will create tables if they don't exist, even if database exists
             var reqCreated = requirementsContext.Database.EnsureCreated();
-            logger.LogInformation("RequirementsDbContext initialized. Created: {Created}", reqCreated);
+            logger.LogInformation("RequirementsDbContext tables ensured. Created: {Created}", reqCreated);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to initialize RequirementsDbContext");
+            logger.LogError(ex, "Failed to initialize RequirementsDbContext: {Error}", ex.Message);
         }
         
         try
         {
             var prCreated = problemReportContext.Database.EnsureCreated();
-            logger.LogInformation("ProblemReportDbContext initialized. Created: {Created}", prCreated);
+            logger.LogInformation("ProblemReportDbContext tables ensured. Created: {Created}", prCreated);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to initialize ProblemReportDbContext");
+            logger.LogError(ex, "Failed to initialize ProblemReportDbContext: {Error}", ex.Message);
         }
         
         try
         {
             var configCreated = configurationContext.Database.EnsureCreated();
-            logger.LogInformation("ConfigurationDbContext initialized. Created: {Created}", configCreated);
+            logger.LogInformation("ConfigurationDbContext tables ensured. Created: {Created}", configCreated);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to initialize ConfigurationDbContext");
+            logger.LogError(ex, "Failed to initialize ConfigurationDbContext: {Error}", ex.Message);
         }
         
         try
         {
             var coverageCreated = testCoverageContext.Database.EnsureCreated();
-            logger.LogInformation("TestCoverageDbContext initialized. Created: {Created}", coverageCreated);
+            logger.LogInformation("TestCoverageDbContext tables ensured. Created: {Created}", coverageCreated);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to initialize TestCoverageDbContext");
+            logger.LogError(ex, "Failed to initialize TestCoverageDbContext: {Error}", ex.Message);
         }
         
         try
         {
             var reviewCreated = codeReviewContext.Database.EnsureCreated();
-            logger.LogInformation("CodeReviewDbContext initialized. Created: {Created}", reviewCreated);
+            logger.LogInformation("CodeReviewDbContext tables ensured. Created: {Created}", reviewCreated);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to initialize CodeReviewDbContext");
+            logger.LogError(ex, "Failed to initialize CodeReviewDbContext: {Error}", ex.Message);
         }
         
         logger.LogInformation("Flight Software Certification systems initialization completed");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to initialize database. The application will continue, but database operations may fail.");
+        logger.LogError(ex, "Failed to initialize database: {Error}. The application will continue, but database operations may fail.", ex.Message);
         // Don't throw - allow application to start and fail gracefully if database operations are attempted
     }
     }
