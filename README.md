@@ -11,12 +11,14 @@
 
 ### Try the Interactive Demo
 
-**🚀 Live Demo:** Deploy to Render in 15 minutes! See [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md)
+**🚀 Live Production API:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
 
-**Previous Demo:** [https://hellobluegk-demo-production.up.railway.app](https://hellobluegk-demo-production.up.railway.app)
+- **Swagger UI:** [https://hellobluegk.onrender.com/swagger](https://hellobluegk.onrender.com/swagger)
+- **Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health)
+- **API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+- **Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md)
 
-- **Swagger UI:** [https://hellobluegk-demo-production.up.railway.app/swagger](https://hellobluegk-demo-production.up.railway.app/swagger)
-- **Health Check:** [https://hellobluegk-demo-production.up.railway.app/Health](https://hellobluegk-demo-production.up.railway.app/Health)
+**🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
 
 **🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
 
