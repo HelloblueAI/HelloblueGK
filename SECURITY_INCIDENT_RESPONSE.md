@@ -32,6 +32,39 @@ connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.Tri
 - Continue using environment variables for all credentials
 - Consider adding connection string sanitization if logging is needed in the future
 
+## Incident #2: Hardcoded Credentials in appsettings.json (GitGuardian PR Scan)
+- **Date:** 2025-12-11 (PR #25)
+- **Service:** GitGuardian
+- **Type:** Hardcoded default credentials detected
+- **Status:** ✅ **FIXED** - Replaced with environment variable placeholders
+
+### Analysis
+GitGuardian detected hardcoded credentials in `appsettings.json`:
+- **Line 40:** `Password=your_password` (PostgreSQL connection string)
+- **Line 42:** `amqp://guest:guest@localhost:5672` (RabbitMQ default credentials)
+- **Line 107:** `JWTSecret: "your-super-secret-jwt-key-here"`
+- **Line 118:** `InstrumentationKey: "your-app-insights-key"`
+- **Line 143:** `ConnectionString: "your-azure-app-insights-connection-string"`
+
+**Assessment:**
+- ⚠️ **Security Risk** - Default credentials (`guest:guest`) are real RabbitMQ defaults that could be exploited
+- ⚠️ **Placeholder values** - Other values are placeholders but should use environment variables
+- ✅ **No production credentials exposed** - All values are placeholders or defaults
+
+### Actions Taken
+1. ✅ Replaced all hardcoded credentials with environment variable placeholders:
+   - `Password=your_password` → `Password=${POSTGRES_PASSWORD}`
+   - `amqp://guest:guest@...` → `amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@...`
+   - `JWTSecret` → `${JWT_SECRET_KEY}`
+   - `InstrumentationKey` → `${AZURE_APPINSIGHTS_KEY}`
+   - `ConnectionString` → `${AZURE_APPINSIGHTS_CONNECTION_STRING}`
+2. ✅ Updated security documentation
+
+### Recommendations
+- ✅ **Fixed** - All credentials now use environment variable placeholders
+- Continue using environment variables for all secrets in production
+- Consider adding `.env.example` file with placeholder values for documentation
+
 ## Incident #3: Connection String Exposed in Prometheus Metrics
 - **Date:** 2025-12-11 (Discovered via metrics endpoint)
 - **Service:** Prometheus Metrics Endpoint (`/metrics`)
