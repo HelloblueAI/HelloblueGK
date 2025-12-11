@@ -1,6 +1,4 @@
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata;
-using System.Linq;
 using HB_NLP_Research_Lab.Certification;
 
 namespace HB_NLP_Research_Lab.WebAPI.Scripts;
@@ -63,54 +61,31 @@ public static class CertificationDatabaseInitializer
             else
             {
                 // Database exists, but tables might not
-                // EnsureCreated() returns false if database exists, but will still create missing tables
-                // However, for multiple contexts sharing same DB, we need to force table creation
+                // For multiple DbContexts sharing the same database, EnsureCreated() 
+                // may return false even if tables don't exist
+                // We'll call it anyway - it should create missing tables
                 var tablesCreated = await context.Database.EnsureCreatedAsync();
                 logger.LogInformation("Tables ensured. Created: {Created}", tablesCreated);
                 
-                // Force table creation by attempting to use the context
-                // This will create tables if they don't exist
+                // Verify connection works
                 try
                 {
-                    // Try to query the first DbSet to force table creation
-                    var model = context.Model;
-                    var entityTypes = model.GetEntityTypes();
-                    if (entityTypes.Any())
-                    {
-                        // Get the first entity type and try to query it
-                        var firstEntity = entityTypes.First();
-                        var method = typeof(EntityFrameworkQueryableExtensions)
-                            .GetMethod(nameof(EntityFrameworkQueryableExtensions.AnyAsync))
-                            ?.MakeGenericMethod(firstEntity.ClrType);
-                        
-                        // This will trigger table creation if needed
-                        await context.Database.ExecuteSqlRawAsync("SELECT 1");
-                    }
+                    await context.Database.ExecuteSqlRawAsync("SELECT 1");
                     logger.LogInformation("Database connection verified");
                 }
                 catch (Exception queryEx)
                 {
-                    logger.LogWarning(queryEx, "Query failed, attempting to create tables...");
-                    // If query fails, the tables likely don't exist
-                    // Use migrations or manual table creation
-                    try
-                    {
-                        // Try EnsureCreated again - it should create tables even if DB exists
-                        await context.Database.EnsureCreatedAsync();
-                        logger.LogInformation("Tables creation attempted after query failure");
-                    }
-                    catch (Exception createEx)
-                    {
-                        logger.LogError(createEx, "Failed to create tables for {ContextType}", context.GetType().Name);
-                        // Don't throw - allow application to continue
-                    }
+                    logger.LogWarning(queryEx, "Query failed - tables may not exist. Error: {Error}", queryEx.Message);
+                    // If query fails, tables likely don't exist
+                    // Note: For production, consider using EF Core migrations instead
                 }
             }
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error ensuring tables exist for {ContextType}: {Error}", context.GetType().Name, ex.Message);
-            // Don't throw - log and continue
+            // Don't throw - allow application to continue
+            // Tables will be created on first use if migrations are set up
         }
     }
 }
