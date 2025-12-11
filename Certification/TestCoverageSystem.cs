@@ -58,7 +58,7 @@ namespace HB_NLP_Research_Lab.Certification
             // Determine if file meets Level A requirements
             coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 && 
                                               coverage.BranchCoverage >= 100.0 &&
-                                              (coverage.IsSafetyCritical ? coverage.MCDCCoverage >= 100.0 : true);
+                                              (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Recorded coverage for {FilePath}: {StatementCoverage}% statements, {BranchCoverage}% branches", 

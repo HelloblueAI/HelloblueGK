@@ -171,17 +171,14 @@ namespace HB_NLP_Research_Lab.Certification
             request.ImplementedAt = DateTime.UtcNow;
 
             // Link to affected items
-            foreach (var itemId in affectedItems)
+            var links = affectedItems.Select(itemId => new ChangeRequestItemLink
             {
-                var link = new ChangeRequestItemLink
-                {
-                    Id = Guid.NewGuid(),
-                    ChangeRequestId = request.Id,
-                    ConfigurationItemId = itemId,
-                    CreatedAt = DateTime.UtcNow
-                };
-                _context.ChangeRequestItemLinks.Add(link);
-            }
+                Id = Guid.NewGuid(),
+                ChangeRequestId = request.Id,
+                ConfigurationItemId = itemId,
+                CreatedAt = DateTime.UtcNow
+            }).ToList();
+            _context.ChangeRequestItemLinks.AddRange(links);
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Implemented change request {RequestNumber}", requestNumber);

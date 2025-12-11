@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Collections.Generic;
 
 namespace HB_NLP_Research_Lab.Core
 {
@@ -66,6 +67,79 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             return string.IsNullOrEmpty(sanitized) ? "invalid" : sanitized;
+        }
+
+        /// <summary>
+        /// Sanitizes a connection string for safe use in metrics/logging
+        /// Removes sensitive information like passwords and usernames
+        /// </summary>
+        /// <param name="connectionString">The connection string to sanitize</param>
+        /// <returns>Sanitized connection string safe for metrics</returns>
+        public static string SanitizeConnectionStringForMetrics(string? connectionString)
+        {
+            if (string.IsNullOrEmpty(connectionString))
+            {
+                return "unknown";
+            }
+
+            // Remove password and sensitive information from connection string
+            var sanitized = connectionString;
+            
+            // Remove Password=... (case insensitive)
+            sanitized = Regex.Replace(sanitized, @"(?i)Password\s*=\s*[^;]+", "Password=***", RegexOptions.IgnoreCase);
+            
+            // Remove Pwd=... (case insensitive)
+            sanitized = Regex.Replace(sanitized, @"(?i)Pwd\s*=\s*[^;]+", "Pwd=***", RegexOptions.IgnoreCase);
+            
+            // Remove User Id=... or Username=... (case insensitive) - keep only database and host info
+            sanitized = Regex.Replace(sanitized, @"(?i)(User\s*Id|Username|UID)\s*=\s*[^;]+", "$1=***", RegexOptions.IgnoreCase);
+            
+            // For PostgreSQL connection strings, extract only Host, Port, Database
+            if (sanitized.Contains("Host=", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = sanitized.Split(';');
+                var safeParts = new List<string>();
+                foreach (var part in parts)
+                {
+                    var keyValue = part.Split('=', 2);
+                    if (keyValue.Length == 2)
+                    {
+                        var key = keyValue[0].Trim();
+                        if (key.Equals("Host", StringComparison.OrdinalIgnoreCase) ||
+                            key.Equals("Port", StringComparison.OrdinalIgnoreCase) ||
+                            key.Equals("Database", StringComparison.OrdinalIgnoreCase))
+                        {
+                            safeParts.Add(part);
+                        }
+                    }
+                }
+                sanitized = string.Join(";", safeParts);
+            }
+            
+            // For SQL Server connection strings, extract only Server and Database
+            if (sanitized.Contains("Server=", StringComparison.OrdinalIgnoreCase) && 
+                !sanitized.Contains("Host=", StringComparison.OrdinalIgnoreCase))
+            {
+                var parts = sanitized.Split(';');
+                var safeParts = new List<string>();
+                foreach (var part in parts)
+                {
+                    var keyValue = part.Split('=', 2);
+                    if (keyValue.Length == 2)
+                    {
+                        var key = keyValue[0].Trim();
+                        if (key.Equals("Server", StringComparison.OrdinalIgnoreCase) ||
+                            key.Equals("Database", StringComparison.OrdinalIgnoreCase) ||
+                            key.Equals("Initial Catalog", StringComparison.OrdinalIgnoreCase))
+                        {
+                            safeParts.Add(part);
+                        }
+                    }
+                }
+                sanitized = string.Join(";", safeParts);
+            }
+            
+            return string.IsNullOrEmpty(sanitized) ? "unknown" : sanitized;
         }
     }
 }

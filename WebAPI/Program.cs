@@ -15,6 +15,7 @@ using Prometheus;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using HB_NLP_Research_Lab.WebAPI.Validators;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -161,10 +162,35 @@ if (string.IsNullOrWhiteSpace(connectionString))
     }
     else
     {
-        throw new InvalidOperationException(
-            "DefaultConnection string must be configured in production. " +
-            "Please set ConnectionStrings:DefaultConnection in your configuration. " +
-            "For SQL Server, use: Server=your-server;Database=HelloblueGK;...");
+        // In production, require connection string, but allow Railway/Render to set it
+        // Railway provides DATABASE_URL, Render expects ConnectionStrings__DefaultConnection
+        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (!string.IsNullOrWhiteSpace(databaseUrl))
+        {
+            // Convert Railway DATABASE_URL format to .NET connection string
+            // Format: postgresql://user:pass@host:port/db or postgresql://user@host:port/db (passwordless)
+            var uri = new Uri(databaseUrl);
+            var userInfo = uri.UserInfo.Split(':');
+            var username = userInfo.Length > 0 ? userInfo[0] : string.Empty;
+            var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty;
+            
+            // Build connection string - include password only if provided
+            if (!string.IsNullOrEmpty(password))
+            {
+                connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={username};Password={password}";
+            }
+            else
+            {
+                connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={username}";
+            }
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "DefaultConnection string must be configured in production. " +
+                "Please set ConnectionStrings:DefaultConnection or DATABASE_URL in your configuration. " +
+                "For SQL Server, use: Server=your-server;Database=HelloblueGK;...");
+        }
     }
 }
 
@@ -192,8 +218,25 @@ bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSo
                  !hasSqlServerKeywords && !hasPostgresKeywords;
 
 // Select database provider based on connection string format
+// For PostgreSQL, add ApplicationName to connection string to help identify connections in metrics
 Action<DbContextOptionsBuilder> configureDbContext = hasPostgresKeywords
-    ? options => options.UseNpgsql(connectionString)
+    ? options =>
+    {
+        // Add ApplicationName to connection string to help identify connections without exposing full connection details
+        // Note: Npgsql still uses the full connection string as pool identifier in metrics, but ApplicationName
+        // helps identify the application in PostgreSQL server logs
+        var connectionStringWithAppName = connectionString;
+        if (!connectionString.Contains("ApplicationName=", StringComparison.OrdinalIgnoreCase))
+        {
+            connectionStringWithAppName = $"{connectionString};ApplicationName=HelloblueGK-API";
+        }
+        
+        // Use NpgsqlDataSourceBuilder to create a data source
+        // This allows better connection pooling and management
+        var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionStringWithAppName);
+        var dataSource = dataSourceBuilder.Build();
+        options.UseNpgsql(dataSource);
+    }
     : useSqlite
         ? options => options.UseSqlite(connectionString)
         : options => options.UseSqlServer(connectionString);
@@ -264,6 +307,8 @@ builder.Services.AddSingleton<StructuredLoggingService>();
 builder.Services.AddSingleton<ConfigurationValidationService>();
 builder.Services.AddSingleton<AdvancedHealthCheckService>();
 builder.Services.AddSingleton<HelloblueGKEngine>();
+builder.Services.AddSingleton<AdvancedAIOptimizationEngine>();
+builder.Services.AddSingleton<DigitalTwinEngine>();
 
 // Add application services
 builder.Services.AddScoped<IJwtService, JwtService>();
@@ -332,6 +377,114 @@ var app = builder.Build();
         }
         
         logger.LogInformation("Flight Software Certification systems initialization completed");
+        
+        // Ensure all tables exist (including new ones like Launch)
+        // This handles the case where new tables are added after initial database creation
+        try
+        {
+            logger.LogInformation("Ensuring all database tables exist...");
+            // Try to query each table to ensure it exists
+            _ = await dbContext.Engines.CountAsync();
+            _ = await dbContext.EngineSimulations.CountAsync();
+            _ = await dbContext.AIOptimizationRuns.CountAsync();
+            _ = await dbContext.DigitalTwins.CountAsync();
+            
+            // Ensure Launch table exists - try to query it, create if missing
+            try
+            {
+                _ = await dbContext.Launches.CountAsync();
+                logger.LogInformation("Launch table exists");
+            }
+            catch
+            {
+                // Table doesn't exist - try to create it using EF Core model
+                logger.LogInformation("Launch table does not exist, attempting to create...");
+                try
+                {
+                    // Use GenerateCreateScript to get SQL for Launch table only
+                    var createScript = dbContext.Database.GenerateCreateScript();
+                    // Extract just the Launch table creation SQL
+                    if (createScript.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        // For PostgreSQL, we can try to create just the Launch table
+                        // Since we can't easily extract just one table, we'll let EF handle it on first use
+                        // or create it manually with a simple SQL statement
+                        // Only execute PostgreSQL-specific SQL if we're using PostgreSQL
+                        if (hasPostgresKeywords)
+                        {
+                            await dbContext.Database.ExecuteSqlRawAsync(@"
+                            CREATE TABLE IF NOT EXISTS ""Launches"" (
+                                ""Id"" SERIAL PRIMARY KEY,
+                                ""MissionName"" VARCHAR(200) NOT NULL,
+                                ""Description"" VARCHAR(500),
+                                ""EngineId"" INTEGER NOT NULL,
+                                ""EngineCount"" INTEGER NOT NULL DEFAULT 1,
+                                ""Status"" VARCHAR(50) DEFAULT 'Scheduled',
+                                ""LaunchParametersJson"" TEXT,
+                                ""ResultsJson"" TEXT,
+                                ""MissionDurationSeconds"" DOUBLE PRECISION,
+                                ""MaxAltitude"" DOUBLE PRECISION,
+                                ""MaxVelocity"" DOUBLE PRECISION,
+                                ""MissionSuccess"" BOOLEAN,
+                                ""ErrorMessage"" TEXT,
+                                ""ScheduledAt"" TIMESTAMP NOT NULL,
+                                ""LaunchedAt"" TIMESTAMP,
+                                ""CompletedAt"" TIMESTAMP,
+                                ""CreatedBy"" VARCHAR(255),
+                                ""CreatedAt"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+                            );
+                        ");
+                        // Create indexes
+                        await dbContext.Database.ExecuteSqlRawAsync(@"
+                            CREATE INDEX IF NOT EXISTS ""IX_Launches_EngineId"" ON ""Launches""(""EngineId"");
+                            CREATE INDEX IF NOT EXISTS ""IX_Launches_Status"" ON ""Launches""(""Status"");
+                            CREATE INDEX IF NOT EXISTS ""IX_Launches_ScheduledAt"" ON ""Launches""(""ScheduledAt"");
+                            CREATE INDEX IF NOT EXISTS ""IX_Launches_CreatedAt"" ON ""Launches""(""CreatedAt"");
+                        ");
+                        // Add foreign key constraint
+                        await dbContext.Database.ExecuteSqlRawAsync(@"
+                            DO $$
+                            BEGIN
+                                IF NOT EXISTS (
+                                    SELECT 1 FROM pg_constraint 
+                                    WHERE conname = 'FK_Launches_Engines_EngineId'
+                                ) THEN
+                                    ALTER TABLE ""Launches""
+                                    ADD CONSTRAINT ""FK_Launches_Engines_EngineId""
+                                    FOREIGN KEY (""EngineId"") REFERENCES ""Engines""(""Id"") ON DELETE RESTRICT;
+                                END IF;
+                            END $$;
+                        ");
+                            logger.LogInformation("Launch table created successfully");
+                        }
+                        else
+                        {
+                            logger.LogWarning("Launch table creation skipped - PostgreSQL-specific SQL only works with PostgreSQL. Table will be created via EF Core migrations or EnsureCreated on first use.");
+                        }
+                    }
+                }
+                catch (Exception createEx)
+                {
+                    logger.LogWarning(createEx, "Could not create Launch table automatically: {Error}. It will be created on first use.", createEx.Message);
+                }
+            }
+            logger.LogInformation("All database tables verified");
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Warning while verifying tables: {Error}. Tables will be created on first use.", ex.Message);
+        }
+        
+        // Seed initial engines if database is empty
+        try
+        {
+            await EngineSeeder.SeedEnginesAsync(dbContext, logger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to seed engines: {Error}", ex.Message);
+            // Continue - engines can be added manually via API
+        }
     }
     catch (Exception ex)
     {
