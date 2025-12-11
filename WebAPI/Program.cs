@@ -364,6 +364,17 @@ var app = builder.Build();
         }
         
         logger.LogInformation("Flight Software Certification systems initialization completed");
+        
+        // Seed initial engines if database is empty
+        try
+        {
+            await EngineSeeder.SeedEnginesAsync(dbContext, logger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to seed engines: {Error}", ex.Message);
+            // Continue - engines can be added manually via API
+        }
     }
     catch (Exception ex)
     {
