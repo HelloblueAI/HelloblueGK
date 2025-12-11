@@ -194,8 +194,21 @@ namespace HB_NLP_Research_Lab.Core.Control
         
         public void Dispose()
         {
-            StopAsync().Wait(TimeSpan.FromSeconds(5));
-            _cancellationTokenSource?.Dispose();
+            // Use ConfigureAwait(false) to avoid deadlocks when called from sync context
+            // Add timeout to prevent indefinite blocking
+            try
+            {
+                StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+            }
+            catch (Exception)
+            {
+                // Log but don't throw - disposal should not throw exceptions
+                // The cancellation token will be disposed regardless
+            }
+            finally
+            {
+                _cancellationTokenSource?.Dispose();
+            }
         }
     }
 }

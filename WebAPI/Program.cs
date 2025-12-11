@@ -210,6 +210,16 @@ var jwtKey = builder.Configuration["Jwt:Key"] ?? defaultJwtKey;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
 
+// Security check: Fail in production if using default JWT key
+var isProduction = builder.Environment.IsProduction();
+if (isProduction && (jwtKey == defaultJwtKey || jwtKey == "change-me-in-production"))
+{
+    throw new InvalidOperationException(
+        "SECURITY ERROR: Default JWT key detected in production. " +
+        "Please set a secure JWT:Key in configuration or environment variables. " +
+        "The key must be at least 32 characters long.");
+}
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -233,7 +243,9 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 // Add core services
-builder.Services.AddSingleton<PerformanceMonitoringService>();
+// PerformanceMonitoringService implements IHostedService and should be registered as such
+// in a hosted application (WebAPI). It will be available as a singleton for injection.
+builder.Services.AddHostedService<PerformanceMonitoringService>();
 builder.Services.AddSingleton<RateLimitingService>();
 builder.Services.AddSingleton<StructuredLoggingService>();
 builder.Services.AddSingleton<ConfigurationValidationService>();
