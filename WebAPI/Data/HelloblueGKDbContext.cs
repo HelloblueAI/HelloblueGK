@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.Certification;
 
 namespace HB_NLP_Research_Lab.WebAPI.Data;
 
@@ -27,6 +28,27 @@ public class HelloblueGKDbContext : DbContext
     // User and Authentication entities
     public DbSet<User> Users { get; set; }
     public DbSet<ApiKey> ApiKeys { get; set; }
+
+    // Flight Software Certification entities
+    public DbSet<Requirement> Requirements { get; set; }
+    public DbSet<RequirementDesignLink> RequirementDesignLinks { get; set; }
+    public DbSet<RequirementCodeLink> RequirementCodeLinks { get; set; }
+    public DbSet<RequirementTestLink> RequirementTestLinks { get; set; }
+    public DbSet<ProblemReport> ProblemReports { get; set; }
+    public DbSet<ProblemReportStatusChange> ProblemReportStatusChanges { get; set; }
+    public DbSet<ProblemReportRequirementLink> ProblemReportRequirementLinks { get; set; }
+    public DbSet<ProblemReportTestLink> ProblemReportTestLinks { get; set; }
+    public DbSet<SoftwareBaseline> SoftwareBaselines { get; set; }
+    public DbSet<ConfigurationItem> ConfigurationItems { get; set; }
+    public DbSet<BaselineConfigurationItem> BaselineConfigurationItems { get; set; }
+    public DbSet<ChangeRequest> ChangeRequests { get; set; }
+    public DbSet<ChangeRequestApproval> ChangeRequestApprovals { get; set; }
+    public DbSet<ChangeRequestItemLink> ChangeRequestItemLinks { get; set; }
+    public DbSet<CodeCoverage> CodeCoverage { get; set; }
+    public DbSet<CoverageTestCaseLink> CoverageTestCaseLinks { get; set; }
+    public DbSet<CodeReview> CodeReviews { get; set; }
+    public DbSet<CodeReviewAssignment> CodeReviewAssignments { get; set; }
+    public DbSet<ReviewFinding> ReviewFindings { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -111,6 +133,55 @@ public class HelloblueGKDbContext : DbContext
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.KeyHash);
             entity.HasIndex(e => e.UserId);
+        });
+
+        // Certification: Requirements
+        modelBuilder.Entity<Requirement>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.RequirementNumber).IsUnique();
+            entity.HasMany(e => e.DesignLinks).WithOne().HasForeignKey("RequirementId").OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.CodeLinks).WithOne().HasForeignKey("RequirementId").OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.TestLinks).WithOne().HasForeignKey("RequirementId").OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Certification: Problem Reports
+        modelBuilder.Entity<ProblemReport>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ReportNumber).IsUnique();
+            entity.HasMany(e => e.StatusChanges).WithOne().HasForeignKey("ProblemReportId").OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Certification: Configuration Management
+        modelBuilder.Entity<BaselineConfigurationItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasOne(e => e.Baseline).WithMany(b => b.ConfigurationItems).HasForeignKey(e => e.BaselineId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(e => e.ConfigurationItem).WithMany().HasForeignKey(e => e.ConfigurationItemId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ChangeRequest>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.RequestNumber).IsUnique();
+        });
+
+        // Certification: Test Coverage
+        modelBuilder.Entity<CodeCoverage>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.FilePath).IsUnique();
+            entity.HasMany(e => e.TestCaseLinks).WithOne().HasForeignKey("CodeCoverageId").OnDelete(DeleteBehavior.Cascade);
+        });
+
+        // Certification: Code Reviews
+        modelBuilder.Entity<CodeReview>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.ReviewNumber).IsUnique();
+            entity.HasMany(e => e.Assignments).WithOne().HasForeignKey("ReviewId").OnDelete(DeleteBehavior.Cascade);
+            entity.HasMany(e => e.Findings).WithOne().HasForeignKey("ReviewId").OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
