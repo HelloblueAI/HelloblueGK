@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using HB_NLP_Research_Lab.WebAPI.Scripts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.EntityFrameworkCore;
@@ -312,58 +313,22 @@ var app = builder.Build();
         // EnsureCreated() only works if database doesn't exist, so we use a different approach
         // We'll try to ensure tables exist by attempting to query them, which will create them if missing
         
-        // Initialize certification contexts
-        // For multiple DbContexts sharing the same database, we need to ensure tables exist
-        // EnsureCreated() will create tables even if database exists, as long as tables don't exist
+        // Initialize certification contexts using improved initializer
+        // This handles the case where multiple DbContexts share the same database
         try
         {
-            // This will create tables if they don't exist, even if database exists
-            var reqCreated = requirementsContext.Database.EnsureCreated();
-            logger.LogInformation("RequirementsDbContext tables ensured. Created: {Created}", reqCreated);
+            await CertificationDatabaseInitializer.InitializeAllAsync(
+                requirementsContext,
+                problemReportContext,
+                configurationContext,
+                testCoverageContext,
+                codeReviewContext,
+                logger);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Failed to initialize RequirementsDbContext: {Error}", ex.Message);
-        }
-        
-        try
-        {
-            var prCreated = problemReportContext.Database.EnsureCreated();
-            logger.LogInformation("ProblemReportDbContext tables ensured. Created: {Created}", prCreated);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to initialize ProblemReportDbContext: {Error}", ex.Message);
-        }
-        
-        try
-        {
-            var configCreated = configurationContext.Database.EnsureCreated();
-            logger.LogInformation("ConfigurationDbContext tables ensured. Created: {Created}", configCreated);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to initialize ConfigurationDbContext: {Error}", ex.Message);
-        }
-        
-        try
-        {
-            var coverageCreated = testCoverageContext.Database.EnsureCreated();
-            logger.LogInformation("TestCoverageDbContext tables ensured. Created: {Created}", coverageCreated);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to initialize TestCoverageDbContext: {Error}", ex.Message);
-        }
-        
-        try
-        {
-            var reviewCreated = codeReviewContext.Database.EnsureCreated();
-            logger.LogInformation("CodeReviewDbContext tables ensured. Created: {Created}", reviewCreated);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to initialize CodeReviewDbContext: {Error}", ex.Message);
+            logger.LogError(ex, "Failed to initialize certification databases: {Error}", ex.Message);
+            // Continue - individual contexts will handle errors
         }
         
         logger.LogInformation("Flight Software Certification systems initialization completed");
