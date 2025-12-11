@@ -239,13 +239,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var scheduled = await _context.Launches.CountAsync(l => l.Status == "Scheduled");
                 var inProgress = await _context.Launches.CountAsync(l => l.Status == "InProgress");
 
-                var avgAltitude = await _context.Launches
+                var launchesWithAltitude = await _context.Launches
                     .Where(l => l.MaxAltitude.HasValue)
-                    .AverageAsync(l => l.MaxAltitude ?? 0);
+                    .ToListAsync();
+                var avgAltitude = launchesWithAltitude.Any() 
+                    ? launchesWithAltitude.Average(l => l.MaxAltitude!.Value) 
+                    : 0.0;
 
-                var avgVelocity = await _context.Launches
+                var launchesWithVelocity = await _context.Launches
                     .Where(l => l.MaxVelocity.HasValue)
-                    .AverageAsync(l => l.MaxVelocity ?? 0);
+                    .ToListAsync();
+                var avgVelocity = launchesWithVelocity.Any() 
+                    ? launchesWithVelocity.Average(l => l.MaxVelocity!.Value) 
+                    : 0.0;
 
                 return Ok(new
                 {
