@@ -20,15 +20,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         private readonly HelloblueGKDbContext _context;
         private readonly AdvancedAIOptimizationEngine _optimizationEngine;
         private readonly ILogger<AIOptimizationController> _logger;
+        private readonly IServiceProvider _serviceProvider;
 
         public AIOptimizationController(
             HelloblueGKDbContext context,
             AdvancedAIOptimizationEngine optimizationEngine,
-            ILogger<AIOptimizationController> logger)
+            ILogger<AIOptimizationController> logger,
+            IServiceProvider serviceProvider)
         {
             _context = context;
             _optimizationEngine = optimizationEngine;
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         /// <summary>
@@ -134,8 +137,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 _context.AIOptimizationRuns.Add(optimization);
                 await _context.SaveChangesAsync();
 
-                // Run optimization asynchronously
-                _ = Task.Run(async () => await ExecuteOptimizationAsync(optimization.Id, engine, request));
+                // Run optimization asynchronously with a new scope to avoid DbContext disposal issues
+                var optimizationId = optimization.Id;
+                var engineId = engine.Id;
+                _ = Task.Run(async () =>
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+                    var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
+                    if (scopedEngine != null)
+                    {
+                        await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
+                    }
+                });
 
                 return CreatedAtAction(nameof(GetOptimizationById), new { id = optimization.Id }, optimization);
             }
@@ -183,16 +197,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
         }
 
-        private async Task ExecuteOptimizationAsync(int optimizationId, Engine engine, StartOptimizationRequest request)
+        private async Task ExecuteOptimizationAsync(int optimizationId, Engine engine, StartOptimizationRequest request, HelloblueGKDbContext context)
         {
             try
             {
-                var optimization = await _context.AIOptimizationRuns.FindAsync(optimizationId);
+                var optimization = await context.AIOptimizationRuns.FindAsync(optimizationId);
                 if (optimization == null) return;
 
                 optimization.Status = "Running";
                 optimization.StartedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
 
                 var startTime = DateTime.UtcNow;
 
@@ -214,7 +228,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Calculate improvement
                 var originalEfficiency = engine.Efficiency;
                 var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? originalEfficiency;
-                var improvement = ((optimizedEfficiency - originalEfficiency) / originalEfficiency) * 100;
+                var improvement = originalEfficiency > 0 
+                    ? ((optimizedEfficiency - originalEfficiency) / originalEfficiency) * 100 
+                    : 0.0;
 
                 // Update optimization with results
                 optimization.Status = "Completed";
@@ -247,7 +263,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 };
 
                 optimization.ResultsJson = JsonSerializer.Serialize(results);
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
 
                 _logger.LogInformation("Optimization {OptimizationId} completed: {Improvement}% improvement", 
                     optimizationId, improvement);

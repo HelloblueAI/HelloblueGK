@@ -20,15 +20,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         private readonly HelloblueGKDbContext _context;
         private readonly HelloblueGKEngine _engine;
         private readonly ILogger<LaunchesController> _logger;
+        private readonly IServiceProvider _serviceProvider;
 
         public LaunchesController(
             HelloblueGKDbContext context,
             HelloblueGKEngine engine,
-            ILogger<LaunchesController> logger)
+            ILogger<LaunchesController> logger,
+            IServiceProvider serviceProvider)
         {
             _context = context;
             _engine = engine;
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         /// <summary>
@@ -177,7 +180,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 await _context.SaveChangesAsync();
 
                 // Execute launch asynchronously
-                _ = Task.Run(async () => await ExecuteLaunchAsync(launch.Id));
+                // Run launch asynchronously with a new scope to avoid DbContext disposal issues
+                var launchId = launch.Id;
+                _ = Task.Run(async () =>
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+                    await ExecuteLaunchAsync(launchId, scopedContext);
+                });
 
                 return Ok(launch);
             }
@@ -272,11 +282,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
         }
 
-        private async Task ExecuteLaunchAsync(int launchId)
+        private async Task ExecuteLaunchAsync(int launchId, HelloblueGKDbContext context)
         {
             try
             {
-                var launch = await _context.Launches
+                var launch = await context.Launches
                     .Include(l => l.Engine)
                     .FirstOrDefaultAsync(l => l.Id == launchId);
 
@@ -332,7 +342,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     launch.ErrorMessage = "Mission failed due to engine performance below threshold";
                 }
 
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
 
                 _logger.LogInformation("Launch {LaunchId} completed: {Status}", launchId, launch.Status);
             }
@@ -340,14 +350,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 _logger.LogError(ex, "Error executing launch {LaunchId}", launchId);
 
-                var launch = await _context.Launches.FindAsync(launchId);
+                var launch = await context.Launches.FindAsync(launchId);
                 if (launch != null)
                 {
                     launch.Status = "Failed";
                     launch.CompletedAt = DateTime.UtcNow;
                     launch.MissionSuccess = false;
                     launch.ErrorMessage = ex.Message;
-                    await _context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
                 }
             }
         }

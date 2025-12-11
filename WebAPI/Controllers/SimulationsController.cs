@@ -20,15 +20,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         private readonly HelloblueGKDbContext _context;
         private readonly HelloblueGKEngine _engine;
         private readonly ILogger<SimulationsController> _logger;
+        private readonly IServiceProvider _serviceProvider;
 
         public SimulationsController(
             HelloblueGKDbContext context,
             HelloblueGKEngine engine,
-            ILogger<SimulationsController> logger)
+            ILogger<SimulationsController> logger,
+            IServiceProvider serviceProvider)
         {
             _context = context;
             _engine = engine;
             _logger = logger;
+            _serviceProvider = serviceProvider;
         }
 
         /// <summary>
@@ -136,8 +139,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 _context.EngineSimulations.Add(simulation);
                 await _context.SaveChangesAsync();
 
-                // Run simulation asynchronously
-                _ = Task.Run(async () => await ExecuteSimulationAsync(simulation.Id, engine, request));
+                // Run simulation asynchronously with a new scope to avoid DbContext disposal issues
+                var simulationId = simulation.Id;
+                var engineId = engine.Id;
+                _ = Task.Run(async () =>
+                {
+                    using var scope = _serviceProvider.CreateScope();
+                    var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+                    var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
+                    if (scopedEngine != null)
+                    {
+                        await ExecuteSimulationAsync(simulationId, scopedEngine, request, scopedContext);
+                    }
+                });
 
                 return CreatedAtAction(nameof(GetSimulationById), new { id = simulation.Id }, simulation);
             }
@@ -218,16 +232,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
         }
 
-        private async Task ExecuteSimulationAsync(int simulationId, Engine engine, RunSimulationRequest request)
+        private async Task ExecuteSimulationAsync(int simulationId, Engine engine, RunSimulationRequest request, HelloblueGKDbContext context)
         {
             try
             {
-                var simulation = await _context.EngineSimulations.FindAsync(simulationId);
+                var simulation = await context.EngineSimulations.FindAsync(simulationId);
                 if (simulation == null) return;
 
                 simulation.Status = "Running";
                 simulation.StartedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
 
                 var startTime = DateTime.UtcNow;
 
@@ -270,7 +284,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 };
 
                 simulation.ResultsJson = JsonSerializer.Serialize(results);
-                await _context.SaveChangesAsync();
+                await context.SaveChangesAsync();
 
                 _logger.LogInformation("Simulation {SimulationId} completed successfully in {ExecutionTime}s", 
                     simulationId, executionTime);
@@ -279,14 +293,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 _logger.LogError(ex, "Error executing simulation {SimulationId}", simulationId);
                 
-                var simulation = await _context.EngineSimulations.FindAsync(simulationId);
+                var simulation = await context.EngineSimulations.FindAsync(simulationId);
                 if (simulation != null)
                 {
                     simulation.Status = "Failed";
                     simulation.CompletedAt = DateTime.UtcNow;
                     simulation.ErrorMessage = ex.Message;
                     simulation.StackTrace = ex.StackTrace;
-                    await _context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
                 }
             }
         }
