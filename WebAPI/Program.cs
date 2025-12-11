@@ -167,31 +167,38 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 // Auto-detect database provider from connection string format
-// Check for SQL Server-specific keywords first (highest priority)
-bool hasSqlServerKeywords = connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Database=", StringComparison.OrdinalIgnoreCase) ||
+// Check for PostgreSQL-specific keywords first (highest priority)
+bool hasPostgresKeywords = connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) && 
+                            (connectionString.Contains("Port=", StringComparison.OrdinalIgnoreCase) ||
+                             connectionString.Contains("Username=", StringComparison.OrdinalIgnoreCase) ||
+                             connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase));
+
+// Check for SQL Server-specific keywords
+bool hasSqlServerKeywords = connectionString.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase) ||
                             connectionString.Contains("Integrated Security=", StringComparison.OrdinalIgnoreCase) ||
                             connectionString.Contains("Trusted_Connection=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase);
+                            (connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) && 
+                             !hasPostgresKeywords);
 
 // Check for SQLite-specific indicators
 bool hasSqliteFileExtension = connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
 bool hasSqliteFilenameKeyword = connectionString.StartsWith("Filename=", StringComparison.OrdinalIgnoreCase);
-
-// For "Data Source=" strings, only treat as SQLite if it clearly points to a file (.db extension)
-// SQL Server can use "Data Source=server" without other keywords, so we must be careful
 bool isDataSourceWithDbFile = connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase) &&
                               connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
-
-// Use SQLite only if clear SQLite indicators exist and no SQL Server keywords
-// Default to SQL Server if ambiguous (e.g., "Data Source=.\sqlexpress" will use SQL Server)
 bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSourceWithDbFile) && 
-                 !hasSqlServerKeywords;
+                 !hasSqlServerKeywords && !hasPostgresKeywords;
 
-if (useSqlite)
+// Select database provider based on connection string format
+if (hasPostgresKeywords)
 {
+    // PostgreSQL connection string format: Host=...;Database=...;Username=...;Password=...
+    builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
+        options.UseNpgsql(connectionString));
+}
+else if (useSqlite)
+{
+    // SQLite connection string format: Data Source=... or Filename=...
     builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
         options.UseSqlite(connectionString));
 }
