@@ -207,21 +207,24 @@ bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSo
                  !hasSqlServerKeywords && !hasPostgresKeywords;
 
 // Select database provider based on connection string format
-// For PostgreSQL, use NpgsqlDataSourceBuilder to prevent exposing credentials in Prometheus metrics
+// For PostgreSQL, add ApplicationName to connection string to help identify connections in metrics
 Action<DbContextOptionsBuilder> configureDbContext = hasPostgresKeywords
     ? options =>
     {
-        // Create NpgsqlDataSource with sanitized connection string for metrics
-        // Npgsql uses the connection string as pool identifier in metrics, so we need to
-        // create a data source that uses a sanitized version for the pool name
-        var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
-        // Set ApplicationName to help identify the connection in logs/metrics without exposing credentials
-        dataSourceBuilder.ApplicationName = "HelloblueGK-API";
-        var dataSource = dataSourceBuilder.Build();
-        options.UseNpgsql(dataSource, npgsqlOptions =>
+        // Add ApplicationName to connection string to help identify connections without exposing full connection details
+        // Note: Npgsql still uses the full connection string as pool identifier in metrics, but ApplicationName
+        // helps identify the application in PostgreSQL server logs
+        var connectionStringWithAppName = connectionString;
+        if (!connectionString.Contains("ApplicationName=", StringComparison.OrdinalIgnoreCase))
         {
-            npgsqlOptions.EnableMetrics(enableParameterizedLogging: false);
-        });
+            connectionStringWithAppName = $"{connectionString};ApplicationName=HelloblueGK-API";
+        }
+        
+        // Use NpgsqlDataSourceBuilder to create a data source
+        // This allows better connection pooling and management
+        var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionStringWithAppName);
+        var dataSource = dataSourceBuilder.Build();
+        options.UseNpgsql(dataSource);
     }
     : useSqlite
         ? options => options.UseSqlite(connectionString)
