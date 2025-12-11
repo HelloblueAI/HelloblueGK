@@ -12,6 +12,7 @@ namespace HB_NLP_Research_Lab.Core.Control
     {
         protected readonly int LoopFrequencyHz;
         protected readonly TimeSpan LoopPeriod;
+        // CodeQL [SM02196] - CancellationTokenSource is a field that must live for object lifetime, properly disposed in finally block
         protected readonly CancellationTokenSource _cancellationTokenSource;
         protected readonly Stopwatch _stopwatch;
         
@@ -208,6 +209,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             {
                 // Already disposed - ignore
             }
+            // CodeQL [SM00199] - Generic catch clause is intentional for disposal safety
+            // Disposal must not throw exceptions, so we catch all remaining exceptions
             catch (Exception ex)
             {
                 // Log but don't throw - disposal should not throw exceptions
