@@ -346,6 +346,7 @@ namespace HB_NLP_Research_Lab.Core.FaultTolerance
                 // Component-specific initialization would go here
                 Status = ComponentStatus.Healthy;
                 Console.WriteLine($"[Fault Tolerance] Component initialized: {Name}");
+                await Task.CompletedTask; // Explicitly mark as async operation
             }
             catch (InvalidOperationException ex)
             {

@@ -1,9 +1,11 @@
 using System.Text;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.Certification;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using HB_NLP_Research_Lab.WebAPI.Scripts;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.EntityFrameworkCore;
@@ -167,40 +169,51 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 // Auto-detect database provider from connection string format
-// Check for SQL Server-specific keywords first (highest priority)
-bool hasSqlServerKeywords = connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Database=", StringComparison.OrdinalIgnoreCase) ||
+// Check for PostgreSQL-specific keywords first (highest priority)
+bool hasPostgresKeywords = connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase) ||
+                            connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) && 
+                            (connectionString.Contains("Port=", StringComparison.OrdinalIgnoreCase) ||
+                             connectionString.Contains("Username=", StringComparison.OrdinalIgnoreCase) ||
+                             connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase));
+
+// Check for SQL Server-specific keywords
+bool hasSqlServerKeywords = connectionString.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase) ||
                             connectionString.Contains("Integrated Security=", StringComparison.OrdinalIgnoreCase) ||
                             connectionString.Contains("Trusted_Connection=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase);
+                            (connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) && 
+                             !hasPostgresKeywords);
 
 // Check for SQLite-specific indicators
 bool hasSqliteFileExtension = connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
 bool hasSqliteFilenameKeyword = connectionString.StartsWith("Filename=", StringComparison.OrdinalIgnoreCase);
-
-// For "Data Source=" strings, only treat as SQLite if it clearly points to a file (.db extension)
-// SQL Server can use "Data Source=server" without other keywords, so we must be careful
 bool isDataSourceWithDbFile = connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase) &&
                               connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
-
-// Use SQLite only if clear SQLite indicators exist and no SQL Server keywords
-// Default to SQL Server if ambiguous (e.g., "Data Source=.\sqlexpress" will use SQL Server)
 bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSourceWithDbFile) && 
-                 !hasSqlServerKeywords;
+                 !hasSqlServerKeywords && !hasPostgresKeywords;
 
-if (useSqlite)
-{
-    builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
-        options.UseSqlite(connectionString));
-}
-else
-{
-    // SQL Server or other providers - default to SQL Server if ambiguous
-    builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
-        options.UseSqlServer(connectionString));
-}
+// Select database provider based on connection string format
+Action<DbContextOptionsBuilder> configureDbContext = hasPostgresKeywords
+    ? options => options.UseNpgsql(connectionString)
+    : useSqlite
+        ? options => options.UseSqlite(connectionString)
+        : options => options.UseSqlServer(connectionString);
+
+// Main database context
+builder.Services.AddDbContext<HelloblueGKDbContext>(configureDbContext);
+
+// Flight Software Certification database contexts (use same connection)
+builder.Services.AddDbContext<RequirementsDbContext>(configureDbContext);
+builder.Services.AddDbContext<ProblemReportDbContext>(configureDbContext);
+builder.Services.AddDbContext<ConfigurationDbContext>(configureDbContext);
+builder.Services.AddDbContext<TestCoverageDbContext>(configureDbContext);
+builder.Services.AddDbContext<CodeReviewDbContext>(configureDbContext);
+
+// Flight Software Certification services
+builder.Services.AddScoped<RequirementsTraceabilitySystem>();
+builder.Services.AddScoped<ProblemReportingSystem>();
+builder.Services.AddScoped<ConfigurationManagementSystem>();
+builder.Services.AddScoped<TestCoverageSystem>();
+builder.Services.AddScoped<FormalCodeReviewSystem>();
 
 // Add JWT Authentication
 // Use same default key as JwtService to maintain consistency
@@ -275,29 +288,57 @@ var app = builder.Build();
     {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+        var requirementsContext = scope.ServiceProvider.GetRequiredService<RequirementsDbContext>();
+        var problemReportContext = scope.ServiceProvider.GetRequiredService<ProblemReportDbContext>();
+        var configurationContext = scope.ServiceProvider.GetRequiredService<ConfigurationDbContext>();
+        var testCoverageContext = scope.ServiceProvider.GetRequiredService<TestCoverageDbContext>();
+        var codeReviewContext = scope.ServiceProvider.GetRequiredService<CodeReviewDbContext>();
     
     try
     {
-        // Attempt to ensure database and tables are created
-        // In Production, consider using migrations (Database.Migrate()) instead
-        // EnsureCreated() is simpler but doesn't track schema changes like migrations do
-        var databaseCreated = dbContext.Database.EnsureCreated();
-        
-        if (databaseCreated)
+        // Ensure database exists first
+        var dbExists = dbContext.Database.CanConnect();
+        if (!dbExists)
         {
-            logger.LogInformation("Database and tables created successfully");
+            logger.LogInformation("Database does not exist. Creating database...");
+            var created = dbContext.Database.EnsureCreated();
+            logger.LogInformation("Database created: {Created}", created);
         }
         else
         {
-            logger.LogInformation("Database already exists - skipping creation");
+            logger.LogInformation("Database already exists");
         }
+        
+        // For multiple DbContexts sharing the same database, we need to ensure tables exist
+        // EnsureCreated() only works if database doesn't exist, so we use a different approach
+        // We'll try to ensure tables exist by attempting to query them, which will create them if missing
+        
+        // Initialize certification contexts using improved initializer
+        // This handles the case where multiple DbContexts share the same database
+        try
+        {
+            await CertificationDatabaseInitializer.InitializeAllAsync(
+                requirementsContext,
+                problemReportContext,
+                configurationContext,
+                testCoverageContext,
+                codeReviewContext,
+                logger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to initialize certification databases: {Error}", ex.Message);
+            // Continue - individual contexts will handle errors
+        }
+        
+        logger.LogInformation("Flight Software Certification systems initialization completed");
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to initialize database. The application will continue, but database operations may fail.");
+        logger.LogError(ex, "Failed to initialize database: {Error}. The application will continue, but database operations may fail.", ex.Message);
         // Don't throw - allow application to start and fail gracefully if database operations are attempted
     }
-}
+    }
 
 // Configure the HTTP request pipeline
 

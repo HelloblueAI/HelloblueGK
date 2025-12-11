@@ -28,6 +28,14 @@ public class HelloblueGKDbContext : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<ApiKey> ApiKeys { get; set; }
 
+    // Note: Flight Software Certification entities are managed by separate DbContexts:
+    // - RequirementsDbContext (Requirements, RequirementDesignLinks, RequirementCodeLinks, RequirementTestLinks)
+    // - ProblemReportDbContext (ProblemReports, ProblemReportStatusChanges, etc.)
+    // - ConfigurationDbContext (SoftwareBaselines, ConfigurationItems, ChangeRequests, etc.)
+    // - TestCoverageDbContext (CodeCoverage, CoverageTestCaseLinks)
+    // - CodeReviewDbContext (CodeReviews, CodeReviewAssignments, ReviewFindings)
+    // This separation ensures proper isolation and follows certification best practices.
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
