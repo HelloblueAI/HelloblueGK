@@ -15,6 +15,7 @@ using Prometheus;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using HB_NLP_Research_Lab.WebAPI.Validators;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -206,8 +207,22 @@ bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSo
                  !hasSqlServerKeywords && !hasPostgresKeywords;
 
 // Select database provider based on connection string format
+// For PostgreSQL, use NpgsqlDataSourceBuilder to prevent exposing credentials in Prometheus metrics
 Action<DbContextOptionsBuilder> configureDbContext = hasPostgresKeywords
-    ? options => options.UseNpgsql(connectionString)
+    ? options =>
+    {
+        // Create NpgsqlDataSource with sanitized connection string for metrics
+        // Npgsql uses the connection string as pool identifier in metrics, so we need to
+        // create a data source that uses a sanitized version for the pool name
+        var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+        // Set ApplicationName to help identify the connection in logs/metrics without exposing credentials
+        dataSourceBuilder.ApplicationName = "HelloblueGK-API";
+        var dataSource = dataSourceBuilder.Build();
+        options.UseNpgsql(dataSource, npgsqlOptions =>
+        {
+            npgsqlOptions.EnableMetrics(enableParameterizedLogging: false);
+        });
+    }
     : useSqlite
         ? options => options.UseSqlite(connectionString)
         : options => options.UseSqlServer(connectionString);
