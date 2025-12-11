@@ -1,5 +1,6 @@
 using System.Text;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.Certification;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
@@ -190,24 +191,28 @@ bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSo
                  !hasSqlServerKeywords && !hasPostgresKeywords;
 
 // Select database provider based on connection string format
-if (hasPostgresKeywords)
-{
-    // PostgreSQL connection string format: Host=...;Database=...;Username=...;Password=...
-    builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
-        options.UseNpgsql(connectionString));
-}
-else if (useSqlite)
-{
-    // SQLite connection string format: Data Source=... or Filename=...
-    builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
-        options.UseSqlite(connectionString));
-}
-else
-{
-    // SQL Server or other providers - default to SQL Server if ambiguous
-    builder.Services.AddDbContext<HelloblueGKDbContext>(options =>
-        options.UseSqlServer(connectionString));
-}
+Action<DbContextOptionsBuilder> configureDbContext = hasPostgresKeywords
+    ? options => options.UseNpgsql(connectionString)
+    : useSqlite
+        ? options => options.UseSqlite(connectionString)
+        : options => options.UseSqlServer(connectionString);
+
+// Main database context
+builder.Services.AddDbContext<HelloblueGKDbContext>(configureDbContext);
+
+// Flight Software Certification database contexts (use same connection)
+builder.Services.AddDbContext<RequirementsDbContext>(configureDbContext);
+builder.Services.AddDbContext<ProblemReportDbContext>(configureDbContext);
+builder.Services.AddDbContext<ConfigurationDbContext>(configureDbContext);
+builder.Services.AddDbContext<TestCoverageDbContext>(configureDbContext);
+builder.Services.AddDbContext<CodeReviewDbContext>(configureDbContext);
+
+// Flight Software Certification services
+builder.Services.AddScoped<RequirementsTraceabilitySystem>();
+builder.Services.AddScoped<ProblemReportingSystem>();
+builder.Services.AddScoped<ConfigurationManagementSystem>();
+builder.Services.AddScoped<TestCoverageSystem>();
+builder.Services.AddScoped<FormalCodeReviewSystem>();
 
 // Add JWT Authentication
 // Use same default key as JwtService to maintain consistency
@@ -282,29 +287,41 @@ var app = builder.Build();
     {
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+        var requirementsContext = scope.ServiceProvider.GetRequiredService<RequirementsDbContext>();
+        var problemReportContext = scope.ServiceProvider.GetRequiredService<ProblemReportDbContext>();
+        var configurationContext = scope.ServiceProvider.GetRequiredService<ConfigurationDbContext>();
+        var testCoverageContext = scope.ServiceProvider.GetRequiredService<TestCoverageDbContext>();
+        var codeReviewContext = scope.ServiceProvider.GetRequiredService<CodeReviewDbContext>();
     
     try
     {
-        // Attempt to ensure database and tables are created
-        // In Production, consider using migrations (Database.Migrate()) instead
-        // EnsureCreated() is simpler but doesn't track schema changes like migrations do
+        // Initialize main database
         var databaseCreated = dbContext.Database.EnsureCreated();
+        
+        // Initialize certification databases
+        requirementsContext.Database.EnsureCreated();
+        problemReportContext.Database.EnsureCreated();
+        configurationContext.Database.EnsureCreated();
+        testCoverageContext.Database.EnsureCreated();
+        codeReviewContext.Database.EnsureCreated();
         
         if (databaseCreated)
         {
-            logger.LogInformation("Database and tables created successfully");
+            logger.LogInformation("Database and tables created successfully (including certification systems)");
         }
         else
         {
             logger.LogInformation("Database already exists - skipping creation");
         }
+        
+        logger.LogInformation("Flight Software Certification systems initialized");
     }
     catch (Exception ex)
     {
         logger.LogError(ex, "Failed to initialize database. The application will continue, but database operations may fail.");
         // Don't throw - allow application to start and fail gracefully if database operations are attempted
     }
-}
+    }
 
 // Configure the HTTP request pipeline
 
