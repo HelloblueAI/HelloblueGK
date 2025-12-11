@@ -173,6 +173,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             // This is a quadratic programming problem
             // In production, would use QP solver (e.g., qpOASES, OSQP)
             
+            // Check cancellation token
+            cancellationToken.ThrowIfCancellationRequested();
+            
             // Simplified gradient descent solution for demonstration
             var controlSequence = new double[_controlHorizon];
             var currentControl = _controlHistory.Count > 0 
@@ -205,6 +208,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // Check convergence
                 if (cost < 0.001)
                     break;
+                
+                // Yield to allow cancellation and async behavior
+                await Task.Yield();
+                cancellationToken.ThrowIfCancellationRequested();
             }
             
             return controlSequence;

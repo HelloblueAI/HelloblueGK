@@ -204,6 +204,13 @@ namespace HB_NLP_Research_Lab.Core.Configuration
             
             var configName = Path.GetFileNameWithoutExtension(e.Name);
             
+            // Guard against null config name
+            if (string.IsNullOrWhiteSpace(configName))
+            {
+                Console.WriteLine($"[Configuration] ⚠️ Configuration file changed but name is null or empty");
+                return;
+            }
+            
             try
             {
                 // Try to reload the configuration

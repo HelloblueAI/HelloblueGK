@@ -214,7 +214,7 @@ namespace HB_NLP_Research_Lab.Physics
             var result = await RunCoupledAnalysisAsync(engineModel);
             
             // Extract specific coupled results
-            return new FluidStructureThermalElectromagneticResult
+            var integrationResult = new FluidStructureThermalElectromagneticResult
             {
                 FluidStructureCoupling = new FluidStructureCoupling
                 {
@@ -264,14 +264,7 @@ namespace HB_NLP_Research_Lab.Physics
             Console.WriteLine($"[Multi-Physics Coupler] Coupling efficiency: {result.CouplingEfficiency:P2}");
             Console.WriteLine($"[Multi-Physics Coupler] Analysis time: {result.AnalysisTime.TotalSeconds:F2} seconds");
             
-            return new FluidStructureThermalElectromagneticResult
-            {
-                FluidStructureCoupling = result.FluidStructureCoupling,
-                ThermalFluidCoupling = result.ThermalFluidCoupling,
-                ElectromagneticCoupling = result.ElectromagneticCoupling,
-                MolecularCoupling = result.MolecularCoupling,
-                OverallIntegration = result.OverallIntegration
-            };
+            return integrationResult;
         }
 
         public async Task<RealTimeCouplingResult> RunRealTimeCouplingAsync(EngineModel engineModel, TimeSpan duration)
