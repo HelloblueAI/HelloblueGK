@@ -168,10 +168,21 @@ if (string.IsNullOrWhiteSpace(connectionString))
         if (!string.IsNullOrWhiteSpace(databaseUrl))
         {
             // Convert Railway DATABASE_URL format to .NET connection string
-            // Format: postgresql://user:pass@host:port/db
+            // Format: postgresql://user:pass@host:port/db or postgresql://user@host:port/db (passwordless)
             var uri = new Uri(databaseUrl);
             var userInfo = uri.UserInfo.Split(':');
-            connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={userInfo[0]};Password={Uri.UnescapeDataString(userInfo[1])}";
+            var username = userInfo.Length > 0 ? userInfo[0] : string.Empty;
+            var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty;
+            
+            // Build connection string - include password only if provided
+            if (!string.IsNullOrEmpty(password))
+            {
+                connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={username};Password={password}";
+            }
+            else
+            {
+                connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={username}";
+            }
         }
         else
         {
@@ -398,7 +409,10 @@ var app = builder.Build();
                         // For PostgreSQL, we can try to create just the Launch table
                         // Since we can't easily extract just one table, we'll let EF handle it on first use
                         // or create it manually with a simple SQL statement
-                        await dbContext.Database.ExecuteSqlRawAsync(@"
+                        // Only execute PostgreSQL-specific SQL if we're using PostgreSQL
+                        if (hasPostgresKeywords)
+                        {
+                            await dbContext.Database.ExecuteSqlRawAsync(@"
                             CREATE TABLE IF NOT EXISTS ""Launches"" (
                                 ""Id"" SERIAL PRIMARY KEY,
                                 ""MissionName"" VARCHAR(200) NOT NULL,
@@ -441,7 +455,12 @@ var app = builder.Build();
                                 END IF;
                             END $$;
                         ");
-                        logger.LogInformation("Launch table created successfully");
+                            logger.LogInformation("Launch table created successfully");
+                        }
+                        else
+                        {
+                            logger.LogWarning("Launch table creation skipped - PostgreSQL-specific SQL only works with PostgreSQL. Table will be created via EF Core migrations or EnsureCreated on first use.");
+                        }
                     }
                 }
                 catch (Exception createEx)
