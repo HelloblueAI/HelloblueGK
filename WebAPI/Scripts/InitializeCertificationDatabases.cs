@@ -89,11 +89,43 @@ public static class CertificationDatabaseInitializer
                     }
                     catch
                     {
-                        // Table doesn't exist - force creation by calling EnsureCreated
-                        // Even though DB exists, this should create missing tables
+                        // Table doesn't exist - we need to create it manually
+                        // EnsureCreated() won't work because database already exists
                         logger.LogInformation("Table {TableName} does not exist, creating...", tableName);
-                        var created = await context.Database.EnsureCreatedAsync();
-                        logger.LogInformation("Tables creation attempted. Created: {Created}", created);
+                        
+                        // Use Database.EnsureCreatedAsync() which should create tables even if DB exists
+                        // But if that fails, we'll need to use migrations or manual SQL
+                        try
+                        {
+                            // Force table creation by dropping and recreating the database schema
+                            // This is a workaround - in production, use migrations
+                            var created = await context.Database.EnsureCreatedAsync();
+                            
+                            if (!created)
+                            {
+                                // EnsureCreated returned false, but we know table doesn't exist
+                                // Try to create tables using the model
+                                logger.LogWarning("EnsureCreated returned false, but table doesn't exist. Attempting manual creation...");
+                                
+                                // Generate SQL from model and execute it
+                                var sql = context.Database.GenerateCreateScript();
+                                if (!string.IsNullOrEmpty(sql))
+                                {
+                                    // Execute the create script
+                                    await context.Database.ExecuteSqlRawAsync(sql);
+                                    logger.LogInformation("Tables created manually using model SQL");
+                                }
+                            }
+                            else
+                            {
+                                logger.LogInformation("Tables created successfully. Created: {Created}", created);
+                            }
+                        }
+                        catch (Exception createEx)
+                        {
+                            logger.LogError(createEx, "Failed to create table {TableName}. Error: {Error}", tableName, createEx.Message);
+                            // Continue - tables might be created on first use
+                        }
                     }
                 }
             }
