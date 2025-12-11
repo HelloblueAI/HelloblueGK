@@ -221,7 +221,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 optimization.CompletedAt = DateTime.UtcNow;
                 optimization.ExecutionTimeSeconds = executionTime;
                 optimization.ImprovementPercentage = improvement;
-                optimization.Generations = result.GenerationsCompleted ?? 100;
+                optimization.Generations = result.OptimizationStages?.Length ?? 100;
                 optimization.BestFitness = result.OverallImprovement;
 
                 var results = new
@@ -243,7 +243,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     improvement = improvement,
                     overallImprovement = result.OverallImprovement,
                     innovationScore = innovationReport.InnovationScore,
-                    generations = result.GenerationsCompleted
+                    generations = result.OptimizationStages?.Length ?? 100
                 };
 
                 optimization.ResultsJson = JsonSerializer.Serialize(results);
