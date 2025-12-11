@@ -241,7 +241,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 simulation.CompletedAt = DateTime.UtcNow;
                 simulation.ExecutionTimeSeconds = executionTime;
                 simulation.Accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0 ?? 0.95;
-                simulation.Iterations = analysisResult.MultiPhysicsResult?.Iterations ?? 1000;
+                simulation.Iterations = 1000; // Default iterations for multi-physics simulation
                 simulation.ConvergenceRate = 0.99;
 
                 // Serialize results

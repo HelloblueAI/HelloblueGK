@@ -209,7 +209,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 digitalTwin.LastUpdated = DateTime.UtcNow;
                 digitalTwin.ModelImprovement = learningResult.ModelImprovement?.ImprovementPercentage;
                 digitalTwin.TrainingIterations = (digitalTwin.TrainingIterations ?? 0) + 1;
-                digitalTwin.PredictionAccuracy = learningResult.UpdatedPredictionAccuracy?.Accuracy ?? digitalTwin.PredictionAccuracy;
+                digitalTwin.PredictionAccuracy = learningResult.UpdatedPredictionAccuracy?.OverallAccuracy ?? digitalTwin.PredictionAccuracy;
 
                 var modelData = JsonSerializer.Deserialize<Dictionary<string, object>>(digitalTwin.ModelDataJson ?? "{}") 
                     ?? new Dictionary<string, object>();
