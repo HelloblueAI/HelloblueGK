@@ -136,12 +136,7 @@ namespace HB_NLP_Research_Lab.Certification
             var matrix = new RequirementsTraceabilityMatrix
             {
                 GeneratedAt = DateTime.UtcNow,
-                Requirements = new List<RequirementTraceabilityEntry>()
-            };
-
-            foreach (var req in requirements)
-            {
-                var entry = new RequirementTraceabilityEntry
+                Requirements = requirements.Select(req => new RequirementTraceabilityEntry
                 {
                     RequirementId = req.Id,
                     RequirementNumber = req.RequirementNumber,
@@ -170,10 +165,8 @@ namespace HB_NLP_Research_Lab.Certification
                         TestResult = t.TestResult,
                         Verified = t.Verified
                     }).ToList()
-                };
-
-                matrix.Requirements.Add(entry);
-            }
+                }).ToList()
+            };
 
             // Calculate traceability metrics
             matrix.TotalRequirements = requirements.Count;

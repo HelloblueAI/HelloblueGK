@@ -3,6 +3,12 @@
   "build": {
     "builder": "DOCKERFILE",
     "dockerfilePath": "Docker/Dockerfile.render"
+  },
+  "deploy": {
+    "startCommand": "dotnet HelloblueGK.WebAPI.dll",
+    "healthcheckPath": "/Health",
+    "healthcheckTimeout": 300,
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
   }
 }
-

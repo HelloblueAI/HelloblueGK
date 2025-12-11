@@ -200,10 +200,19 @@ namespace HB_NLP_Research_Lab.Core.Control
             {
                 StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
             }
-            catch (Exception)
+            catch (OperationCanceledException)
+            {
+                // Expected when stopping - ignore
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed - ignore
+            }
+            catch (Exception ex)
             {
                 // Log but don't throw - disposal should not throw exceptions
                 // The cancellation token will be disposed regardless
+                System.Diagnostics.Debug.WriteLine($"Exception during disposal: {ex.Message}");
             }
             finally
             {
