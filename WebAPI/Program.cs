@@ -296,6 +296,8 @@ builder.Services.AddSingleton<StructuredLoggingService>();
 builder.Services.AddSingleton<ConfigurationValidationService>();
 builder.Services.AddSingleton<AdvancedHealthCheckService>();
 builder.Services.AddSingleton<HelloblueGKEngine>();
+builder.Services.AddSingleton<AdvancedAIOptimizationEngine>();
+builder.Services.AddSingleton<DigitalTwinEngine>();
 
 // Add application services
 builder.Services.AddScoped<IJwtService, JwtService>();

@@ -19,6 +19,7 @@ public class HelloblueGKDbContext : DbContext
     public DbSet<EngineSimulation> EngineSimulations { get; set; }
     public DbSet<EngineTelemetry> EngineTelemetry { get; set; }
     public DbSet<EngineConfiguration> EngineConfigurations { get; set; }
+    public DbSet<Launch> Launches { get; set; }
 
     // AI and Optimization entities
     public DbSet<AIOptimizationRun> AIOptimizationRuns { get; set; }
@@ -96,6 +97,21 @@ public class HelloblueGKDbContext : DbContext
                   .HasForeignKey(e => e.EngineId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.EngineId);
+        });
+
+        // Launch
+        modelBuilder.Entity<Launch>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.MissionName).IsRequired().HasMaxLength(200);
+            entity.HasOne(e => e.Engine)
+                  .WithMany()
+                  .HasForeignKey(e => e.EngineId)
+                  .OnDelete(DeleteBehavior.Restrict);
+            entity.HasIndex(e => e.EngineId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.ScheduledAt);
+            entity.HasIndex(e => e.CreatedAt);
         });
 
         // User
