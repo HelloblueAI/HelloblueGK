@@ -161,10 +161,24 @@ if (string.IsNullOrWhiteSpace(connectionString))
     }
     else
     {
-        throw new InvalidOperationException(
-            "DefaultConnection string must be configured in production. " +
-            "Please set ConnectionStrings:DefaultConnection in your configuration. " +
-            "For SQL Server, use: Server=your-server;Database=HelloblueGK;...");
+        // In production, require connection string, but allow Railway/Render to set it
+        // Railway provides DATABASE_URL, Render expects ConnectionStrings__DefaultConnection
+        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        if (!string.IsNullOrWhiteSpace(databaseUrl))
+        {
+            // Convert Railway DATABASE_URL format to .NET connection string
+            // Format: postgresql://user:pass@host:port/db
+            var uri = new Uri(databaseUrl);
+            var userInfo = uri.UserInfo.Split(':');
+            connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={userInfo[0]};Password={Uri.UnescapeDataString(userInfo[1])}";
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "DefaultConnection string must be configured in production. " +
+                "Please set ConnectionStrings:DefaultConnection or DATABASE_URL in your configuration. " +
+                "For SQL Server, use: Server=your-server;Database=HelloblueGK;...");
+        }
     }
 }
 
