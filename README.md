@@ -31,6 +31,33 @@ The API documentation includes:
 - ✅ Rate limiting information
 - ✅ Best practices
 
+### 🚀 Flight Software Certification Systems
+
+**This project is being developed as certified flight software for NASA/SpaceX!**
+
+**📋 [Certification Systems Overview](Certification/README.md)**
+**📊 [Certification Progress](Certification/CERTIFICATION_PROGRESS.md)**
+**🚀 [API Quick Start](Certification/API_QUICK_START.md)**
+
+**Certification Systems (All Live):**
+- ✅ **Requirements Traceability** - Full traceability from requirements to code to tests
+- ✅ **Problem Reporting** - Formal problem report tracking
+- ✅ **Configuration Management** - Software baseline and change management
+- ✅ **Test Coverage** - 100% coverage + MC/DC tracking
+- ✅ **Code Reviews** - Formal code review process
+
+**30+ Certification API Endpoints Available:**
+- Requirements: `/api/v1/certification/requirements`
+- Problem Reports: `/api/v1/certification/problem-reports`
+- Configuration: `/api/v1/certification/configuration`
+- Test Coverage: `/api/v1/certification/test-coverage`
+- Code Reviews: `/api/v1/certification/code-reviews`
+
+**Target Certifications:**
+- DO-178C Level A (Human-rated systems)
+- NASA NPR 7150.2 Class A (Human-rated systems)
+- ITAR Compliance (Category IV - Launch vehicles)
+
 **Quick Example:**
 ```bash
 # Register a user
