@@ -9,16 +9,40 @@
 
 ## 🚀 Quick Start
 
-### Try the Interactive Demo
+### Live Production API
 
-**🚀 Live Production API:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
+**🌐 API Base URL:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
 
-- **Swagger UI:** [https://hellobluegk.onrender.com/swagger](https://hellobluegk.onrender.com/swagger)
-- **Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health)
-- **API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
-- **Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md)
+- **📚 API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - Complete API reference with examples
+- **🔧 Swagger UI:** [https://hellobluegk.onrender.com/swagger](https://hellobluegk.onrender.com/swagger) - Interactive API explorer
+- **❤️ Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health)
+- **⚙️ Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md) - Production deployment guide
 
-**🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
+### API Documentation
+
+**📖 [View Complete API Documentation](API_DOCUMENTATION.md)**
+
+The API documentation includes:
+- ✅ All available endpoints
+- ✅ Authentication guide
+- ✅ Request/response examples
+- ✅ Code examples (JavaScript, Python, cURL)
+- ✅ Error handling
+- ✅ Rate limiting information
+- ✅ Best practices
+
+**Quick Example:**
+```bash
+# Register a user
+curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","email":"test@example.com","password":"SecurePass123!"}'
+
+# Login to get token
+curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"SecurePass123!"}'
+```
 
 **🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
 
