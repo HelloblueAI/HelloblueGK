@@ -43,11 +43,11 @@ ENV DOTNET_CLI_TELEMETRY_OPTOUT=true
 EXPOSE 5000
 
 # Health check endpoint
-# Render sets PORT dynamically at runtime - must read it from environment at runtime, not build time
-# Application listens on PORT env var (default 5000 per Program.cs:241)
-# Using shell to expand PORT variable at container runtime, ensuring it matches the app's listening port
-# Using curl instead of wget (curl is more commonly available in minimal .NET runtime images)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+# Railway and Render set PORT dynamically at runtime
+# Application listens on PORT env var (default 5000 per Program.cs:280)
+# Using shell to expand PORT variable at container runtime
+# Increased start-period for database initialization
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=5 \
   CMD ["/bin/sh", "-c", "port=${PORT:-5000} && curl -f http://localhost:${port}/Health || exit 1"]
 
 # Start the application
