@@ -165,6 +165,17 @@ logs/
 .env.production
 .env.*.local
 
+## Secrets and Credentials ##
+*secrets*
+*credentials*
+*passwords*
+appsettings.Production.json
+appsettings.*.json
+!appsettings.json
+!appsettings.*.example
+*connection*.json
+*config*.local.json
+
 ## Temporary Files ##
 tmp/
 temp/
