@@ -194,14 +194,15 @@ namespace HB_NLP_Research_Lab
             });
 
             // Add enhanced services
+            // Note: PerformanceMonitoringService implements IHostedService but is registered as Singleton
+            // because this is a console app where hosted services don't automatically start.
+            // The service's timer starts in the constructor and is properly disposed via IDisposable
+            // when the ServiceProvider is disposed.
             services.AddSingleton<PerformanceMonitoringService>();
             services.AddSingleton<RateLimitingService>();
             services.AddSingleton<StructuredLoggingService>();
             services.AddSingleton<ConfigurationValidationService>();
             services.AddSingleton<AdvancedHealthCheckService>();
-            
-            // Add as hosted services for background processing
-            services.AddHostedService<PerformanceMonitoringService>();
         }
 
         static void DisplayReadinessAssessmentResults(AerospaceReadinessReport report)
