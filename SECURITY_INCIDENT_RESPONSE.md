@@ -38,6 +38,25 @@ connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.Tri
 - **Type:** Hardcoded default credentials detected
 - **Status:** ✅ **FIXED** - Replaced with environment variable placeholders
 
+### Update: Username/Password Pattern Detection (Commit 70d7b34)
+- **Date:** 2025-12-11 03:08:05 PM (UTC)
+- **Service:** GitGuardian
+- **Type:** Username/Password pattern detected in connection string placeholder
+- **Status:** ✅ **FIXED** - Removed Username= and Password= keywords from placeholders
+
+**Analysis:**
+GitGuardian detected the pattern `Username=postgres;Password=` in the connection string placeholder, even though it was followed by instruction text. GitGuardian flags any occurrence of these keywords together.
+
+**Actions Taken:**
+1. ✅ Removed `Username=` and `Password=` keywords from connection string placeholders
+2. ✅ Replaced with instruction text that doesn't match credential patterns
+3. ✅ Updated security documentation
+
+**Resolution:**
+- Connection string placeholders now use format: `Host=localhost;Database=hellobluegk;Set_Username_and_Password_via_ConnectionStrings__PostgreSQLConnection_env_var`
+- No credential keywords remain in the file
+- Values still overrideable via environment variables (standard .NET behavior)
+
 ### Analysis
 GitGuardian detected hardcoded credentials in `appsettings.json`:
 - **Line 40:** `Password=your_password` (PostgreSQL connection string)
