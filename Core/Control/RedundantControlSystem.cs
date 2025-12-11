@@ -156,6 +156,8 @@ namespace HB_NLP_Research_Lab.Core.Control
                 outputs.Add(0.5); // Placeholder
             }
             
+            // Explicitly mark as async operation
+            await Task.CompletedTask;
             return outputs;
         }
         

@@ -9,14 +9,67 @@
 
 ## 🚀 Quick Start
 
-### Try the Interactive Demo
+### Live Production API
 
-**🚀 Live Demo:** Deploy to Render in 15 minutes! See [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md)
+**🌐 API Base URL:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
 
-**Previous Demo:** [https://hellobluegk-demo-production.up.railway.app](https://hellobluegk-demo-production.up.railway.app)
+- **📚 API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - Complete API reference with examples
+- **🔧 Swagger UI:** [https://hellobluegk.onrender.com/swagger](https://hellobluegk.onrender.com/swagger) - Interactive API explorer
+- **❤️ Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health)
+- **⚙️ Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md) - Production deployment guide
 
-- **Swagger UI:** [https://hellobluegk-demo-production.up.railway.app/swagger](https://hellobluegk-demo-production.up.railway.app/swagger)
-- **Health Check:** [https://hellobluegk-demo-production.up.railway.app/Health](https://hellobluegk-demo-production.up.railway.app/Health)
+### API Documentation
+
+**📖 [View Complete API Documentation](API_DOCUMENTATION.md)**
+
+The API documentation includes:
+- ✅ All available endpoints
+- ✅ Authentication guide
+- ✅ Request/response examples
+- ✅ Code examples (JavaScript, Python, cURL)
+- ✅ Error handling
+- ✅ Rate limiting information
+- ✅ Best practices
+
+### 🚀 Flight Software Certification Systems
+
+**This project is being developed as certified flight software for NASA/SpaceX!**
+
+**📋 [Certification Systems Overview](Certification/README.md)**
+**📊 [Certification Progress](Certification/CERTIFICATION_PROGRESS.md)**
+**🚀 [API Quick Start](Certification/API_QUICK_START.md)**
+
+**Certification Systems (All Live):**
+- ✅ **Requirements Traceability** - Full traceability from requirements to code to tests
+- ✅ **Problem Reporting** - Formal problem report tracking
+- ✅ **Configuration Management** - Software baseline and change management
+- ✅ **Test Coverage** - 100% coverage + MC/DC tracking
+- ✅ **Code Reviews** - Formal code review process
+
+**30+ Certification API Endpoints Available:**
+- Requirements: `/api/v1/certification/requirements`
+- Problem Reports: `/api/v1/certification/problem-reports`
+- Configuration: `/api/v1/certification/configuration`
+- Test Coverage: `/api/v1/certification/test-coverage`
+- Code Reviews: `/api/v1/certification/code-reviews`
+
+**Target Certifications:**
+- DO-178C Level A (Human-rated systems)
+- NASA NPR 7150.2 Class A (Human-rated systems)
+- ITAR Compliance (Category IV - Launch vehicles)
+
+**Quick Example:**
+```bash
+# Register a user
+curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","email":"test@example.com","password":"SecurePass123!"}'
+
+# Login to get token
+curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"test","password":"SecurePass123!"}'
+```
 
 **🎯 Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
 
