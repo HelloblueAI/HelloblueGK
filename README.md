@@ -2,6 +2,8 @@
 
 > **Open-source aerospace engine simulation platform** with multi-physics coupling, AI optimization, and enterprise-grade compliance.
 
+**Status:** ✅ Production-ready and fully operational
+
 ### Quick Start
 
 ### Live Production API
