@@ -19,12 +19,22 @@ namespace HB_NLP_Research_Lab
 
             // Configure services and use using statement for ServiceProvider disposal
             var services = new ServiceCollection();
-            ConfigureServices(services);
+            var configuration = ConfigureServices(services);
 #pragma warning disable ASP0000 // Calling BuildServiceProvider from application code
             using var serviceProvider = services.BuildServiceProvider();
 #pragma warning restore ASP0000
+            
+            // Validate configuration (security checks, placeholders, etc.)
+            ValidateConfiguration(configuration);
+            
             try
             {
+                // Start hosted services manually (console app doesn't auto-start them)
+                var performanceService = serviceProvider.GetService<PerformanceMonitoringService>();
+                if (performanceService != null)
+                {
+                    await performanceService.StartAsync(CancellationToken.None);
+                }
 
                 // Initialize core systems
                 var engine = new HelloblueGKEngine();
@@ -32,7 +42,6 @@ namespace HB_NLP_Research_Lab
                 var aerospaceReadiness = new AerospaceReadinessAssessment();
                 
                 // Get enhanced services
-                var performanceService = serviceProvider.GetService<PerformanceMonitoringService>();
                 var rateLimitingService = serviceProvider.GetService<RateLimitingService>();
                 var structuredLoggingService = serviceProvider.GetService<StructuredLoggingService>();
                 var configValidationService = serviceProvider.GetService<ConfigurationValidationService>();
@@ -172,10 +181,26 @@ namespace HB_NLP_Research_Lab
                 Console.WriteLine($"❌ Error during assessment: {ex.Message}");
                 Console.WriteLine($"   Stack trace: {ex.StackTrace}");
             }
+            finally
+            {
+                // Stop hosted services before disposal
+                var performanceService = serviceProvider.GetService<PerformanceMonitoringService>();
+                if (performanceService != null)
+                {
+                    try
+                    {
+                        await performanceService.StopAsync(CancellationToken.None);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"⚠️  Error stopping performance monitoring service: {ex.Message}");
+                    }
+                }
+            }
             // ServiceProvider automatically disposed via using statement
         }
 
-        static void ConfigureServices(ServiceCollection services)
+        static IConfiguration ConfigureServices(ServiceCollection services)
         {
             // Add configuration
             var configuration = new ConfigurationBuilder()
@@ -194,15 +219,105 @@ namespace HB_NLP_Research_Lab
             });
 
             // Add enhanced services
-            // Note: PerformanceMonitoringService implements IHostedService but is registered as Singleton
-            // because this is a console app where hosted services don't automatically start.
-            // The service's timer starts in the constructor and is properly disposed via IDisposable
-            // when the ServiceProvider is disposed.
+            // Note: PerformanceMonitoringService implements IHostedService and is registered as Singleton.
+            // In a console app, hosted services don't automatically start, so we manually call StartAsync/StopAsync.
             services.AddSingleton<PerformanceMonitoringService>();
             services.AddSingleton<RateLimitingService>();
             services.AddSingleton<StructuredLoggingService>();
             services.AddSingleton<ConfigurationValidationService>();
             services.AddSingleton<AdvancedHealthCheckService>();
+            
+            return configuration;
+        }
+
+        static void ValidateConfiguration(IConfiguration configuration)
+        {
+            var issues = new List<string>();
+
+            // Check for production JWT key security
+            var jwtKey = configuration["Jwt:Key"];
+            var isProduction = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Production" ||
+                              Environment.GetEnvironmentVariable("DOTNET_ENVIRONMENT") == "Production";
+            
+            if (isProduction)
+            {
+                if (string.IsNullOrEmpty(jwtKey) || 
+                    jwtKey == "change-me-in-production" ||
+                    jwtKey == "your-super-secret-jwt-key-change-in-production-min-32-chars")
+                {
+                    issues.Add("SECURITY ERROR: Default JWT key detected in production. " +
+                              "Please set a secure JWT:Key in configuration or environment variables. " +
+                              "The key must be at least 32 characters long.");
+                }
+                else if (jwtKey.Length < 32)
+                {
+                    issues.Add($"SECURITY ERROR: JWT key is too short ({jwtKey.Length} characters). " +
+                              "Production keys must be at least 32 characters long.");
+                }
+            }
+
+            // Check for placeholder values in connection strings
+            var postgresConnection = configuration["ConnectionStrings:PostgreSQLConnection"];
+            if (!string.IsNullOrEmpty(postgresConnection) && 
+                postgresConnection.Contains("Set_Username_and_Password_via_ConnectionStrings__PostgreSQLConnection_env_var"))
+            {
+                issues.Add("WARNING: PostgreSQL connection string contains placeholder. " +
+                          "Set ConnectionStrings__PostgreSQLConnection environment variable in production.");
+            }
+
+            var rabbitMqConnection = configuration["ConnectionStrings:RabbitMQConnection"];
+            if (!string.IsNullOrEmpty(rabbitMqConnection) && 
+                rabbitMqConnection.Contains("Set_user_and_password_via_ConnectionStrings__RabbitMQConnection_env_var"))
+            {
+                issues.Add("WARNING: RabbitMQ connection string contains placeholder. " +
+                          "Set ConnectionStrings__RabbitMQConnection environment variable in production.");
+            }
+
+            // Check for placeholder values in enterprise settings
+            var jwtSecret = configuration["AerospaceEngine:Enterprise:Authentication:JWTSecret"];
+            if (!string.IsNullOrEmpty(jwtSecret) && 
+                jwtSecret.Contains("REPLACE_WITH_ENV_VAR"))
+            {
+                issues.Add("WARNING: Enterprise JWT secret contains placeholder. " +
+                          "Set AerospaceEngine__Enterprise__Authentication__JWTSecret environment variable in production.");
+            }
+
+            var appInsightsKey = configuration["AerospaceEngine:Enterprise:Monitoring:ApplicationInsights:InstrumentationKey"];
+            if (!string.IsNullOrEmpty(appInsightsKey) && 
+                appInsightsKey.Contains("REPLACE_WITH_ENV_VAR"))
+            {
+                issues.Add("WARNING: Application Insights instrumentation key contains placeholder. " +
+                          "Set AerospaceEngine__Enterprise__Monitoring__ApplicationInsights__InstrumentationKey environment variable if using Application Insights.");
+            }
+
+            var azureConnectionString = configuration["CloudServices:Azure:ApplicationInsights:ConnectionString"];
+            if (!string.IsNullOrEmpty(azureConnectionString) && 
+                azureConnectionString.Contains("REPLACE_WITH_ENV_VAR"))
+            {
+                issues.Add("WARNING: Azure Application Insights connection string contains placeholder. " +
+                          "Set CloudServices__Azure__ApplicationInsights__ConnectionString environment variable if using Azure.");
+            }
+
+            // Report issues
+            if (issues.Count > 0)
+            {
+                Console.WriteLine("\n⚠️  CONFIGURATION VALIDATION ISSUES:");
+                Console.WriteLine("================================================================================\n");
+                foreach (var issue in issues)
+                {
+                    Console.WriteLine($"   {issue}\n");
+                }
+                Console.WriteLine("================================================================================\n");
+
+                // In production, throw exception for security issues
+                var securityIssues = issues.Where(i => i.StartsWith("SECURITY ERROR")).ToList();
+                if (securityIssues.Count > 0 && isProduction)
+                {
+                    throw new InvalidOperationException(
+                        string.Join("\n", securityIssues) + 
+                        "\n\nApplication cannot start in production with security issues.");
+                }
+            }
         }
 
         static void DisplayReadinessAssessmentResults(AerospaceReadinessReport report)
