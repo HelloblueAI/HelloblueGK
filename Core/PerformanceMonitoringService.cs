@@ -22,6 +22,7 @@ namespace HB_NLP_Research_Lab.Core
         private readonly PerformanceCounter? _memoryCounter;
         private readonly Process _currentProcess;
         private bool _disposed = false;
+        private bool _isStarted = false;
 
         public PerformanceMonitoringService(ILogger<PerformanceMonitoringService> logger)
         {
@@ -44,20 +45,36 @@ namespace HB_NLP_Research_Lab.Core
                 _logger.LogWarning(ex, "Performance counters not available on this platform");
             }
 
-            // Start periodic collection
-            _collectionTimer = new Timer(CollectMetrics, null, TimeSpan.Zero, TimeSpan.FromSeconds(5));
+            // Create timer but don't start it yet - will be started in StartAsync
+            _collectionTimer = new Timer(CollectMetrics, null, Timeout.Infinite, Timeout.Infinite);
         }
 
         public async Task StartAsync(CancellationToken cancellationToken)
         {
+            if (_isStarted)
+            {
+                _logger.LogWarning("Performance monitoring service already started");
+                return;
+            }
+
             _logger.LogInformation("Performance monitoring service started");
+            // Start periodic collection
+            _collectionTimer.Change(TimeSpan.Zero, TimeSpan.FromSeconds(5));
+            _isStarted = true;
             await Task.CompletedTask;
         }
 
         public async Task StopAsync(CancellationToken cancellationToken)
         {
+            if (!_isStarted)
+            {
+                return;
+            }
+
             _logger.LogInformation("Performance monitoring service stopped");
-            _collectionTimer?.Dispose();
+            // Stop the timer
+            _collectionTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            _isStarted = false;
             await Task.CompletedTask;
         }
 
