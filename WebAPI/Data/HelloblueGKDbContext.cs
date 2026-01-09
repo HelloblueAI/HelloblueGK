@@ -56,7 +56,7 @@ public class HelloblueGKDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Engine)
-                  .WithMany()
+                  .WithMany(e => e.Simulations)
                   .HasForeignKey(e => e.EngineId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.EngineId);
@@ -81,7 +81,7 @@ public class HelloblueGKDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Engine)
-                  .WithMany()
+                  .WithMany(e => e.OptimizationRuns)
                   .HasForeignKey(e => e.EngineId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.EngineId);
@@ -93,7 +93,7 @@ public class HelloblueGKDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Engine)
-                  .WithMany()
+                  .WithMany(e => e.DigitalTwins)
                   .HasForeignKey(e => e.EngineId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.EngineId);
@@ -112,6 +112,7 @@ public class HelloblueGKDbContext : DbContext
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.ScheduledAt);
             entity.HasIndex(e => e.CreatedAt);
+            // Note: Engine doesn't have Launches collection, so using WithMany() without parameter is correct
         });
 
         // User
@@ -130,7 +131,7 @@ public class HelloblueGKDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.KeyHash).IsRequired().HasMaxLength(512);
             entity.HasOne(e => e.User)
-                  .WithMany()
+                  .WithMany(u => u.ApiKeys)
                   .HasForeignKey(e => e.UserId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.KeyHash);

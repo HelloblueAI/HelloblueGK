@@ -298,6 +298,16 @@ builder.Services.AddAuthentication(options =>
 
 builder.Services.AddAuthorization();
 
+// Configure Data Protection
+// For containerized deployments, use ephemeral keys (keys are regenerated on restart)
+// This is acceptable for stateless APIs. The warnings about key storage are expected
+// and can be safely ignored for stateless containerized applications.
+// If key persistence is needed for stateful scenarios, configure:
+// builder.Services.AddDataProtection()
+//     .PersistKeysToFileSystem(new DirectoryInfo("/app/data/keys"))
+//     .SetApplicationName("HelloblueGK");
+// For now, using default ephemeral storage is fine for this API
+
 // Add core services
 // PerformanceMonitoringService implements IHostedService and should be registered as such
 // in a hosted application (WebAPI). It will be available as a singleton for injection.

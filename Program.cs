@@ -191,6 +191,8 @@ namespace HB_NLP_Research_Lab
                     {
                         await performanceService.StopAsync(CancellationToken.None);
                     }
+                    // codeql[generic-catch-clause]: Intentional catch-all for shutdown safety
+                    // Service shutdown must be resilient and not throw exceptions per .NET guidelines
                     catch (Exception ex)
                     {
                         Console.WriteLine($"⚠️  Error stopping performance monitoring service: {ex.Message}");
