@@ -40,6 +40,8 @@ namespace HB_NLP_Research_Lab.Core
                     _memoryCounter = new PerformanceCounter("Memory", "Available MBytes");
                 }
             }
+            // codeql[generic-catch-clause]: Intentional catch-all for platform-specific initialization
+            // Performance counters are Windows-only and may fail on other platforms - catch all exceptions
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Performance counters not available on this platform");
