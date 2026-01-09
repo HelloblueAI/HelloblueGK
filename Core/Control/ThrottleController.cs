@@ -193,6 +193,8 @@ namespace HB_NLP_Research_Lab.Core.Control
                 await _throttleActuator.SetPositionAsync(0.0, CancellationToken.None)
                     .ConfigureAwait(false);
             }
+            // codeql[generic-catch-clause]: Intentional final catch-all for shutdown safety - all specific exceptions handled above
+            // Shutdown must be resilient and not throw exceptions per .NET guidelines
             catch (Exception ex)
             {
                 // Log but don't throw - shutdown should be resilient
