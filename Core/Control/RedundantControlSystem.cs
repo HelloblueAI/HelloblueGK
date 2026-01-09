@@ -285,7 +285,16 @@ namespace HB_NLP_Research_Lab.Core.Control
         
         public void Dispose()
         {
-            StopAsync().Wait(TimeSpan.FromSeconds(5));
+            // Use Task.Run to avoid deadlocks when disposing from sync context
+            try
+            {
+                Task.Run(async () => await StopAsync().ConfigureAwait(false))
+                    .Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (AggregateException)
+            {
+                // Task may have already completed or been cancelled - this is expected during disposal
+            }
         }
     }
     

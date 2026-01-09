@@ -298,7 +298,16 @@ namespace HB_NLP_Research_Lab.Core.Control
         
         private void PerformShutdown()
         {
-            PerformShutdownAsync().Wait(TimeSpan.FromSeconds(5));
+            // Use Task.Run to avoid deadlocks when calling async from sync context
+            try
+            {
+                Task.Run(async () => await PerformShutdownAsync().ConfigureAwait(false))
+                    .Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (AggregateException)
+            {
+                // Task may have already completed or been cancelled - this is expected during shutdown
+            }
         }
         
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)
