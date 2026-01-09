@@ -110,7 +110,20 @@ namespace HB_NLP_Research_Lab.Core.Diagnostics
             
             _diagnosticsTimer.Change(Timeout.Infinite, Timeout.Infinite);
             _cancellationTokenSource.Cancel();
-            _monitoringTask?.Wait(TimeSpan.FromSeconds(5));
+            
+            // Use async pattern to avoid deadlocks - wrap in Task.Run to avoid blocking sync context
+            if (_monitoringTask != null)
+            {
+                try
+                {
+                    Task.Run(async () => await _monitoringTask.ConfigureAwait(false))
+                        .Wait(TimeSpan.FromSeconds(5));
+                }
+                catch (AggregateException)
+                {
+                    // Task may have already completed or been cancelled - this is expected
+                }
+            }
         }
         
         private void RunDiagnostics(object? state)
