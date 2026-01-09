@@ -184,12 +184,20 @@ namespace HB_NLP_Research_Lab.Core.Control
             return Task.CompletedTask;
         }
         
-        protected override Task OnLoopStopAsync()
+        protected override async Task OnLoopStopAsync()
         {
             Console.WriteLine("[Throttle Controller] Stopping throttle control loop");
             // Set throttle to safe position (0 or minimum)
-            _throttleActuator.SetPositionAsync(0.0, CancellationToken.None).Wait(TimeSpan.FromSeconds(1));
-            return Task.CompletedTask;
+            try
+            {
+                await _throttleActuator.SetPositionAsync(0.0, CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Log but don't throw - shutdown should be resilient
+                Console.WriteLine($"[Throttle Controller] ⚠️ Error setting safe position: {ex.Message}");
+            }
         }
         
         protected virtual void OnActuatorError()

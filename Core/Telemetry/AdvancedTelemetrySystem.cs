@@ -161,9 +161,12 @@ namespace HB_NLP_Research_Lab.Core.Telemetry
                     
                     if (channel.Sensor != null)
                     {
-                        // Sample from sensor (async, but we'll wait)
-                        var task = channel.Sensor.ReadAsync(CancellationToken.None);
-                        value = task.Result;
+                        // Sample from sensor - use ConfigureAwait(false) to avoid deadlocks
+                        // Note: This is in a sync callback, so we use GetAwaiter().GetResult()
+                        // wrapped in Task.Run to avoid blocking the timer thread's sync context
+                        value = Task.Run(async () => 
+                            await channel.Sensor.ReadAsync(CancellationToken.None).ConfigureAwait(false)
+                        ).GetAwaiter().GetResult();
                     }
                     else if (channel.ComputeFunction != null)
                     {

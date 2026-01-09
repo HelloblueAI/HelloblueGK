@@ -46,17 +46,22 @@ namespace HB_NLP_Research_Lab.Physics
             
             try
             {
-                // Initialize Plasticity configuration
-                InitializePlasticityConfigurationAsync().Wait();
-                
-                // Check hardware availability
-                CheckHardwareAvailabilityAsync().Wait();
-                
-                // Initialize hardware state
-                InitializeHardwareStateAsync().Wait();
-                
-                // Setup diagnostics
-                SetupDiagnosticsAsync().Wait();
+                // Use Task.Run to avoid deadlocks when calling async methods from sync context
+                // This prevents blocking the calling thread's synchronization context
+                Task.Run(async () =>
+                {
+                    // Initialize Plasticity configuration
+                    await InitializePlasticityConfigurationAsync();
+                    
+                    // Check hardware availability
+                    await CheckHardwareAvailabilityAsync();
+                    
+                    // Initialize hardware state
+                    await InitializeHardwareStateAsync();
+                    
+                    // Setup diagnostics
+                    await SetupDiagnosticsAsync();
+                }).GetAwaiter().GetResult();
                 
                 _isInitialized = true;
                 Console.WriteLine("[Plasticity Hardware Engine] ✅ Hardware engine initialized successfully");
@@ -71,8 +76,31 @@ namespace HB_NLP_Research_Lab.Physics
 
         public async Task InitializeAsync()
         {
-            await Task.Delay(1); // Simulate async operation
-            Initialize();
+            Console.WriteLine("[Plasticity Hardware Engine] 🚀 Initializing Plasticity Hardware Engine v25.2.2 (async)...");
+            
+            try
+            {
+                // Initialize Plasticity configuration
+                await InitializePlasticityConfigurationAsync();
+                
+                // Check hardware availability
+                await CheckHardwareAvailabilityAsync();
+                
+                // Initialize hardware state
+                await InitializeHardwareStateAsync();
+                
+                // Setup diagnostics
+                await SetupDiagnosticsAsync();
+                
+                _isInitialized = true;
+                Console.WriteLine("[Plasticity Hardware Engine] ✅ Hardware engine initialized successfully");
+                Console.WriteLine($"[Plasticity Hardware Engine] Hardware acceleration: {(_isHardwareAvailable ? "ENABLED" : "DISABLED")}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Plasticity Hardware Engine] ❌ Initialization failed: {ex.Message}");
+                throw;
+            }
         }
 
         public PhysicsResult RunSimulation(object model)
