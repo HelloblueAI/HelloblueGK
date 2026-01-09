@@ -151,6 +151,9 @@ public class SystemIntegrationTests
     [Fact]
     public async Task HealthCheck_WithAllComponents_ShouldProvideComprehensiveStatus()
     {
+        // Arrange - Record some metrics to ensure performance health has data
+        _performanceService.RecordMetric("TestMetric", 10.0, "TestCategory");
+        
         // Act
         var healthReport = await _healthCheckService.GetSystemHealthAsync();
 
@@ -166,7 +169,7 @@ public class SystemIntegrationTests
         healthReport.SecurityHealth.Should().NotBeNull("Security health should be checked");
         healthReport.ConfigurationHealth.Should().NotBeNull("Configuration health should be checked");
         
-        // Check metrics are populated
+        // Check metrics are populated (system resources should always have metrics)
         healthReport.SystemResources.Metrics.Should().NotBeEmpty("System resources should have metrics");
         healthReport.ApplicationHealth.Metrics.Should().NotBeEmpty("Application health should have metrics");
         healthReport.PerformanceHealth.Metrics.Should().NotBeEmpty("Performance health should have metrics");

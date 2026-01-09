@@ -68,13 +68,24 @@ public class AdvancedHealthCheckServiceTests
     [Fact]
     public async Task GetSystemHealthAsync_ShouldHaveValidMetrics()
     {
+        // Arrange - Use real performance service and record some metrics
+        var realPerformanceService = new PerformanceMonitoringService(Mock.Of<ILogger<PerformanceMonitoringService>>());
+        realPerformanceService.RecordMetric("TestMetric", 10.0, "TestCategory");
+        
+        var realService = new AdvancedHealthCheckService(
+            _mockLogger.Object,
+            realPerformanceService,
+            _mockRateLimitingService.Object,
+            _mockConfigValidation.Object,
+            _mockStructuredLogging.Object);
+
         // Act
-        var report = await _service.GetSystemHealthAsync();
+        var report = await realService.GetSystemHealthAsync();
 
         // Assert
-        report.SystemResources.Metrics.Should().NotBeEmpty();
-        report.ApplicationHealth.Metrics.Should().NotBeEmpty();
-        report.PerformanceHealth.Metrics.Should().NotBeEmpty();
+        report.SystemResources.Metrics.Should().NotBeEmpty("System resources should always have metrics");
+        report.ApplicationHealth.Metrics.Should().NotBeEmpty("Application health should have metrics");
+        report.PerformanceHealth.Metrics.Should().NotBeEmpty("Performance health should have metrics");
     }
 }
 

@@ -40,6 +40,8 @@ namespace HB_NLP_Research_Lab.Core
                     _memoryCounter = new PerformanceCounter("Memory", "Available MBytes");
                 }
             }
+            // codeql[generic-catch-clause]: Intentional catch-all for platform-specific initialization
+            // Performance counters are Windows-only and may fail on other platforms - catch all exceptions
             catch (Exception ex)
             {
                 _logger.LogWarning(ex, "Performance counters not available on this platform");
@@ -273,7 +275,7 @@ namespace HB_NLP_Research_Lab.Core
                 TotalMetrics = _metrics.Count,
                 TotalSamples = _samples.Values.Sum(s => s.Count),
                 MetricCategories = _metrics.Values.Select(m => m.Category).Distinct().ToList(),
-                LastUpdate = _metrics.Values.Max(m => m.LastUpdated)
+                LastUpdate = _metrics.Values.Any() ? _metrics.Values.Max(m => m.LastUpdated) : DateTime.UtcNow
             };
         }
 
