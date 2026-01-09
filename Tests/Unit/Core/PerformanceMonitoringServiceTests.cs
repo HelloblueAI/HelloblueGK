@@ -74,6 +74,10 @@ public class PerformanceMonitoringServiceTests
     [Fact]
     public async Task GeneratePerformanceReportAsync_ShouldReturnValidReport()
     {
+        // Arrange - Record some metrics first to avoid empty collection issues
+        _service.RecordMetric("TestMetric1", 10.0, "TestCategory");
+        _service.RecordMetric("TestMetric2", 20.0, "TestCategory");
+
         // Act
         var report = await _service.GeneratePerformanceReportAsync();
 
