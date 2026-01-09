@@ -299,14 +299,11 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 
 // Configure Data Protection
-// For containerized deployments, use ephemeral keys (keys are regenerated on restart)
-// This is acceptable for stateless APIs. The warnings about key storage are expected
-// and can be safely ignored for stateless containerized applications.
-// If key persistence is needed for stateful scenarios, configure:
-// builder.Services.AddDataProtection()
-//     .PersistKeysToFileSystem(new DirectoryInfo("/app/data/keys"))
-//     .SetApplicationName("HelloblueGK");
-// For now, using default ephemeral storage is fine for this API
+// For containerized stateless APIs, ephemeral keys are acceptable (regenerated on restart)
+// The warnings about key storage are expected and harmless for stateless containerized applications.
+// Data Protection keys are only needed for features like anti-forgery tokens, which this API doesn't use.
+// If key persistence is needed in the future, add Microsoft.AspNetCore.DataProtection.FileSystem package
+// and configure: .PersistKeysToFileSystem(new DirectoryInfo("/app/data/keys"))
 
 // Add core services
 // PerformanceMonitoringService implements IHostedService and should be registered as such
@@ -325,10 +322,14 @@ builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IEngineRepository, EngineRepository>();
 
 // Add logging
-builder.Services.AddLogging(builder =>
+builder.Services.AddLogging(loggingBuilder =>
 {
-    builder.AddConsole();
-    builder.SetMinimumLevel(LogLevel.Information);
+    loggingBuilder.AddConsole();
+    loggingBuilder.SetMinimumLevel(LogLevel.Information);
+    
+    // Suppress Data Protection warnings for containerized stateless APIs
+    // These warnings are expected and harmless - keys are ephemeral by design
+    loggingBuilder.AddFilter("Microsoft.AspNetCore.DataProtection", LogLevel.Warning);
 });
 
 // Configure port for Render/deployment
