@@ -19,8 +19,10 @@ namespace HB_NLP_Research_Lab.Core.Control
         private readonly IActuator _primaryActuator;
         private readonly List<IActuator> _redundantActuators;
         
-        private bool _isRunning = false;
+        // Use volatile to ensure visibility across threads for the flag read in MonitorAndVoteAsync
+        private volatile bool _isRunning = false;
         private readonly object _lock = new object();
+        private Task? _monitoringTask;
         
         public int RedundancyLevel => _controlLoops.Count;
         public VotingStrategy Strategy => _votingStrategy;
@@ -61,8 +63,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             var startTasks = _controlLoops.Select(loop => loop.StartAsync()).ToArray();
             await Task.WhenAll(startTasks);
             
-            // Start voting/monitoring task
-            _ = Task.Run(MonitorAndVoteAsync);
+            // Start voting/monitoring task and track it for proper shutdown
+            _monitoringTask = Task.Run(MonitorAndVoteAsync);
         }
         
         /// <summary>
@@ -82,6 +84,19 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             var stopTasks = _controlLoops.Select(loop => loop.StopAsync()).ToArray();
             await Task.WhenAll(stopTasks);
+            
+            // Wait for monitoring task to complete (with timeout)
+            if (_monitoringTask != null)
+            {
+                try
+                {
+                    await Task.WhenAny(_monitoringTask, Task.Delay(TimeSpan.FromSeconds(5)));
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Redundant Control] ⚠️ Error waiting for monitoring task: {ex.Message}");
+                }
+            }
         }
         
         /// <summary>
