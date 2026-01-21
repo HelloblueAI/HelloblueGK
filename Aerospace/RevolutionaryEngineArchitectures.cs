@@ -265,13 +265,11 @@ namespace HB_NLP_Research_Lab.Aerospace
         {
             Console.WriteLine($"[Engine Architectures] 🔬 Analyzing revolutionary engine: {engineId}");
             
-            // Use TryGetValue instead of ContainsKey + indexer for efficiency
-            if (!_revolutionaryEngines.ContainsKey(engineId))
+            // Use TryGetValue instead of ContainsKey + indexer for efficiency and thread-safety
+            if (!_revolutionaryEngines.TryGetValue(engineId, out var engine) || engine == null)
             {
                 throw new ArgumentException($"Engine {engineId} not found");
             }
-            
-            var engine = _revolutionaryEngines[engineId];
             var engineModel = new HB_NLP_Research_Lab.Physics.EngineModel { Name = engine.Name };
             
             // Run comprehensive analysis
