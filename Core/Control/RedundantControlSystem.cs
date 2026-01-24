@@ -146,12 +146,6 @@ namespace HB_NLP_Research_Lab.Core.Control
                     Console.WriteLine($"[Redundant Control] ⚠️ Data error in voting: {ex.Message}");
                     await Task.Delay(100);
                 }
-                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Redundant Control] ❌ Error in voting: {ex.Message}");
-                    await Task.Delay(100);
-                }
             }
         }
         
@@ -205,6 +199,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         
         private double MajorityVote(List<double> outputs)
         {
+            if (outputs == null || outputs.Count == 0)
+            {
+                throw new InvalidOperationException("MajorityVote requires at least one output value.");
+            }
+
             // Group by value (within tolerance)
             const double tolerance = 0.01;
             var groups = outputs
@@ -212,6 +211,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 .OrderByDescending(g => g.Count())
                 .ToList();
             
+            if (groups.Count == 0)
+            {
+                throw new InvalidOperationException("MajorityVote could not form any voting groups.");
+            }
+
             // Return value from largest group
             return groups[0].Key;
         }
