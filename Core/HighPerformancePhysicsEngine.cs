@@ -98,7 +98,14 @@ namespace HB_NLP_Research_Lab.Core
             _performanceTimer.Stop();
             
             // Performance metrics
-            var calculationsPerSecond = result.CalculationCount / (_performanceTimer.ElapsedMilliseconds / 1000.0);
+            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var calculationsPerSecond = elapsedSeconds > 0
+                ? result.CalculationCount / elapsedSeconds
+                : 0.0;
+            if (elapsedSeconds <= 0)
+            {
+                Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing CFD metrics; reporting 0 calc/sec.");
+            }
             Console.WriteLine($"[High Performance Physics] CFD completed: {result.CalculationCount:N0} calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             
             return result;
@@ -120,7 +127,14 @@ namespace HB_NLP_Research_Lab.Core
             
             _performanceTimer.Stop();
             
-            var calculationsPerSecond = result.CalculationCount / (_performanceTimer.ElapsedMilliseconds / 1000.0);
+            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var calculationsPerSecond = elapsedSeconds > 0
+                ? result.CalculationCount / elapsedSeconds
+                : 0.0;
+            if (elapsedSeconds <= 0)
+            {
+                Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing thermal metrics; reporting 0 calc/sec.");
+            }
             Console.WriteLine($"[High Performance Physics] Thermal completed: {result.CalculationCount:N0} calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             
             return result;
@@ -142,7 +156,14 @@ namespace HB_NLP_Research_Lab.Core
             
             _performanceTimer.Stop();
             
-            var calculationsPerSecond = result.CalculationCount / (_performanceTimer.ElapsedMilliseconds / 1000.0);
+            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var calculationsPerSecond = elapsedSeconds > 0
+                ? result.CalculationCount / elapsedSeconds
+                : 0.0;
+            if (elapsedSeconds <= 0)
+            {
+                Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing structural metrics; reporting 0 calc/sec.");
+            }
             Console.WriteLine($"[High Performance Physics] Structural completed: {result.CalculationCount:N0} calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             
             return result;
@@ -181,8 +202,15 @@ namespace HB_NLP_Research_Lab.Core
         {
             var currentTime = DateTime.UtcNow;
             var timeSpan = currentTime - _lastPerformanceCheck;
-            
-            var calculationsPerSecond = (_totalCalculations - _lastCalculationCount) / timeSpan.TotalSeconds;
+            var deltaCalculations = _totalCalculations - _lastCalculationCount;
+            var totalSeconds = timeSpan.TotalSeconds;
+            var calculationsPerSecond = totalSeconds > 0
+                ? deltaCalculations / totalSeconds
+                : 0.0;
+            if (totalSeconds <= 0)
+            {
+                Console.WriteLine("[High Performance Physics] ⚠️ Time delta was zero when computing performance metrics; reporting 0 calc/sec.");
+            }
             
             var metrics = new PerformanceMetrics
             {
@@ -244,7 +272,14 @@ namespace HB_NLP_Research_Lab.Core
             _performanceTimer.Stop();
             
             var totalCalculations = cfdResult.CalculationCount + thermalResult.CalculationCount + structuralResult.CalculationCount;
-            var calculationsPerSecond = totalCalculations / (_performanceTimer.ElapsedMilliseconds / 1000.0);
+            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var calculationsPerSecond = elapsedSeconds > 0
+                ? totalCalculations / elapsedSeconds
+                : 0.0;
+            if (elapsedSeconds <= 0)
+            {
+                Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing multi-physics metrics; reporting 0 calc/sec.");
+            }
             
             Console.WriteLine($"[High Performance Physics] Multi-physics completed: {totalCalculations:N0} total calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             

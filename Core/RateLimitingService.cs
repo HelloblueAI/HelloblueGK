@@ -24,7 +24,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
         {
-            var bucket = _buckets.GetOrAdd(identifier, _ => new RateLimitBucket(policy));
+            var bucket = _buckets.GetOrAdd(identifier, id => new RateLimitBucket(id, policy));
             
             var now = DateTime.UtcNow;
             var result = bucket.CheckLimit(now);
@@ -164,10 +164,10 @@ namespace HB_NLP_Research_Lab.Core
         private readonly Queue<DateTime> _requestTimes;
         private readonly object _lock = new object();
 
-        public RateLimitBucket(RateLimitPolicy policy)
+        public RateLimitBucket(string identifier, RateLimitPolicy policy)
         {
             Policy = policy;
-            Identifier = Guid.NewGuid().ToString();
+            Identifier = identifier;
             _requestTimes = new Queue<DateTime>();
             LastActivity = DateTime.UtcNow;
         }
