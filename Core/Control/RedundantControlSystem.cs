@@ -205,6 +205,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         
         private double MajorityVote(List<double> outputs)
         {
+            if (outputs == null || outputs.Count == 0)
+            {
+                throw new InvalidOperationException("MajorityVote requires at least one output value.");
+            }
+
             // Group by value (within tolerance)
             const double tolerance = 0.01;
             var groups = outputs
@@ -212,6 +217,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 .OrderByDescending(g => g.Count())
                 .ToList();
             
+            if (groups.Count == 0)
+            {
+                throw new InvalidOperationException("MajorityVote could not form any voting groups.");
+            }
+
             // Return value from largest group
             return groups[0].Key;
         }
