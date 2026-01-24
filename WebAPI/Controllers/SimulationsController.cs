@@ -144,12 +144,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var engineId = engine.Id;
                 _ = Task.Run(async () =>
                 {
-                    using var scope = _serviceProvider.CreateScope();
-                    var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
-                    var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
-                    if (scopedEngine != null)
+                    try
                     {
-                        await ExecuteSimulationAsync(simulationId, scopedEngine, request, scopedContext);
+                        using var scope = _serviceProvider.CreateScope();
+                        var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+                        var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
+                        if (scopedEngine != null)
+                        {
+                            await ExecuteSimulationAsync(simulationId, scopedEngine, request, scopedContext);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Background simulation task failed for SimulationId {SimulationId}", simulationId);
                     }
                 });
 

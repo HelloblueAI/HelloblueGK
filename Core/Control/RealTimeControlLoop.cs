@@ -199,7 +199,17 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Add timeout to prevent indefinite blocking
             try
             {
-                StopAsync().ConfigureAwait(false).GetAwaiter().GetResult();
+                // Run StopAsync on a thread pool thread and wait with a timeout to
+                // reduce deadlock risk when Dispose is called from a sync context.
+                var stopTask = Task.Run(() => StopAsync());
+                if (!stopTask.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    System.Diagnostics.Debug.WriteLine("Timeout while waiting for RealTimeControlLoop.StopAsync to complete during disposal.");
+                }
+            }
+            catch (AggregateException ex) when (ex.InnerException is OperationCanceledException || ex.InnerException is ObjectDisposedException)
+            {
+                // Expected during shutdown; ignore these inner exceptions
             }
             catch (OperationCanceledException)
             {

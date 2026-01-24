@@ -142,12 +142,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var engineId = engine.Id;
                 _ = Task.Run(async () =>
                 {
-                    using var scope = _serviceProvider.CreateScope();
-                    var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
-                    var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
-                    if (scopedEngine != null)
+                    try
                     {
-                        await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
+                        using var scope = _serviceProvider.CreateScope();
+                        var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+                        var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
+                        if (scopedEngine != null)
+                        {
+                            await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Background optimization task failed for OptimizationId {OptimizationId}", optimizationId);
                     }
                 });
 
@@ -272,13 +279,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 _logger.LogError(ex, "Error executing optimization {OptimizationId}", optimizationId);
 
-                var optimization = await _context.AIOptimizationRuns.FindAsync(optimizationId);
+                var optimization = await context.AIOptimizationRuns.FindAsync(optimizationId);
                 if (optimization != null)
                 {
                     optimization.Status = "Failed";
                     optimization.CompletedAt = DateTime.UtcNow;
                     optimization.ErrorMessage = ex.Message;
-                    await _context.SaveChangesAsync();
+                    await context.SaveChangesAsync();
                 }
             }
         }
