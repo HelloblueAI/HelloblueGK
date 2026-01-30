@@ -23,6 +23,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         private volatile bool _isRunning = false;
         private readonly object _lock = new object();
         private Task? _monitoringTask;
+        // codeql[cs/missing-disposable-call]: Disposed in Dispose() finally block; cannot use 'using' for a field.
         private CancellationTokenSource? _monitorCts;
         
         public int RedundancyLevel => _controlLoops.Count;
@@ -94,7 +95,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 {
                     _monitorCts.Cancel();
                 }
-                catch (ObjectDisposedException) { }
+                catch (ObjectDisposedException)
+                {
+                    // Expected if already disposed during shutdown; no action needed.
+                }
             }
 
             if (_monitoringTask != null)
@@ -107,9 +111,13 @@ namespace HB_NLP_Research_Lab.Core.Control
                 {
                     Console.WriteLine("[Redundant Control] ⚠️ Monitoring task did not complete within 5s");
                 }
-                catch (Exception ex)
+                catch (OperationCanceledException)
                 {
-                    Console.WriteLine($"[Redundant Control] ⚠️ Error waiting for monitoring task: {ex.Message}");
+                    // Expected when cancellation is requested during shutdown.
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Expected if the task or related resources were disposed during shutdown.
                 }
             }
         }
