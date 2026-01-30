@@ -23,6 +23,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         private volatile bool _isRunning = false;
         private readonly object _lock = new object();
         private Task? _monitoringTask;
+        private CancellationTokenSource? _monitorCts;
         
         public int RedundancyLevel => _controlLoops.Count;
         public VotingStrategy Strategy => _votingStrategy;
@@ -63,8 +64,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             var startTasks = _controlLoops.Select(loop => loop.StartAsync()).ToArray();
             await Task.WhenAll(startTasks);
             
-            // Start voting/monitoring task and track it for proper shutdown
-            _monitoringTask = Task.Run(MonitorAndVoteAsync);
+            // Start voting/monitoring task with cancellation so StopAsync can wait for it to exit
+            _monitorCts = new CancellationTokenSource();
+            _monitoringTask = Task.Run(() => MonitorAndVoteAsync(_monitorCts.Token));
         }
         
         /// <summary>
@@ -85,12 +87,25 @@ namespace HB_NLP_Research_Lab.Core.Control
             var stopTasks = _controlLoops.Select(loop => loop.StopAsync()).ToArray();
             await Task.WhenAll(stopTasks);
             
-            // Wait for monitoring task to complete (with timeout)
+            // Cancel monitoring loop and wait for it to exit (with timeout)
+            if (_monitorCts != null)
+            {
+                try
+                {
+                    _monitorCts.Cancel();
+                }
+                catch (ObjectDisposedException) { }
+            }
+
             if (_monitoringTask != null)
             {
                 try
                 {
-                    await Task.WhenAny(_monitoringTask, Task.Delay(TimeSpan.FromSeconds(5)));
+                    await _monitoringTask.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                catch (TimeoutException)
+                {
+                    Console.WriteLine("[Redundant Control] ⚠️ Monitoring task did not complete within 5s");
                 }
                 catch (Exception ex)
                 {
@@ -102,9 +117,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// <summary>
         /// Monitor control loops and vote on outputs
         /// </summary>
-        private async Task MonitorAndVoteAsync()
+        private async Task MonitorAndVoteAsync(CancellationToken cancellationToken)
         {
-            while (_isRunning)
+            while (_isRunning && !cancellationToken.IsCancellationRequested)
             {
                 try
                 {
@@ -134,17 +149,21 @@ namespace HB_NLP_Research_Lab.Core.Control
                         }
                     }
                     
-                    await Task.Delay(10); // 100 Hz monitoring
+                    await Task.Delay(10, cancellationToken); // 100 Hz monitoring
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
                 }
                 catch (InvalidOperationException ex)
                 {
                     Console.WriteLine($"[Redundant Control] ⚠️ Invalid operation in voting: {ex.Message}");
-                    await Task.Delay(100);
+                    await Task.Delay(100, cancellationToken);
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
                 {
                     Console.WriteLine($"[Redundant Control] ⚠️ Data error in voting: {ex.Message}");
-                    await Task.Delay(100);
+                    await Task.Delay(100, cancellationToken);
                 }
             }
         }
@@ -313,6 +332,11 @@ namespace HB_NLP_Research_Lab.Core.Control
             catch (AggregateException)
             {
                 // Task may have already completed or been cancelled - this is expected during disposal
+            }
+            finally
+            {
+                _monitorCts?.Dispose();
+                _monitorCts = null;
             }
         }
     }
