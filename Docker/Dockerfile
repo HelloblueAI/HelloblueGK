@@ -1,61 +1,38 @@
-# Multi-stage build for HB-NLP Revolutionary Engine Design Platform
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+# Primary production image: HelloblueGK WebAPI
+# This is what runs in production (Render/Railway) and is validated by CI.
+# Build from repo root: docker build -f Docker/Dockerfile .
 
-# Set working directory
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /src
 
-# Copy project files
-COPY *.csproj ./
-COPY PlasticityDemo/*.csproj ./PlasticityDemo/
+COPY HelloblueGK.csproj ./
+COPY WebAPI/HelloblueGK.WebAPI.csproj ./WebAPI/
 
-# Restore dependencies
-RUN dotnet restore
-RUN dotnet restore PlasticityDemo/
+RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
 
-# Copy source code
 COPY . .
 
-# Build applications (allow warnings, don't treat as errors)
-RUN dotnet build --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
-RUN dotnet build PlasticityDemo/ --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+WORKDIR /src/WebAPI
+RUN dotnet publish -c Release -o /app/publish
 
-# Publish applications
-RUN dotnet publish --configuration Release --output /app/publish /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
-RUN dotnet publish PlasticityDemo/ --configuration Release --output /app/plasticity-demo /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
-
-# Runtime stage
+# Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
-
-# Install Python and dependencies
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
-    wget \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
 WORKDIR /app
 
-# Copy published applications
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=build /app/publish .
-COPY --from=build /app/plasticity-demo ./plasticity-demo
 
-# Copy design files and scripts
-COPY HB-NLP-REV-001* ./
-COPY Scripts/Integration/open_in_plasticity.py ./open_in_plasticity.py
-COPY README.md ./
+ENV ASPNETCORE_ENVIRONMENT=Production
+# Default port when PORT is not set (e.g. local docker run); Render/Railway set PORT at runtime
+ENV PORT=8080
+ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=true
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
-
-# Expose ports
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD ["/bin/sh", "-c", "port=${PORT:-8080} && curl -f http://localhost:${port}/Health || exit 1"]
 
-# Default command
-CMD ["dotnet", "HelloblueGK.dll"] 
+ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]

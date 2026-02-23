@@ -236,3 +236,5 @@ Desktop.ini
 HOW_TO_*.md
 BRANCH_STRATEGY*.md
 CEO_UPDATE_EMAIL.md
+.env.hellobluegk
+.env.*

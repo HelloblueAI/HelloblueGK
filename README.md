@@ -68,7 +68,7 @@ curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/login \
   -d '{"username":"test","password":"SecurePass123!"}'
 ```
 
-** Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment!
+** Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment. On Render: set `DATABASE_URL` and `Jwt__Key` in your service Environment — see [RENDER_DO_IT_ALL.md](Docs/Deployment/RENDER_DO_IT_ALL.md).
 
 **Run Locally:**
 ```bash
@@ -814,8 +814,11 @@ cd WebAPI
 
 **Option 2: Docker Container (Industry Standard)**
 ```bash
-docker build -t hellobluegk:latest -f WebAPI/Dockerfile .
-docker run -d -p 5000:5000 --name hellobluegk hellobluegk:latest
+# From repo root: primary WebAPI image (port 8080)
+docker build -t hellobluegk:latest -f Docker/Dockerfile .
+docker run -d -p 8080:8080 --name hellobluegk hellobluegk:latest
+
+# Or: docker build -t hellobluegk:latest -f WebAPI/Dockerfile . (same WebAPI image, port 8080)
 ```
 - Best for: Portability, multiple environments
 
@@ -848,12 +851,17 @@ chmod +x deploy-production.sh
 ### Docker Deployment (LIVE)
 
 ```bash
-# Build the Docker image
-docker build -t hellobluegk:latest .
+# Build the WebAPI image (from repo root)
+docker build -t hellobluegk:latest -f Docker/Dockerfile .
 
-# Run the container (LIVE)
-docker run -p 8080:8080 hellobluegk:latest
+# Run the container (set JWT key for production; use a 32+ character secret)
+docker run -p 8080:8080 -e Jwt__Key="your-secure-key-at-least-32-characters-long" hellobluegk:latest
+# Then open http://localhost:8080/swagger and http://localhost:8080/Health
 ```
+
+**Docker files:** `Docker/Dockerfile` = WebAPI (default); `Dockerfile.render` = Render/Railway; `Docker/Dockerfile.console` = CLI/PlasticityDemo only.
+
+**If you see "client version 1.43 too old":** run `./Docker/build.sh` to build with the legacy builder (see `Docker/README.md`). Upgrade Docker to fix it permanently.
 
 ### Kubernetes Deployment
 
@@ -1291,7 +1299,7 @@ python3 Scripts/Integration/open_in_plasticity.py
 [![Quantum Computing](https://img.shields.io/badge/Quantum-Classical%20Hybrid-purple?style=for-the-badge&logo=quantum)](https://en.wikipedia.org/wiki/Quantum_computing)
 [![Digital Twin](https://img.shields.io/badge/Digital%20Twin-Real%20Time%20Learning-blue?style=for-the-badge&logo=digital)](https://en.wikipedia.org/wiki/Digital_twin)
 
-[![Helloblue, Inc. 2025 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202025%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)](https://helloblue.com/)
+[![Helloblue, Inc. 2026 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202026%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)](https://helloblue.com/)
 
 </div>
 

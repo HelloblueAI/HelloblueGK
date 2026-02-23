@@ -1,130 +1,47 @@
-# Production-Grade Dockerfile for HB-NLP Revolutionary Engine Design Platform
-# Aerospace-level security, performance, and reliability standards
-# Enterprise-grade containerization with security hardening
+# Production-grade WebAPI image with security hardening
+# Same app as Docker/Dockerfile but with aerospace-level hardening.
+# Build from repo root: docker build -f Docker/Dockerfile.production .
 
-# Stage 1: Base Security Hardening
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS base-security
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
 
-# Install security updates and hardening tools
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release \
-    software-properties-common \
-    && rm -rf /var/lib/apt/lists/*
-
-# Add Microsoft GPG key for secure package verification
-RUN curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-archive-keyring.gpg
-
-# Stage 2: Build Environment with Security Scanning
-FROM base-security AS build
-
-# Set secure environment variables
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
     DOTNET_RUNNING_IN_CONTAINER=true \
-    DOTNET_USE_POLLING_FILE_WATCHER=true \
     NUGET_XMLDOC_MODE=skip
 
-# Create secure build user
-RUN groupadd -r builduser && useradd -r -g builduser -s /bin/bash builduser
+COPY HelloblueGK.csproj ./
+COPY WebAPI/HelloblueGK.WebAPI.csproj ./WebAPI/
 
-# Set working directory with proper permissions
-WORKDIR /src
-RUN chown -R builduser:builduser /src
+RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
 
-# Ensure builduser has access to .dotnet directory
-RUN mkdir -p /home/builduser/.dotnet && chown -R builduser:builduser /home/builduser
+COPY . .
 
-# Create publish directory with proper permissions
-RUN mkdir -p /app/publish && chown -R builduser:builduser /app
+WORKDIR /src/WebAPI
+RUN dotnet publish -c Release -o /app/publish \
+    /p:DebugType=None /p:DebugSymbols=false
 
-# Copy project files with integrity verification
-COPY --chown=builduser:builduser *.csproj ./
-
-# Switch to build user for security
-USER builduser
-
-# Copy source code with integrity verification
-COPY --chown=builduser:builduser . .
-
-# Restore dependencies with security checks
-RUN dotnet restore --verbosity minimal
-
-# Build with security optimizations
-RUN dotnet build --no-restore --configuration Release --verbosity minimal \
-    /p:DebugType=None \
-    /p:DebugSymbols=false \
-    /p:OptimizeImplicitlyTriggeredBuild=true \
-    /p:UseRazorBuildServer=false
-
-# Publish with security hardening
-RUN dotnet publish --no-restore --configuration Release --output /app/publish \
-    /p:DebugType=None \
-    /p:DebugSymbols=false \
-    /p:PublishTrimmed=true \
-    /p:SelfContained=false
-
-# Stage 3: Runtime with Aerospace-Grade Security
+# Runtime with hardening
 FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
 
-# Install only essential packages with security hardening
-RUN apt-get update && apt-get upgrade -y && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    python3 \
-    python3-pip \
-    wget \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/* /var/tmp/*
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Create secure runtime user (non-root)
-RUN groupadd -r aerospace && useradd -r -g aerospace -s /bin/bash aerospace
+RUN groupadd -r appgroup && useradd -r -g appgroup -s /bin/false appuser
 
-# Set secure environment variables
-ENV ASPNETCORE_URLS=http://+:8080 \
-    ASPNETCORE_ENVIRONMENT=Production \
-    DOTNET_RUNNING_IN_CONTAINER=true \
-    DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
-    DOTNET_USE_POLLING_FILE_WATCHER=true
-
-# Create secure directory structure
 WORKDIR /app
-RUN mkdir -p /app/logs /app/data /app/cache /app/temp && \
-    chown -R aerospace:aerospace /app
+COPY --from=build /app/publish .
+RUN chown -R appuser:appuser /app
+USER appuser
 
-# Copy published applications with integrity verification
-COPY --from=build --chown=aerospace:aerospace /app/publish .
+ENV ASPNETCORE_ENVIRONMENT=Production
+ENV PORT=8080
+ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=true
+ENV DOTNET_RUNNING_IN_CONTAINER=true
 
-# Copy design files with integrity verification
-COPY --chown=aerospace:aerospace HB-NLP-REV-001* ./
-COPY --chown=aerospace:aerospace open_in_plasticity.py ./
-COPY --chown=aerospace:aerospace README.md ./
-
-# Set secure file permissions
-RUN chmod 755 /app && \
-    chmod 644 /app/*.dll && \
-    chmod 644 /app/HB-NLP-REV-001* && \
-    chmod 755 /app/open_in_plasticity.py
-
-# Switch to aerospace user
-USER aerospace
-
-# Expose port with security context
 EXPOSE 8080
 
-# Aerospace-grade health check with multiple endpoints
-HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=5 \
-    CMD curl -f http://localhost:8080/health || \
-        curl -f http://localhost:8080/health/ready || \
-        curl -f http://localhost:8080/health/live || \
-        exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+  CMD ["/bin/sh", "-c", "port=${PORT:-8080} && curl -f http://localhost:${port}/Health || exit 1"]
 
-# Set secure entry point
-ENTRYPOINT ["dotnet", "HelloblueGK.dll"]
-
-# Default command with security logging
-CMD ["dotnet", "HelloblueGK.dll", "--environment", "Production"] 
+ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]
