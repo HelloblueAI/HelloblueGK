@@ -1,0 +1,35 @@
+# Full platform image: console engine + PlasticityDemo (no web server)
+# Use when you need the CLI/simulation runner, not the WebAPI.
+# Build from repo root: docker build -f Docker/Dockerfile.console .
+
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY HelloblueGK.csproj ./
+COPY PlasticityDemo/*.csproj ./PlasticityDemo/
+
+RUN dotnet restore && dotnet restore PlasticityDemo/
+
+COPY . .
+
+RUN dotnet build --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" && \
+    dotnet build PlasticityDemo/ --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+RUN dotnet publish --configuration Release --output /app/publish /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" && \
+    dotnet publish PlasticityDemo/ --configuration Release --output /app/plasticity-demo /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+
+FROM mcr.microsoft.com/dotnet/runtime:9.0 AS runtime
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip wget curl && \
+    rm -rf /var/lib/apt/lists/*
+
+COPY --from=build /app/publish .
+COPY --from=build /app/plasticity-demo ./plasticity-demo
+COPY Scripts/Integration/open_in_plasticity.py ./open_in_plasticity.py
+COPY README.md ./
+
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Console app: run main engine by default (no long-running HTTP server)
+CMD ["dotnet", "HelloblueGK.dll"]
