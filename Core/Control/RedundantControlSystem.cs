@@ -23,9 +23,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         private volatile bool _isRunning = false;
         private readonly object _lock = new object();
         private Task? _monitoringTask;
-        // codeql[cs/missing-disposable-call]: Disposed in Dispose() finally block; cannot use 'using' for a field.
-        private CancellationTokenSource? _monitorCts;
-        
+
         public int RedundancyLevel => _controlLoops.Count;
         public VotingStrategy Strategy => _votingStrategy;
         public bool IsRunning => _isRunning;
@@ -65,9 +63,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             var startTasks = _controlLoops.Select(loop => loop.StartAsync()).ToArray();
             await Task.WhenAll(startTasks);
             
-            // Start voting/monitoring task with cancellation so StopAsync can wait for it to exit
-            _monitorCts = new CancellationTokenSource();
-            _monitoringTask = Task.Run(() => MonitorAndVoteAsync(_monitorCts.Token));
+            // Start voting/monitoring task; it exits when _isRunning becomes false (see StopAsync)
+            _monitoringTask = Task.Run(() => MonitorAndVoteAsync(CancellationToken.None));
         }
         
         /// <summary>
@@ -87,20 +84,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             var stopTasks = _controlLoops.Select(loop => loop.StopAsync()).ToArray();
             await Task.WhenAll(stopTasks);
-            
-            // Cancel monitoring loop and wait for it to exit (with timeout)
-            if (_monitorCts != null)
-            {
-                try
-                {
-                    _monitorCts.Cancel();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Expected if already disposed during shutdown; no action needed.
-                }
-            }
 
+            // Monitoring loop exits when _isRunning is set false above; wait for it (with timeout)
             if (_monitoringTask != null)
             {
                 try
@@ -340,11 +325,6 @@ namespace HB_NLP_Research_Lab.Core.Control
             catch (AggregateException)
             {
                 // Task may have already completed or been cancelled - this is expected during disposal
-            }
-            finally
-            {
-                _monitorCts?.Dispose();
-                _monitorCts = null;
             }
         }
     }
