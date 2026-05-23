@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 using HB_NLP_Research_Lab.Core;
 
@@ -11,6 +12,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     [ApiController]
     [Route("api/v1/[controller]")]
     [Produces("application/json")]
+    [Authorize(Roles = "Admin")]
     [Tags("Health")]
     public class SystemHealthController : ControllerBase
     {

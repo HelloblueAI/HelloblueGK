@@ -40,7 +40,6 @@ jobs:
       
     - name: Run unit tests
       run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build --logger "console;verbosity=normal"
-      continue-on-error: true
       timeout-minutes: 15
       
     - name: Generate coverage report
@@ -99,12 +98,10 @@ jobs:
       run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false
       
     - name: Run integration tests
-      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --filter "Category=Integration" --verbosity minimal --logger "console;verbosity=minimal" || echo "No integration tests found or tests skipped"
-      continue-on-error: true
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --filter "Category=Integration" --verbosity minimal --logger "console;verbosity=minimal"
       
     - name: Run performance benchmarks
-      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --filter "Category=Performance" --verbosity minimal --logger "console;verbosity=minimal" || echo "No performance tests found or tests skipped"
-      continue-on-error: true
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --filter "Category=Performance" --verbosity minimal --logger "console;verbosity=minimal"
 
   code-quality:
     name: Code Quality Checks
@@ -148,10 +145,9 @@ jobs:
         
     - name: Run security audit
       run: dotnet list package --vulnerable --include-transitive
-      continue-on-error: true
       
     - name: Check for known vulnerabilities
-      run: dotnet add package Microsoft.CodeAnalysis.NetAnalyzers --version 9.0.0 || true
+      run: dotnet list package --deprecated
 
   docker-build:
     name: Docker Build Test

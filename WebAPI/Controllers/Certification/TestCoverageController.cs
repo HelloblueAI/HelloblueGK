@@ -12,7 +12,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers.Certification;
 [ApiController]
 [Route("api/v{version:apiVersion}/certification/test-coverage")]
 [ApiVersion("1.0")]
-[Authorize]
+[Authorize(Roles = "Admin")]
 [Tags("Certification - Test Coverage")]
 public class TestCoverageController : ControllerBase
 {

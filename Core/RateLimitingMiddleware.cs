@@ -89,21 +89,8 @@ namespace HB_NLP_Research_Lab.Core
             // Try to get client IP address
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-            // Check for forwarded headers (for reverse proxies)
-            if (context.Request.Headers.TryGetValue("X-Forwarded-For", out var forwardedFor))
-            {
-                var firstIp = forwardedFor.FirstOrDefault()?.Split(',')[0]?.Trim();
-                if (!string.IsNullOrEmpty(firstIp))
-                {
-                    clientIp = firstIp;
-                }
-            }
-
-            // Check for real IP header
-            if (context.Request.Headers.TryGetValue("X-Real-IP", out var realIp))
-            {
-                clientIp = realIp.FirstOrDefault() ?? clientIp;
-            }
+            // Do not trust forwarded IP headers unless ASP.NET Core ForwardedHeaders
+            // middleware has been explicitly configured with known proxies/networks.
 
             // For authenticated users, use user ID instead of IP
             if (context.User.Identity?.IsAuthenticated == true)
@@ -135,7 +122,11 @@ namespace HB_NLP_Research_Lab.Core
         private RateLimitPolicy GetPolicyForEndpoint(string endpoint)
         {
             // API endpoint policies
-            if (endpoint.StartsWith("/api/v1/ai/", StringComparison.OrdinalIgnoreCase))
+            if (endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase))
+            {
+                return _policies["Auth"];
+            }
+            else if (endpoint.StartsWith("/api/v1/ai/", StringComparison.OrdinalIgnoreCase))
             {
                 return _policies["AI"];
             }
@@ -179,6 +170,12 @@ namespace HB_NLP_Research_Lab.Core
                 ["API"] = new RateLimitPolicy
                 {
                     RequestsPerWindow = 200,
+                    WindowSize = TimeSpan.FromMinutes(1),
+                    Algorithm = RateLimitAlgorithm.SlidingWindow
+                },
+                ["Auth"] = new RateLimitPolicy
+                {
+                    RequestsPerWindow = 10,
                     WindowSize = TimeSpan.FromMinutes(1),
                     Algorithm = RateLimitAlgorithm.SlidingWindow
                 },

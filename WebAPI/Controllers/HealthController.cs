@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using HB_NLP_Research_Lab.Core;
 using System.Diagnostics;
 
@@ -20,6 +21,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Basic health check endpoint
         /// </summary>
         [HttpGet]
+        [AllowAnonymous]
         public IActionResult Get()
         {
             return Ok(new
