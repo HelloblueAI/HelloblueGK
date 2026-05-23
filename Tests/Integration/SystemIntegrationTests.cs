@@ -10,6 +10,7 @@ namespace HelloblueGK.Tests.Integration;
 /// End-to-end integration tests for the complete system
 /// Tests the interaction between all system components
 /// </summary>
+[Trait("Category", "Integration")]
 public class SystemIntegrationTests
 {
     private readonly Mock<ILogger<PerformanceMonitoringService>> _mockPerfLogger;

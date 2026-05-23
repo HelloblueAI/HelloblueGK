@@ -120,7 +120,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <param name="engine">Engine data</param>
         /// <returns>Created engine</returns>
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(Engine), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> CreateEngine([FromBody] Engine engine)
@@ -149,7 +149,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <param name="engine">Updated engine data</param>
         /// <returns>Updated engine</returns>
         [HttpPut("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(Engine), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -188,7 +188,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <param name="id">Engine ID</param>
         /// <returns>Deletion status</returns>
         [HttpDelete("{id}")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeleteEngine(int id)

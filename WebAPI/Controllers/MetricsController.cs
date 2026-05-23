@@ -10,6 +10,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers;
 [ApiController]
 [Route("api/v{version:apiVersion}/[controller]")]
 [ApiVersion("1.0")]
+[Authorize(Roles = "Admin")]
 [Tags("Metrics")]
 public class MetricsController : ControllerBase
 {
@@ -41,7 +42,6 @@ public class MetricsController : ControllerBase
     /// Get Prometheus metrics
     /// </summary>
     [HttpGet]
-    [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetMetrics()
     {
@@ -64,7 +64,6 @@ public class MetricsController : ControllerBase
     /// Update AI innovation score metric
     /// </summary>
     [HttpPost("ai-innovation")]
-    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult UpdateAiInnovationScore([FromBody] double score)
     {
@@ -76,7 +75,6 @@ public class MetricsController : ControllerBase
     /// Update digital twin accuracy metric
     /// </summary>
     [HttpPost("digital-twin-accuracy")]
-    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult UpdateDigitalTwinAccuracy([FromBody] double accuracy)
     {
@@ -88,7 +86,6 @@ public class MetricsController : ControllerBase
     /// Record a real-time learning event
     /// </summary>
     [HttpPost("learning-event")]
-    [Authorize]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public IActionResult RecordLearningEvent()
     {

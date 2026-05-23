@@ -13,7 +13,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers.Certification;
 [ApiController]
 [Route("api/v{version:apiVersion}/certification/configuration")]
 [ApiVersion("1.0")]
-[Authorize]
+[Authorize(Roles = "Admin")]
 [Tags("Certification - Configuration Management")]
 public class ConfigurationManagementController : ControllerBase
 {
