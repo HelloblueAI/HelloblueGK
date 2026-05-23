@@ -2,9 +2,9 @@
 
 ## Issue Summary
 
-**Status:** ⚠️ Standalone workflow disabled by GitHub inactivity policy  
-**Original Failure Date:** April 26, 2026  
-**Latest Review:** May 23, 2026  
+**Status:** ⚠️ Standalone workflow disabled by GitHub inactivity policy
+**Original Failure Date:** April 26, 2026
+**Latest Review:** May 23, 2026
 **Impact:** The standalone CodeQL Security Analysis workflow is not currently triggering
 
 ## What Happened
@@ -142,6 +142,6 @@ completed  success  CodeQL Security Analysis  ...
 
 ---
 
-*Last Updated: May 23, 2026*  
-*Issue Type: Workflow State / Account Billing History*  
+*Last Updated: May 23, 2026*
+*Issue Type: Workflow State / Account Billing History*
 *Code Status: Covered by active CI CodeQL job*
