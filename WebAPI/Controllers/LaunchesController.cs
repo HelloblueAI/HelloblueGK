@@ -97,7 +97,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Schedule a new rocket launch
         /// </summary>
         [HttpPost]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(Launch), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -152,7 +152,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Execute a scheduled launch
         /// </summary>
         [HttpPost("{id}/launch")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(Launch), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
@@ -202,7 +202,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Cancel a scheduled launch
         /// </summary>
         [HttpPost("{id}/cancel")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]

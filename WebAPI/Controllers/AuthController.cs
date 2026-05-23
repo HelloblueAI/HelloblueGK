@@ -22,15 +22,21 @@ public class AuthController : ControllerBase
     private readonly HelloblueGKDbContext _context;
     private readonly IJwtService _jwtService;
     private readonly ILogger<AuthController> _logger;
+    private readonly IHostEnvironment _environment;
+    private readonly IConfiguration _configuration;
 
     public AuthController(
         HelloblueGKDbContext context,
         IJwtService jwtService,
-        ILogger<AuthController> logger)
+        ILogger<AuthController> logger,
+        IHostEnvironment environment,
+        IConfiguration configuration)
     {
         _context = context;
         _jwtService = jwtService;
         _logger = logger;
+        _environment = environment;
+        _configuration = configuration;
     }
 
     /// <summary>
@@ -136,6 +142,33 @@ public class AuthController : ControllerBase
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
+        if (request == null)
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Request body is required",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        var allowPublicRegistration = _environment.IsDevelopment() ||
+            _configuration.GetValue("Auth:AllowPublicRegistration", false);
+        if (!allowPublicRegistration)
+        {
+            _logger.LogWarning("Public registration attempt rejected for username: {Username}", request.Username);
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+                Message = "Public registration is disabled",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
         if (await _context.Users.AnyAsync(u => u.Username == request.Username))
         {
             return BadRequest(new ErrorResponse

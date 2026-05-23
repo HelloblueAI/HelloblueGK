@@ -15,6 +15,7 @@ using Prometheus;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using HB_NLP_Research_Lab.WebAPI.Validators;
+using Microsoft.AspNetCore.Authorization;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -145,9 +146,22 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        var configuredOrigins = builder.Configuration["Cors:Origins"]?
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? Array.Empty<string>();
+
+        if (configuredOrigins.Length > 0)
+        {
+            policy.WithOrigins(configuredOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else if (builder.Environment.IsDevelopment())
+        {
+            policy.AllowAnyOrigin()
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
     });
 });
 
@@ -296,7 +310,15 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    var authenticatedUserPolicy = new AuthorizationPolicyBuilder()
+        .RequireAuthenticatedUser()
+        .Build();
+
+    options.DefaultPolicy = authenticatedUserPolicy;
+    options.FallbackPolicy = authenticatedUserPolicy;
+});
 
 // Configure Data Protection
 // For containerized stateless APIs, ephemeral keys are acceptable (regenerated on restart)
@@ -527,6 +549,10 @@ app.UseHttpMetrics();
 
 // Authentication and Authorization
 app.UseAuthentication();
+if (builder.Configuration.GetValue("EnableRateLimiting", true))
+{
+    app.UseRateLimiting();
+}
 app.UseAuthorization();
 
 // Swagger/OpenAPI documentation
@@ -586,10 +612,10 @@ app.MapGet("/", () =>
             metrics = "/metrics"
         });
     }
-}).ExcludeFromDescription();
+}).AllowAnonymous().ExcludeFromDescription();
 
 // Map Prometheus metrics endpoint - must be after MapControllers for endpoint routing
-app.MapMetrics(); // Exposes /metrics endpoint in Prometheus format
+app.MapMetrics().RequireAuthorization(); // Exposes /metrics endpoint in Prometheus format
 
 Console.WriteLine("🚀 HelloblueGK Web API Server Starting...");
 Console.WriteLine("📚 API Documentation: http://localhost:5000/swagger");
@@ -598,3 +624,7 @@ Console.WriteLine("📊 Prometheus Metrics: http://localhost:5000/metrics");
 Console.WriteLine("🔐 Authentication: http://localhost:5000/swagger -> Auth endpoints");
 
 app.Run();
+
+public partial class Program
+{
+}
