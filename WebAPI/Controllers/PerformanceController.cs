@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging;
 using HB_NLP_Research_Lab.Core;
 
@@ -10,6 +11,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     /// </summary>
     [ApiController]
     [Route("api/v1/[controller]")]
+    [Authorize(Roles = "Admin")]
     [Tags("Performance")]
     public class PerformanceController : ControllerBase
     {

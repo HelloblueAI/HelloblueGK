@@ -10,6 +10,7 @@ namespace HelloblueGK.Tests.Integration;
 /// Performance benchmark tests for critical system operations
 /// Ensures system meets performance requirements under load
 /// </summary>
+[Trait("Category", "Performance")]
 public class PerformanceBenchmarkTests
 {
     private readonly Mock<ILogger<PerformanceMonitoringService>> _mockLogger;

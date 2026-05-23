@@ -15,7 +15,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers.Certification;
 [ApiController]
 [Route("api/v{version:apiVersion}/certification/requirements")]
 [ApiVersion("1.0")]
-[Authorize]
+[Authorize(Roles = "Admin")]
 [Tags("Certification - Requirements")]
 public class RequirementsController : ControllerBase
 {
