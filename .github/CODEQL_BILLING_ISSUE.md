@@ -2,9 +2,10 @@
 
 ## Issue Summary
 
-**Status:** ⚠️ Billing Issue Detected  
-**Date:** April 26, 2026  
-**Impact:** CodeQL Security Analysis workflow failed
+**Status:** ⚠️ Standalone workflow disabled by GitHub inactivity policy
+**Original Failure Date:** April 26, 2026
+**Latest Review:** May 23, 2026
+**Impact:** The standalone CodeQL Security Analysis workflow is not currently triggering
 
 ## What Happened
 
@@ -15,11 +16,22 @@ The job was not started because your account is locked due to a billing issue.
 
 This is **NOT a code security issue** - all previous CodeQL runs passed successfully. The failure is due to a GitHub account billing problem.
 
+## Current Status
+
+On May 23, 2026, repository CI runs were succeeding again, but GitHub reported:
+
+```
+CodeQL Security Analysis disabled_inactivity
+```
+
+That means the standalone `.github/workflows/codeql.yml` workflow must be re-enabled by a repository owner in GitHub Actions, with the GitHub CLI, or with the REST API. To keep CodeQL coverage available for PRs and main-branch pushes, the active `CI/CD Pipeline` workflow now includes a `CodeQL Analysis` job that runs the same `security-and-quality` query suite.
+
 ## Timeline
 
 - **Previous Runs:** ✅ All successful (April 19, April 12, April 5, March 29, etc.)
 - **Failed Run:** ❌ April 26, 2026 - Billing issue
-- **Code Status:** ✅ No security vulnerabilities in code
+- **Current State:** ⚠️ Standalone workflow disabled due to inactivity
+- **Code Status:** ✅ Previous CodeQL scans passed; CI now runs CodeQL on active triggers
 
 ## Resolution Steps
 
@@ -52,8 +64,11 @@ CodeQL is part of GitHub Advanced Security. Check:
 After fixing billing issues:
 
 ```bash
+# Re-enable the standalone CodeQL workflow
+gh workflow enable codeql.yml
+
 # Manually trigger CodeQL workflow to verify
-gh workflow run codeql.yml
+gh workflow run codeql.yml --ref main
 
 # Check status after a few minutes
 gh run list --workflow=codeql.yml --limit 5
@@ -88,8 +103,9 @@ If billing continues to be an issue, consider:
 ## Current Configuration
 
 - **Repository:** HelloblueAI/HelloblueGK
-- **Workflow:** `.github/workflows/codeql.yml`
-- **Schedule:** Weekly (Sunday at 00:00 UTC)
+- **Standalone Workflow:** `.github/workflows/codeql.yml`
+- **Active CI Coverage:** `.github/workflows/ci.yml` includes `CodeQL Analysis`
+- **Schedule:** Weekly (Sunday at 00:00 UTC) after standalone workflow is re-enabled
 - **Triggers:** Push, Pull Request, Schedule, Manual
 
 ## Contact Support
@@ -119,12 +135,13 @@ completed  success  CodeQL Security Analysis  ...
 
 ## Notes
 
-- ✅ **Code is secure** - No security issues found in previous scans
-- ⚠️ **Account issue only** - This is a billing/account problem, not a code problem
-- 🔄 **Will auto-resume** - Once billing is fixed, scheduled scans will resume automatically
+- ✅ **Previous scans passed** - No security issues found in previous CodeQL runs
+- ⚠️ **Workflow state issue** - The standalone workflow is disabled in GitHub Actions
+- 🔄 **Owner action required** - Re-enable `.github/workflows/codeql.yml` to restore scheduled scans
+- ✅ **CI coverage added** - Active CI now runs CodeQL on PR and main push triggers
 
 ---
 
-*Last Updated: May 18, 2026*  
-*Issue Type: Account/Billing*  
-*Code Status: Secure*
+*Last Updated: May 23, 2026*
+*Issue Type: Workflow State / Account Billing History*
+*Code Status: Covered by active CI CodeQL job*
