@@ -411,7 +411,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         public DateTime? CompletedAt { get; set; }
         public string? CreatedBy { get; set; }
         public EngineSummaryResponse? Engine { get; set; }
-        public IEnumerable<EngineTelemetry>? Telemetry { get; set; }
+        public IEnumerable<HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry>? Telemetry { get; set; }
 
         public static EngineSimulationResponse FromEntity(EngineSimulation simulation, bool includeTelemetry = false)
         {
