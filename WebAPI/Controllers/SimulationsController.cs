@@ -6,6 +6,7 @@ using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 
 namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
@@ -38,7 +39,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get all simulations
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(IEnumerable<EngineSimulation>), StatusCodes.Status200OK)]
+        [Authorize]
+        [ProducesResponseType(typeof(IEnumerable<EngineSimulationResponse>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllSimulations([FromQuery] int? engineId = null)
         {
             try
@@ -46,6 +48,17 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var query = _context.EngineSimulations
                     .Include(s => s.Engine)
                     .AsQueryable();
+
+                if (!User.IsInRole("Admin"))
+                {
+                    var currentUsername = GetCurrentUsername();
+                    if (string.IsNullOrWhiteSpace(currentUsername))
+                    {
+                        return Forbid();
+                    }
+
+                    query = query.Where(s => s.CreatedBy == currentUsername);
+                }
 
                 if (engineId.HasValue)
                 {
@@ -56,7 +69,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .OrderByDescending(s => s.CreatedAt)
                     .ToListAsync();
 
-                return Ok(simulations);
+                return Ok(simulations.Select(EngineSimulationResponse.FromEntity));
             }
             catch (Exception ex)
             {
@@ -69,7 +82,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get simulation by ID
         /// </summary>
         [HttpGet("{id}")]
-        [ProducesResponseType(typeof(EngineSimulation), StatusCodes.Status200OK)]
+        [Authorize]
+        [ProducesResponseType(typeof(EngineSimulationResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetSimulationById(int id)
         {
@@ -85,7 +99,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return NotFound(new { message = $"Simulation with ID {id} not found" });
                 }
 
-                return Ok(simulation);
+                if (!CurrentUserCanAccessSimulation(simulation))
+                {
+                    return Forbid();
+                }
+
+                return Ok(EngineSimulationResponse.FromEntity(simulation, includeTelemetry: true));
             }
             catch (Exception ex)
             {
@@ -99,7 +118,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// </summary>
         [HttpPost]
         [Authorize]
-        [ProducesResponseType(typeof(EngineSimulation), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(EngineSimulationResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> RunSimulation([FromBody] RunSimulationRequest request)
@@ -133,7 +152,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     Status = "Pending",
                     ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
                     CreatedAt = DateTime.UtcNow,
-                    CreatedBy = User.Identity?.Name
+                    CreatedBy = GetCurrentUsername()
                 };
 
                 _context.EngineSimulations.Add(simulation);
@@ -160,7 +179,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     }
                 });
 
-                return CreatedAtAction(nameof(GetSimulationById), new { id = simulation.Id }, simulation);
+                return CreatedAtAction(
+                    nameof(GetSimulationById),
+                    new { id = simulation.Id },
+                    EngineSimulationResponse.FromEntity(simulation));
             }
             catch (Exception ex)
             {
@@ -173,6 +195,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get simulation status
         /// </summary>
         [HttpGet("{id}/status")]
+        [Authorize]
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetSimulationStatus(int id)
@@ -185,6 +208,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return NotFound(new { message = $"Simulation with ID {id} not found" });
                 }
 
+                if (!CurrentUserCanAccessSimulation(simulation))
+                {
+                    return Forbid();
+                }
+
                 return Ok(new
                 {
                     id = simulation.Id,
@@ -193,7 +221,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     completedAt = simulation.CompletedAt,
                     executionTimeSeconds = simulation.ExecutionTimeSeconds,
                     accuracy = simulation.Accuracy,
-                    errorMessage = simulation.ErrorMessage
+                    errorMessage = simulation.Status == "Failed"
+                        ? "Simulation failed. See server logs for details."
+                        : simulation.ErrorMessage
                 });
             }
             catch (Exception ex)
@@ -219,6 +249,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (simulation == null)
                 {
                     return NotFound(new { message = $"Simulation with ID {id} not found" });
+                }
+
+                if (!CurrentUserCanAccessSimulation(simulation))
+                {
+                    return Forbid();
                 }
 
                 if (simulation.Status != "Running" && simulation.Status != "Pending")
@@ -305,11 +340,30 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     simulation.Status = "Failed";
                     simulation.CompletedAt = DateTime.UtcNow;
-                    simulation.ErrorMessage = ex.Message;
-                    simulation.StackTrace = ex.StackTrace;
+                    simulation.ErrorMessage = "Simulation failed. See server logs for details.";
+                    simulation.StackTrace = null;
                     await context.SaveChangesAsync();
                 }
             }
+        }
+
+        private string? GetCurrentUsername()
+        {
+            return User.Identity?.Name
+                ?? User.FindFirst(ClaimTypes.Name)?.Value
+                ?? User.FindFirst("username")?.Value;
+        }
+
+        private bool CurrentUserCanAccessSimulation(EngineSimulation simulation)
+        {
+            if (User.IsInRole("Admin"))
+            {
+                return true;
+            }
+
+            var currentUsername = GetCurrentUsername();
+            return !string.IsNullOrWhiteSpace(currentUsername) &&
+                string.Equals(simulation.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -334,5 +388,72 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Optional simulation parameters
         /// </summary>
         public Dictionary<string, object>? Parameters { get; set; }
+    }
+
+    /// <summary>
+    /// Safe simulation response that excludes internal diagnostics such as stack traces.
+    /// </summary>
+    public class EngineSimulationResponse
+    {
+        public int Id { get; set; }
+        public int EngineId { get; set; }
+        public string SimulationType { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string? ParametersJson { get; set; }
+        public string? ResultsJson { get; set; }
+        public double? ExecutionTimeSeconds { get; set; }
+        public int? Iterations { get; set; }
+        public double? ConvergenceRate { get; set; }
+        public double? Accuracy { get; set; }
+        public string? ErrorMessage { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public string? CreatedBy { get; set; }
+        public EngineSummaryResponse? Engine { get; set; }
+        public IEnumerable<EngineTelemetry>? Telemetry { get; set; }
+
+        public static EngineSimulationResponse FromEntity(EngineSimulation simulation, bool includeTelemetry = false)
+        {
+            return new EngineSimulationResponse
+            {
+                Id = simulation.Id,
+                EngineId = simulation.EngineId,
+                SimulationType = simulation.SimulationType,
+                Status = simulation.Status,
+                ParametersJson = simulation.ParametersJson,
+                ResultsJson = simulation.ResultsJson,
+                ExecutionTimeSeconds = simulation.ExecutionTimeSeconds,
+                Iterations = simulation.Iterations,
+                ConvergenceRate = simulation.ConvergenceRate,
+                Accuracy = simulation.Accuracy,
+                ErrorMessage = simulation.Status == "Failed"
+                    ? "Simulation failed. See server logs for details."
+                    : simulation.ErrorMessage,
+                CreatedAt = simulation.CreatedAt,
+                StartedAt = simulation.StartedAt,
+                CompletedAt = simulation.CompletedAt,
+                CreatedBy = simulation.CreatedBy,
+                Engine = simulation.Engine == null ? null : EngineSummaryResponse.FromEntity(simulation.Engine),
+                Telemetry = includeTelemetry ? simulation.Telemetry : null
+            };
+        }
+    }
+
+    public class EngineSummaryResponse
+    {
+        public int Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string EngineType { get; set; } = string.Empty;
+
+        public static EngineSummaryResponse FromEntity(Engine engine)
+        {
+            return new EngineSummaryResponse
+            {
+                Id = engine.Id,
+                Name = engine.Name,
+                EngineType = engine.EngineType
+            };
+        }
     }
 }
