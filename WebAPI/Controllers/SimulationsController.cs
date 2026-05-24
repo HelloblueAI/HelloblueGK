@@ -69,7 +69,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .OrderByDescending(s => s.CreatedAt)
                     .ToListAsync();
 
-                return Ok(simulations.Select(EngineSimulationResponse.FromEntity));
+                return Ok(simulations.Select(simulation => EngineSimulationResponse.FromEntity(simulation)));
             }
             catch (Exception ex)
             {
