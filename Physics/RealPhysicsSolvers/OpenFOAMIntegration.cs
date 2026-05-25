@@ -14,6 +14,13 @@ namespace HB_NLP_Research_Lab.Physics.RealPhysicsSolvers
     /// </summary>
     public class OpenFOAMIntegration : IPhysicsSolver
     {
+        private static readonly HashSet<string> AllowedOpenFOAMCommands = new(StringComparer.Ordinal)
+        {
+            "blockMesh",
+            "simpleFoam",
+            "postProcess"
+        };
+
         private readonly string _openFOAMPath;
         private readonly string _caseDirectory;
         private readonly OpenFOAMConfiguration _config;
@@ -75,25 +82,25 @@ namespace HB_NLP_Research_Lab.Physics.RealPhysicsSolvers
         {
             try
             {
-                var process = new Process
+                var bashrcPath = GetOpenFOAMBashRcPath();
+                if (!File.Exists(bashrcPath))
                 {
-                    StartInfo = new ProcessStartInfo
-                    {
-                        FileName = "bash",
-                        Arguments = $"-c 'source {_openFOAMPath}/etc/bashrc && which simpleFoam'",
-                        RedirectStandardOutput = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true
-                    }
-                };
+                    return false;
+                }
 
+                using var process = new Process
+                {
+                    StartInfo = CreateOpenFOAMProcessStartInfo(
+                        "source \"$1\" && command -v simpleFoam",
+                        AppContext.BaseDirectory,
+                        bashrcPath)
+                };
                 process.Start();
                 var output = process.StandardOutput.ReadToEnd();
                 process.WaitForExit();
                 
                 var exitCode = process.ExitCode;
                 var outputTrimmed = output.Trim();
-                process.Dispose(); // Dispose Process to satisfy CodeQL
                 
                 // Ensure variables are accessed
                 _ = output.Length;
@@ -699,7 +706,7 @@ RAS
                 ExecuteOpenFOAMCommand(casePath, "simpleFoam");
                 
                 // Run postProcess
-                ExecuteOpenFOAMCommand(casePath, "postProcess -func 'mag(U)'");
+                ExecuteOpenFOAMCommand(casePath, "postProcess", "-func", "mag(U)");
                 
                 result.Success = true;
                 result.OutputPath = casePath;
@@ -714,28 +721,38 @@ RAS
             return result;
         }
 
-        private void ExecuteOpenFOAMCommand(string casePath, string command)
+        private void ExecuteOpenFOAMCommand(string casePath, string command, params string[] arguments)
         {
-            var process = new Process
+            if (!AllowedOpenFOAMCommands.Contains(command))
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "bash",
-                    Arguments = $"-c 'source {_openFOAMPath}/etc/bashrc && cd {casePath} && {command}'",
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                }
-            };
+                throw new InvalidOperationException($"OpenFOAM command is not allowed: {command}");
+            }
 
+            var resolvedCasePath = NormalizeDirectoryPath(casePath);
+            if (!Directory.Exists(resolvedCasePath))
+            {
+                throw new DirectoryNotFoundException($"OpenFOAM case directory not found: {resolvedCasePath}");
+            }
+
+            var bashrcPath = GetOpenFOAMBashRcPath();
+            if (!File.Exists(bashrcPath))
+            {
+                throw new FileNotFoundException("OpenFOAM environment file not found", bashrcPath);
+            }
+
+            using var process = new Process
+            {
+                StartInfo = CreateOpenFOAMProcessStartInfo(
+                    "source \"$1\" && shift && exec \"$@\"",
+                    resolvedCasePath,
+                    new[] { bashrcPath, command }.Concat(arguments).ToArray())
+            };
             process.Start();
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             process.WaitForExit();
             
             var exitCode = process.ExitCode;
-            process.Dispose(); // Dispose Process to satisfy CodeQL
 
             if (exitCode != 0)
             {
@@ -745,6 +762,57 @@ RAS
             // Ensure variables are accessed to satisfy CodeQL
             _ = output.Length;
             _ = error.Length;
+        }
+
+        private string GetOpenFOAMBashRcPath()
+        {
+            var openFoamRoot = NormalizeDirectoryPath(_openFOAMPath);
+            var bashrcPath = Path.GetFullPath(Path.Combine(openFoamRoot, "etc", "bashrc"));
+
+            if (!bashrcPath.StartsWith(openFoamRoot, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("OpenFOAM environment path resolved outside of the configured OpenFOAM directory");
+            }
+
+            return bashrcPath;
+        }
+
+        private static string NormalizeDirectoryPath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                throw new ArgumentException("Path must not be empty", nameof(path));
+            }
+
+            var fullPath = Path.GetFullPath(path);
+            return fullPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        }
+
+        private static ProcessStartInfo CreateOpenFOAMProcessStartInfo(
+            string script,
+            string workingDirectory,
+            params string[] arguments)
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = "bash",
+                WorkingDirectory = NormalizeDirectoryPath(workingDirectory),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            startInfo.ArgumentList.Add("-lc");
+            startInfo.ArgumentList.Add(script);
+            startInfo.ArgumentList.Add("openfoam");
+
+            foreach (var argument in arguments)
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+
+            return startInfo;
         }
 
         private PhysicsResult ParseOpenFOAMResults(OpenFOAMResult openFOAMResult)

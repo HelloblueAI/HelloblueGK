@@ -273,21 +273,38 @@ builder.Services.AddScoped<TestCoverageSystem>();
 builder.Services.AddScoped<FormalCodeReviewSystem>();
 
 // Add JWT Authentication
-// Use same default key as JwtService to maintain consistency
-// Default key should only be used in development - production must configure a secure key
+// Default key is only allowed for local development; deployed environments must configure a secure key.
 const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
-var jwtKey = builder.Configuration["Jwt:Key"] ?? defaultJwtKey;
+var jwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
 
-// Security check: Fail in production if using default JWT key
-var isProduction = builder.Environment.IsProduction();
-if (isProduction && (jwtKey == defaultJwtKey || jwtKey == "change-me-in-production"))
+if (string.IsNullOrWhiteSpace(jwtKey))
+{
+    if (builder.Environment.IsDevelopment())
+    {
+        jwtKey = defaultJwtKey;
+    }
+    else
+    {
+        throw new InvalidOperationException(
+            "SECURITY ERROR: JWT key is not configured. " +
+            "Please set a secure JWT:Key in configuration or environment variables.");
+    }
+}
+
+var isKnownInsecureJwtKey = jwtKey == defaultJwtKey || jwtKey == "change-me-in-production";
+if (!builder.Environment.IsDevelopment() && isKnownInsecureJwtKey)
 {
     throw new InvalidOperationException(
-        "SECURITY ERROR: Default JWT key detected in production. " +
-        "Please set a secure JWT:Key in configuration or environment variables. " +
-        "The key must be at least 32 characters long.");
+        "SECURITY ERROR: Insecure JWT key detected outside development. " +
+        "Please set a secure JWT:Key in configuration or environment variables.");
+}
+
+if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
+{
+    throw new InvalidOperationException(
+        "SECURITY ERROR: JWT key must contain at least 32 bytes of entropy.");
 }
 
 builder.Services.AddAuthentication(options =>
