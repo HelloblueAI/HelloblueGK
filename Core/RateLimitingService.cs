@@ -27,7 +27,7 @@ namespace HB_NLP_Research_Lab.Core
             var bucket = _buckets.GetOrAdd(identifier, id => new RateLimitBucket(id, policy));
             
             var now = DateTime.UtcNow;
-            var result = bucket.PeekLimit(now);
+            var result = bucket.CheckLimit(now);
             
             var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
             if (result.IsAllowed)
@@ -69,7 +69,7 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             var now = DateTime.UtcNow;
-            var result = bucket.CheckLimit(now);
+            var result = bucket.PeekLimit(now);
 
             return Task.FromResult(new RateLimitStatus
             {
