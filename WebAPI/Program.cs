@@ -276,11 +276,8 @@ builder.Services.AddScoped<FormalCodeReviewSystem>();
 // Default key is only allowed for local development; deployed environments must configure a secure key.
 const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
 const int minimumJwtKeyBytes = 32;
-var configuredJwtKey = builder.Configuration["Jwt:Key"];
-var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
-var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
 
-var jwtKey = configuredJwtKey;
+var jwtKey = builder.Configuration["Jwt:Key"];
 if (string.IsNullOrWhiteSpace(jwtKey))
 {
     if (builder.Environment.IsDevelopment())
@@ -308,6 +305,9 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < minimumJwtKeyBytes)
     throw new InvalidOperationException(
         $"SECURITY ERROR: JWT key must contain at least {minimumJwtKeyBytes} bytes of entropy.");
 }
+
+var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
+var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
 
 builder.Services.AddAuthentication(options =>
 {
