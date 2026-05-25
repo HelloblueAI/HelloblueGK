@@ -157,7 +157,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
             var config = GetConfiguration<T>(configName) ?? new T();
             updateAction(config);
             await SaveConfigurationAsync(configName, config);
-            
+
             // Fire change event
             ConfigurationChanged?.Invoke(this, new ConfigurationChangedEventArgs
             {
@@ -174,7 +174,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
             // LoadConfigurationAsync may create the file via SaveConfigurationAsync, so avoid
             // taking the save lock here and deadlocking on first-load reloads.
             await LoadConfigurationAsync<T>(configName);
-            
+
             ConfigurationChanged?.Invoke(this, new ConfigurationChangedEventArgs
             {
                 ConfigName = configName,
