@@ -19,26 +19,29 @@ public interface IJwtService
 
 public class JwtService : IJwtService
 {
+    private const string DefaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
+
     private readonly IConfiguration _configuration;
     private readonly ILogger<JwtService> _logger;
+    private readonly IHostEnvironment _environment;
 
-    public JwtService(IConfiguration configuration, ILogger<JwtService> logger)
+    public JwtService(
+        IConfiguration configuration,
+        ILogger<JwtService> logger,
+        IHostEnvironment environment)
     {
         _configuration = configuration;
         _logger = logger;
+        _environment = environment;
     }
 
     public string GenerateToken(User user)
     {
-        // Use same default key as Program.cs to maintain consistency
-        // Default key should only be used in development - production must configure a secure key
-        const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
-        var jwtKey = _configuration["Jwt:Key"] ?? defaultJwtKey;
+        var jwtKey = GetJwtKey();
         
-        // Log warning if using default key (security risk in production)
-        if (jwtKey == defaultJwtKey)
+        if (jwtKey == DefaultJwtKey)
         {
-            _logger.LogWarning("Using default JWT key. This should be changed in production configuration!");
+            _logger.LogWarning("Using development JWT key. Configure Jwt:Key for any deployed environment.");
         }
         
         var jwtIssuer = _configuration["Jwt:Issuer"] ?? "hellobluegk";
@@ -81,10 +84,7 @@ public class JwtService : IJwtService
     {
         try
         {
-            // Use same default key as Program.cs to maintain consistency
-            // This ensures token validation matches token generation
-            const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
-            var jwtKey = _configuration["Jwt:Key"] ?? defaultJwtKey;
+            var jwtKey = GetJwtKey();
             var jwtIssuer = _configuration["Jwt:Issuer"] ?? "hellobluegk";
             var jwtAudience = _configuration["Jwt:Audience"] ?? "hellobluegk-api";
 
@@ -119,6 +119,33 @@ public class JwtService : IJwtService
         using var rng = RandomNumberGenerator.Create();
         rng.GetBytes(randomNumber);
         return Convert.ToBase64String(randomNumber);
+    }
+
+    private string GetJwtKey()
+    {
+        var jwtKey = _configuration["Jwt:Key"];
+        if (string.IsNullOrWhiteSpace(jwtKey))
+        {
+            if (_environment.IsDevelopment())
+            {
+                return DefaultJwtKey;
+            }
+
+            throw new InvalidOperationException("JWT key is not configured");
+        }
+
+        var isKnownInsecureKey = jwtKey == DefaultJwtKey || jwtKey == "change-me-in-production";
+        if (!_environment.IsDevelopment() && isKnownInsecureKey)
+        {
+            throw new InvalidOperationException("Insecure JWT key detected outside development");
+        }
+
+        if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
+        {
+            throw new InvalidOperationException("JWT key must contain at least 32 bytes of entropy");
+        }
+
+        return jwtKey;
     }
 }
 

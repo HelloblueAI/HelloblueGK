@@ -19,6 +19,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers;
 [Tags("Auth")]
 public class AuthController : ControllerBase
 {
+    private const int MaxPasswordLength = 128;
+    private const int MaxPbkdf2Iterations = 600000;
+
     private readonly HelloblueGKDbContext _context;
     private readonly IJwtService _jwtService;
     private readonly ILogger<AuthController> _logger;
@@ -70,6 +73,18 @@ public class AuthController : ControllerBase
                 {
                     StatusCode = 401,
                     Message = "Username and password are required",
+                    Timestamp = DateTime.UtcNow,
+                    Path = Request.Path,
+                    Method = Request.Method
+                });
+            }
+
+            if (request.Password.Length > MaxPasswordLength)
+            {
+                return Unauthorized(new ErrorResponse
+                {
+                    StatusCode = 401,
+                    Message = "Invalid username or password",
                     Timestamp = DateTime.UtcNow,
                     Path = Request.Path,
                     Method = Request.Method
@@ -148,6 +163,18 @@ public class AuthController : ControllerBase
             {
                 StatusCode = StatusCodes.Status400BadRequest,
                 Message = "Request body is required",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        if (request.Password.Length > MaxPasswordLength)
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = $"Password cannot exceed {MaxPasswordLength} characters",
                 Timestamp = DateTime.UtcNow,
                 Path = Request.Path,
                 Method = Request.Method
@@ -258,6 +285,11 @@ public class AuthController : ControllerBase
     /// </summary>
     private static string HashPassword(string password)
     {
+        if (password.Length > MaxPasswordLength)
+        {
+            throw new ArgumentException($"Password cannot exceed {MaxPasswordLength} characters", nameof(password));
+        }
+
         // Generate a random salt for each password
         var salt = new byte[32]; // 256-bit salt
         using (var rng = RandomNumberGenerator.Create())
@@ -283,6 +315,11 @@ public class AuthController : ControllerBase
     /// </summary>
     private static bool VerifyPassword(string password, string storedHash)
     {
+        if (password.Length > MaxPasswordLength)
+        {
+            return false;
+        }
+
         if (string.IsNullOrWhiteSpace(storedHash))
         {
             return false;
@@ -292,20 +329,41 @@ public class AuthController : ControllerBase
         var parts = storedHash.Split(':');
         if (parts.Length == 3 && int.TryParse(parts[0], out var iterations))
         {
-            // New PBKDF2 format
-            var salt = Convert.FromBase64String(parts[1]);
-            var hash = Convert.FromBase64String(parts[2]);
+            if (iterations <= 0 || iterations > MaxPbkdf2Iterations)
+            {
+                return false;
+            }
 
-            // Compute hash with the same salt and iterations
-            var computedHash = Rfc2898DeriveBytes.Pbkdf2(
-                password: Encoding.UTF8.GetBytes(password),
-                salt: salt,
-                iterations: iterations,
-                hashAlgorithm: HashAlgorithmName.SHA256,
-                outputLength: hash.Length);
+            try
+            {
+                // New PBKDF2 format
+                var salt = Convert.FromBase64String(parts[1]);
+                var hash = Convert.FromBase64String(parts[2]);
 
-            // Constant-time comparison to prevent timing attacks
-            return CryptographicOperations.FixedTimeEquals(hash, computedHash);
+                if (salt.Length < 16 || hash.Length < 16 || hash.Length > 64)
+                {
+                    return false;
+                }
+
+                // Compute hash with the same salt and iterations
+                var computedHash = Rfc2898DeriveBytes.Pbkdf2(
+                    password: Encoding.UTF8.GetBytes(password),
+                    salt: salt,
+                    iterations: iterations,
+                    hashAlgorithm: HashAlgorithmName.SHA256,
+                    outputLength: hash.Length);
+
+                // Constant-time comparison to prevent timing attacks
+                return CryptographicOperations.FixedTimeEquals(hash, computedHash);
+            }
+            catch (FormatException)
+            {
+                return false;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
         }
         else
         {
