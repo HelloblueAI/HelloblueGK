@@ -18,7 +18,6 @@ public class EngineRepository : IEngineRepository
     public async Task<Engine?> GetByIdAsync(int id)
     {
         return await _context.Engines
-            .Include(e => e.Simulations)
             .FirstOrDefaultAsync(e => e.Id == id);
     }
 
