@@ -105,6 +105,33 @@ public class RateLimitingServiceTests
     }
 
     [Fact]
+    public async Task GetRateLimitStatusAsync_ShouldNotConsumeQuota()
+    {
+        // Arrange
+        var identifier = "test-client-status-peek";
+        var policy = new RateLimitPolicy
+        {
+            RequestsPerWindow = 2,
+            WindowSize = TimeSpan.FromMinutes(1),
+            Algorithm = RateLimitAlgorithm.SlidingWindow
+        };
+
+        await _service.CheckRateLimitAsync(identifier, policy);
+
+        // Act
+        var firstStatus = await _service.GetRateLimitStatusAsync(identifier);
+        var secondStatus = await _service.GetRateLimitStatusAsync(identifier);
+        var secondRequest = await _service.CheckRateLimitAsync(identifier, policy);
+        var thirdRequest = await _service.CheckRateLimitAsync(identifier, policy);
+
+        // Assert
+        firstStatus.RemainingRequests.Should().Be(1);
+        secondStatus.RemainingRequests.Should().Be(1);
+        secondRequest.IsAllowed.Should().BeTrue();
+        thirdRequest.IsAllowed.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task GenerateReportAsync_ShouldReturnReport()
     {
         // Arrange
