@@ -275,9 +275,11 @@ builder.Services.AddScoped<FormalCodeReviewSystem>();
 // Add JWT Authentication
 // Default key is only allowed for local development; deployed environments must configure a secure key.
 const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
-var jwtKey = builder.Configuration["Jwt:Key"];
+const int minimumJwtKeyBytes = 32;
+var configuredJwtKey = builder.Configuration["Jwt:Key"];
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
+var jwtKey = configuredJwtKey;
 
 if (string.IsNullOrWhiteSpace(jwtKey))
 {
@@ -301,10 +303,10 @@ if (!builder.Environment.IsDevelopment() && isKnownInsecureJwtKey)
         "Please set a secure JWT:Key in configuration or environment variables.");
 }
 
-if (Encoding.UTF8.GetByteCount(jwtKey) < 32)
+if (Encoding.UTF8.GetByteCount(jwtKey) < minimumJwtKeyBytes)
 {
     throw new InvalidOperationException(
-        "SECURITY ERROR: JWT key must contain at least 32 bytes of entropy.");
+        $"SECURITY ERROR: JWT key must contain at least {minimumJwtKeyBytes} bytes of entropy.");
 }
 
 builder.Services.AddAuthentication(options =>
@@ -564,6 +566,8 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 // Prometheus HTTP metrics tracking (tracks HTTP requests)
 app.UseHttpMetrics();
 
+app.UseCors();
+
 // Authentication and Authorization
 app.UseAuthentication();
 if (builder.Configuration.GetValue("EnableRateLimiting", true))
@@ -597,8 +601,6 @@ app.UseSwaggerUI(c =>
     c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
     c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
 });
-
-app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {
