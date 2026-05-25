@@ -171,7 +171,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Update digital twin with new learning data
         /// </summary>
         [HttpPost("{id}/learn")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(DigitalTwin), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateDigitalTwinLearning(int id, [FromBody] LearningDataRequest request)
@@ -279,7 +279,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Deactivate a digital twin
         /// </summary>
         [HttpPost("{id}/deactivate")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         [ProducesResponseType(StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> DeactivateDigitalTwin(int id)
