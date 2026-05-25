@@ -253,16 +253,21 @@ namespace HB_NLP_Research_Lab.Core
         {
             var sections = new Dictionary<string, object>();
 
-            // Get all top-level configuration sections
+            // Report section presence only. Raw values can include secrets from env vars or appsettings.
             foreach (var section in _configuration.GetChildren())
             {
                 try
                 {
-                    sections[section.Key] = section.Get<object>() ?? new { };
+                    var childCount = section.GetChildren().Count();
+                    sections[section.Key] = new
+                    {
+                        IsConfigured = childCount > 0 || !string.IsNullOrEmpty(section.Value),
+                        ChildSectionCount = childCount
+                    };
                 }
-                catch (Exception ex)
+                catch
                 {
-                    sections[section.Key] = new { Error = ex.Message };
+                    sections[section.Key] = new { Error = "Unable to inspect configuration section metadata" };
                 }
             }
 

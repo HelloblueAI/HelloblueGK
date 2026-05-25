@@ -53,5 +53,28 @@ public class ConfigurationValidationServiceTests
         result1.Should().NotBeNull();
         result2.Should().NotBeNull();
     }
+
+    [Fact]
+    public async Task GetConfigurationHealthAsync_ShouldNotExposeRawConfigurationValues()
+    {
+        // Arrange
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Key"] = "super-secret-jwt-key-that-should-not-leak",
+                ["ConnectionStrings:DefaultConnection"] = "Host=db;Username=admin;Password=secret-password"
+            })
+            .Build();
+        var service = new ConfigurationValidationService(configuration, _mockLogger.Object);
+
+        // Act
+        var health = await service.GetConfigurationHealthAsync();
+        var serializedSections = System.Text.Json.JsonSerializer.Serialize(health.ConfigurationSections);
+
+        // Assert
+        serializedSections.Should().NotContain("super-secret-jwt-key-that-should-not-leak");
+        serializedSections.Should().NotContain("secret-password");
+        serializedSections.Should().Contain("ChildSectionCount");
+    }
 }
 
