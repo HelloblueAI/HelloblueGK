@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace HB_NLP_Research_Lab.WebAPI.Data.Models;
 
@@ -39,8 +40,11 @@ public class Engine
     }
 
     // Navigation properties
+    [JsonIgnore]
     public ICollection<EngineSimulation> Simulations { get; set; } = new List<EngineSimulation>();
+    [JsonIgnore]
     public ICollection<AIOptimizationRun> OptimizationRuns { get; set; } = new List<AIOptimizationRun>();
+    [JsonIgnore]
     public ICollection<DigitalTwin> DigitalTwins { get; set; } = new List<DigitalTwin>();
 }
 
