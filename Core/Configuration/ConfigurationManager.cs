@@ -25,7 +25,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
         
         public ConfigurationManager(string configDirectory = "Config")
         {
-            _configDirectory = configDirectory;
+            _configDirectory = Path.GetFullPath(configDirectory);
             _configurations = new ConcurrentDictionary<string, object>();
             _reloadLock = new SemaphoreSlim(1, 1);
             
@@ -53,7 +53,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
         /// </summary>
         public async Task<T> LoadConfigurationAsync<T>(string configName) where T : class, new()
         {
-            var filePath = Path.Combine(_configDirectory, $"{configName}.json");
+            var filePath = ResolveConfigPath(configName);
             
             if (!File.Exists(filePath))
             {
@@ -116,7 +116,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
             await _reloadLock.WaitAsync();
             try
             {
-                var filePath = Path.Combine(_configDirectory, $"{configName}.json");
+                var filePath = ResolveConfigPath(configName);
                 
                 var options = new JsonSerializerOptions
                 {
@@ -154,24 +154,16 @@ namespace HB_NLP_Research_Lab.Core.Configuration
         /// </summary>
         public async Task UpdateConfigurationAsync<T>(string configName, Action<T> updateAction) where T : class, new()
         {
-            await _reloadLock.WaitAsync();
-            try
+            var config = GetConfiguration<T>(configName) ?? new T();
+            updateAction(config);
+            await SaveConfigurationAsync(configName, config);
+            
+            // Fire change event
+            ConfigurationChanged?.Invoke(this, new ConfigurationChangedEventArgs
             {
-                var config = GetConfiguration<T>(configName) ?? new T();
-                updateAction(config);
-                await SaveConfigurationAsync(configName, config);
-                
-                // Fire change event
-                ConfigurationChanged?.Invoke(this, new ConfigurationChangedEventArgs
-                {
-                    ConfigName = configName,
-                    ConfigType = typeof(T).Name
-                });
-            }
-            finally
-            {
-                _reloadLock.Release();
-            }
+                ConfigName = configName,
+                ConfigType = typeof(T).Name
+            });
         }
         
         /// <summary>
@@ -179,22 +171,42 @@ namespace HB_NLP_Research_Lab.Core.Configuration
         /// </summary>
         public async Task ReloadConfigurationAsync<T>(string configName) where T : class, new()
         {
-            await _reloadLock.WaitAsync();
-            try
+            // LoadConfigurationAsync may create the file via SaveConfigurationAsync, so avoid
+            // taking the save lock here and deadlocking on first-load reloads.
+            await LoadConfigurationAsync<T>(configName);
+            
+            ConfigurationChanged?.Invoke(this, new ConfigurationChangedEventArgs
             {
-                // Load configuration to ensure it's valid
-                await LoadConfigurationAsync<T>(configName);
-                
-                ConfigurationChanged?.Invoke(this, new ConfigurationChangedEventArgs
-                {
-                    ConfigName = configName,
-                    ConfigType = typeof(T).Name
-                });
-            }
-            finally
+                ConfigName = configName,
+                ConfigType = typeof(T).Name
+            });
+        }
+
+        private string ResolveConfigPath(string configName)
+        {
+            if (string.IsNullOrWhiteSpace(configName))
             {
-                _reloadLock.Release();
+                throw new ArgumentException("Configuration name must not be empty", nameof(configName));
             }
+
+            if (configName.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
+                configName.Contains(Path.DirectorySeparatorChar) ||
+                configName.Contains(Path.AltDirectorySeparatorChar) ||
+                configName.Contains("..", StringComparison.Ordinal))
+            {
+                throw new ArgumentException("Configuration name must be a safe file name", nameof(configName));
+            }
+
+            var resolvedPath = Path.GetFullPath(Path.Combine(_configDirectory, $"{configName}.json"));
+            var configRoot = _configDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
+                Path.DirectorySeparatorChar;
+
+            if (!resolvedPath.StartsWith(configRoot, StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("Configuration path resolved outside of the configuration directory");
+            }
+
+            return resolvedPath;
         }
         
         private async void OnConfigFileChanged(object sender, FileSystemEventArgs e)

@@ -69,7 +69,7 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             var now = DateTime.UtcNow;
-            var result = bucket.CheckLimit(now);
+            var result = bucket.PeekLimit(now);
 
             return Task.FromResult(new RateLimitStatus
             {
@@ -207,6 +207,24 @@ namespace HB_NLP_Research_Lab.Core
                         TotalRequests = _requestTimes.Count
                     };
                 }
+            }
+        }
+
+        public RateLimitResult PeekLimit(DateTime now)
+        {
+            lock (_lock)
+            {
+                CleanupOldRequests(now);
+                var totalRequests = _requestTimes.Count;
+                var remainingRequests = Math.Max(Policy.RequestsPerWindow - totalRequests, 0);
+
+                return new RateLimitResult
+                {
+                    IsAllowed = totalRequests < Policy.RequestsPerWindow,
+                    RemainingRequests = remainingRequests,
+                    ResetTime = CalculateResetTime(now),
+                    TotalRequests = totalRequests
+                };
             }
         }
 
