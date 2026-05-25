@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 
 namespace HB_NLP_Research_Lab.WebAPI.Data.Models;
 
@@ -29,6 +30,7 @@ public class EngineSimulation
 
     // Error information
     public string? ErrorMessage { get; set; }
+    [JsonIgnore]
     public string? StackTrace { get; set; }
 
     // Metadata

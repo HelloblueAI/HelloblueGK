@@ -276,18 +276,24 @@ builder.Services.AddScoped<FormalCodeReviewSystem>();
 // Use same default key as JwtService to maintain consistency
 // Default key should only be used in development - production must configure a secure key
 const string defaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
-var jwtKey = builder.Configuration["Jwt:Key"] ?? defaultJwtKey;
+const int minimumJwtKeyBytes = 32;
+var configuredJwtKey = builder.Configuration["Jwt:Key"];
+var jwtKey = configuredJwtKey ?? defaultJwtKey;
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
 
-// Security check: Fail in production if using default JWT key
+// Security check: Fail in production if using a missing, placeholder, or weak JWT key.
 var isProduction = builder.Environment.IsProduction();
-if (isProduction && (jwtKey == defaultJwtKey || jwtKey == "change-me-in-production"))
+if (isProduction &&
+    (string.IsNullOrWhiteSpace(configuredJwtKey) ||
+     jwtKey == defaultJwtKey ||
+     jwtKey == "change-me-in-production" ||
+     Encoding.UTF8.GetByteCount(jwtKey) < minimumJwtKeyBytes))
 {
     throw new InvalidOperationException(
-        "SECURITY ERROR: Default JWT key detected in production. " +
+        "SECURITY ERROR: A strong JWT key is required in production. " +
         "Please set a secure JWT:Key in configuration or environment variables. " +
-        "The key must be at least 32 characters long.");
+        $"The key must be at least {minimumJwtKeyBytes} bytes long.");
 }
 
 builder.Services.AddAuthentication(options =>
@@ -547,6 +553,8 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 // Prometheus HTTP metrics tracking (tracks HTTP requests)
 app.UseHttpMetrics();
 
+app.UseCors();
+
 // Authentication and Authorization
 app.UseAuthentication();
 if (builder.Configuration.GetValue("EnableRateLimiting", true))
@@ -580,8 +588,6 @@ app.UseSwaggerUI(c =>
     c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
     c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
 });
-
-app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {
