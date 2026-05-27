@@ -384,7 +384,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 1. **Clone the repository**
    ```bash
    git clone https://github.com/HelloblueAI/HelloblueGK.git
-   cd PicoGK
+   cd HelloblueGK
    ```
 
 2. **Install Plasticity v25.2.2**
@@ -816,7 +816,8 @@ cd WebAPI
 ```bash
 # From repo root: primary WebAPI image (port 8080)
 docker build -t hellobluegk:latest -f Docker/Dockerfile .
-docker run -d -p 8080:8080 --name hellobluegk hellobluegk:latest
+# Production: add -e Jwt__Key="your-secure-key-32-chars-min" and -e ConnectionStrings__DefaultConnection for DB
+docker run -d -p 8080:8080 -e Jwt__Key="your-secure-key-at-least-32-chars" --name hellobluegk hellobluegk:latest
 
 # Or: docker build -t hellobluegk:latest -f WebAPI/Dockerfile . (same WebAPI image, port 8080)
 ```
@@ -939,7 +940,7 @@ Pre-configured dashboards for:
 
 ### Health Checks
 
-- Application health: `/health`
+- Application health: `/Health`
 - AI model availability: `/health/ai`
 - Digital twin status: `/health/digital-twin`
 - Quantum computing status: `/health/quantum`
@@ -1085,7 +1086,7 @@ For current project status and health metrics, see [Docs/Project/PROJECT_HEALTH_
 
 ### Apache License 2.0
 
-Copyright (c) 2025 Helloblue, Inc. HB-NLP Research Lab
+Copyright (c) 2026 Helloblue, Inc. HB-NLP Research Lab
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may 
 obtain a copy of the License at:

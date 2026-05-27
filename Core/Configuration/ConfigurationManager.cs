@@ -197,7 +197,8 @@ namespace HB_NLP_Research_Lab.Core.Configuration
                 throw new ArgumentException("Configuration name must be a safe file name", nameof(configName));
             }
 
-            var resolvedPath = Path.GetFullPath(Path.Combine(_configDirectory, $"{configName}.json"));
+            var resolvedPath = Path.GetFullPath(
+                $"{_configDirectory}{Path.DirectorySeparatorChar}{configName}.json");
             var configRoot = _configDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) +
                 Path.DirectorySeparatorChar;
 
@@ -278,7 +279,7 @@ namespace HB_NLP_Research_Lab.Core.Configuration
             
             return errors.Count == 0;
         }
-        
+
         public void Dispose()
         {
             _fileWatcher?.Dispose();
