@@ -34,6 +34,9 @@ public class AIOptimizationRun
     public DateTime? StartedAt { get; set; }
     public DateTime? CompletedAt { get; set; }
 
+    [MaxLength(255)]
+    public string? CreatedBy { get; set; }
+
     // Navigation properties
     public Engine Engine { get; set; } = null!;
 }
