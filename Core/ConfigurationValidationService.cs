@@ -265,9 +265,17 @@ namespace HB_NLP_Research_Lab.Core
                         ChildSectionCount = childCount
                     };
                 }
-                catch
+                catch (InvalidOperationException ex)
                 {
-                    sections[section.Key] = new { Error = "Unable to inspect configuration section metadata" };
+                    sections[section.Key] = new { Error = "Unable to inspect configuration section metadata", Detail = ex.Message };
+                }
+                catch (ArgumentException ex)
+                {
+                    sections[section.Key] = new { Error = "Unable to inspect configuration section metadata", Detail = ex.Message };
+                }
+                catch (FormatException ex)
+                {
+                    sections[section.Key] = new { Error = "Unable to inspect configuration section metadata", Detail = ex.Message };
                 }
             }
 

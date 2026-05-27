@@ -767,7 +767,8 @@ RAS
         private string GetOpenFOAMBashRcPath()
         {
             var openFoamRoot = NormalizeDirectoryPath(_openFOAMPath);
-            var bashrcPath = Path.GetFullPath(Path.Combine(openFoamRoot, "etc", "bashrc"));
+            var bashrcPath = Path.GetFullPath(
+                $"{openFoamRoot}{Path.DirectorySeparatorChar}etc{Path.DirectorySeparatorChar}bashrc");
 
             if (!bashrcPath.StartsWith(openFoamRoot, StringComparison.Ordinal))
             {
