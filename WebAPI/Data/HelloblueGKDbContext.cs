@@ -86,6 +86,7 @@ public class HelloblueGKDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.EngineId);
             entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.CreatedBy);
         });
 
         // Digital Twin
@@ -97,6 +98,7 @@ public class HelloblueGKDbContext : DbContext
                   .HasForeignKey(e => e.EngineId)
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.EngineId);
+            entity.HasIndex(e => e.CreatedBy);
         });
 
         // Launch

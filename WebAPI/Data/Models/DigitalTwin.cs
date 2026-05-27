@@ -26,6 +26,9 @@ public class DigitalTwin
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public bool IsActive { get; set; } = true;
 
+    [MaxLength(255)]
+    public string? CreatedBy { get; set; }
+
     // Navigation properties
     public Engine Engine { get; set; } = null!;
 }
