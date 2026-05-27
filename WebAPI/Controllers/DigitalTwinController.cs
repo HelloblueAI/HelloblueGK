@@ -7,6 +7,7 @@ using HB_NLP_Research_Lab.AI;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 
 namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
@@ -36,6 +37,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get all digital twins
         /// </summary>
         [HttpGet]
+        [Authorize]
         [ProducesResponseType(typeof(IEnumerable<DigitalTwin>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllDigitalTwins([FromQuery] int? engineId = null)
         {
@@ -44,6 +46,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var query = _context.DigitalTwins
                     .Include(dt => dt.Engine)
                     .AsQueryable();
+
+                if (!ApplyCurrentUserFilter(ref query))
+                {
+                    return Forbid();
+                }
 
                 if (engineId.HasValue)
                 {
@@ -67,6 +74,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get digital twin by ID
         /// </summary>
         [HttpGet("{id}")]
+        [Authorize]
         [ProducesResponseType(typeof(DigitalTwin), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetDigitalTwinById(int id)
@@ -80,6 +88,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (digitalTwin == null)
                 {
                     return NotFound(new { message = $"Digital twin with ID {id} not found" });
+                }
+
+                if (!CurrentUserCanAccessDigitalTwin(digitalTwin))
+                {
+                    return Forbid();
                 }
 
                 return Ok(digitalTwin);
@@ -116,8 +129,21 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
 
                 // Check if digital twin already exists for this engine
-                var existingTwin = await _context.DigitalTwins
-                    .FirstOrDefaultAsync(dt => dt.EngineId == request.EngineId && dt.IsActive);
+                var currentUsername = GetCurrentUsername();
+                if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(currentUsername))
+                {
+                    return Forbid();
+                }
+
+                var existingTwinQuery = _context.DigitalTwins
+                    .Where(dt => dt.EngineId == request.EngineId && dt.IsActive);
+
+                if (!User.IsInRole("Admin"))
+                {
+                    existingTwinQuery = existingTwinQuery.Where(dt => dt.CreatedBy == currentUsername);
+                }
+
+                var existingTwin = await existingTwinQuery.FirstOrDefaultAsync();
 
                 if (existingTwin != null && !request.ForceCreate)
                 {
@@ -152,7 +178,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     RealTimeLearning = request.RealTimeLearning,
                     ModelDataJson = JsonSerializer.Serialize(digitalTwinResult),
                     CreatedAt = DateTime.UtcNow,
-                    IsActive = true
+                    IsActive = true,
+                    CreatedBy = currentUsername
                 };
 
                 _context.DigitalTwins.Add(digitalTwin);
@@ -232,6 +259,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get digital twin predictions
         /// </summary>
         [HttpPost("{id}/predict")]
+        [Authorize]
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetPredictions(int id, [FromBody] PredictionRequest request)
@@ -245,6 +273,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (digitalTwin == null)
                 {
                     return NotFound(new { message = $"Digital twin with ID {id} not found" });
+                }
+
+                if (!CurrentUserCanAccessDigitalTwin(digitalTwin))
+                {
+                    return Forbid();
                 }
 
                 var engineId = $"Engine_{digitalTwin.EngineId}";
@@ -303,6 +336,42 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 _logger.LogError(ex, "Error deactivating digital twin {DigitalTwinId}", id);
                 return StatusCode(500, "An error occurred while deactivating the digital twin");
             }
+        }
+
+        private bool ApplyCurrentUserFilter(ref IQueryable<DigitalTwin> query)
+        {
+            if (User.IsInRole("Admin"))
+            {
+                return true;
+            }
+
+            var currentUsername = GetCurrentUsername();
+            if (string.IsNullOrWhiteSpace(currentUsername))
+            {
+                return false;
+            }
+
+            query = query.Where(dt => dt.CreatedBy == currentUsername);
+            return true;
+        }
+
+        private bool CurrentUserCanAccessDigitalTwin(DigitalTwin digitalTwin)
+        {
+            if (User.IsInRole("Admin"))
+            {
+                return true;
+            }
+
+            var currentUsername = GetCurrentUsername();
+            return !string.IsNullOrWhiteSpace(currentUsername) &&
+                string.Equals(digitalTwin.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string? GetCurrentUsername()
+        {
+            return User.Identity?.Name
+                ?? User.FindFirst(ClaimTypes.Name)?.Value
+                ?? User.FindFirst("username")?.Value;
         }
     }
 

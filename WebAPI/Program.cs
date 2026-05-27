@@ -440,6 +440,23 @@ var app = builder.Build();
             _ = await dbContext.EngineSimulations.CountAsync();
             _ = await dbContext.AIOptimizationRuns.CountAsync();
             _ = await dbContext.DigitalTwins.CountAsync();
+
+            if (hasPostgresKeywords)
+            {
+                await dbContext.Database.ExecuteSqlRawAsync(@"
+                    ALTER TABLE ""AIOptimizationRuns""
+                    ADD COLUMN IF NOT EXISTS ""CreatedBy"" VARCHAR(255);
+
+                    ALTER TABLE ""DigitalTwins""
+                    ADD COLUMN IF NOT EXISTS ""CreatedBy"" VARCHAR(255);
+
+                    CREATE INDEX IF NOT EXISTS ""IX_AIOptimizationRuns_CreatedBy""
+                    ON ""AIOptimizationRuns""(""CreatedBy"");
+
+                    CREATE INDEX IF NOT EXISTS ""IX_DigitalTwins_CreatedBy""
+                    ON ""DigitalTwins""(""CreatedBy"");
+                ");
+            }
             
             // Ensure Launch table exists - try to query it, create if missing
             try

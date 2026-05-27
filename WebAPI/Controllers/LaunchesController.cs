@@ -6,6 +6,7 @@ using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 
 namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
@@ -38,7 +39,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get all launches
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(IEnumerable<Launch>), StatusCodes.Status200OK)]
+        [Authorize]
+        [ProducesResponseType(typeof(IEnumerable<LaunchResponse>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllLaunches([FromQuery] string? status = null)
         {
             try
@@ -46,6 +48,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var query = _context.Launches
                     .Include(l => l.Engine)
                     .AsQueryable();
+
+                if (!ApplyCurrentUserFilter(ref query))
+                {
+                    return Forbid();
+                }
 
                 if (!string.IsNullOrEmpty(status))
                 {
@@ -56,7 +63,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .OrderByDescending(l => l.CreatedAt)
                     .ToListAsync();
 
-                return Ok(launches);
+                return Ok(launches.Select(LaunchResponse.FromEntity));
             }
             catch (Exception ex)
             {
@@ -69,7 +76,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get launch by ID
         /// </summary>
         [HttpGet("{id}")]
-        [ProducesResponseType(typeof(Launch), StatusCodes.Status200OK)]
+        [Authorize]
+        [ProducesResponseType(typeof(LaunchResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetLaunchById(int id)
         {
@@ -84,7 +92,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return NotFound(new { message = $"Launch with ID {id} not found" });
                 }
 
-                return Ok(launch);
+                if (!CurrentUserCanAccessLaunch(launch))
+                {
+                    return Forbid();
+                }
+
+                return Ok(LaunchResponse.FromEntity(launch));
             }
             catch (Exception ex)
             {
@@ -133,7 +146,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     ScheduledAt = request.ScheduledAt ?? DateTime.UtcNow.AddHours(1),
                     LaunchParametersJson = JsonSerializer.Serialize(request.LaunchParameters ?? new Dictionary<string, object>()),
                     CreatedAt = DateTime.UtcNow,
-                    CreatedBy = User.Identity?.Name
+                    CreatedBy = GetCurrentUsername()
                 };
 
                 _context.Launches.Add(launch);
@@ -238,25 +251,32 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get launch statistics
         /// </summary>
         [HttpGet("statistics")]
+        [Authorize]
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetLaunchStatistics()
         {
             try
             {
-                var total = await _context.Launches.CountAsync();
-                var successful = await _context.Launches.CountAsync(l => l.MissionSuccess == true);
-                var failed = await _context.Launches.CountAsync(l => l.MissionSuccess == false);
-                var scheduled = await _context.Launches.CountAsync(l => l.Status == "Scheduled");
-                var inProgress = await _context.Launches.CountAsync(l => l.Status == "InProgress");
+                var query = _context.Launches.AsQueryable();
+                if (!ApplyCurrentUserFilter(ref query))
+                {
+                    return Forbid();
+                }
 
-                var launchesWithAltitude = await _context.Launches
+                var total = await query.CountAsync();
+                var successful = await query.CountAsync(l => l.MissionSuccess == true);
+                var failed = await query.CountAsync(l => l.MissionSuccess == false);
+                var scheduled = await query.CountAsync(l => l.Status == "Scheduled");
+                var inProgress = await query.CountAsync(l => l.Status == "InProgress");
+
+                var launchesWithAltitude = await query
                     .Where(l => l.MaxAltitude.HasValue)
                     .ToListAsync();
                 var avgAltitude = launchesWithAltitude.Any() 
                     ? launchesWithAltitude.Average(l => l.MaxAltitude!.Value) 
                     : 0.0;
 
-                var launchesWithVelocity = await _context.Launches
+                var launchesWithVelocity = await query
                     .Where(l => l.MaxVelocity.HasValue)
                     .ToListAsync();
                 var avgVelocity = launchesWithVelocity.Any() 
@@ -356,10 +376,100 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     launch.Status = "Failed";
                     launch.CompletedAt = DateTime.UtcNow;
                     launch.MissionSuccess = false;
-                    launch.ErrorMessage = ex.Message;
+                    launch.ErrorMessage = "Launch failed. See server logs for details.";
                     await context.SaveChangesAsync();
                 }
             }
+        }
+
+        private bool ApplyCurrentUserFilter(ref IQueryable<Launch> query)
+        {
+            if (User.IsInRole("Admin"))
+            {
+                return true;
+            }
+
+            var currentUsername = GetCurrentUsername();
+            if (string.IsNullOrWhiteSpace(currentUsername))
+            {
+                return false;
+            }
+
+            query = query.Where(l => l.CreatedBy == currentUsername);
+            return true;
+        }
+
+        private bool CurrentUserCanAccessLaunch(Launch launch)
+        {
+            if (User.IsInRole("Admin"))
+            {
+                return true;
+            }
+
+            var currentUsername = GetCurrentUsername();
+            return !string.IsNullOrWhiteSpace(currentUsername) &&
+                string.Equals(launch.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string? GetCurrentUsername()
+        {
+            return User.Identity?.Name
+                ?? User.FindFirst(ClaimTypes.Name)?.Value
+                ?? User.FindFirst("username")?.Value;
+        }
+    }
+
+    /// <summary>
+    /// Safe launch response that excludes internal diagnostics from failed background work.
+    /// </summary>
+    public class LaunchResponse
+    {
+        public int Id { get; set; }
+        public string MissionName { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public int EngineId { get; set; }
+        public int EngineCount { get; set; }
+        public string Status { get; set; } = string.Empty;
+        public string? LaunchParametersJson { get; set; }
+        public string? ResultsJson { get; set; }
+        public double? MissionDurationSeconds { get; set; }
+        public double? MaxAltitude { get; set; }
+        public double? MaxVelocity { get; set; }
+        public bool? MissionSuccess { get; set; }
+        public string? ErrorMessage { get; set; }
+        public DateTime ScheduledAt { get; set; }
+        public DateTime? LaunchedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public string? CreatedBy { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public EngineSummaryResponse? Engine { get; set; }
+
+        public static LaunchResponse FromEntity(Launch launch)
+        {
+            return new LaunchResponse
+            {
+                Id = launch.Id,
+                MissionName = launch.MissionName,
+                Description = launch.Description,
+                EngineId = launch.EngineId,
+                EngineCount = launch.EngineCount,
+                Status = launch.Status,
+                LaunchParametersJson = launch.LaunchParametersJson,
+                ResultsJson = launch.ResultsJson,
+                MissionDurationSeconds = launch.MissionDurationSeconds,
+                MaxAltitude = launch.MaxAltitude,
+                MaxVelocity = launch.MaxVelocity,
+                MissionSuccess = launch.MissionSuccess,
+                ErrorMessage = launch.Status == "Failed" && launch.ErrorMessage != "Mission failed due to engine performance below threshold"
+                    ? "Launch failed. See server logs for details."
+                    : launch.ErrorMessage,
+                ScheduledAt = launch.ScheduledAt,
+                LaunchedAt = launch.LaunchedAt,
+                CompletedAt = launch.CompletedAt,
+                CreatedBy = launch.CreatedBy,
+                CreatedAt = launch.CreatedAt,
+                Engine = launch.Engine == null ? null : EngineSummaryResponse.FromEntity(launch.Engine)
+            };
         }
     }
 

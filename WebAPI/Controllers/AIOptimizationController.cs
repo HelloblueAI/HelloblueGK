@@ -6,6 +6,7 @@ using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 
 namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
@@ -38,7 +39,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get all optimization runs
         /// </summary>
         [HttpGet]
-        [ProducesResponseType(typeof(IEnumerable<AIOptimizationRun>), StatusCodes.Status200OK)]
+        [Authorize]
+        [ProducesResponseType(typeof(IEnumerable<AIOptimizationRunResponse>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllOptimizations([FromQuery] int? engineId = null)
         {
             try
@@ -46,6 +48,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var query = _context.AIOptimizationRuns
                     .Include(o => o.Engine)
                     .AsQueryable();
+
+                if (!ApplyCurrentUserFilter(ref query))
+                {
+                    return Forbid();
+                }
 
                 if (engineId.HasValue)
                 {
@@ -56,7 +63,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .OrderByDescending(o => o.CreatedAt)
                     .ToListAsync();
 
-                return Ok(optimizations);
+                return Ok(optimizations.Select(AIOptimizationRunResponse.FromEntity));
             }
             catch (Exception ex)
             {
@@ -69,7 +76,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get optimization run by ID
         /// </summary>
         [HttpGet("{id}")]
-        [ProducesResponseType(typeof(AIOptimizationRun), StatusCodes.Status200OK)]
+        [Authorize]
+        [ProducesResponseType(typeof(AIOptimizationRunResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetOptimizationById(int id)
         {
@@ -84,7 +92,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return NotFound(new { message = $"Optimization run with ID {id} not found" });
                 }
 
-                return Ok(optimization);
+                if (!CurrentUserCanAccessOptimization(optimization))
+                {
+                    return Forbid();
+                }
+
+                return Ok(AIOptimizationRunResponse.FromEntity(optimization));
             }
             catch (Exception ex)
             {
@@ -124,6 +137,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Invalid algorithm type. Valid types: {string.Join(", ", validAlgorithms)}" });
                 }
 
+                var currentUsername = GetCurrentUsername();
+                if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(currentUsername))
+                {
+                    return Forbid();
+                }
+
                 // Create optimization run record
                 var optimization = new AIOptimizationRun
                 {
@@ -131,7 +150,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     AlgorithmType = request.AlgorithmType,
                     Status = "Pending",
                     ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
-                    CreatedAt = DateTime.UtcNow
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = currentUsername
                 };
 
                 _context.AIOptimizationRuns.Add(optimization);
@@ -158,7 +178,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     }
                 });
 
-                return CreatedAtAction(nameof(GetOptimizationById), new { id = optimization.Id }, optimization);
+                return CreatedAtAction(
+                    nameof(GetOptimizationById),
+                    new { id = optimization.Id },
+                    AIOptimizationRunResponse.FromEntity(optimization));
             }
             catch (Exception ex)
             {
@@ -171,6 +194,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Get optimization status
         /// </summary>
         [HttpGet("{id}/status")]
+        [Authorize]
         [ProducesResponseType(typeof(object), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetOptimizationStatus(int id)
@@ -181,6 +205,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (optimization == null)
                 {
                     return NotFound(new { message = $"Optimization run with ID {id} not found" });
+                }
+
+                if (!CurrentUserCanAccessOptimization(optimization))
+                {
+                    return Forbid();
                 }
 
                 return Ok(new
@@ -194,7 +223,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     improvementPercentage = optimization.ImprovementPercentage,
                     generations = optimization.Generations,
                     bestFitness = optimization.BestFitness,
-                    errorMessage = optimization.ErrorMessage
+                    errorMessage = SanitizeErrorMessage(optimization)
                 });
             }
             catch (Exception ex)
@@ -284,10 +313,101 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     optimization.Status = "Failed";
                     optimization.CompletedAt = DateTime.UtcNow;
-                    optimization.ErrorMessage = ex.Message;
+                    optimization.ErrorMessage = "Optimization failed. See server logs for details.";
                     await context.SaveChangesAsync();
                 }
             }
+        }
+
+        private bool ApplyCurrentUserFilter(ref IQueryable<AIOptimizationRun> query)
+        {
+            if (User.IsInRole("Admin"))
+            {
+                return true;
+            }
+
+            var currentUsername = GetCurrentUsername();
+            if (string.IsNullOrWhiteSpace(currentUsername))
+            {
+                return false;
+            }
+
+            query = query.Where(o => o.CreatedBy == currentUsername);
+            return true;
+        }
+
+        private bool CurrentUserCanAccessOptimization(AIOptimizationRun optimization)
+        {
+            if (User.IsInRole("Admin"))
+            {
+                return true;
+            }
+
+            var currentUsername = GetCurrentUsername();
+            return !string.IsNullOrWhiteSpace(currentUsername) &&
+                string.Equals(optimization.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string? GetCurrentUsername()
+        {
+            return User.Identity?.Name
+                ?? User.FindFirst(ClaimTypes.Name)?.Value
+                ?? User.FindFirst("username")?.Value;
+        }
+
+        private static string? SanitizeErrorMessage(AIOptimizationRun optimization)
+        {
+            return optimization.Status == "Failed"
+                ? "Optimization failed. See server logs for details."
+                : optimization.ErrorMessage;
+        }
+    }
+
+    /// <summary>
+    /// Safe optimization response that excludes internal diagnostics from failed runs.
+    /// </summary>
+    public class AIOptimizationRunResponse
+    {
+        public int Id { get; set; }
+        public int EngineId { get; set; }
+        public string AlgorithmType { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string? ParametersJson { get; set; }
+        public string? ResultsJson { get; set; }
+        public double? ImprovementPercentage { get; set; }
+        public int? Generations { get; set; }
+        public double? BestFitness { get; set; }
+        public double? ExecutionTimeSeconds { get; set; }
+        public string? ErrorMessage { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public string? CreatedBy { get; set; }
+        public EngineSummaryResponse? Engine { get; set; }
+
+        public static AIOptimizationRunResponse FromEntity(AIOptimizationRun optimization)
+        {
+            return new AIOptimizationRunResponse
+            {
+                Id = optimization.Id,
+                EngineId = optimization.EngineId,
+                AlgorithmType = optimization.AlgorithmType,
+                Status = optimization.Status,
+                ParametersJson = optimization.ParametersJson,
+                ResultsJson = optimization.ResultsJson,
+                ImprovementPercentage = optimization.ImprovementPercentage,
+                Generations = optimization.Generations,
+                BestFitness = optimization.BestFitness,
+                ExecutionTimeSeconds = optimization.ExecutionTimeSeconds,
+                ErrorMessage = optimization.Status == "Failed"
+                    ? "Optimization failed. See server logs for details."
+                    : optimization.ErrorMessage,
+                CreatedAt = optimization.CreatedAt,
+                StartedAt = optimization.StartedAt,
+                CompletedAt = optimization.CompletedAt,
+                CreatedBy = optimization.CreatedBy,
+                Engine = optimization.Engine == null ? null : EngineSummaryResponse.FromEntity(optimization.Engine)
+            };
         }
     }
 
