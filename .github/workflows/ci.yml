@@ -167,7 +167,9 @@ jobs:
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v3
       with:
-        category: "/language:${{ matrix.language }}"
+        # Keep legacy category for backward compatibility so existing open alerts
+        # in this configuration can be closed by new scans.
+        category: "/workflow:ci/language:${{ matrix.language }}"
 
   security-scan:
     name: Security Scan
