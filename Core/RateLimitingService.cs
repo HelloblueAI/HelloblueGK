@@ -17,7 +17,12 @@ namespace HB_NLP_Research_Lab.Core
         private readonly object _bucketCreationLock = new();
         private readonly int _maxTrackedIdentifiers;
 
-        public RateLimitingService(ILogger<RateLimitingService> logger, int maxTrackedIdentifiers = DefaultMaxTrackedIdentifiers)
+        public RateLimitingService(ILogger<RateLimitingService> logger)
+            : this(logger, DefaultMaxTrackedIdentifiers)
+        {
+        }
+
+        public RateLimitingService(ILogger<RateLimitingService> logger, int maxTrackedIdentifiers)
         {
             _logger = logger;
             _maxTrackedIdentifiers = maxTrackedIdentifiers > 0
