@@ -132,4 +132,26 @@ public class PerformanceMonitoringServiceTests
         trend.MetricName.Should().Be(metricName);
         trend.SampleCount.Should().BeGreaterThan(0);
     }
+
+    [Fact]
+    public async Task RecordMetric_WhenMetricSeriesCapacityReached_ShouldDropNewMetricSeries()
+    {
+        // Arrange
+        using var cappedService = new PerformanceMonitoringService(_mockLogger.Object, maxMetricSeries: 2);
+
+        // Act
+        cappedService.RecordMetric("MetricA", 1, "Capacity");
+        cappedService.RecordMetric("MetricB", 2, "Capacity");
+        cappedService.RecordMetric("MetricA", 3, "Capacity");
+        cappedService.RecordMetric("MetricC", 4, "Capacity");
+        var report = await cappedService.GeneratePerformanceReportAsync();
+
+        // Assert
+        cappedService.GetMetric("MetricA").Should().NotBeNull();
+        cappedService.GetMetric("MetricA")!.Value.Should().Be(3);
+        cappedService.GetMetric("MetricA")!.Count.Should().Be(2);
+        cappedService.GetMetric("MetricB").Should().NotBeNull();
+        cappedService.GetMetric("MetricC").Should().BeNull();
+        report.ApplicationMetrics.TotalMetrics.Should().Be(2);
+    }
 }
