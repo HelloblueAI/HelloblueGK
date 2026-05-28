@@ -7,26 +7,49 @@ namespace HB_NLP_Research_Lab.Core
     /// Advanced rate limiting service for API protection
     /// Implements sliding window and token bucket algorithms
     /// </summary>
-    public class RateLimitingService
+    public class RateLimitingService : IDisposable
     {
+        private const int DefaultMaxTrackedIdentifiers = 10000;
+
         private readonly ILogger<RateLimitingService> _logger;
         private readonly ConcurrentDictionary<string, RateLimitBucket> _buckets;
         private readonly Timer _cleanupTimer;
+        private readonly object _bucketCreationLock = new();
+        private readonly int _maxTrackedIdentifiers;
 
-        public RateLimitingService(ILogger<RateLimitingService> logger)
+        public RateLimitingService(ILogger<RateLimitingService> logger, int maxTrackedIdentifiers = DefaultMaxTrackedIdentifiers)
         {
             _logger = logger;
+            _maxTrackedIdentifiers = maxTrackedIdentifiers > 0
+                ? maxTrackedIdentifiers
+                : throw new ArgumentOutOfRangeException(nameof(maxTrackedIdentifiers), "Maximum tracked identifiers must be greater than zero.");
             _buckets = new ConcurrentDictionary<string, RateLimitBucket>();
             
             // Clean up expired buckets every minute
             _cleanupTimer = new Timer(CleanupExpiredBuckets, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
         }
 
-        public async Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
+        public virtual async Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
         {
-            var bucket = _buckets.GetOrAdd(identifier, id => new RateLimitBucket(id, policy));
-            
             var now = DateTime.UtcNow;
+            var bucket = GetOrCreateBucket(identifier, policy, now);
+            if (bucket == null)
+            {
+                _logger.LogWarning(
+                    "Rate limit bucket capacity reached. Blocking new identifier {Identifier}. Capacity: {Capacity}",
+                    LogSanitizer.SanitizeIdentifier(identifier),
+                    _maxTrackedIdentifiers);
+
+                return await Task.FromResult(new RateLimitResult
+                {
+                    IsAllowed = false,
+                    RemainingRequests = 0,
+                    ResetTime = now.Add(policy.WindowSize),
+                    TotalRequests = policy.RequestsPerWindow,
+                    Message = "Rate limit capacity reached"
+                });
+            }
+
             var result = bucket.CheckLimit(now);
             
             var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
@@ -43,7 +66,7 @@ namespace HB_NLP_Research_Lab.Core
             return await Task.FromResult(result);
         }
 
-        public async Task<RateLimitResult> CheckRateLimitAsync(string identifier, int maxRequests, TimeSpan window)
+        public virtual async Task<RateLimitResult> CheckRateLimitAsync(string identifier, int maxRequests, TimeSpan window)
         {
             var policy = new RateLimitPolicy
             {
@@ -128,9 +151,37 @@ namespace HB_NLP_Research_Lab.Core
             await Task.CompletedTask;
         }
 
+        private RateLimitBucket? GetOrCreateBucket(string identifier, RateLimitPolicy policy, DateTime now)
+        {
+            if (_buckets.TryGetValue(identifier, out var existingBucket))
+            {
+                return existingBucket;
+            }
+
+            lock (_bucketCreationLock)
+            {
+                if (_buckets.TryGetValue(identifier, out existingBucket))
+                {
+                    return existingBucket;
+                }
+
+                if (_buckets.Count >= _maxTrackedIdentifiers)
+                {
+                    CleanupExpiredBuckets(now);
+                    if (_buckets.Count >= _maxTrackedIdentifiers)
+                    {
+                        return null;
+                    }
+                }
+
+                var bucket = new RateLimitBucket(identifier, policy);
+                return _buckets.TryAdd(identifier, bucket) ? bucket : _buckets[identifier];
+            }
+        }
+
         private void CleanupExpiredBuckets(object? state)
         {
-            var now = DateTime.UtcNow;
+            var now = state is DateTime cleanupTime ? cleanupTime : DateTime.UtcNow;
             var expiredKeys = _buckets
                 .Where(kvp => !kvp.Value.IsActive(now))
                 .Select(kvp => kvp.Key)

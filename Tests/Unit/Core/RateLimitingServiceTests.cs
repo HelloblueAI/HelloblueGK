@@ -215,4 +215,31 @@ public class RateLimitingServiceTests
         result1.IsAllowed.Should().BeTrue();
         result2.IsAllowed.Should().BeTrue();
     }
+
+    [Fact]
+    public async Task CheckRateLimitAsync_WhenBucketCapacityReached_ShouldBlockNewIdentifiers()
+    {
+        // Arrange
+        using var cappedService = new RateLimitingService(_mockLogger.Object, maxTrackedIdentifiers: 2);
+        var policy = new RateLimitPolicy
+        {
+            RequestsPerWindow = 10,
+            WindowSize = TimeSpan.FromMinutes(1),
+            Algorithm = RateLimitAlgorithm.SlidingWindow
+        };
+
+        await cappedService.CheckRateLimitAsync("client-1", policy);
+        await cappedService.CheckRateLimitAsync("client-2", policy);
+
+        // Act
+        var existingClientResult = await cappedService.CheckRateLimitAsync("client-1", policy);
+        var newClientResult = await cappedService.CheckRateLimitAsync("client-3", policy);
+        var report = await cappedService.GenerateReportAsync();
+
+        // Assert
+        existingClientResult.IsAllowed.Should().BeTrue();
+        newClientResult.IsAllowed.Should().BeFalse();
+        newClientResult.Message.Should().Be("Rate limit capacity reached");
+        report.TotalBuckets.Should().Be(2);
+    }
 }
