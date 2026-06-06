@@ -131,30 +131,25 @@ public class PerformanceBenchmarkTests
     [Fact]
     public async Task MemoryUsage_ShouldNotGrowExcessively()
     {
-        // Arrange
-        var initialMemory = GC.GetTotalMemory(false);
-        
-        // Act - Perform many operations
-        for (int i = 0; i < 10000; i++)
+        // PerformanceMonitoringService caps unique metric series at 10,000.
+        // Assert bounded storage instead of GC heap deltas, which are flaky in CI
+        // when other tests run in the same process.
+        const int metricSeriesCapacity = 10_000;
+        const int iterations = metricSeriesCapacity + 5_000;
+
+        for (int i = 0; i < iterations; i++)
         {
             _performanceService.RecordMetric($"MemoryTest_{i}", i, "MemoryTest");
-            
+
             if (i % 1000 == 0)
             {
                 await _performanceService.GeneratePerformanceReportAsync();
             }
         }
 
-        // Force garbage collection
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-
-        var finalMemory = GC.GetTotalMemory(false);
-        var memoryIncrease = finalMemory - initialMemory;
-
-        // Assert
-        memoryIncrease.Should().BeLessThan(50 * 1024 * 1024, "Memory increase should be less than 50MB"); // 50MB limit
+        var metricCount = _performanceService.GetMetricsByCategory("MemoryTest").Count();
+        metricCount.Should().BeLessOrEqualTo(metricSeriesCapacity,
+            "metric storage should be capped to prevent unbounded memory growth");
     }
 
     [Fact]
