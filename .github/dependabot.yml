@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    groups:
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+      aspnet-ecosystem:
+        patterns:
+          - "Swashbuckle.*"
+          - "AspNetCore*"
+          - "FluentValidation.*"
+          - "prometheus-net.*"
+    ignore:
+      # Stay on .NET 9-compatible majors until you upgrade the SDK
+      - dependency-name: "Microsoft.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "Swashbuckle.*"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
