@@ -24,6 +24,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && \
 
 COPY --from=build /app/publish .
 
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+
 ENV ASPNETCORE_ENVIRONMENT=Production
 # Default port when PORT is not set (e.g. local docker run); Render/Railway set PORT at runtime
 ENV PORT=8080
@@ -34,5 +36,7 @@ EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
   CMD ["/bin/sh", "-c", "port=${PORT:-8080} && curl -f http://localhost:${port}/Health || exit 1"]
+
+USER appuser
 
 ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]

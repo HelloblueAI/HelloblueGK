@@ -94,7 +94,7 @@ GitGuardian detected hardcoded credentials in `appsettings.json`:
 The Prometheus metrics endpoint at `/metrics` was exposing database connection string details in the `npgsql_db_client_connections_usage` metric's `pool_name` label:
 
 ```
-pool_name="Host=dpg-d4t6nlvgi27c73d9ik70-a;Port=5432;Database=hellobluegk_db;Username=hellobluegk_db_user"
+pool_name="Host=<redacted-db-host>;Port=5432;Database=<redacted-db-name>;Username=<redacted-db-user>"
 ```
 
 **Assessment:**
@@ -153,7 +153,7 @@ The credentials may still be in git history even if removed from current files.
 
 **To check:**
 ```bash
-git log --all --full-history --source -- "*" | grep -i "dpg-d4t6nlvgi27c73d9ik70\|mLuJN9XwBIzsPeflcekPeLp6lRIK96r0"
+git log --all --full-history --source -- "*" | grep -Ei "<redacted-db-host>|<redacted-db-password>"
 ```
 
 ### 4. Remove from Git History (If Found)
