@@ -1,6 +1,11 @@
 # Required env vars (set in Render Dashboard for your HelloblueGK service):
 #   DATABASE_URL     = Internal Database URL from hellobluegk-db (PostgreSQL)
 #   Jwt__Key         = secure 32+ char secret (e.g. from: openssl rand -base64 48)
+# Optional — internal Swagger via corporate SSO (see Docs/Deployment/INTERNAL_SWAGGER_SSO.md):
+#   Authentication__OpenIdConnect__Enabled=true
+#   Authentication__OpenIdConnect__Authority=https://login.microsoftonline.com/<tenant>/v2.0
+#   Authentication__OpenIdConnect__ClientId=...
+#   Authentication__OpenIdConnect__ClientSecret=...
 services:
   - type: web
     name: hellobluegk-production
