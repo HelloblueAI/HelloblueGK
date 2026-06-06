@@ -2,7 +2,21 @@
 
 > **Open-source aerospace engine simulation platform** with multi-physics coupling, AI optimization, and enterprise-grade compliance.
 
-**Status:** ✅ Production-ready and fully operational
+**Status:** ✅ Production-ready and fully operational  
+**License:** [Apache 2.0](LICENSE) — public open source  
+**Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) | **Security:** See [SECURITY.md](SECURITY.md)
+
+### Open source model
+
+| What | Public? | Notes |
+|------|---------|--------|
+| **Source code** | ✅ Yes | Apache 2.0 — fork, study, contribute |
+| **API reference** | ✅ Yes | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) in this repo |
+| **Live demo API** | ✅ URL is public | Health/metrics public; API requires auth |
+| **Hosted demo docs** | 🔐 Authenticated | Swagger on Render uses corporate SSO — run locally for open Swagger |
+| **Secrets** | 🔐 Never in git | Use Render/env vars for your deployment |
+
+Clone and run your own instance — you control registration, SSO, and secrets. The hosted demo at `hellobluegk.onrender.com` is our reference deployment, not an open signup sandbox.
 
 ### Quick Start
 
@@ -11,8 +25,8 @@
 ** API Base URL:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
 
 - ** API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - Complete API reference with examples
-- ** Swagger UI:** [https://hellobluegk.onrender.com/swagger](https://hellobluegk.onrender.com/swagger) - Interactive API explorer
-- ** Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health)
+- ** Internal Swagger (SSO):** [https://hellobluegk.onrender.com/api/v1/Account/login](https://hellobluegk.onrender.com/api/v1/Account/login) - Microsoft sign-in required
+- ** Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health) - No auth required
 - ** Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md) - Production deployment guide
 
 ### API Documentation
@@ -55,17 +69,16 @@ The API documentation includes:
 - NASA NPR 7150.2 Class A (Human-rated systems)
 - ITAR Compliance (Category IV - Launch vehicles)
 
-**Quick Example:**
+**Quick Example (local dev — enable registration in `appsettings.Development.json`):**
 ```bash
-# Register a user
-curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"username":"test","email":"test@example.com","password":"SecurePass123!"}'
-
-# Login to get token
+# Login (hosted demo — registration disabled on production)
 curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/login \
   -H "Content-Type: application/json" \
-  -d '{"username":"test","password":"SecurePass123!"}'
+  -d '{"username":"YOUR_USER","password":"YOUR_PASSWORD"}'
+
+# Use token for API calls
+curl https://hellobluegk.onrender.com/api/v1/engines \
+  -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
 ** Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment. On Render: set `DATABASE_URL` and `Jwt__Key` in your service Environment — see [RENDER_DO_IT_ALL.md](Docs/Deployment/RENDER_DO_IT_ALL.md).
