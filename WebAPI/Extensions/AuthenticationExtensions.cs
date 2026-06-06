@@ -124,15 +124,14 @@ public static class AuthenticationExtensions
                     ValidAudience = oidcSection["Audience"]
                 };
 
-                var useHttpsCallbacks = builder.Environment.IsProduction()
-                    || oidcSection.GetValue("ForceHttpsRedirectUri", false);
-
                 options.Events = new OpenIdConnectEvents
                 {
                     OnRedirectToIdentityProvider = context =>
                     {
-                        // Render terminates TLS at the edge; force https callback for Azure AD.
-                        if (useHttpsCallbacks)
+                        // Render terminates TLS at the edge; Azure AD only accepts https:// callbacks.
+                        var host = context.Request.Host.Host;
+                        if (!host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                            && !host.StartsWith("127.", StringComparison.Ordinal))
                         {
                             context.ProtocolMessage.RedirectUri =
                                 $"https://{context.Request.Host.Value}{options.CallbackPath}";
