@@ -14,12 +14,22 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using HB_NLP_Research_Lab.WebAPI.Validators;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.HttpOverrides;
 using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Configuration;
 using HB_NLP_Research_Lab.WebAPI.Extensions;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Render/Railway terminate TLS at the edge and forward HTTP to the container.
+// Trust X-Forwarded-Proto so OIDC redirect URIs use https:// (required by Azure AD).
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 
 builder.Services.Configure<DocumentationOptions>(
     builder.Configuration.GetSection(DocumentationOptions.SectionName));
@@ -559,6 +569,8 @@ var app = builder.Build();
     }
 
 // Configure the HTTP request pipeline
+
+app.UseForwardedHeaders();
 
 // Security headers middleware (must be early in pipeline)
 app.Use(async (context, next) =>
