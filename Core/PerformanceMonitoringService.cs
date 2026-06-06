@@ -14,6 +14,9 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class PerformanceMonitoringService : IHostedService, IDisposable
     {
+        private const int DefaultMaxMetricSeries = 10000;
+        private const int MaxSamplesPerMetric = 100;
+
         private readonly ILogger<PerformanceMonitoringService> _logger;
         private readonly ConcurrentDictionary<string, PerformanceMetric> _metrics;
         private readonly ConcurrentDictionary<string, List<PerformanceSample>> _samples;
@@ -21,12 +24,23 @@ namespace HB_NLP_Research_Lab.Core
         private readonly PerformanceCounter? _cpuCounter;
         private readonly PerformanceCounter? _memoryCounter;
         private readonly Process _currentProcess;
+        private readonly object _metricSeriesLock = new();
+        private readonly int _maxMetricSeries;
+        private long _droppedMetricSeries;
         private bool _disposed = false;
         private bool _isStarted = false;
 
         public PerformanceMonitoringService(ILogger<PerformanceMonitoringService> logger)
+            : this(logger, DefaultMaxMetricSeries)
+        {
+        }
+
+        public PerformanceMonitoringService(ILogger<PerformanceMonitoringService> logger, int maxMetricSeries)
         {
             _logger = logger;
+            _maxMetricSeries = maxMetricSeries > 0
+                ? maxMetricSeries
+                : throw new ArgumentOutOfRangeException(nameof(maxMetricSeries), "Maximum metric series must be greater than zero.");
             _metrics = new ConcurrentDictionary<string, PerformanceMetric>();
             _samples = new ConcurrentDictionary<string, List<PerformanceSample>>();
             _currentProcess = Process.GetCurrentProcess();
@@ -82,24 +96,42 @@ namespace HB_NLP_Research_Lab.Core
 
         public void RecordMetric(string name, double value, string category = "General")
         {
-            _metrics.AddOrUpdate(name, 
-                new PerformanceMetric { Name = name, Category = category, Value = value, Count = 1, LastUpdated = DateTime.UtcNow },
-                (key, existing) => 
-                {
-                    existing.Value = value;
-                    existing.Count++;
-                    existing.LastUpdated = DateTime.UtcNow;
-                    return existing;
-                });
-
-            // Store sample for trend analysis
-            var samples = _samples.GetOrAdd(name, _ => new List<PerformanceSample>());
-            samples.Add(new PerformanceSample { Timestamp = DateTime.UtcNow, Value = value });
-            
-            // Keep only last 100 samples per metric
-            if (samples.Count > 100)
+            lock (_metricSeriesLock)
             {
-                samples.RemoveRange(0, samples.Count - 100);
+                if (!_metrics.ContainsKey(name) && _metrics.Count >= _maxMetricSeries)
+                {
+                    var dropped = Interlocked.Increment(ref _droppedMetricSeries);
+                    if (dropped == 1 || dropped % 1000 == 0)
+                    {
+                        _logger.LogWarning(
+                            "Performance metric series capacity reached. Dropping new metric series {MetricName}. Capacity: {Capacity}, Dropped: {Dropped}",
+                            LogSanitizer.Sanitize(name),
+                            _maxMetricSeries,
+                            dropped);
+                    }
+
+                    return;
+                }
+
+                _metrics.AddOrUpdate(name, 
+                    new PerformanceMetric { Name = name, Category = category, Value = value, Count = 1, LastUpdated = DateTime.UtcNow },
+                    (key, existing) => 
+                    {
+                        existing.Value = value;
+                        existing.Count++;
+                        existing.LastUpdated = DateTime.UtcNow;
+                        return existing;
+                    });
+
+                // Store sample for trend analysis
+                var samples = _samples.GetOrAdd(name, _ => new List<PerformanceSample>());
+                samples.Add(new PerformanceSample { Timestamp = DateTime.UtcNow, Value = value });
+                
+                // Keep only recent samples per metric to bound memory per series.
+                if (samples.Count > MaxSamplesPerMetric)
+                {
+                    samples.RemoveRange(0, samples.Count - MaxSamplesPerMetric);
+                }
             }
         }
 
@@ -159,7 +191,11 @@ namespace HB_NLP_Research_Lab.Core
                 return Enumerable.Empty<PerformanceTrend>();
 
             var cutoff = DateTime.UtcNow - lookbackPeriod;
-            var recentSamples = samples.Where(s => s.Timestamp >= cutoff).ToList();
+            List<PerformanceSample> recentSamples;
+            lock (_metricSeriesLock)
+            {
+                recentSamples = samples.Where(s => s.Timestamp >= cutoff).ToList();
+            }
 
             if (recentSamples.Count < 2)
                 return Enumerable.Empty<PerformanceTrend>();
@@ -273,10 +309,18 @@ namespace HB_NLP_Research_Lab.Core
             return new ApplicationMetrics
             {
                 TotalMetrics = _metrics.Count,
-                TotalSamples = _samples.Values.Sum(s => s.Count),
+                TotalSamples = GetTotalSampleCount(),
                 MetricCategories = _metrics.Values.Select(m => m.Category).Distinct().ToList(),
                 LastUpdate = _metrics.Values.Any() ? _metrics.Values.Max(m => m.LastUpdated) : DateTime.UtcNow
             };
+        }
+
+        private int GetTotalSampleCount()
+        {
+            lock (_metricSeriesLock)
+            {
+                return _samples.Values.Sum(s => s.Count);
+            }
         }
 
         private List<PerformanceTrend> GetPerformanceTrends()

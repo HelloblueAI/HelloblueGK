@@ -79,14 +79,7 @@ namespace HB_NLP_Research_Lab.Core
                 _logger.LogError(ex, "Error in rate limiting middleware for {ClientIdentifier} on {Endpoint}", 
                     clientIdentifier, endpoint);
 
-                if (IsAuthenticationEndpoint(endpoint))
-                {
-                    await WriteRateLimitingUnavailableResponseAsync(context);
-                    return;
-                }
-
-                // Non-auth endpoints remain available if rate limiting has an internal failure.
-                await _next(context);
+                await WriteRateLimitingUnavailableResponseAsync(context);
             }
         }
 
@@ -150,11 +143,6 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private static bool IsAuthenticationEndpoint(string endpoint)
-        {
-            return endpoint.StartsWith("/api/v1/auth/", StringComparison.OrdinalIgnoreCase);
-        }
-
         private static async Task WriteRateLimitingUnavailableResponseAsync(HttpContext context)
         {
             if (context.Response.HasStarted)
@@ -168,7 +156,7 @@ namespace HB_NLP_Research_Lab.Core
             var errorResponse = new
             {
                 error = "Rate limiting unavailable",
-                message = "Authentication is temporarily unavailable. Please try again later."
+                message = "Rate limiting is temporarily unavailable. Please try again later."
             };
 
             var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
