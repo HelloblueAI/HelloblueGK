@@ -6,19 +6,26 @@ using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
 using HB_NLP_Research_Lab.WebAPI.Scripts;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc.ApiExplorer;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Prometheus;
 using FluentValidation;
 using FluentValidation.AspNetCore;
 using HB_NLP_Research_Lab.WebAPI.Validators;
 using Microsoft.AspNetCore.Authorization;
+using HB_NLP_Research_Lab.WebAPI.Authorization;
+using HB_NLP_Research_Lab.WebAPI.Configuration;
+using HB_NLP_Research_Lab.WebAPI.Extensions;
 using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<DocumentationOptions>(
+    builder.Configuration.GetSection(DocumentationOptions.SectionName));
+builder.Services.AddSingleton<
+    Microsoft.AspNetCore.Authorization.Policy.IAuthorizationMiddlewareResultHandler,
+    SwaggerDevAuthorizationHandler>();
 
 // Add services to the container
 var mvcBuilder = builder.Services.AddControllers();
@@ -98,6 +105,8 @@ builder.Services.AddSwaggerGen(c =>
             Array.Empty<string>()
         }
     });
+
+    c.ConfigureSwaggerOAuth(builder.Configuration);
 
     // Include XML comments if available
     var assemblyName = System.Reflection.Assembly.GetExecutingAssembly().GetName().Name;
@@ -308,26 +317,10 @@ if (Encoding.UTF8.GetByteCount(jwtKey) < minimumJwtKeyBytes)
 
 var jwtIssuer = builder.Configuration["Jwt:Issuer"] ?? "hellobluegk";
 var jwtAudience = builder.Configuration["Jwt:Audience"] ?? "hellobluegk-api";
-
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters
-    {
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-        ValidateIssuer = true,
-        ValidIssuer = jwtIssuer,
-        ValidateAudience = true,
-        ValidAudience = jwtAudience,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero
-    };
-});
+var openIdConnectEnabled = builder.AddHelloblueGKAuthentication(jwtKey, jwtIssuer, jwtAudience);
+var documentationOptions = builder.Configuration
+    .GetSection(DocumentationOptions.SectionName)
+    .Get<DocumentationOptions>() ?? new DocumentationOptions();
 
 builder.Services.AddAuthorization(options =>
 {
@@ -336,7 +329,12 @@ builder.Services.AddAuthorization(options =>
         .Build();
 
     options.DefaultPolicy = authenticatedUserPolicy;
-    options.FallbackPolicy = authenticatedUserPolicy;
+
+    // Internal-only documentation: Swagger and other unannotated routes require authentication in production.
+    if (!builder.Environment.IsDevelopment() || documentationOptions.InternalOnly)
+    {
+        options.FallbackPolicy = authenticatedUserPolicy;
+    }
 });
 
 // Configure Data Protection
@@ -593,18 +591,15 @@ if (builder.Configuration.GetValue("EnableRateLimiting", true))
 }
 app.UseAuthorization();
 
-// Swagger/OpenAPI documentation
-// Industry-standard approach (like SpaceX, GitHub, Stripe, AWS):
-// - Swagger UI is PUBLICLY ACCESSIBLE - anyone can view the documentation
-// - Swagger JSON spec is publicly accessible (for API discovery and tooling)
-// - API endpoints themselves require authentication (handled by [Authorize] attributes)
-// - Users can browse docs freely, but need to login to use "Try it out" feature
+// Swagger/OpenAPI documentation — internal-only in production (aerospace-style).
+// Production: SSO via /api/v1/Account/login when OpenIdConnect is enabled, otherwise JWT Bearer.
+// Development: public when Documentation:AllowPublicInDevelopment is true.
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "HelloblueGK API v1");
     c.RoutePrefix = app.Environment.IsDevelopment() ? string.Empty : "swagger";
-    c.DocumentTitle = "HelloblueGK API Documentation";
+    c.DocumentTitle = "HelloblueGK API Documentation (Internal)";
 
     c.EnableDeepLinking();
     c.EnableFilter();
@@ -614,9 +609,19 @@ app.UseSwaggerUI(c =>
     c.DefaultModelsExpandDepth(2);
     c.DefaultModelRendering(Swashbuckle.AspNetCore.SwaggerUI.ModelRendering.Example);
 
-    // Enable "Try it out" - users can test endpoints, but will need to authenticate
     c.ConfigObject.AdditionalItems.Add("tryItOutEnabled", true);
     c.ConfigObject.AdditionalItems.Add("supportedSubmitMethods", new[] { "get", "post", "put", "patch", "delete" });
+
+    if (openIdConnectEnabled)
+    {
+        var clientId = app.Configuration["Authentication:OpenIdConnect:ClientId"] ?? string.Empty;
+        var apiScope = app.Configuration["Authentication:OpenIdConnect:ApiScope"]
+            ?? $"api://{clientId}/.default";
+
+        c.OAuthClientId(clientId);
+        c.OAuthUsePkce();
+        c.OAuthScopes("openid", "profile", apiScope);
+    }
 });
 
 if (app.Environment.IsDevelopment())
@@ -643,7 +648,10 @@ app.MapGet("/", () =>
             service = "HelloblueGK Aerospace Engine Simulation API",
             version = "v1",
             status = "operational",
-            documentation = "API documentation is available in development mode only",
+            documentation = openIdConnectEnabled
+                ? "Internal API documentation requires corporate SSO at /api/v1/Account/login"
+                : "Internal API documentation requires authentication at /swagger",
+            internalDocsLogin = openIdConnectEnabled ? "/api/v1/Account/login" : (string?)null,
             health = "/Health",
             metrics = "/metrics"
         });
