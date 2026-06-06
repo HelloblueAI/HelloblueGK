@@ -208,6 +208,8 @@ jobs:
         context: .
         file: ./Docker/Dockerfile
         push: false
+        load: true
+        provenance: false
         tags: hellobluegk:test
         cache-from: type=gha
         cache-to: type=gha,mode=max
