@@ -2,7 +2,7 @@
 # This is what runs in production (Render/Railway) and is validated by CI.
 # Build from repo root: docker build -f Docker/Dockerfile .
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
 WORKDIR /src
 
 COPY HelloblueGK.csproj ./
@@ -16,7 +16,7 @@ WORKDIR /src/WebAPI
 RUN dotnet publish -c Release -o /app/publish
 
 # Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim AS runtime
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
