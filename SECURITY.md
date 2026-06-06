@@ -19,7 +19,7 @@ HelloblueGK is a **public open-source project** (Apache 2.0). Production secrets
 
 ### Alternative contact
 
-If GitHub reporting is unavailable, email **support@helloblue.ai** with:
+If GitHub reporting is unavailable, email **security@helloblue.ai** with:
 - Description of the issue
 - Steps to reproduce
 - Impact assessment (if known)
