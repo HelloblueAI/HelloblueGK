@@ -23,9 +23,7 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<DocumentationOptions>(
     builder.Configuration.GetSection(DocumentationOptions.SectionName));
-builder.Services.AddSingleton<
-    Microsoft.AspNetCore.Authorization.Policy.IAuthorizationMiddlewareResultHandler,
-    SwaggerDevAuthorizationHandler>();
+builder.Services.AddSingleton<IAuthorizationMiddlewareResultHandler, SwaggerDevAuthorizationHandler>();
 
 // Add services to the container
 var mvcBuilder = builder.Services.AddControllers();
