@@ -185,10 +185,16 @@ jobs:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         
     - name: Run security audit
-      run: dotnet list package --vulnerable --include-transitive
+      run: |
+        dotnet list HelloblueGK.csproj package --vulnerable --include-transitive
+        dotnet list WebAPI/HelloblueGK.WebAPI.csproj package --vulnerable --include-transitive
+        dotnet list Tests/HelloblueGK.Tests.csproj package --vulnerable --include-transitive
       
     - name: Check for known vulnerabilities
-      run: dotnet list package --deprecated
+      run: |
+        dotnet list HelloblueGK.csproj package --deprecated
+        dotnet list WebAPI/HelloblueGK.WebAPI.csproj package --deprecated
+        dotnet list Tests/HelloblueGK.Tests.csproj package --deprecated
 
   docker-build:
     name: Docker Build Test

@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 
 namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
@@ -166,7 +168,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 };
 
                 // Create digital twin using DigitalTwinEngine
-                var engineId = $"Engine_{request.EngineId}";
+                var engineId = BuildDigitalTwinEngineKey(request.EngineId, currentUsername);
                 var digitalTwinResult = await _digitalTwinEngine.CreateDigitalTwinAsync(engineId, engineModel);
 
                 // Create database record
@@ -220,7 +222,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
 
                 // Update digital twin with learning data
-                var engineId = $"Engine_{digitalTwin.EngineId}";
+                var engineId = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
                 
                 // Convert telemetry data to TestFlightData format
                 var flightData = new TestFlightData
@@ -280,7 +282,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
-                var engineId = $"Engine_{digitalTwin.EngineId}";
+                var engineId = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
                 
                 // Create prediction scenario from parameters
                 var scenario = new PredictionScenario
@@ -372,6 +374,15 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             return User.Identity?.Name
                 ?? User.FindFirst(ClaimTypes.Name)?.Value
                 ?? User.FindFirst("username")?.Value;
+        }
+
+        private static string BuildDigitalTwinEngineKey(int engineId, string? owner)
+        {
+            var ownerKey = string.IsNullOrWhiteSpace(owner)
+                ? "unowned"
+                : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(owner.Trim().ToUpperInvariant())))[..16];
+
+            return $"Owner_{ownerKey}_Engine_{engineId}";
         }
     }
 

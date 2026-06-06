@@ -20,7 +20,7 @@ The API uses JWT (JSON Web Tokens) for authentication. Most endpoints require au
    {
      "username": "your_username",
      "email": "your_email@example.com",
-     "password": "SecurePassword123!",
+     "password": "<your-strong-password>",
      "firstName": "Your",
      "lastName": "Name"
    }
@@ -33,7 +33,7 @@ The API uses JWT (JSON Web Tokens) for authentication. Most endpoints require au
    
    {
      "username": "your_username",
-     "password": "SecurePassword123!"
+     "password": "<your-strong-password>"
    }
    ```
 

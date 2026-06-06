@@ -51,7 +51,7 @@ curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/register \
   -d '{
     "username": "your_username",
     "email": "your_email@example.com",
-    "password": "SecurePassword123!",
+    "password": "<your-strong-password>",
     "firstName": "Your",
     "lastName": "Name"
   }'
@@ -63,7 +63,7 @@ curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "your_username",
-    "password": "SecurePassword123!"
+    "password": "<your-strong-password>"
   }'
 ```
 
