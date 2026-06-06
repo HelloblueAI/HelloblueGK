@@ -10,6 +10,20 @@
     "DefaultConnection": "Server=your-server;Database=HelloblueGK;User Id=your-user;Password=your-password;TrustServerCertificate=true",
     "PostgreSQLConnection": "Host=your-host;Database=hellobluegk;Username=your-user;Password=your-password"
   },
+  "Documentation": {
+    "InternalOnly": true,
+    "AllowPublicInDevelopment": false
+  },
+  "Authentication": {
+    "OpenIdConnect": {
+      "Enabled": false,
+      "Authority": "https://login.microsoftonline.com/YOUR-TENANT-ID/v2.0",
+      "ClientId": "YOUR-AZURE-APP-CLIENT-ID",
+      "ClientSecret": "YOUR-AZURE-APP-CLIENT-SECRET",
+      "Audience": "YOUR-AZURE-APP-CLIENT-ID",
+      "ApiScope": "api://YOUR-AZURE-APP-CLIENT-ID/.default"
+    }
+  },
   "Jwt": {
     "Key": "CHANGE-THIS-TO-A-SECURE-RANDOM-STRING-MINIMUM-32-CHARACTERS-LONG",
     "Issuer": "https://api.helloblue.com",
