@@ -38,49 +38,49 @@ namespace HB_NLP_Research_Lab.Core
             // Get rate limit policy for the endpoint
             var policy = GetPolicyForEndpoint(endpoint);
 
+            RateLimitResult rateLimitResult;
             try
             {
-                var rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(clientIdentifier, policy);
-
-                // Add rate limit headers
-                AddRateLimitHeaders(context.Response, rateLimitResult);
-
-                if (!rateLimitResult.IsAllowed)
-                {
-                    _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint}. Remaining: {Remaining}, Reset: {ResetTime}", 
-                        clientIdentifier, endpoint, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
-
-                    context.Response.StatusCode = 429; // Too Many Requests
-                    context.Response.ContentType = "application/json";
-
-                    var errorResponse = new
-                    {
-                        error = "Rate limit exceeded",
-                        message = $"Rate limit exceeded. Try again at {rateLimitResult.ResetTime:yyyy-MM-dd HH:mm:ss UTC}",
-                        retryAfter = (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds,
-                        remainingRequests = rateLimitResult.RemainingRequests,
-                        resetTime = rateLimitResult.ResetTime
-                    };
-
-                    var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
-                    {
-                        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                    });
-
-                    await context.Response.WriteAsync(jsonResponse);
-                    return;
-                }
-
-                // Continue to the next middleware
-                await _next(context);
+                rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(clientIdentifier, policy);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in rate limiting middleware for {ClientIdentifier} on {Endpoint}", 
+                _logger.LogError(ex, "Error in rate limiting middleware for {ClientIdentifier} on {Endpoint}",
                     clientIdentifier, endpoint);
 
                 await WriteRateLimitingUnavailableResponseAsync(context);
+                return;
             }
+
+            AddRateLimitHeaders(context.Response, rateLimitResult);
+
+            if (!rateLimitResult.IsAllowed)
+            {
+                _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint}. Remaining: {Remaining}, Reset: {ResetTime}",
+                    clientIdentifier, endpoint, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
+
+                context.Response.StatusCode = 429; // Too Many Requests
+                context.Response.ContentType = "application/json";
+
+                var errorResponse = new
+                {
+                    error = "Rate limit exceeded",
+                    message = $"Rate limit exceeded. Try again at {rateLimitResult.ResetTime:yyyy-MM-dd HH:mm:ss UTC}",
+                    retryAfter = (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds,
+                    remainingRequests = rateLimitResult.RemainingRequests,
+                    resetTime = rateLimitResult.ResetTime
+                };
+
+                var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
+                {
+                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+                });
+
+                await context.Response.WriteAsync(jsonResponse);
+                return;
+            }
+
+            await _next(context);
         }
 
         private string GetClientIdentifier(HttpContext context)
@@ -111,6 +111,7 @@ namespace HB_NLP_Research_Lab.Core
                 "/health",
                 "/metrics",
                 "/api/v1/performance/health",
+                "/api/v1/account",
                 "/swagger",
                 "/favicon.ico"
             };
