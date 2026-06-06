@@ -14,7 +14,7 @@ services:
     dockerContext: .
     plan: free  # Start with free tier, upgrade when needed
     region: oregon  # Same as hellobluegk-db
-    branch: production-deployment  # Auto-deploy from production-deployment branch
+    branch: main  # Production deploys from main (keep production-deployment in sync via PR)
     envVars:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
