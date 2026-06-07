@@ -48,20 +48,25 @@ public class GlobalExceptionHandlerMiddleware
             _ => (int)HttpStatusCode.InternalServerError
         };
 
+        var includeExceptionDetails = _environment.IsDevelopment();
         var response = new ErrorResponse
         {
             StatusCode = context.Response.StatusCode,
             Message = exception switch
             {
-                ArgumentException => exception.Message,
+                ArgumentException => includeExceptionDetails
+                    ? exception.Message
+                    : "The request could not be processed",
                 UnauthorizedAccessException => "Unauthorized access",
                 KeyNotFoundException => "Resource not found",
-                InvalidOperationException => exception.Message,
-                _ => _environment.IsDevelopment() 
+                InvalidOperationException => includeExceptionDetails
+                    ? exception.Message
+                    : "The request could not be processed",
+                _ => includeExceptionDetails
                     ? exception.Message 
                     : "An error occurred while processing your request"
             },
-            Details = _environment.IsDevelopment() ? exception.ToString() : null,
+            Details = includeExceptionDetails ? exception.ToString() : null,
             Timestamp = DateTime.UtcNow,
             Path = context.Request.Path,
             Method = context.Request.Method

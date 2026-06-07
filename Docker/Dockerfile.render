@@ -32,6 +32,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl && \
 # Copy published application
 COPY --from=build /app/publish .
 
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+
 # Set production environment
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
@@ -47,6 +49,8 @@ EXPOSE 5000
 # Using shell to expand PORT at container runtime; increased start-period for DB init
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD ["/bin/sh", "-c", "port=${PORT:-5000} && curl -f http://localhost:${port}/Health || exit 1"]
+
+USER appuser
 
 # Start the application
 # PORT is set by Render via environment variable

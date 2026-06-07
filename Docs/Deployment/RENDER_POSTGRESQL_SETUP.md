@@ -102,7 +102,7 @@ curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/register \
   -d '{
     "username": "admin",
     "email": "admin@example.com",
-    "password": "SecurePassword123!",
+    "password": "<your-strong-password>",
     "firstName": "Admin",
     "lastName": "User"
   }'

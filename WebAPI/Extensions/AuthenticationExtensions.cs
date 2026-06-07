@@ -93,6 +93,12 @@ public static class AuthenticationExtensions
             var clientId = oidcSection["ClientId"]
                 ?? throw new InvalidOperationException(
                     "Authentication:OpenIdConnect:ClientId is required when OpenIdConnect is enabled.");
+            var audience = oidcSection["Audience"];
+            if (string.IsNullOrWhiteSpace(audience))
+            {
+                throw new InvalidOperationException(
+                    "Authentication:OpenIdConnect:Audience is required when OpenIdConnect is enabled.");
+            }
 
             authenticationBuilder.AddOpenIdConnect(OpenIdConnectDefaults.AuthenticationScheme, options =>
             {
@@ -120,8 +126,8 @@ public static class AuthenticationExtensions
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,
-                    ValidateAudience = !string.IsNullOrWhiteSpace(oidcSection["Audience"]),
-                    ValidAudience = oidcSection["Audience"]
+                    ValidateAudience = true,
+                    ValidAudience = audience
                 };
 
                 var configuredCallbackUrl = oidcSection["CallbackUrl"];
