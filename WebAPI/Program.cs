@@ -24,12 +24,10 @@ using Npgsql;
 var builder = WebApplication.CreateBuilder(args);
 
 // Render/Railway terminate TLS at the edge and forward HTTP to the container.
-// Trust X-Forwarded-Proto so OIDC redirect URIs use https:// (required by Azure AD).
+// Only trust forwarded headers from configured proxies/networks to prevent client IP spoofing.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
-    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
-    options.KnownNetworks.Clear();
-    options.KnownProxies.Clear();
+    ForwardedHeadersConfiguration.Configure(options, builder.Configuration, builder.Environment);
 });
 
 builder.Services.Configure<DocumentationOptions>(

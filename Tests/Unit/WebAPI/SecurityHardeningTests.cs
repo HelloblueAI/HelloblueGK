@@ -2,6 +2,7 @@ using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.WebAPI.Configuration;
 using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
@@ -10,10 +11,12 @@ using HB_NLP_Research_Lab.WebAPI.Middleware;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -130,6 +133,53 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task ForwardedHeaders_ByDefault_IgnoresSpoofedClientIp()
+    {
+        var observedClientIp = await RunForwardedHeaderPipelineAsync(
+            new Dictionary<string, string?>(),
+            Environments.Production,
+            proxyIp: "203.0.113.10",
+            forwardedFor: "198.51.100.25");
+
+        observedClientIp.Should().Be("203.0.113.10");
+    }
+
+    [Fact]
+    public async Task ForwardedHeaders_WithKnownProxy_TrustsForwardedClientIp()
+    {
+        var observedClientIp = await RunForwardedHeaderPipelineAsync(
+            new Dictionary<string, string?>
+            {
+                ["ForwardedHeaders:KnownProxies"] = "203.0.113.10"
+            },
+            Environments.Production,
+            proxyIp: "203.0.113.10",
+            forwardedFor: "198.51.100.25");
+
+        observedClientIp.Should().Be("198.51.100.25");
+    }
+
+    [Fact]
+    public void ForwardedHeaders_WithTrustAllOutsideDevelopment_Throws()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ForwardedHeaders:TrustAll"] = "true"
+            })
+            .Build();
+        var options = new ForwardedHeadersOptions();
+
+        var act = () => ForwardedHeadersConfiguration.Configure(
+            options,
+            configuration,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production });
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*TrustAll*Development*");
+    }
+
+    [Fact]
     public async Task CreateDigitalTwin_ForDifferentUsersOnSameEngine_UsesSeparateEngineKeys()
     {
         await using var context = CreateContext();
@@ -207,6 +257,47 @@ public class SecurityHardeningTests
         };
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+    }
+
+    private static async Task<string> RunForwardedHeaderPipelineAsync(
+        Dictionary<string, string?> configurationValues,
+        string environmentName,
+        string proxyIp,
+        string forwardedFor)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(configurationValues)
+            .Build();
+        var environment = new TestWebHostEnvironment { EnvironmentName = environmentName };
+        var services = new ServiceCollection();
+        services.AddOptions();
+        services.Configure<ForwardedHeadersOptions>(options =>
+            ForwardedHeadersConfiguration.Configure(options, configuration, environment));
+
+        using var provider = services.BuildServiceProvider();
+        var applicationBuilder = new ApplicationBuilder(provider);
+        applicationBuilder.Use(async (context, next) =>
+        {
+            context.Connection.RemoteIpAddress = IPAddress.Parse(proxyIp);
+            await next(context);
+        });
+        applicationBuilder.UseForwardedHeaders();
+        applicationBuilder.Run(context =>
+            context.Response.WriteAsync(context.Connection.RemoteIpAddress?.ToString() ?? "unknown"));
+
+        var context = new DefaultHttpContext
+        {
+            RequestServices = provider
+        };
+        context.Request.Headers["X-Forwarded-For"] = forwardedFor;
+        await using var body = new MemoryStream();
+        context.Response.Body = body;
+
+        await applicationBuilder.Build()(context);
+
+        body.Position = 0;
+        using var reader = new StreamReader(body);
+        return await reader.ReadToEndAsync();
     }
 
     private static Engine CreateEngine(string owner)
