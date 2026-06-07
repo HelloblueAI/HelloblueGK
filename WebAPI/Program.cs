@@ -14,6 +14,7 @@ using FluentValidation;
 using FluentValidation.AspNetCore;
 using HB_NLP_Research_Lab.WebAPI.Validators;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.HttpOverrides;
 using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Configuration;
@@ -353,9 +354,9 @@ builder.Services.AddAuthorization(options =>
 // and configure: .PersistKeysToFileSystem(new DirectoryInfo("/app/data/keys"))
 
 // Add core services
-// PerformanceMonitoringService implements IHostedService and should be registered as such
-// in a hosted application (WebAPI). It will be available as a singleton for injection.
-builder.Services.AddHostedService<PerformanceMonitoringService>();
+// PerformanceMonitoringService is both injectable and hosted; dependent services need the same singleton instance.
+builder.Services.AddSingleton<PerformanceMonitoringService>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<PerformanceMonitoringService>());
 builder.Services.AddSingleton<RateLimitingService>();
 builder.Services.AddSingleton<StructuredLoggingService>();
 builder.Services.AddSingleton<ConfigurationValidationService>();
@@ -604,6 +605,21 @@ app.UseAuthorization();
 // Swagger/OpenAPI documentation — internal-only in production (aerospace-style).
 // Production: SSO via /api/v1/Account/login when OpenIdConnect is enabled, otherwise JWT Bearer.
 // Development: public when Documentation:AllowPublicInDevelopment is true.
+var allowPublicSwagger = app.Environment.IsDevelopment() && documentationOptions.AllowPublicInDevelopment;
+var swaggerUiAtApplicationRoot = app.Environment.IsDevelopment();
+app.Use(async (context, next) =>
+{
+    if (!IsSwaggerRequest(context.Request.Path, swaggerUiAtApplicationRoot)
+        || allowPublicSwagger
+        || context.User.Identity?.IsAuthenticated == true)
+    {
+        await next(context);
+        return;
+    }
+
+    await context.ChallengeAsync();
+});
+
 app.UseSwagger();
 app.UseSwaggerUI(c =>
 {
@@ -678,6 +694,19 @@ Console.WriteLine("📊 Prometheus Metrics: http://localhost:5000/metrics");
 Console.WriteLine("🔐 Authentication: http://localhost:5000/swagger -> Auth endpoints");
 
 app.Run();
+
+static bool IsSwaggerRequest(PathString path, bool swaggerUiAtApplicationRoot)
+{
+    if (path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    return swaggerUiAtApplicationRoot
+        && (path == PathString.FromUriComponent("/")
+            || path == PathString.FromUriComponent("/index.html")
+            || path.StartsWithSegments("/swagger-ui", StringComparison.OrdinalIgnoreCase));
+}
 
 public partial class Program
 {

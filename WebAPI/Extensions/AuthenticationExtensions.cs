@@ -100,6 +100,23 @@ public static class AuthenticationExtensions
                     "Authentication:OpenIdConnect:Audience is required when OpenIdConnect is enabled.");
             }
 
+            var configuredCallbackUrl = oidcSection["CallbackUrl"];
+            if (!builder.Environment.IsDevelopment())
+            {
+                if (string.IsNullOrWhiteSpace(configuredCallbackUrl))
+                {
+                    throw new InvalidOperationException(
+                        "Authentication:OpenIdConnect:CallbackUrl is required outside development when OpenIdConnect is enabled.");
+                }
+
+                if (!Uri.TryCreate(configuredCallbackUrl, UriKind.Absolute, out var callbackUri)
+                    || callbackUri.Scheme != Uri.UriSchemeHttps)
+                {
+                    throw new InvalidOperationException(
+                        "Authentication:OpenIdConnect:CallbackUrl must be an absolute HTTPS URL outside development.");
+                }
+            }
+
             authenticationBuilder.AddOpenIdConnect(OpenIdConnectDefaults.AuthenticationScheme, options =>
             {
                 options.Authority = authority.TrimEnd('/');
@@ -129,8 +146,6 @@ public static class AuthenticationExtensions
                     ValidateAudience = true,
                     ValidAudience = audience
                 };
-
-                var configuredCallbackUrl = oidcSection["CallbackUrl"];
 
                 options.Events = new OpenIdConnectEvents
                 {
