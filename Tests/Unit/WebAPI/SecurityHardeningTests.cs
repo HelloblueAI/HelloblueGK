@@ -271,6 +271,7 @@ public class SecurityHardeningTests
         var environment = new TestWebHostEnvironment { EnvironmentName = environmentName };
         var services = new ServiceCollection();
         services.AddOptions();
+        services.AddLogging();
         services.Configure<ForwardedHeadersOptions>(options =>
             ForwardedHeadersConfiguration.Configure(options, configuration, environment));
 
