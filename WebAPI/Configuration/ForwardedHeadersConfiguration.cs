@@ -2,6 +2,7 @@ using System.Net;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using ForwardedIpNetwork = Microsoft.AspNetCore.HttpOverrides.IPNetwork;
 
 namespace HB_NLP_Research_Lab.WebAPI.Configuration;
 
@@ -70,7 +71,7 @@ public static class ForwardedHeadersConfiguration
             .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    private static IPNetwork ParseNetwork(string value)
+    private static ForwardedIpNetwork ParseNetwork(string value)
     {
         var parts = value.Split('/', 2, StringSplitOptions.TrimEntries);
         if (parts.Length != 2
@@ -88,6 +89,6 @@ public static class ForwardedHeadersConfiguration
                 $"ForwardedHeaders:KnownNetworks contains invalid prefix length '{value}'.");
         }
 
-        return new IPNetwork(prefix, prefixLength);
+        return new ForwardedIpNetwork(prefix, prefixLength);
     }
 }
