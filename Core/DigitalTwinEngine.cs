@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Threading.Tasks;
 using System.Linq;
 using HB_NLP_Research_Lab.Core;
@@ -24,9 +25,9 @@ namespace HB_NLP_Research_Lab.Core
         private readonly AutonomousTestingSystem _autonomousTesting;
         private readonly RealTimeLearningEngine _learningEngine;
         
-        private readonly Dictionary<string, EngineDigitalTwin> _digitalTwins;
-        private readonly Dictionary<string, LearningHistory> _learningHistories;
-        private readonly Dictionary<string, PredictionAccuracy> _predictionAccuracies;
+        private readonly ConcurrentDictionary<string, EngineDigitalTwin> _digitalTwins;
+        private readonly ConcurrentDictionary<string, LearningHistory> _learningHistories;
+        private readonly ConcurrentDictionary<string, PredictionAccuracy> _predictionAccuracies;
         
         private bool _isInitialized = false;
 
@@ -42,9 +43,9 @@ namespace HB_NLP_Research_Lab.Core
             _autonomousTesting = new AutonomousTestingSystem();
             _learningEngine = new RealTimeLearningEngine();
             
-            _digitalTwins = new Dictionary<string, EngineDigitalTwin>();
-            _learningHistories = new Dictionary<string, LearningHistory>();
-            _predictionAccuracies = new Dictionary<string, PredictionAccuracy>();
+            _digitalTwins = new ConcurrentDictionary<string, EngineDigitalTwin>();
+            _learningHistories = new ConcurrentDictionary<string, LearningHistory>();
+            _predictionAccuracies = new ConcurrentDictionary<string, PredictionAccuracy>();
         }
 
         public async Task<DigitalTwinStatus> InitializeAsync()
