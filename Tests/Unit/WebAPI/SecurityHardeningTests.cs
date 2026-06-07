@@ -240,6 +240,7 @@ public class SecurityHardeningTests
         private readonly string _environmentName;
         private readonly Dictionary<string, string?> _overrides;
         private readonly string _databasePath;
+        private readonly Dictionary<string, string?> _previousEnvironmentValues = new();
 
         public TestWebApiFactory(string environmentName, Dictionary<string, string?>? overrides = null)
         {
@@ -248,6 +249,13 @@ public class SecurityHardeningTests
             _databasePath = Path.Combine(
                 Path.GetTempPath(),
                 $"hellobluegk-webapi-{Guid.NewGuid():N}.db");
+
+            foreach (var (key, value) in CreateConfigurationValues())
+            {
+                var environmentKey = key.Replace(":", "__", StringComparison.Ordinal);
+                _previousEnvironmentValues[environmentKey] = Environment.GetEnvironmentVariable(environmentKey);
+                Environment.SetEnvironmentVariable(environmentKey, value);
+            }
         }
 
         protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -255,22 +263,27 @@ public class SecurityHardeningTests
             builder.UseEnvironment(_environmentName);
             builder.ConfigureAppConfiguration((_, configurationBuilder) =>
             {
-                var values = new Dictionary<string, string?>
-                {
-                    ["ConnectionStrings:DefaultConnection"] = $"Data Source={_databasePath}",
-                    ["Jwt:Key"] = "01234567890123456789012345678901",
-                    ["Jwt:Issuer"] = "hellobluegk",
-                    ["Jwt:Audience"] = "hellobluegk-api",
-                    ["EnableRateLimiting"] = "false"
-                };
-
-                foreach (var (key, value) in _overrides)
-                {
-                    values[key] = value;
-                }
-
-                configurationBuilder.AddInMemoryCollection(values);
+                configurationBuilder.AddInMemoryCollection(CreateConfigurationValues());
             });
+        }
+
+        private Dictionary<string, string?> CreateConfigurationValues()
+        {
+            var values = new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = $"Data Source={_databasePath}",
+                ["Jwt:Key"] = "01234567890123456789012345678901",
+                ["Jwt:Issuer"] = "hellobluegk",
+                ["Jwt:Audience"] = "hellobluegk-api",
+                ["EnableRateLimiting"] = "false"
+            };
+
+            foreach (var (key, value) in _overrides)
+            {
+                values[key] = value;
+            }
+
+            return values;
         }
 
         protected override void Dispose(bool disposing)
@@ -287,6 +300,11 @@ public class SecurityHardeningTests
                 if (File.Exists(_databasePath))
                 {
                     File.Delete(_databasePath);
+                }
+
+                foreach (var (key, value) in _previousEnvironmentValues)
+                {
+                    Environment.SetEnvironmentVariable(key, value);
                 }
             }
             catch (IOException)

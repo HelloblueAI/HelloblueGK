@@ -354,9 +354,9 @@ builder.Services.AddAuthorization(options =>
 // and configure: .PersistKeysToFileSystem(new DirectoryInfo("/app/data/keys"))
 
 // Add core services
-// PerformanceMonitoringService implements IHostedService and should be registered as such
-// in a hosted application (WebAPI). It will be available as a singleton for injection.
-builder.Services.AddHostedService<PerformanceMonitoringService>();
+// PerformanceMonitoringService is both injectable and hosted; dependent services need the same singleton instance.
+builder.Services.AddSingleton<PerformanceMonitoringService>();
+builder.Services.AddHostedService(provider => provider.GetRequiredService<PerformanceMonitoringService>());
 builder.Services.AddSingleton<RateLimitingService>();
 builder.Services.AddSingleton<StructuredLoggingService>();
 builder.Services.AddSingleton<ConfigurationValidationService>();
