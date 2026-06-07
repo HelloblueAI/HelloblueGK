@@ -1,3 +1,4 @@
+using System.Net;
 using System.Security.Claims;
 using System.Text.Json;
 using HB_NLP_Research_Lab.Core;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileProviders;
@@ -66,6 +68,65 @@ public class SecurityHardeningTests
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*OpenIdConnect:Audience*");
+    }
+
+    [Fact]
+    public void AddHelloblueGKAuthentication_WhenOidcEnabledOutsideDevelopmentWithoutCallbackUrl_Throws()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = Environments.Production
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Authentication:OpenIdConnect:Enabled"] = "true",
+            ["Authentication:OpenIdConnect:Authority"] = "https://identity.example.com",
+            ["Authentication:OpenIdConnect:ClientId"] = "hellobluegk",
+            ["Authentication:OpenIdConnect:Audience"] = "api://hellobluegk"
+        });
+
+        var act = () => builder.AddHelloblueGKAuthentication(
+            "01234567890123456789012345678901",
+            "hellobluegk",
+            "hellobluegk-api");
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*OpenIdConnect:CallbackUrl*");
+    }
+
+    [Fact]
+    public async Task Swagger_InProduction_RequiresAuthentication()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var jsonResponse = await client.GetAsync("/swagger/v1/swagger.json");
+        var uiResponse = await client.GetAsync("/swagger/index.html");
+
+        jsonResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        uiResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task Swagger_InDevelopment_AllowsPublicAccessWhenConfigured()
+    {
+        using var factory = new TestWebApiFactory(Environments.Development, new Dictionary<string, string?>
+        {
+            ["Documentation:AllowPublicInDevelopment"] = "true"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var response = await client.GetAsync("/swagger/v1/swagger.json");
+        var body = await response.Content.ReadAsStringAsync();
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        body.Should().Contain("\"openapi\"");
     }
 
     [Fact]
@@ -172,5 +233,84 @@ public class SecurityHardeningTests
         public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
         public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private sealed class TestWebApiFactory : WebApplicationFactory<Program>
+    {
+        private readonly string _environmentName;
+        private readonly Dictionary<string, string?> _overrides;
+        private readonly string _databasePath;
+        private readonly Dictionary<string, string?> _previousEnvironmentValues = new();
+
+        public TestWebApiFactory(string environmentName, Dictionary<string, string?>? overrides = null)
+        {
+            _environmentName = environmentName;
+            _overrides = overrides ?? new Dictionary<string, string?>();
+            _databasePath = Path.Combine(
+                Path.GetTempPath(),
+                $"hellobluegk-webapi-{Guid.NewGuid():N}.db");
+
+            foreach (var (key, value) in CreateConfigurationValues())
+            {
+                var environmentKey = key.Replace(":", "__", StringComparison.Ordinal);
+                _previousEnvironmentValues[environmentKey] = Environment.GetEnvironmentVariable(environmentKey);
+                Environment.SetEnvironmentVariable(environmentKey, value);
+            }
+        }
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment(_environmentName);
+            builder.ConfigureAppConfiguration((_, configurationBuilder) =>
+            {
+                configurationBuilder.AddInMemoryCollection(CreateConfigurationValues());
+            });
+        }
+
+        private Dictionary<string, string?> CreateConfigurationValues()
+        {
+            var values = new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] = $"Data Source={_databasePath}",
+                ["Jwt:Key"] = "01234567890123456789012345678901",
+                ["Jwt:Issuer"] = "hellobluegk",
+                ["Jwt:Audience"] = "hellobluegk-api",
+                ["EnableRateLimiting"] = "false"
+            };
+
+            foreach (var (key, value) in _overrides)
+            {
+                values[key] = value;
+            }
+
+            return values;
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            base.Dispose(disposing);
+
+            if (!disposing)
+            {
+                return;
+            }
+
+            try
+            {
+                if (File.Exists(_databasePath))
+                {
+                    File.Delete(_databasePath);
+                }
+
+                foreach (var (key, value) in _previousEnvironmentValues)
+                {
+                    Environment.SetEnvironmentVariable(key, value);
+                }
+            }
+            catch (IOException)
+            {
+                // Best-effort cleanup for SQLite files after the test server has disposed.
+            }
+        }
     }
 }

@@ -1,0 +1,43 @@
+name: Daily Security Audit
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  nuget-vulnerability-audit:
+    name: NuGet Vulnerability Audit
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore dependencies
+      run: |
+        dotnet restore HelloblueGK.csproj
+        dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
+        dotnet restore Tests/HelloblueGK.Tests.csproj
+
+    - name: Scan for vulnerable packages
+      run: |
+        dotnet list HelloblueGK.csproj package --vulnerable --include-transitive
+        dotnet list WebAPI/HelloblueGK.WebAPI.csproj package --vulnerable --include-transitive
+        dotnet list Tests/HelloblueGK.Tests.csproj package --vulnerable --include-transitive
+
+    - name: Report deprecated packages
+      run: |
+        dotnet list HelloblueGK.csproj package --deprecated
+        dotnet list WebAPI/HelloblueGK.WebAPI.csproj package --deprecated
+        dotnet list Tests/HelloblueGK.Tests.csproj package --deprecated
