@@ -36,37 +36,40 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             // Get rate limit policy for the endpoint
-            var policy = GetPolicyForEndpoint(endpoint);
+            var policyName = GetPolicyNameForEndpoint(endpoint, context.Request.Method);
+            var policy = _policies[policyName];
+            var rateLimitIdentifier = $"{policyName}:{clientIdentifier}";
 
             RateLimitResult rateLimitResult;
             try
             {
-                rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(clientIdentifier, policy);
+                rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(rateLimitIdentifier, policy);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error in rate limiting middleware for {ClientIdentifier} on {Endpoint}",
-                    clientIdentifier, endpoint);
+                _logger.LogError(ex, "Error in rate limiting middleware for {ClientIdentifier} on {Endpoint} with {PolicyName} policy",
+                    clientIdentifier, endpoint, policyName);
 
                 await WriteRateLimitingUnavailableResponseAsync(context);
                 return;
             }
 
-            AddRateLimitHeaders(context.Response, rateLimitResult);
+            AddRateLimitHeaders(context.Response, rateLimitResult, policy);
 
             if (!rateLimitResult.IsAllowed)
             {
-                _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint}. Remaining: {Remaining}, Reset: {ResetTime}",
-                    clientIdentifier, endpoint, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
+                _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint} with {PolicyName} policy. Remaining: {Remaining}, Reset: {ResetTime}",
+                    clientIdentifier, endpoint, policyName, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
 
                 context.Response.StatusCode = 429; // Too Many Requests
                 context.Response.ContentType = "application/json";
 
+                var retryAfter = Math.Max(0, (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds);
                 var errorResponse = new
                 {
                     error = "Rate limit exceeded",
                     message = $"Rate limit exceeded. Try again at {rateLimitResult.ResetTime:yyyy-MM-dd HH:mm:ss UTC}",
-                    retryAfter = (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds,
+                    retryAfter,
                     remainingRequests = rateLimitResult.RemainingRequests,
                     resetTime = rateLimitResult.ResetTime
                 };
@@ -111,7 +114,6 @@ namespace HB_NLP_Research_Lab.Core
                 "/health",
                 "/metrics",
                 "/api/v1/performance/health",
-                "/api/v1/account",
                 "/swagger",
                 "/favicon.ico"
             };
@@ -119,29 +121,79 @@ namespace HB_NLP_Research_Lab.Core
             return skipEndpoints.Any(skip => endpoint.StartsWith(skip, StringComparison.OrdinalIgnoreCase));
         }
 
-        private RateLimitPolicy GetPolicyForEndpoint(string endpoint)
+        private string GetPolicyNameForEndpoint(string endpoint, string method)
         {
             // API endpoint policies
-            if (endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase))
+            if (endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/auth/register", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/login", StringComparison.OrdinalIgnoreCase))
             {
-                return _policies["Auth"];
+                return "Auth";
             }
-            else if (endpoint.StartsWith("/api/v1/ai/", StringComparison.OrdinalIgnoreCase))
+            else if (IsExpensiveMutationEndpoint(endpoint, method))
             {
-                return _policies["AI"];
+                return "ExpensiveMutation";
+            }
+            else if (endpoint.StartsWith("/api/v1/ai/", StringComparison.OrdinalIgnoreCase)
+                     || endpoint.StartsWith("/api/v1/aioptimization", StringComparison.OrdinalIgnoreCase))
+            {
+                return "AI";
             }
             else if (endpoint.StartsWith("/api/v1/performance/", StringComparison.OrdinalIgnoreCase))
             {
-                return _policies["Performance"];
+                return "Performance";
             }
             else if (endpoint.StartsWith("/api/v1/", StringComparison.OrdinalIgnoreCase))
             {
-                return _policies["API"];
+                return "API";
             }
             else
             {
-                return _policies["Default"];
+                return "Default";
             }
+        }
+
+        private static bool IsExpensiveMutationEndpoint(string endpoint, string method)
+        {
+            if (!HttpMethods.IsPost(method))
+            {
+                return false;
+            }
+
+            return IsExactExpensiveMutationEndpoint(endpoint)
+                || IsLaunchActionEndpoint(endpoint)
+                || IsDigitalTwinActionEndpoint(endpoint);
+        }
+
+        private static bool IsExactExpensiveMutationEndpoint(string endpoint)
+        {
+            return IsEndpoint(endpoint, "/api/v1/simulations")
+                || IsEndpoint(endpoint, "/api/v1/aioptimization")
+                || IsEndpoint(endpoint, "/api/v1/launches")
+                || IsEndpoint(endpoint, "/api/v1/digitaltwin");
+        }
+
+        private static bool IsLaunchActionEndpoint(string endpoint)
+        {
+            return endpoint.StartsWith("/api/v1/launches/", StringComparison.OrdinalIgnoreCase)
+                && endpoint.EndsWith("/launch", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsDigitalTwinActionEndpoint(string endpoint)
+        {
+            if (!endpoint.StartsWith("/api/v1/digitaltwin/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return endpoint.EndsWith("/learn", StringComparison.OrdinalIgnoreCase)
+                || endpoint.EndsWith("/predict", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsEndpoint(string endpoint, string expectedEndpoint)
+        {
+            return endpoint.Equals(expectedEndpoint, StringComparison.OrdinalIgnoreCase)
+                || endpoint.Equals($"{expectedEndpoint}/", StringComparison.OrdinalIgnoreCase);
         }
 
         private static async Task WriteRateLimitingUnavailableResponseAsync(HttpContext context)
@@ -168,15 +220,15 @@ namespace HB_NLP_Research_Lab.Core
             await context.Response.WriteAsync(jsonResponse);
         }
 
-        private void AddRateLimitHeaders(HttpResponse response, RateLimitResult result)
+        private void AddRateLimitHeaders(HttpResponse response, RateLimitResult result, RateLimitPolicy policy)
         {
-            response.Headers["X-RateLimit-Limit"] = result.TotalRequests.ToString();
+            response.Headers["X-RateLimit-Limit"] = policy.RequestsPerWindow.ToString();
             response.Headers["X-RateLimit-Remaining"] = result.RemainingRequests.ToString();
             response.Headers["X-RateLimit-Reset"] = ((DateTimeOffset)result.ResetTime).ToUnixTimeSeconds().ToString();
 
             if (!result.IsAllowed)
             {
-                var retryAfter = (int)(result.ResetTime - DateTime.UtcNow).TotalSeconds;
+                var retryAfter = Math.Max(0, (int)(result.ResetTime - DateTime.UtcNow).TotalSeconds);
                 response.Headers["Retry-After"] = retryAfter.ToString();
             }
         }
@@ -206,6 +258,12 @@ namespace HB_NLP_Research_Lab.Core
                 ["AI"] = new RateLimitPolicy
                 {
                     RequestsPerWindow = 50,
+                    WindowSize = TimeSpan.FromMinutes(1),
+                    Algorithm = RateLimitAlgorithm.SlidingWindow
+                },
+                ["ExpensiveMutation"] = new RateLimitPolicy
+                {
+                    RequestsPerWindow = 10,
                     WindowSize = TimeSpan.FromMinutes(1),
                     Algorithm = RateLimitAlgorithm.SlidingWindow
                 },

@@ -205,20 +205,10 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v6
       
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v4
-      
     - name: Build Docker image
-      uses: docker/build-push-action@v7
-      with:
-        context: .
-        file: ./Docker/Dockerfile
-        push: false
-        load: true
-        provenance: false
-        tags: hellobluegk:test
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+      env:
+        DOCKER_BUILDKIT: 1
+      run: docker build -f ./Docker/Dockerfile -t hellobluegk:test .
 
   publish-status:
     name: Publish Status
