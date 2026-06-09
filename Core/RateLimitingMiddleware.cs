@@ -160,15 +160,34 @@ namespace HB_NLP_Research_Lab.Core
                 return false;
             }
 
+            return IsExactExpensiveMutationEndpoint(endpoint)
+                || IsLaunchActionEndpoint(endpoint)
+                || IsDigitalTwinActionEndpoint(endpoint);
+        }
+
+        private static bool IsExactExpensiveMutationEndpoint(string endpoint)
+        {
             return IsEndpoint(endpoint, "/api/v1/simulations")
                 || IsEndpoint(endpoint, "/api/v1/aioptimization")
                 || IsEndpoint(endpoint, "/api/v1/launches")
-                || (endpoint.StartsWith("/api/v1/launches/", StringComparison.OrdinalIgnoreCase)
-                    && endpoint.EndsWith("/launch", StringComparison.OrdinalIgnoreCase))
-                || IsEndpoint(endpoint, "/api/v1/digitaltwin")
-                || (endpoint.StartsWith("/api/v1/digitaltwin/", StringComparison.OrdinalIgnoreCase)
-                    && (endpoint.EndsWith("/learn", StringComparison.OrdinalIgnoreCase)
-                        || endpoint.EndsWith("/predict", StringComparison.OrdinalIgnoreCase)));
+                || IsEndpoint(endpoint, "/api/v1/digitaltwin");
+        }
+
+        private static bool IsLaunchActionEndpoint(string endpoint)
+        {
+            return endpoint.StartsWith("/api/v1/launches/", StringComparison.OrdinalIgnoreCase)
+                && endpoint.EndsWith("/launch", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsDigitalTwinActionEndpoint(string endpoint)
+        {
+            if (!endpoint.StartsWith("/api/v1/digitaltwin/", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return endpoint.EndsWith("/learn", StringComparison.OrdinalIgnoreCase)
+                || endpoint.EndsWith("/predict", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsEndpoint(string endpoint, string expectedEndpoint)

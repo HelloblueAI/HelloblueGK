@@ -52,10 +52,10 @@ public class RateLimitingMiddlewareSecurityTests
     {
         // Arrange
         using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
-        MiddlewareInvocationResult? allowedResult = null;
 
         // Act
-        for (var i = 0; i < 10; i++)
+        var allowedResult = await InvokeMiddlewareAsync(rateLimitingService, path, HttpMethods.Post);
+        for (var i = 1; i < 10; i++)
         {
             allowedResult = await InvokeMiddlewareAsync(rateLimitingService, path, HttpMethods.Post);
         }
@@ -63,8 +63,7 @@ public class RateLimitingMiddlewareSecurityTests
         var blockedResult = await InvokeMiddlewareAsync(rateLimitingService, path, HttpMethods.Post);
 
         // Assert
-        allowedResult.Should().NotBeNull();
-        allowedResult!.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        allowedResult.StatusCode.Should().Be(StatusCodes.Status204NoContent);
         allowedResult.NextCalled.Should().BeTrue();
         allowedResult.Headers["X-RateLimit-Limit"].Should().Be("10");
         blockedResult.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
@@ -84,10 +83,10 @@ public class RateLimitingMiddlewareSecurityTests
     {
         // Arrange
         using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
-        MiddlewareInvocationResult? allowedResult = null;
 
         // Act
-        for (var i = 0; i < 10; i++)
+        var allowedResult = await InvokeMiddlewareAsync(rateLimitingService, path, HttpMethods.Post);
+        for (var i = 1; i < 10; i++)
         {
             allowedResult = await InvokeMiddlewareAsync(rateLimitingService, path, HttpMethods.Post);
         }
@@ -95,8 +94,7 @@ public class RateLimitingMiddlewareSecurityTests
         var blockedResult = await InvokeMiddlewareAsync(rateLimitingService, path, HttpMethods.Post);
 
         // Assert
-        allowedResult.Should().NotBeNull();
-        allowedResult!.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        allowedResult.StatusCode.Should().Be(StatusCodes.Status204NoContent);
         allowedResult.NextCalled.Should().BeTrue();
         allowedResult.Headers["X-RateLimit-Limit"].Should().Be("10");
         blockedResult.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
@@ -115,8 +113,11 @@ public class RateLimitingMiddlewareSecurityTests
             "/api/v1/engines",
             HttpMethods.Get);
 
-        MiddlewareInvocationResult? allowedAuthResult = null;
-        for (var i = 0; i < 10; i++)
+        var allowedAuthResult = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post);
+        for (var i = 1; i < 10; i++)
         {
             allowedAuthResult = await InvokeMiddlewareAsync(
                 rateLimitingService,
@@ -131,8 +132,7 @@ public class RateLimitingMiddlewareSecurityTests
 
         // Assert
         generalApiResult.Headers["X-RateLimit-Limit"].Should().Be("200");
-        allowedAuthResult.Should().NotBeNull();
-        allowedAuthResult!.Headers["X-RateLimit-Limit"].Should().Be("10");
+        allowedAuthResult.Headers["X-RateLimit-Limit"].Should().Be("10");
         blockedAuthResult.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
         blockedAuthResult.NextCalled.Should().BeFalse();
     }
