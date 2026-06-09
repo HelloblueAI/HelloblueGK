@@ -144,6 +144,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Invalid simulation type. Valid types: {string.Join(", ", validTypes)}" });
                 }
 
+                var currentUsername = GetCurrentUsername();
+                if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(currentUsername))
+                {
+                    return Forbid();
+                }
+
                 // Create simulation record
                 var simulation = new EngineSimulation
                 {
@@ -152,7 +158,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     Status = "Pending",
                     ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
                     CreatedAt = DateTime.UtcNow,
-                    CreatedBy = GetCurrentUsername()
+                    CreatedBy = currentUsername
                 };
 
                 _context.EngineSimulations.Add(simulation);
