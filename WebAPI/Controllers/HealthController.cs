@@ -108,7 +108,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     recommendations = issues.Any() ? new[] { "Monitor memory usage", "Check system resources" } : new string[0]
                 });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 return StatusCode(500, new
                 {
