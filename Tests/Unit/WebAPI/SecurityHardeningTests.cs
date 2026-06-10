@@ -1,5 +1,8 @@
+using System.Reflection;
 using System.Net;
 using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Configuration;
@@ -8,6 +11,8 @@ using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Extensions;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
+using HB_NLP_Research_Lab.WebAPI.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -25,6 +30,101 @@ namespace HelloblueGK.Tests.Unit.WebAPI;
 
 public class SecurityHardeningTests
 {
+    [Fact]
+    public async Task Login_WithLegacySha256HashOutsideDevelopment_ReturnsUnauthorizedAndDoesNotUpgrade()
+    {
+        await using var context = CreateContext();
+        var legacyHash = CreateLegacySha256Hash("correct-password");
+        var user = new User
+        {
+            Username = "legacy",
+            Email = "legacy@example.com",
+            PasswordHash = legacyHash,
+            IsActive = true
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Production);
+
+        var result = await controller.Login(new LoginRequest
+        {
+            Username = "legacy",
+            Password = "correct-password"
+        });
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        user.PasswordHash.Should().Be(legacyHash);
+        user.LastLoginAt.Should().BeNull();
+        user.UpdatedAt.Should().BeNull();
+        jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Never);
+        jwtService.Verify(service => service.GenerateRefreshToken(), Times.Never);
+    }
+
+    [Fact]
+    public async Task Login_WithLegacySha256HashInDevelopment_UpgradesToPbkdf2()
+    {
+        await using var context = CreateContext();
+        var legacyHash = CreateLegacySha256Hash("correct-password");
+        var user = new User
+        {
+            Username = "legacy",
+            Email = "legacy@example.com",
+            PasswordHash = legacyHash,
+            IsActive = true
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.GenerateToken(It.Is<User>(candidate => candidate.Username == "legacy")))
+            .Returns("jwt-token");
+        jwtService
+            .Setup(service => service.GenerateRefreshToken())
+            .Returns("refresh-token");
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Development);
+
+        var result = await controller.Login(new LoginRequest
+        {
+            Username = "legacy",
+            Password = "correct-password"
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+        user.PasswordHash.Should().NotBe(legacyHash);
+        user.PasswordHash.Split(':').Should().HaveCount(3);
+        user.LastLoginAt.Should().NotBeNull();
+        user.UpdatedAt.Should().NotBeNull();
+        jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Once);
+        jwtService.Verify(service => service.GenerateRefreshToken(), Times.Once);
+    }
+
+    [Theory]
+    [InlineData(nameof(EnginesController.GetAllEngines))]
+    [InlineData(nameof(EnginesController.GetActiveEngines))]
+    [InlineData(nameof(EnginesController.GetEngineById))]
+    [InlineData(nameof(EnginesController.GetEngineByName))]
+    public void EngineReadActions_RequireExplicitAuthorization(string actionName)
+    {
+        AssertActionRequiresAuthorize<EnginesController>(actionName);
+    }
+
+    [Theory]
+    [InlineData(nameof(HealthController.GetDetailed))]
+    [InlineData(nameof(HealthController.GetEngineHealth))]
+    public void SensitiveHealthActions_RequireExplicitAuthorization(string actionName)
+    {
+        AssertActionRequiresAuthorize<HealthController>(actionName);
+    }
+
+    [Fact]
+    public void BasicHealthAction_AllowsAnonymousAccess()
+    {
+        typeof(HealthController).GetMethod(nameof(HealthController.Get))!
+            .GetCustomAttributes<AllowAnonymousAttribute>()
+            .Should().NotBeEmpty();
+    }
+
     [Fact]
     public async Task GlobalExceptionHandler_InProduction_DoesNotExposeArgumentExceptionDetails()
     {
@@ -219,6 +319,45 @@ public class SecurityHardeningTests
     {
         using var modelData = JsonDocument.Parse(digitalTwin.ModelDataJson!);
         return modelData.RootElement.GetProperty("EngineId").GetString();
+    }
+
+    private static AuthController CreateAuthController(
+        HelloblueGKDbContext context,
+        IJwtService jwtService,
+        string environmentName)
+    {
+        return new AuthController(
+            context,
+            jwtService,
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = environmentName },
+            new ConfigurationBuilder().Build())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/auth/login"
+                    }
+                }
+            }
+        };
+    }
+
+    private static string CreateLegacySha256Hash(string password)
+    {
+        using var sha256 = SHA256.Create();
+        return Convert.ToBase64String(sha256.ComputeHash(Encoding.UTF8.GetBytes(password)));
+    }
+
+    private static void AssertActionRequiresAuthorize<TController>(string actionName)
+    {
+        typeof(TController).GetMethod(actionName)!
+            .GetCustomAttributes<AuthorizeAttribute>()
+            .Should().NotBeEmpty();
     }
 
     private static HelloblueGKDbContext CreateContext()

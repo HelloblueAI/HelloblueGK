@@ -38,6 +38,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Detailed health check with system metrics
         /// </summary>
         [HttpGet("detailed")]
+        [Authorize]
         public IActionResult GetDetailed()
         {
             var process = Process.GetCurrentProcess();
@@ -70,6 +71,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Engine system health check
         /// </summary>
         [HttpGet("engine")]
+        [Authorize]
         public async Task<IActionResult> GetEngineHealth()
         {
             // Simulate async health check
@@ -112,7 +114,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     status = "Unhealthy",
                     timestamp = DateTime.UtcNow,
-                    error = ex.Message,
+                    error = "Engine health check failed",
                     recommendation = "Check application logs and restart if necessary"
                 });
             }
