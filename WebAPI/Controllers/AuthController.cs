@@ -94,22 +94,26 @@ public class AuthController : ControllerBase
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Username == request.Username && u.IsActive);
 
-            if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
+            if (user == null)
             {
                 _logger.LogWarning("Failed login attempt for username: {Username}", request.Username);
-                return Unauthorized(new ErrorResponse
-                {
-                    StatusCode = 401,
-                    Message = "Invalid username or password",
-                    Timestamp = DateTime.UtcNow,
-                    Path = Request.Path,
-                    Method = Request.Method
-                });
+                return InvalidCredentialsResponse();
+            }
+
+            var isLegacyHash = IsLegacyPasswordHash(user.PasswordHash);
+            if (isLegacyHash && !_environment.IsDevelopment())
+            {
+                _logger.LogWarning("Rejected legacy password hash login outside development for username: {Username}", request.Username);
+                return InvalidCredentialsResponse();
+            }
+
+            if (!VerifyPassword(request.Password, user.PasswordHash))
+            {
+                _logger.LogWarning("Failed login attempt for username: {Username}", request.Username);
+                return InvalidCredentialsResponse();
             }
 
             // Upgrade legacy SHA256 password hash to secure PBKDF2 on successful login
-            var isLegacyHash = !user.PasswordHash.Contains(':', StringComparison.Ordinal) || 
-                              user.PasswordHash.Split(':').Length != 3;
             if (isLegacyHash)
             {
                 _logger.LogInformation("Upgrading legacy password hash to PBKDF2 for user: {Username}", user.Username);
@@ -378,6 +382,29 @@ public class AuthController : ControllerBase
                 Encoding.UTF8.GetBytes(passwordHash),
                 Encoding.UTF8.GetBytes(storedHash));
         }
+    }
+
+    private UnauthorizedObjectResult InvalidCredentialsResponse()
+    {
+        return Unauthorized(new ErrorResponse
+        {
+            StatusCode = 401,
+            Message = "Invalid username or password",
+            Timestamp = DateTime.UtcNow,
+            Path = Request.Path,
+            Method = Request.Method
+        });
+    }
+
+    private static bool IsLegacyPasswordHash(string storedHash)
+    {
+        if (string.IsNullOrWhiteSpace(storedHash))
+        {
+            return true;
+        }
+
+        var parts = storedHash.Split(':');
+        return parts.Length != 3 || !int.TryParse(parts[0], out _);
     }
 }
 
