@@ -38,7 +38,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Detailed health check with system metrics
         /// </summary>
         [HttpGet("detailed")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public IActionResult GetDetailed()
         {
             var process = Process.GetCurrentProcess();
@@ -71,7 +71,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Engine system health check
         /// </summary>
         [HttpGet("engine")]
-        [Authorize]
+        [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetEngineHealth()
         {
             // Simulate async health check
