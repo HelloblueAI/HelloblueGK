@@ -15,6 +15,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers;
 [Tags("Account")]
 public class AccountController : ControllerBase
 {
+    private const string DefaultReturnUrl = "/swagger";
     private readonly IConfiguration _configuration;
 
     public AccountController(IConfiguration configuration)
@@ -29,7 +30,7 @@ public class AccountController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status302Found)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public IActionResult Login([FromQuery] string? returnUrl = "/swagger")
+    public IActionResult Login([FromQuery] string? returnUrl = DefaultReturnUrl)
     {
         if (!IsOpenIdConnectEnabled())
         {
@@ -40,11 +41,7 @@ public class AccountController : ControllerBase
             });
         }
 
-        var safeReturnUrl = string.IsNullOrWhiteSpace(returnUrl) ? "/swagger" : returnUrl;
-        if (!safeReturnUrl.StartsWith('/') || safeReturnUrl.StartsWith("//", StringComparison.Ordinal))
-        {
-            safeReturnUrl = "/swagger";
-        }
+        var safeReturnUrl = NormalizeReturnUrl(returnUrl);
 
         return Challenge(
             new AuthenticationProperties { RedirectUri = safeReturnUrl },
@@ -73,4 +70,42 @@ public class AccountController : ControllerBase
 
     private bool IsOpenIdConnectEnabled() =>
         _configuration.GetValue("Authentication:OpenIdConnect:Enabled", false);
+
+    private static string NormalizeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl) || !IsSafeLocalReturnUrl(returnUrl))
+        {
+            return DefaultReturnUrl;
+        }
+
+        try
+        {
+            var decodedReturnUrl = Uri.UnescapeDataString(returnUrl);
+            return IsSafeLocalReturnUrl(decodedReturnUrl) ? returnUrl : DefaultReturnUrl;
+        }
+        catch (UriFormatException)
+        {
+            return DefaultReturnUrl;
+        }
+    }
+
+    private static bool IsSafeLocalReturnUrl(string returnUrl)
+    {
+        if (returnUrl.Length == 0)
+        {
+            return false;
+        }
+
+        if (returnUrl[0] == '/')
+        {
+            return returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\');
+        }
+
+        if (returnUrl[0] == '~' && returnUrl.Length > 1 && returnUrl[1] == '/')
+        {
+            return returnUrl.Length == 2 || (returnUrl[2] != '/' && returnUrl[2] != '\\');
+        }
+
+        return false;
+    }
 }
