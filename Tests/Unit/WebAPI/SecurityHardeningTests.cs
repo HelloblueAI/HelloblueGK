@@ -368,8 +368,21 @@ public class SecurityHardeningTests
 
         authorizeAttributes.Should().NotBeEmpty();
         authorizeAttributes
-            .Should().Contain(attribute =>
-                attribute.Roles != null && attribute.Roles.Contains(role, StringComparison.Ordinal));
+            .Should().Contain(attribute => ParseRoles(attribute.Roles).Contains(role));
+    }
+
+    private static IReadOnlyCollection<string> ParseRoles(string? roles)
+    {
+        if (string.IsNullOrWhiteSpace(roles))
+        {
+            return Array.Empty<string>();
+        }
+
+        // ASP.NET Core treats AuthorizeAttribute.Roles as a comma-separated list,
+        // so match individual entries exactly instead of a substring of the raw value.
+        return roles
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static HelloblueGKDbContext CreateContext()
