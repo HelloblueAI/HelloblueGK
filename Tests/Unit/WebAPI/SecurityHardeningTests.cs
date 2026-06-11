@@ -112,9 +112,9 @@ public class SecurityHardeningTests
     [Theory]
     [InlineData(nameof(HealthController.GetDetailed))]
     [InlineData(nameof(HealthController.GetEngineHealth))]
-    public void SensitiveHealthActions_RequireExplicitAuthorization(string actionName)
+    public void SensitiveHealthActions_RequireAdminRole(string actionName)
     {
-        AssertActionRequiresAuthorize<HealthController>(actionName);
+        AssertActionRequiresRole<HealthController>(actionName, "Admin");
     }
 
     [Fact]
@@ -358,6 +358,31 @@ public class SecurityHardeningTests
         typeof(TController).GetMethod(actionName)!
             .GetCustomAttributes<AuthorizeAttribute>()
             .Should().NotBeEmpty();
+    }
+
+    private static void AssertActionRequiresRole<TController>(string actionName, string role)
+    {
+        var authorizeAttributes = typeof(TController).GetMethod(actionName)!
+            .GetCustomAttributes<AuthorizeAttribute>()
+            .ToList();
+
+        authorizeAttributes.Should().NotBeEmpty();
+        authorizeAttributes
+            .Should().Contain(attribute => ParseRoles(attribute.Roles).Contains(role));
+    }
+
+    private static IReadOnlyCollection<string> ParseRoles(string? roles)
+    {
+        if (string.IsNullOrWhiteSpace(roles))
+        {
+            return Array.Empty<string>();
+        }
+
+        // ASP.NET Core treats AuthorizeAttribute.Roles as a comma-separated list,
+        // so match individual entries exactly instead of a substring of the raw value.
+        return roles
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToHashSet(StringComparer.Ordinal);
     }
 
     private static HelloblueGKDbContext CreateContext()
