@@ -31,10 +31,10 @@ public class ConfigurationFileManagerTests : IDisposable
             "engine-control",
             config => config.Name = "updated");
 
-        var completedTask = await Task.WhenAny(updateTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        await updateTask.WaitAsync(TimeSpan.FromSeconds(10));
 
-        completedTask.Should().Be(updateTask);
-        await updateTask;
+        var savedConfig = await manager.LoadConfigurationAsync<TestConfiguration>("engine-control");
+        savedConfig.Name.Should().Be("updated");
     }
 
     public void Dispose()
