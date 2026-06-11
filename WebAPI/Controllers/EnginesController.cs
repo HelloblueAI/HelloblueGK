@@ -28,6 +28,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// </summary>
         /// <returns>List of all engines</returns>
         [HttpGet]
+        [Authorize]
         [ProducesResponseType(typeof(IEnumerable<Engine>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetAllEngines()
         {
@@ -48,6 +49,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// </summary>
         /// <returns>List of active engines</returns>
         [HttpGet("active")]
+        [Authorize]
         [ProducesResponseType(typeof(IEnumerable<Engine>), StatusCodes.Status200OK)]
         public async Task<IActionResult> GetActiveEngines()
         {
@@ -69,6 +71,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <param name="id">Engine ID</param>
         /// <returns>Engine details</returns>
         [HttpGet("{id}")]
+        [Authorize]
         [ProducesResponseType(typeof(Engine), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetEngineById(int id)
@@ -95,6 +98,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <param name="name">Engine name</param>
         /// <returns>Engine details</returns>
         [HttpGet("name/{name}")]
+        [Authorize]
         [ProducesResponseType(typeof(Engine), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> GetEngineByName(string name)

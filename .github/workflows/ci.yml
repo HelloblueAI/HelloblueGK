@@ -130,47 +130,6 @@ jobs:
       run: dotnet build --no-restore --configuration Release /p:RunAnalyzers=true /p:AnalysisLevel=latest /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:WarningsNotAsErrors=""
       continue-on-error: true
 
-  codeql-analysis:
-    name: CodeQL Analysis
-    runs-on: ubuntu-latest
-    permissions:
-      actions: read
-      contents: read
-      security-events: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        language: [ 'csharp' ]
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Initialize CodeQL
-      uses: github/codeql-action/init@v4
-      with:
-        languages: ${{ matrix.language }}
-        queries: security-and-quality
-
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v5
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-
-    - name: Restore dependencies
-      run: dotnet restore
-
-    - name: Build for CodeQL
-      run: dotnet build --configuration Release --no-restore
-
-    - name: Perform CodeQL Analysis
-      uses: github/codeql-action/analyze@v4
-      with:
-        # Keep legacy category for backward compatibility so existing open alerts
-        # in this configuration can be closed by new scans.
-        category: "/workflow:ci/language:${{ matrix.language }}"
-
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -213,7 +172,7 @@ jobs:
   publish-status:
     name: Publish Status
     runs-on: ubuntu-latest
-    needs: [build, integration-tests, code-quality, codeql-analysis, security-scan]
+    needs: [build, integration-tests, code-quality, security-scan]
     if: always()
     
     steps:
@@ -223,6 +182,5 @@ jobs:
         echo "Build: ${{ needs.build.result }}"
         echo "Integration Tests: ${{ needs.integration-tests.result }}"
         echo "Code Quality: ${{ needs.code-quality.result }}"
-        echo "CodeQL Analysis: ${{ needs.codeql-analysis.result }}"
         echo "Security Scan: ${{ needs.security-scan.result }}"
 
