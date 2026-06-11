@@ -112,9 +112,9 @@ public class SecurityHardeningTests
     [Theory]
     [InlineData(nameof(HealthController.GetDetailed))]
     [InlineData(nameof(HealthController.GetEngineHealth))]
-    public void SensitiveHealthActions_RequireExplicitAuthorization(string actionName)
+    public void SensitiveHealthActions_RequireAdminRole(string actionName)
     {
-        AssertActionRequiresAuthorize<HealthController>(actionName);
+        AssertActionRequiresRole<HealthController>(actionName, "Admin");
     }
 
     [Fact]
@@ -358,6 +358,18 @@ public class SecurityHardeningTests
         typeof(TController).GetMethod(actionName)!
             .GetCustomAttributes<AuthorizeAttribute>()
             .Should().NotBeEmpty();
+    }
+
+    private static void AssertActionRequiresRole<TController>(string actionName, string role)
+    {
+        var authorizeAttributes = typeof(TController).GetMethod(actionName)!
+            .GetCustomAttributes<AuthorizeAttribute>()
+            .ToList();
+
+        authorizeAttributes.Should().NotBeEmpty();
+        authorizeAttributes
+            .Should().Contain(attribute =>
+                attribute.Roles != null && attribute.Roles.Contains(role, StringComparison.Ordinal));
     }
 
     private static HelloblueGKDbContext CreateContext()
