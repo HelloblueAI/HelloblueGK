@@ -683,7 +683,7 @@ app.MapGet("/", () =>
 }).AllowAnonymous().ExcludeFromDescription();
 
 // Map Prometheus metrics endpoint - must be after MapControllers for endpoint routing
-app.MapMetrics().RequireAuthorization(); // Exposes /metrics endpoint in Prometheus format
+app.MapMetrics().RequireAuthorization(policy => policy.RequireRole("Admin")); // Exposes /metrics endpoint in Prometheus format
 
 Console.WriteLine("🚀 HelloblueGK Web API Server Starting...");
 Console.WriteLine("📚 API Documentation: http://localhost:5000/swagger");
