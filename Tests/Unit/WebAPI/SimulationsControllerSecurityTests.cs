@@ -64,6 +64,30 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task RunSimulation_ForStandardUserWithoutUsernameClaim_ReturnsForbidWithoutCreatingOrphanRecord()
+    {
+        await using var context = CreateContext();
+        var engine = new Engine
+        {
+            Name = "Shared Engine",
+            EngineType = "Test",
+            CreatedBy = "admin"
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateController(context, CreatePrincipalWithoutUsername());
+
+        var result = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "CFD"
+        });
+
+        result.Should().BeOfType<ForbidResult>();
+        context.EngineSimulations.Should().BeEmpty();
+    }
+
+    [Fact]
     public void EngineSimulationSerialization_ExcludesStackTrace()
     {
         var simulation = new EngineSimulation
@@ -140,6 +164,16 @@ public class SimulationsControllerSecurityTests
         };
 
         claims.Add(new Claim(ClaimTypes.Role, isAdmin ? "Admin" : "User"));
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+    }
+
+    private static ClaimsPrincipal CreatePrincipalWithoutUsername()
+    {
+        var claims = new List<Claim>
+        {
+            new(ClaimTypes.Role, "User")
+        };
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
     }
