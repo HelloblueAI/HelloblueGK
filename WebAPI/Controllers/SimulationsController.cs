@@ -227,9 +227,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     completedAt = simulation.CompletedAt,
                     executionTimeSeconds = simulation.ExecutionTimeSeconds,
                     accuracy = simulation.Accuracy,
-                    errorMessage = simulation.Status == "Failed"
-                        ? "Simulation failed. See server logs for details."
-                        : simulation.ErrorMessage
+                    errorMessage = GetSafeErrorMessage(simulation.Status, simulation.ErrorMessage)
                 });
             }
             catch (Exception ex)
@@ -371,6 +369,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             return !string.IsNullOrWhiteSpace(currentUsername) &&
                 string.Equals(simulation.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
         }
+
+        private static string? GetSafeErrorMessage(string status, string? errorMessage)
+        {
+            return string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(errorMessage)
+                    ? "Simulation failed. See server logs for details."
+                    : null;
+        }
     }
 
     /// <summary>
@@ -433,9 +439,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 Iterations = simulation.Iterations,
                 ConvergenceRate = simulation.ConvergenceRate,
                 Accuracy = simulation.Accuracy,
-                ErrorMessage = simulation.Status == "Failed"
-                    ? "Simulation failed. See server logs for details."
-                    : simulation.ErrorMessage,
+                ErrorMessage = GetSafeErrorMessage(simulation.Status, simulation.ErrorMessage),
                 CreatedAt = simulation.CreatedAt,
                 StartedAt = simulation.StartedAt,
                 CompletedAt = simulation.CompletedAt,
@@ -443,6 +447,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 Engine = simulation.Engine == null ? null : EngineSummaryResponse.FromEntity(simulation.Engine),
                 Telemetry = includeTelemetry ? simulation.Telemetry : null
             };
+        }
+
+        private static string? GetSafeErrorMessage(string status, string? errorMessage)
+        {
+            return string.Equals(status, "Failed", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(errorMessage)
+                    ? "Simulation failed. See server logs for details."
+                    : null;
         }
     }
 

@@ -13,6 +13,7 @@ using HB_NLP_Research_Lab.WebAPI.Extensions;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -197,6 +198,36 @@ public class SecurityHardeningTests
             .WithMessage("*OpenIdConnect:CallbackUrl*");
     }
 
+    [Theory]
+    [InlineData("https://evil.example.com")]
+    [InlineData("//evil.example.com")]
+    [InlineData("/\\evil.example.com")]
+    [InlineData("/%2fevil.example.com")]
+    [InlineData("/%5cevil.example.com")]
+    public void AccountLogin_WithUnsafeReturnUrl_FallsBackToSwagger(string returnUrl)
+    {
+        var controller = CreateAccountController();
+
+        var result = controller.Login(returnUrl);
+
+        var challenge = result.Should().BeOfType<ChallengeResult>().Subject;
+        challenge.Properties!.RedirectUri.Should().Be("/swagger");
+        challenge.AuthenticationSchemes.Should().Contain(OpenIdConnectDefaults.AuthenticationScheme);
+    }
+
+    [Theory]
+    [InlineData("/swagger")]
+    [InlineData("/swagger/index.html?filter=internal")]
+    public void AccountLogin_WithLocalReturnUrl_PreservesRedirect(string returnUrl)
+    {
+        var controller = CreateAccountController();
+
+        var result = controller.Login(returnUrl);
+
+        var challenge = result.Should().BeOfType<ChallengeResult>().Subject;
+        challenge.Properties!.RedirectUri.Should().Be(returnUrl);
+    }
+
     [Fact]
     public async Task Swagger_InProduction_RequiresAuthentication()
     {
@@ -351,6 +382,18 @@ public class SecurityHardeningTests
     {
         using var sha256 = SHA256.Create();
         return Convert.ToBase64String(sha256.ComputeHash(Encoding.UTF8.GetBytes(password)));
+    }
+
+    private static AccountController CreateAccountController()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Authentication:OpenIdConnect:Enabled"] = "true"
+            })
+            .Build();
+
+        return new AccountController(configuration);
     }
 
     private static void AssertActionRequiresAuthorize<TController>(string actionName)
