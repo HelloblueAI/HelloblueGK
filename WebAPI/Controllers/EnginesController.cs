@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using Microsoft.AspNetCore.Authorization;
+using System.ComponentModel.DataAnnotations;
 
 namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
@@ -150,25 +151,25 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// Update an existing engine
         /// </summary>
         /// <param name="id">Engine ID</param>
-        /// <param name="engine">Updated engine data</param>
+        /// <param name="request">Updated engine fields</param>
         /// <returns>Updated engine</returns>
         [HttpPut("{id}")]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(Engine), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> UpdateEngine(int id, [FromBody] Engine engine)
+        public async Task<IActionResult> UpdateEngine(int id, [FromBody] UpdateEngineRequest request)
         {
             try
             {
-                if (id != engine.Id)
+                if (request == null)
                 {
-                    return BadRequest(new { message = "Engine ID mismatch" });
+                    return BadRequest(new { message = "Engine update request is required" });
                 }
 
-                if (!await _engineRepository.ExistsAsync(id))
+                if (request.Id.HasValue && id != request.Id.Value)
                 {
-                    return NotFound(new { message = $"Engine with ID {id} not found" });
+                    return BadRequest(new { message = "Engine ID mismatch" });
                 }
 
                 if (!ModelState.IsValid)
@@ -176,6 +177,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(ModelState);
                 }
 
+                var engine = await _engineRepository.GetByIdAsync(id);
+                if (engine == null)
+                {
+                    return NotFound(new { message = $"Engine with ID {id} not found" });
+                }
+
+                request.ApplyTo(engine);
                 var updatedEngine = await _engineRepository.UpdateAsync(engine);
                 return Ok(updatedEngine);
             }
@@ -210,6 +218,99 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 _logger.LogError(ex, "Error deleting engine {EngineId}", id);
                 return StatusCode(500, "An error occurred while deleting the engine");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Request model for updating mutable engine fields without overwriting omitted values.
+    /// </summary>
+    public class UpdateEngineRequest
+    {
+        /// <summary>
+        /// Optional body ID. When supplied, it must match the route ID.
+        /// </summary>
+        public int? Id { get; set; }
+
+        [MinLength(1)]
+        [MaxLength(200)]
+        public string? Name { get; set; }
+
+        [MinLength(1)]
+        [MaxLength(100)]
+        public string? EngineType { get; set; }
+
+        public double? Thrust { get; set; }
+        public double? SpecificImpulse { get; set; }
+        public double? ChamberPressure { get; set; }
+        public double? ExpansionRatio { get; set; }
+        public double? Efficiency { get; set; }
+        public string? Propellant { get; set; }
+        public double? MixtureRatio { get; set; }
+        public double? MassFlowRate { get; set; }
+        public string? Description { get; set; }
+        public bool? IsActive { get; set; }
+
+        public void ApplyTo(Engine engine)
+        {
+            if (Name != null)
+            {
+                engine.Name = Name;
+            }
+
+            if (EngineType != null)
+            {
+                engine.EngineType = EngineType;
+            }
+
+            if (Thrust.HasValue)
+            {
+                engine.Thrust = Thrust.Value;
+            }
+
+            if (SpecificImpulse.HasValue)
+            {
+                engine.SpecificImpulse = SpecificImpulse.Value;
+            }
+
+            if (ChamberPressure.HasValue)
+            {
+                engine.ChamberPressure = ChamberPressure.Value;
+            }
+
+            if (ExpansionRatio.HasValue)
+            {
+                engine.ExpansionRatio = ExpansionRatio.Value;
+            }
+
+            if (Efficiency.HasValue)
+            {
+                engine.Efficiency = Efficiency.Value;
+            }
+
+            if (Propellant != null)
+            {
+                engine.Propellant = Propellant;
+            }
+
+            if (MixtureRatio.HasValue)
+            {
+                engine.MixtureRatio = MixtureRatio.Value;
+            }
+
+            if (MassFlowRate.HasValue)
+            {
+                engine.MassFlowRate = MassFlowRate.Value;
+            }
+
+            if (Description != null)
+            {
+                engine.Description = Description;
+            }
+
+            if (IsActive.HasValue)
+            {
+                engine.IsActive = IsActive.Value;
             }
         }
     }
