@@ -88,6 +88,23 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task GetSimulationStatus_WithStoredDiagnosticError_DoesNotExposeDetails()
+    {
+        await using var context = CreateContext();
+        const string sensitiveError = "SQL connection failed for user admin with password secret";
+        var simulation = await SeedSimulationAsync(context, "alice", "Running", sensitiveError);
+        var controller = CreateController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetSimulationStatus(simulation.Id);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var responseJson = JsonSerializer.Serialize(okResult.Value);
+        responseJson.Should().NotContain(sensitiveError);
+        using var response = JsonDocument.Parse(responseJson);
+        response.RootElement.GetProperty("errorMessage").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
     public void EngineSimulationSerialization_ExcludesStackTrace()
     {
         var simulation = new EngineSimulation
@@ -117,7 +134,8 @@ public class SimulationsControllerSecurityTests
     private static async Task<EngineSimulation> SeedSimulationAsync(
         HelloblueGKDbContext context,
         string createdBy,
-        string status)
+        string status,
+        string? errorMessage = null)
     {
         var engine = new Engine
         {
@@ -132,7 +150,8 @@ public class SimulationsControllerSecurityTests
             SimulationType = "CFD",
             Status = status,
             CreatedBy = createdBy,
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = DateTime.UtcNow,
+            ErrorMessage = errorMessage
         };
 
         context.EngineSimulations.Add(simulation);
