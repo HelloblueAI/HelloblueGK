@@ -3,6 +3,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using Microsoft.AspNetCore.Authorization;
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 
 namespace HB_NLP_Research_Lab.WebAPI.Controllers
 {
@@ -122,21 +123,33 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <summary>
         /// Create a new engine
         /// </summary>
-        /// <param name="engine">Engine data</param>
+        /// <param name="request">Engine data</param>
         /// <returns>Created engine</returns>
         [HttpPost]
         [Authorize(Roles = "Admin")]
         [ProducesResponseType(typeof(Engine), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
-        public async Task<IActionResult> CreateEngine([FromBody] Engine engine)
+        public async Task<IActionResult> CreateEngine([FromBody] CreateEngineRequest request)
         {
             try
             {
+                if (request == null)
+                {
+                    return BadRequest(new { message = "Engine create request is required" });
+                }
+
                 if (!ModelState.IsValid)
                 {
                     return BadRequest(ModelState);
                 }
 
+                var currentUsername = GetCurrentUsername();
+                if (string.IsNullOrWhiteSpace(currentUsername))
+                {
+                    return Forbid();
+                }
+
+                var engine = request.ToEngine(currentUsername);
                 var createdEngine = await _engineRepository.CreateAsync(engine);
                 return CreatedAtAction(nameof(GetEngineById), new { id = createdEngine.Id }, createdEngine);
             }
@@ -219,6 +232,59 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 _logger.LogError(ex, "Error deleting engine {EngineId}", id);
                 return StatusCode(500, "An error occurred while deleting the engine");
             }
+        }
+
+        private string? GetCurrentUsername()
+        {
+            return User.Identity?.Name
+                ?? User.FindFirst(ClaimTypes.Name)?.Value
+                ?? User.FindFirst("username")?.Value;
+        }
+    }
+
+    /// <summary>
+    /// Request model for creating an engine without accepting client-controlled metadata.
+    /// </summary>
+    public class CreateEngineRequest
+    {
+        [Required]
+        [MinLength(1)]
+        [MaxLength(200)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required]
+        [MinLength(1)]
+        [MaxLength(100)]
+        public string EngineType { get; set; } = string.Empty;
+
+        public double Thrust { get; set; }
+        public double SpecificImpulse { get; set; }
+        public double ChamberPressure { get; set; }
+        public double ExpansionRatio { get; set; }
+        public double Efficiency { get; set; }
+        public string Propellant { get; set; } = string.Empty;
+        public double MixtureRatio { get; set; }
+        public double MassFlowRate { get; set; }
+        public string? Description { get; set; }
+
+        public Engine ToEngine(string createdBy)
+        {
+            return new Engine
+            {
+                Name = Name,
+                EngineType = EngineType,
+                Thrust = Thrust,
+                SpecificImpulse = SpecificImpulse,
+                ChamberPressure = ChamberPressure,
+                ExpansionRatio = ExpansionRatio,
+                Efficiency = Efficiency,
+                Propellant = Propellant,
+                MixtureRatio = MixtureRatio,
+                MassFlowRate = MassFlowRate,
+                Description = Description,
+                CreatedBy = createdBy,
+                IsActive = true
+            };
         }
     }
 

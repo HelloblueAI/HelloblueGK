@@ -1,5 +1,7 @@
 using System.Reflection;
+using System.IdentityModel.Tokens.Jwt;
 using System.Net;
+using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -26,6 +28,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.IdentityModel.Tokens;
 
 namespace HelloblueGK.Tests.Unit.WebAPI;
 
@@ -245,6 +248,32 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Metrics_InProduction_RequiresAdminRole()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        var unauthenticatedResponse = await client.GetAsync("/metrics");
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            CreateJwtToken("alice", isAdmin: false));
+        var userResponse = await client.GetAsync("/metrics");
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            CreateJwtToken("admin", isAdmin: true));
+        var adminResponse = await client.GetAsync("/metrics");
+
+        unauthenticatedResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        userResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        adminResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
     public async Task Swagger_InDevelopment_AllowsPublicAccessWhenConfigured()
     {
         using var factory = new TestWebApiFactory(Environments.Development, new Dictionary<string, string?>
@@ -382,6 +411,28 @@ public class SecurityHardeningTests
     {
         using var sha256 = SHA256.Create();
         return Convert.ToBase64String(sha256.ComputeHash(Encoding.UTF8.GetBytes(password)));
+    }
+
+    private static string CreateJwtToken(string username, bool isAdmin)
+    {
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("01234567890123456789012345678901"));
+        var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, isAdmin ? "1" : "2"),
+            new Claim(ClaimTypes.Name, username),
+            new Claim("username", username),
+            new Claim(ClaimTypes.Role, isAdmin ? "Admin" : "User")
+        };
+
+        var token = new JwtSecurityToken(
+            issuer: "hellobluegk",
+            audience: "hellobluegk-api",
+            claims: claims,
+            expires: DateTime.UtcNow.AddHours(1),
+            signingCredentials: credentials);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
     private static AccountController CreateAccountController()

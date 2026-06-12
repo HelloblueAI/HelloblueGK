@@ -2,14 +2,61 @@ using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Security.Claims;
 
 namespace HelloblueGK.Tests.Unit.WebAPI;
 
 public class EnginesControllerSecurityTests
 {
+    [Fact]
+    public async Task CreateEngine_IgnoresClientControlledMetadataAndUsesAuthenticatedAdmin()
+    {
+        var options = CreateOptions();
+        int engineId;
+
+        await using (var createContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(createContext, CreatePrincipal("real-admin"));
+            var request = new CreateEngineRequest
+            {
+                Name = "New Engine",
+                EngineType = "Raptor",
+                Thrust = 2_100_000,
+                SpecificImpulse = 375,
+                ChamberPressure = 290,
+                ExpansionRatio = 35,
+                Efficiency = 0.96,
+                Propellant = "Methalox",
+                MixtureRatio = 3.5,
+                MassFlowRate = 625,
+                Description = "Server-owned metadata should be enforced"
+            };
+
+            var result = await controller.CreateEngine(request);
+
+            var createdAtAction = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+            var created = createdAtAction.Value.Should().BeOfType<Engine>().Subject;
+            engineId = created.Id;
+            created.CreatedBy.Should().Be("real-admin");
+            created.IsActive.Should().BeTrue();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            var stored = await verifyContext.Engines.SingleAsync(e => e.Id == engineId);
+
+            stored.Name.Should().Be("New Engine");
+            stored.CreatedBy.Should().Be("real-admin");
+            stored.IsActive.Should().BeTrue();
+            stored.UpdatedAt.Should().BeNull();
+            stored.CreatedAt.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(10));
+        }
+    }
+
     [Fact]
     public async Task UpdateEngine_WhenFieldsAreOmitted_PreservesExistingEngineParameters()
     {
@@ -107,11 +154,32 @@ public class EnginesControllerSecurityTests
             .Options;
     }
 
-    private static EnginesController CreateController(HelloblueGKDbContext context)
+    private static EnginesController CreateController(HelloblueGKDbContext context, ClaimsPrincipal? user = null)
     {
         return new EnginesController(
             new EngineRepository(context),
-            NullLogger<EnginesController>.Instance);
+            NullLogger<EnginesController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = user ?? new ClaimsPrincipal(new ClaimsIdentity())
+                }
+            }
+        };
+    }
+
+    private static ClaimsPrincipal CreatePrincipal(string username)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.Name, username),
+            new Claim("username", username),
+            new Claim(ClaimTypes.Role, "Admin")
+        };
+
+        return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
     }
 
     private static Engine CreateEngine(DateTime createdAt)
