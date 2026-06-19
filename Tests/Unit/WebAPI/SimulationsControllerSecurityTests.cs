@@ -88,6 +88,31 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task RunSimulation_ForEngineOwnedByDifferentUser_ReturnsForbidWithoutCreatingSimulation()
+    {
+        await using var context = CreateContext();
+        var engine = new Engine
+        {
+            Name = "Alice Private Engine",
+            EngineType = "Test",
+            CreatedBy = "alice"
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateController(context, CreatePrincipal("bob"));
+
+        var result = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "CFD"
+        });
+
+        result.Should().BeOfType<ForbidResult>();
+        context.EngineSimulations.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetSimulationStatus_WithStoredDiagnosticError_DoesNotExposeDetails()
     {
         await using var context = CreateContext();
