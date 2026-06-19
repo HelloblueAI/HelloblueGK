@@ -69,7 +69,7 @@ Ensure these checks are required:
 - `integration-tests` - Integration Tests job  
 - `code-quality` - Code Quality Checks job
 - `security-scan` - Security Scan job
-- `codeql` - CodeQL Analysis (if enabled)
+- CodeQL default setup status check, if repository administrators require CodeQL in branch protection
 
 ### Pull Request Requirements
 

@@ -30,7 +30,7 @@ Your GitHub Actions CI/CD pipeline is now **working perfectly**!
    - Security Scan: ✅ PASSING
    - Docker Build: ✅ PASSING
 
-2. **✅ CodeQL Security Analysis** (`codeql.yml`)
+2. **✅ CodeQL Security Analysis** (GitHub default setup)
    - Security Analysis: ✅ PASSING
 
 3. **✅ Release Automation** (`release.yml`)
