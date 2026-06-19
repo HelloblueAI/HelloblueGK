@@ -148,7 +148,13 @@ public class ControllerAuthorizationSecurityTests
     public async Task GetDigitalTwinById_DoesNotExposeFullEngineMetadata()
     {
         await using var context = CreateContext();
-        var engine = CreateEngine("engine-owner");
+        var engine = new Engine
+        {
+            Name = "Private Engine",
+            EngineType = "Test",
+            CreatedBy = "engine-owner",
+            Thrust = 42
+        };
         var digitalTwin = new DigitalTwin
         {
             Engine = engine,
