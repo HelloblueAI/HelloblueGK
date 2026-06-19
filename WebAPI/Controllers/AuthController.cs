@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
@@ -21,6 +22,7 @@ public class AuthController : ControllerBase
 {
     private const int MaxPasswordLength = 128;
     private const int MaxPbkdf2Iterations = 600000;
+    private const string DummyPasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
     private readonly HelloblueGKDbContext _context;
     private readonly IJwtService _jwtService;
@@ -54,62 +56,37 @@ public class AuthController : ControllerBase
     {
         try
         {
-            // Validate request is not null
-            if (request == null)
-            {
-                return BadRequest(new ErrorResponse
-                {
-                    StatusCode = 400,
-                    Message = "Request body is required",
-                    Timestamp = DateTime.UtcNow,
-                    Path = Request.Path,
-                    Method = Request.Method
-                });
-            }
+            var username = request?.Username;
+            var password = request?.Password;
 
-            if (string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)
+                || password.Length > MaxPasswordLength)
             {
-                return Unauthorized(new ErrorResponse
-                {
-                    StatusCode = 401,
-                    Message = "Username and password are required",
-                    Timestamp = DateTime.UtcNow,
-                    Path = Request.Path,
-                    Method = Request.Method
-                });
-            }
-
-            if (request.Password.Length > MaxPasswordLength)
-            {
-                return Unauthorized(new ErrorResponse
-                {
-                    StatusCode = 401,
-                    Message = "Invalid username or password",
-                    Timestamp = DateTime.UtcNow,
-                    Path = Request.Path,
-                    Method = Request.Method
-                });
+                VerifyPassword("dummy", DummyPasswordHash);
+                return InvalidCredentialsResponse();
             }
 
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username == request.Username && u.IsActive);
+                .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
 
             if (user == null)
             {
-                _logger.LogWarning("Failed login attempt for username: {Username}", request.Username);
+                VerifyPassword(password, DummyPasswordHash);
+                _logger.LogWarning("Failed login attempt for username: {Username}", LogSanitizer.SanitizeIdentifier(username));
                 return InvalidCredentialsResponse();
             }
 
             var isLegacyHash = IsLegacyPasswordHash(user.PasswordHash);
             if (isLegacyHash && !_environment.IsDevelopment())
             {
-                _logger.LogWarning("Rejected legacy password hash login outside development for username: {Username}", request.Username);
+                VerifyPassword(password, DummyPasswordHash);
+                _logger.LogWarning("Rejected legacy password hash login outside development for username: {Username}", LogSanitizer.SanitizeIdentifier(username));
                 return InvalidCredentialsResponse();
             }
 
-            if (!VerifyPassword(request.Password, user.PasswordHash))
+            if (!VerifyPassword(password, user.PasswordHash))
             {
-                _logger.LogWarning("Failed login attempt for username: {Username}", request.Username);
+                _logger.LogWarning("Failed login attempt for username: {Username}", LogSanitizer.SanitizeIdentifier(username));
                 return InvalidCredentialsResponse();
             }
 
@@ -117,7 +94,7 @@ public class AuthController : ControllerBase
             if (isLegacyHash)
             {
                 _logger.LogInformation("Upgrading legacy password hash to PBKDF2 for user: {Username}", user.Username);
-                user.PasswordHash = HashPassword(request.Password);
+                user.PasswordHash = HashPassword(password);
                 user.UpdatedAt = DateTime.UtcNow;
             }
 
@@ -128,7 +105,7 @@ public class AuthController : ControllerBase
             var token = _jwtService.GenerateToken(user);
             var refreshToken = _jwtService.GenerateRefreshToken();
 
-            _logger.LogInformation("User {Username} logged in successfully", user.Username);
+            _logger.LogInformation("User {Username} logged in successfully", LogSanitizer.SanitizeIdentifier(user.Username));
 
             return Ok(new LoginResponse
             {
@@ -146,7 +123,7 @@ public class AuthController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during login for username: {Username}", request?.Username ?? "unknown");
+            _logger.LogError(ex, "Error during login for username: {Username}", LogSanitizer.SanitizeIdentifier(request?.Username));
             // Let the global exception handler catch this, but log it first
             throw;
         }
@@ -189,7 +166,7 @@ public class AuthController : ControllerBase
             _configuration.GetValue("Auth:AllowPublicRegistration", false);
         if (!allowPublicRegistration)
         {
-            _logger.LogWarning("Public registration attempt rejected for username: {Username}", request.Username);
+            _logger.LogWarning("Public registration attempt rejected for username: {Username}", LogSanitizer.SanitizeIdentifier(request.Username));
             return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse
             {
                 StatusCode = StatusCodes.Status403Forbidden,
@@ -236,7 +213,7 @@ public class AuthController : ControllerBase
 
         var token = _jwtService.GenerateToken(user);
 
-        _logger.LogInformation("New user registered: {Username}", user.Username);
+        _logger.LogInformation("New user registered: {Username}", LogSanitizer.SanitizeIdentifier(user.Username));
 
         return CreatedAtAction(nameof(Login), new RegisterResponse
         {

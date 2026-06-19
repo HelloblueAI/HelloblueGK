@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using HB_NLP_Research_Lab.Core;
 
 namespace HB_NLP_Research_Lab.Certification
 {
@@ -35,7 +36,7 @@ namespace HB_NLP_Research_Lab.Certification
             _context.Requirements.Add(requirement);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Created requirement {RequirementId}: {Title}", requirement.Id, requirement.Title);
+            _logger.LogInformation("Created requirement {RequirementId}: {Title}", requirement.Id, LogSanitizer.Sanitize(requirement.Title));
             return requirement;
         }
 
@@ -91,7 +92,7 @@ namespace HB_NLP_Research_Lab.Certification
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Linked requirement {RequirementId} to code {CodeFile}:{LineStart}-{LineEnd}", 
-                requirementId, codeFile, lineStart, lineEnd);
+                requirementId, LogSanitizer.Sanitize(codeFile), lineStart, lineEnd);
         }
 
         /// <summary>
@@ -119,7 +120,7 @@ namespace HB_NLP_Research_Lab.Certification
             await UpdateTraceabilityStatusAsync(requirementId);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Linked requirement {RequirementId} to test {TestCaseId}", requirementId, testCaseId);
+            _logger.LogInformation("Linked requirement {RequirementId} to test {TestCaseId}", requirementId, LogSanitizer.SanitizeIdentifier(testCaseId));
         }
 
         /// <summary>
