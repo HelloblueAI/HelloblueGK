@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -115,7 +116,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error retrieving engine {EngineName}", name);
+                _logger.LogError(ex, "Error retrieving engine {EngineName}", LogSanitizer.SanitizeIdentifier(name));
                 return StatusCode(500, "An error occurred while retrieving the engine");
             }
         }
