@@ -135,6 +135,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = "Cannot launch with inactive engine" });
                 }
 
+                var currentUsername = GetCurrentUsername();
+                if (string.IsNullOrWhiteSpace(currentUsername))
+                {
+                    return Forbid();
+                }
+
                 // Create launch record
                 var launch = new Launch
                 {
@@ -146,7 +152,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     ScheduledAt = request.ScheduledAt ?? DateTime.UtcNow.AddHours(1),
                     LaunchParametersJson = JsonSerializer.Serialize(request.LaunchParameters ?? new Dictionary<string, object>()),
                     CreatedAt = DateTime.UtcNow,
-                    CreatedBy = GetCurrentUsername()
+                    CreatedBy = currentUsername
                 };
 
                 _context.Launches.Add(launch);
