@@ -46,9 +46,9 @@ GitHub will eventually detect the missing file and update automatically. The war
 
 ## Current Status
 
-- ✅ **CodeQL Analysis**: Working correctly (using `codeql.yml`)
-- ✅ **CI/CD Pipeline**: Working correctly (using `ci.yml`)
-- ⚠️ **Stale Config Warning**: Harmless, can be deleted via steps above
+- **CodeQL Analysis**: Managed by GitHub default setup
+- **CI/CD Pipeline**: Working correctly (using `ci.yml`)
+- **Stale Config Warning**: Harmless, can be deleted via steps above
 
 ---
 
