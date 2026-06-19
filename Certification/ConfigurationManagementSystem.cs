@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using HB_NLP_Research_Lab.Core;
 
 namespace HB_NLP_Research_Lab.Certification
 {
@@ -41,7 +42,7 @@ namespace HB_NLP_Research_Lab.Certification
             _context.SoftwareBaselines.Add(baseline);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Created software baseline {BaselineName} v{Version}", baselineName, version);
+            _logger.LogInformation("Created software baseline {BaselineName} v{Version}", LogSanitizer.Sanitize(baselineName), LogSanitizer.Sanitize(version));
             return baseline;
         }
 
@@ -149,7 +150,7 @@ namespace HB_NLP_Research_Lab.Certification
             _context.ChangeRequestApprovals.Add(approval);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Approved change request {RequestNumber}", requestNumber);
+            _logger.LogInformation("Approved change request {RequestNumber}", LogSanitizer.SanitizeIdentifier(requestNumber));
         }
 
         /// <summary>
