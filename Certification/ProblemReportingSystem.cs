@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using HB_NLP_Research_Lab.Core;
 
 namespace HB_NLP_Research_Lab.Certification
 {
@@ -41,7 +42,7 @@ namespace HB_NLP_Research_Lab.Certification
             _context.ProblemReports.Add(report);
             await _context.SaveChangesAsync();
 
-            _logger.LogWarning("Created problem report {ReportNumber}: {Title}", report.ReportNumber, report.Title);
+            _logger.LogWarning("Created problem report {ReportNumber}: {Title}", report.ReportNumber, LogSanitizer.Sanitize(report.Title));
             return report;
         }
 
@@ -80,7 +81,7 @@ namespace HB_NLP_Research_Lab.Certification
             _context.ProblemReportStatusChanges.Add(statusChange);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Updated problem report {ReportNumber} status to {Status}", reportNumber, newStatus);
+            _logger.LogInformation("Updated problem report {ReportNumber} status to {Status}", LogSanitizer.SanitizeIdentifier(reportNumber), newStatus);
         }
 
         /// <summary>

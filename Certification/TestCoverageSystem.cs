@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using HB_NLP_Research_Lab.Core;
 
 namespace HB_NLP_Research_Lab.Certification
 {
@@ -62,7 +63,7 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Recorded coverage for {FilePath}: {StatementCoverage}% statements, {BranchCoverage}% branches", 
-                filePath, coverage.StatementCoverage, coverage.BranchCoverage);
+                LogSanitizer.Sanitize(filePath), coverage.StatementCoverage, coverage.BranchCoverage);
         }
 
         /// <summary>
@@ -91,7 +92,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             await _context.SaveChangesAsync();
-            _logger.LogInformation("Marked {FilePath} as safety-critical: {IsSafetyCritical}", filePath, isSafetyCritical);
+            _logger.LogInformation("Marked {FilePath} as safety-critical: {IsSafetyCritical}", LogSanitizer.Sanitize(filePath), isSafetyCritical);
         }
 
         /// <summary>

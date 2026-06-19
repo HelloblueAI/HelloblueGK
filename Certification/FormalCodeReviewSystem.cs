@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using HB_NLP_Research_Lab.Core;
 
 namespace HB_NLP_Research_Lab.Certification
 {
@@ -40,7 +41,7 @@ namespace HB_NLP_Research_Lab.Certification
             _context.CodeReviews.Add(review);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Created code review {ReviewNumber} for {FilePath}", review.ReviewNumber, review.FilePath);
+            _logger.LogInformation("Created code review {ReviewNumber} for {FilePath}", review.ReviewNumber, LogSanitizer.Sanitize(review.FilePath));
             return review;
         }
 
@@ -65,7 +66,7 @@ namespace HB_NLP_Research_Lab.Certification
             _context.CodeReviewAssignments.Add(assignment);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Assigned certified reviewer {ReviewerName} to review {ReviewId}", reviewerName, reviewId);
+            _logger.LogInformation("Assigned certified reviewer {ReviewerName} to review {ReviewId}", LogSanitizer.SanitizeIdentifier(reviewerName), reviewId);
         }
 
         /// <summary>
