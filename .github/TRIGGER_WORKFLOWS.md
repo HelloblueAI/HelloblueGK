@@ -1,13 +1,15 @@
-# 🔄 How to Trigger GitHub Actions Workflows
+# How to Trigger GitHub Actions Workflows
 
-## ✅ Automatic Triggers
+## Automatic Triggers
 
 Workflows automatically run when you:
-- ✅ Push to `main`, `develop`, or `production-deployment` branches
-- ✅ Open a Pull Request targeting these branches
-- ✅ Push a commit (any commit triggers the workflow)
+- Push to `main`, `develop`, or `production-deployment` branches
+- Open a Pull Request targeting these branches
+- Push to a configured `fix/**` branch
 
-## 🚀 Manual Trigger (If Needed)
+CodeQL is handled by GitHub default setup in repository security settings. Do not add or trigger a repository-owned `codeql.yml` workflow while default setup is enabled.
+
+## Manual Trigger
 
 If workflows don't start automatically, you can trigger them manually:
 
@@ -17,7 +19,7 @@ If workflows don't start automatically, you can trigger them manually:
    - Visit: https://github.com/HelloblueAI/HelloblueGK/actions
 
 2. **Select workflow:**
-   - Click on "CI/CD Pipeline" or "CodeQL Security Analysis"
+   - Click on "CI/CD Pipeline" or "Daily Security Audit"
 
 3. **Click "Run workflow":**
    - Select branch: `production-deployment`
@@ -44,11 +46,11 @@ gh auth login
 # Trigger CI/CD workflow
 gh workflow run ci.yml --ref production-deployment
 
-# Trigger CodeQL workflow
-gh workflow run codeql.yml --ref production-deployment
+# Trigger daily NuGet vulnerability audit
+gh workflow run security-audit.yml --ref production-deployment
 ```
 
-## 🔍 Check Workflow Status
+## Check Workflow Status
 
 1. **GitHub Actions Tab:**
    - https://github.com/HelloblueAI/HelloblueGK/actions
@@ -71,7 +73,7 @@ gh workflow run codeql.yml --ref production-deployment
 
 2. **Check workflow files exist:**
    - `.github/workflows/ci.yml` should exist
-   - `.github/workflows/codeql.yml` should exist
+   - `.github/workflows/security-audit.yml` should exist
 
 3. **Check GitHub Actions is enabled:**
    - Go to: Settings → Actions → General
@@ -93,15 +95,15 @@ gh workflow run codeql.yml --ref production-deployment
    - Test failures
    - Configuration issues
 
-## 📊 Current Status
+## Current Status
 
 After pushing to `production-deployment`:
-- ✅ Workflows should trigger automatically
-- ✅ CI/CD Pipeline will run
-- ✅ CodeQL Security Analysis will run
-- ✅ All checks will validate your code
+- Workflows should trigger automatically
+- CI/CD Pipeline will run
+- Daily Security Audit remains available for scheduled or manual NuGet vulnerability scans
+- CodeQL results are managed by GitHub default setup
 
 ---
 
-**Your workflows are now configured to trigger on `production-deployment` branch!** 🎉
+**Workflows are configured to trigger on `production-deployment` and the other configured branches.**
 
