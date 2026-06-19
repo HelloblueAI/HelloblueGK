@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.WebAPI.Data;
+using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
@@ -138,7 +139,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
 
                 var currentUsername = GetCurrentUsername();
-                if (!User.IsInRole("Admin") && string.IsNullOrWhiteSpace(currentUsername))
+                if (string.IsNullOrWhiteSpace(currentUsername))
+                {
+                    return Forbid();
+                }
+
+                if (!EngineAccessPolicy.CanUseEngine(User, engine, currentUsername))
                 {
                     return Forbid();
                 }
