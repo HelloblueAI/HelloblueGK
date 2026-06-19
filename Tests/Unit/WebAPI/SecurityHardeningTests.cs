@@ -344,6 +344,7 @@ public class SecurityHardeningTests
     {
         await using var context = CreateContext();
         var engine = CreateEngine("shared");
+        engine.CreatedBy = null;
         context.Engines.Add(engine);
         await context.SaveChangesAsync();
         var digitalTwinEngine = new DigitalTwinEngine();
@@ -363,9 +364,9 @@ public class SecurityHardeningTests
         });
 
         var aliceTwin = aliceResult.Should().BeOfType<CreatedAtActionResult>().Subject.Value
-            .Should().BeOfType<DigitalTwin>().Subject;
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
         var bobTwin = bobResult.Should().BeOfType<CreatedAtActionResult>().Subject.Value
-            .Should().BeOfType<DigitalTwin>().Subject;
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
 
         var aliceEngineKey = ReadStoredEngineKey(aliceTwin);
         var bobEngineKey = ReadStoredEngineKey(bobTwin);
@@ -375,7 +376,7 @@ public class SecurityHardeningTests
         bobEngineKey.Should().NotBe($"Engine_{engine.Id}");
     }
 
-    private static string? ReadStoredEngineKey(DigitalTwin digitalTwin)
+    private static string? ReadStoredEngineKey(DigitalTwinResponse digitalTwin)
     {
         using var modelData = JsonDocument.Parse(digitalTwin.ModelDataJson!);
         return modelData.RootElement.GetProperty("EngineId").GetString();

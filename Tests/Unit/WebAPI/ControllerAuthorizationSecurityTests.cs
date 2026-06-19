@@ -49,6 +49,26 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task StartOptimization_ForEngineOwnedByDifferentUser_ReturnsForbidWithoutCreatingRun()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateOptimizationController(context, CreatePrincipal("bob"));
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic"
+        });
+
+        result.Should().BeOfType<ForbidResult>();
+        context.AIOptimizationRuns.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetOptimizationStatus_ForFailedRun_DoesNotExposeStoredException()
     {
         await using var context = CreateContext();
@@ -83,7 +103,7 @@ public class ControllerAuthorizationSecurityTests
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var digitalTwins = okResult.Value.Should()
-            .BeAssignableTo<IEnumerable<DigitalTwin>>()
+            .BeAssignableTo<IEnumerable<DigitalTwinResponse>>()
             .Subject
             .ToList();
 
@@ -102,6 +122,65 @@ public class ControllerAuthorizationSecurityTests
         var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest());
 
         result.Should().BeOfType<ForbidResult>();
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwin_ForEngineOwnedByDifferentUser_ReturnsForbidWithoutCreatingTwin()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("bob"));
+
+        var result = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Unauthorized twin"
+        });
+
+        result.Should().BeOfType<ForbidResult>();
+        context.DigitalTwins.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetDigitalTwinById_DoesNotExposeFullEngineMetadata()
+    {
+        await using var context = CreateContext();
+        var engine = new Engine
+        {
+            Name = "Private Engine",
+            EngineType = "Test",
+            CreatedBy = "engine-owner",
+            Thrust = 42
+        };
+        var digitalTwin = new DigitalTwin
+        {
+            Engine = engine,
+            Name = "Alice twin",
+            PredictionAccuracy = 0.99,
+            CreatedBy = "alice",
+            CreatedAt = DateTime.UtcNow,
+            IsActive = true
+        };
+        context.DigitalTwins.Add(digitalTwin);
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetDigitalTwinById(digitalTwin.Id);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var response = okResult.Value.Should().BeOfType<DigitalTwinResponse>().Subject;
+        response.Engine.Should().NotBeNull();
+        response.Engine!.Id.Should().Be(engine.Id);
+        response.Engine.Name.Should().Be(engine.Name);
+        response.Engine.EngineType.Should().Be(engine.EngineType);
+
+        var responseJson = JsonSerializer.Serialize(response);
+        responseJson.Should().NotContain("engine-owner");
+        responseJson.Should().NotContain(nameof(Engine.Thrust));
     }
 
     [Fact]
