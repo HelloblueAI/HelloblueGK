@@ -13,6 +13,101 @@ namespace HelloblueGK.Tests.Unit.WebAPI;
 public class EnginesControllerSecurityTests
 {
     [Fact]
+    public async Task GetAllEngines_ForStandardUser_ReturnsOnlySharedAndOwnedEngines()
+    {
+        var options = CreateOptions();
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-3), "shared-catalog", createdBy: null));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-2), "alice-private", createdBy: "alice"));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-1), "bob-private", createdBy: "bob"));
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var readContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(readContext, CreatePrincipal("alice", isAdmin: false));
+
+            var result = await controller.GetAllEngines();
+
+            var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+            var engines = okResult.Value.Should().BeAssignableTo<IEnumerable<Engine>>().Subject.ToList();
+            engines.Select(engine => engine.Name)
+                .Should().BeEquivalentTo("shared-catalog", "alice-private");
+            engines.Should().NotContain(engine => engine.CreatedBy == "bob");
+        }
+    }
+
+    [Fact]
+    public async Task GetActiveEngines_ForStandardUser_ReturnsOnlyActiveSharedAndOwnedEngines()
+    {
+        var options = CreateOptions();
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-4), "shared-active", createdBy: null));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-3), "alice-active", createdBy: "alice"));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-2), "alice-inactive", createdBy: "alice", isActive: false));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-1), "bob-active", createdBy: "bob"));
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var readContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(readContext, CreatePrincipal("alice", isAdmin: false));
+
+            var result = await controller.GetActiveEngines();
+
+            var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+            var engines = okResult.Value.Should().BeAssignableTo<IEnumerable<Engine>>().Subject.ToList();
+            engines.Select(engine => engine.Name)
+                .Should().BeEquivalentTo("shared-active", "alice-active");
+        }
+    }
+
+    [Fact]
+    public async Task GetEngineById_ForDifferentStandardUser_ReturnsForbid()
+    {
+        var options = CreateOptions();
+        int engineId;
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            var engine = CreateEngine(DateTime.UtcNow, "alice-private", createdBy: "alice");
+            seedContext.Engines.Add(engine);
+            await seedContext.SaveChangesAsync();
+            engineId = engine.Id;
+        }
+
+        await using (var readContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(readContext, CreatePrincipal("bob", isAdmin: false));
+
+            var result = await controller.GetEngineById(engineId);
+
+            result.Should().BeOfType<ForbidResult>();
+        }
+    }
+
+    [Fact]
+    public async Task GetEngineByName_ForDifferentStandardUser_ReturnsForbid()
+    {
+        var options = CreateOptions();
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow, "alice-private", createdBy: "alice"));
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var readContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(readContext, CreatePrincipal("bob", isAdmin: false));
+
+            var result = await controller.GetEngineByName("alice-private");
+
+            result.Should().BeOfType<ForbidResult>();
+        }
+    }
+
+    [Fact]
     public async Task CreateEngine_IgnoresClientControlledMetadataAndUsesAuthenticatedAdmin()
     {
         var options = CreateOptions();
@@ -170,23 +265,27 @@ public class EnginesControllerSecurityTests
         };
     }
 
-    private static ClaimsPrincipal CreatePrincipal(string username)
+    private static ClaimsPrincipal CreatePrincipal(string username, bool isAdmin = true)
     {
         var claims = new[]
         {
             new Claim(ClaimTypes.Name, username),
             new Claim("username", username),
-            new Claim(ClaimTypes.Role, "Admin")
+            new Claim(ClaimTypes.Role, isAdmin ? "Admin" : "User")
         };
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
     }
 
-    private static Engine CreateEngine(DateTime createdAt)
+    private static Engine CreateEngine(
+        DateTime createdAt,
+        string name = "Baseline Engine",
+        string? createdBy = "admin",
+        bool isActive = true)
     {
         return new Engine
         {
-            Name = "Baseline Engine",
+            Name = name,
             EngineType = "Raptor",
             Thrust = 2_300_000,
             SpecificImpulse = 380,
@@ -197,9 +296,9 @@ public class EnginesControllerSecurityTests
             MixtureRatio = 3.6,
             MassFlowRate = 650,
             Description = "Flight-rated baseline",
-            CreatedBy = "admin",
+            CreatedBy = createdBy,
             CreatedAt = createdAt,
-            IsActive = true
+            IsActive = isActive
         };
     }
 }
