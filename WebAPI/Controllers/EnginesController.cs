@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -36,8 +37,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             try
             {
+                if (!TryGetCurrentUserAccessContext(out var currentUsername, out var isAdmin))
+                {
+                    return Forbid();
+                }
+
                 var engines = await _engineRepository.GetAllAsync();
-                return Ok(engines);
+                return Ok(FilterAccessibleEngines(engines, currentUsername, isAdmin));
             }
             catch (Exception ex)
             {
@@ -57,8 +63,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             try
             {
+                if (!TryGetCurrentUserAccessContext(out var currentUsername, out var isAdmin))
+                {
+                    return Forbid();
+                }
+
                 var engines = await _engineRepository.GetActiveEnginesAsync();
-                return Ok(engines);
+                return Ok(FilterAccessibleEngines(engines, currentUsername, isAdmin));
             }
             catch (Exception ex)
             {
@@ -85,6 +96,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     return NotFound(new { message = $"Engine with ID {id} not found" });
                 }
+
+                if (!CurrentUserCanAccessEngine(engine))
+                {
+                    return Forbid();
+                }
+
                 return Ok(engine);
             }
             catch (Exception ex)
@@ -112,6 +129,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     return NotFound(new { message = $"Engine with name '{name}' not found" });
                 }
+
+                if (!CurrentUserCanAccessEngine(engine))
+                {
+                    return Forbid();
+                }
+
                 return Ok(engine);
             }
             catch (Exception ex)
@@ -240,6 +263,32 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             return User.Identity?.Name
                 ?? User.FindFirst(ClaimTypes.Name)?.Value
                 ?? User.FindFirst("username")?.Value;
+        }
+
+        private bool TryGetCurrentUserAccessContext(out string? currentUsername, out bool isAdmin)
+        {
+            isAdmin = User.IsInRole("Admin");
+            currentUsername = GetCurrentUsername();
+            return isAdmin || !string.IsNullOrWhiteSpace(currentUsername);
+        }
+
+        private IEnumerable<Engine> FilterAccessibleEngines(
+            IEnumerable<Engine> engines,
+            string? currentUsername,
+            bool isAdmin)
+        {
+            if (isAdmin)
+            {
+                return engines;
+            }
+
+            return engines.Where(engine =>
+                EngineAccessPolicy.CanUseEngine(User, engine, currentUsername));
+        }
+
+        private bool CurrentUserCanAccessEngine(Engine engine)
+        {
+            return EngineAccessPolicy.CanUseEngine(User, engine, GetCurrentUsername());
         }
     }
 
