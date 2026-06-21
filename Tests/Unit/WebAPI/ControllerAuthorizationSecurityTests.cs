@@ -91,6 +91,43 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetOptimizationStatus_ForRunningRun_DoesNotExposeStoredDiagnostic()
+    {
+        await using var context = CreateContext();
+        var optimization = await SeedOptimizationAsync(
+            context,
+            "alice",
+            status: "Running",
+            errorMessage: "redis connection string and /srv/app/internal-path");
+
+        var controller = CreateOptimizationController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetOptimizationStatus(optimization.Id);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var responseJson = JsonSerializer.Serialize(okResult.Value);
+
+        responseJson.Should().NotContain("redis connection string");
+        responseJson.Should().NotContain("/srv/app/internal-path");
+    }
+
+    [Fact]
+    public void AIOptimizationRunResponse_ForRunningRun_DoesNotExposeStoredDiagnostic()
+    {
+        var optimization = new AIOptimizationRun
+        {
+            AlgorithmType = "Genetic",
+            Status = "Running",
+            ErrorMessage = "raw optimizer stack trace",
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var response = AIOptimizationRunResponse.FromEntity(optimization);
+
+        response.ErrorMessage.Should().BeNull();
+    }
+
+    [Fact]
     public async Task GetAllDigitalTwins_ForStandardUser_ReturnsOnlyOwnedTwins()
     {
         await using var context = CreateContext();
@@ -251,6 +288,48 @@ public class ControllerAuthorizationSecurityTests
         var response = LaunchResponse.FromEntity(launch);
 
         response.ErrorMessage.Should().Be("Launch failed. See server logs for details.");
+    }
+
+    [Fact]
+    public void LaunchResponse_ForNonFailedStatus_DoesNotExposeStoredDiagnostic()
+    {
+        var launch = new Launch
+        {
+            MissionName = "Leaky Progress",
+            Status = "InProgress",
+            ErrorMessage = "postgres timeout on internal host",
+            ScheduledAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        var response = LaunchResponse.FromEntity(launch);
+
+        response.ErrorMessage.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ScheduleLaunch_ReturnsSafeLaunchResponseInsteadOfRawEntity()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = engine.Id,
+            MissionName = "Safe Mission"
+        });
+
+        var createdResult = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = createdResult.Value.Should().BeOfType<LaunchResponse>().Subject;
+        response.Engine.Should().NotBeNull();
+        response.Engine!.Name.Should().Be(engine.Name);
+
+        var responseJson = JsonSerializer.Serialize(response);
+        responseJson.Should().NotContain(nameof(Engine.Thrust));
+        responseJson.Should().NotContain(nameof(Engine.SpecificImpulse));
     }
 
     private static HelloblueGKDbContext CreateContext()

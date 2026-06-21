@@ -607,15 +607,25 @@ var allowPublicSwagger = app.Environment.IsDevelopment() && documentationOptions
 var swaggerUiAtApplicationRoot = app.Environment.IsDevelopment();
 app.Use(async (context, next) =>
 {
-    if (!IsSwaggerRequest(context.Request.Path, swaggerUiAtApplicationRoot)
-        || allowPublicSwagger
-        || context.User.Identity?.IsAuthenticated == true)
+    if (!IsSwaggerRequest(context.Request.Path, swaggerUiAtApplicationRoot) || allowPublicSwagger)
     {
         await next(context);
         return;
     }
 
-    await context.ChallengeAsync();
+    if (context.User.Identity?.IsAuthenticated != true)
+    {
+        await context.ChallengeAsync();
+        return;
+    }
+
+    if (!app.Environment.IsDevelopment() && !context.User.IsInRole("Admin"))
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return;
+    }
+
+    await next(context);
 });
 
 app.UseSwagger();
