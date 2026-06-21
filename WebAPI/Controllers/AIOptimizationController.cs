@@ -363,9 +363,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
         private static string? SanitizeErrorMessage(AIOptimizationRun optimization)
         {
-            return optimization.Status == "Failed"
-                ? "Optimization failed. See server logs for details."
-                : optimization.ErrorMessage;
+            return string.Equals(optimization.Status, "Failed", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(optimization.ErrorMessage)
+                    ? "Optimization failed. See server logs for details."
+                    : null;
         }
     }
 
@@ -405,9 +406,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 Generations = optimization.Generations,
                 BestFitness = optimization.BestFitness,
                 ExecutionTimeSeconds = optimization.ExecutionTimeSeconds,
-                ErrorMessage = optimization.Status == "Failed"
-                    ? "Optimization failed. See server logs for details."
-                    : optimization.ErrorMessage,
+                ErrorMessage = string.Equals(optimization.Status, "Failed", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(optimization.ErrorMessage)
+                        ? "Optimization failed. See server logs for details."
+                        : null,
                 CreatedAt = optimization.CreatedAt,
                 StartedAt = optimization.StartedAt,
                 CompletedAt = optimization.CompletedAt,
