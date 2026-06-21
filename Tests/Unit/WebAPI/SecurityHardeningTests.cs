@@ -248,6 +248,31 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Swagger_InProduction_RequiresAdminRole()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            CreateJwtToken("alice", isAdmin: false));
+        var userResponse = await client.GetAsync("/swagger/v1/swagger.json");
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            CreateJwtToken("admin", isAdmin: true));
+        var adminResponse = await client.GetAsync("/swagger/v1/swagger.json");
+        var adminBody = await adminResponse.Content.ReadAsStringAsync();
+
+        userResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+        adminResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+        adminBody.Should().Contain("\"openapi\"");
+    }
+
+    [Fact]
     public async Task Metrics_InProduction_RequiresAdminRole()
     {
         using var factory = new TestWebApiFactory(Environments.Production);

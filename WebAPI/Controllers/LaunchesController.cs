@@ -111,7 +111,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// </summary>
         [HttpPost]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(Launch), StatusCodes.Status201Created)]
+        [ProducesResponseType(typeof(LaunchResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> ScheduleLaunch([FromBody] ScheduleLaunchRequest request)
@@ -152,13 +152,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     ScheduledAt = request.ScheduledAt ?? DateTime.UtcNow.AddHours(1),
                     LaunchParametersJson = JsonSerializer.Serialize(request.LaunchParameters ?? new Dictionary<string, object>()),
                     CreatedAt = DateTime.UtcNow,
-                    CreatedBy = currentUsername
+                    CreatedBy = currentUsername,
+                    Engine = engine
                 };
 
                 _context.Launches.Add(launch);
                 await _context.SaveChangesAsync();
 
-                return CreatedAtAction(nameof(GetLaunchById), new { id = launch.Id }, launch);
+                return CreatedAtAction(nameof(GetLaunchById), new { id = launch.Id }, LaunchResponse.FromEntity(launch));
             }
             catch (Exception ex)
             {
@@ -172,7 +173,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// </summary>
         [HttpPost("{id}/launch")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(Launch), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(LaunchResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         [ProducesResponseType(StatusCodes.Status400BadRequest)]
         public async Task<IActionResult> ExecuteLaunch(int id)
@@ -208,7 +209,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     await ExecuteLaunchAsync(launchId, scopedContext);
                 });
 
-                return Ok(launch);
+                return Ok(LaunchResponse.FromEntity(launch));
             }
             catch (Exception ex)
             {
@@ -466,9 +467,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 MaxAltitude = launch.MaxAltitude,
                 MaxVelocity = launch.MaxVelocity,
                 MissionSuccess = launch.MissionSuccess,
-                ErrorMessage = launch.Status == "Failed" && launch.ErrorMessage != "Mission failed due to engine performance below threshold"
-                    ? "Launch failed. See server logs for details."
-                    : launch.ErrorMessage,
+                ErrorMessage = GetSafeErrorMessage(launch),
                 ScheduledAt = launch.ScheduledAt,
                 LaunchedAt = launch.LaunchedAt,
                 CompletedAt = launch.CompletedAt,
@@ -476,6 +475,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 CreatedAt = launch.CreatedAt,
                 Engine = launch.Engine == null ? null : EngineSummaryResponse.FromEntity(launch.Engine)
             };
+        }
+
+        private static string? GetSafeErrorMessage(Launch launch)
+        {
+            if (string.IsNullOrWhiteSpace(launch.ErrorMessage))
+            {
+                return null;
+            }
+
+            if (!string.Equals(launch.Status, "Failed", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            return launch.ErrorMessage == "Mission failed due to engine performance below threshold"
+                ? launch.ErrorMessage
+                : "Launch failed. See server logs for details.";
         }
     }
 
