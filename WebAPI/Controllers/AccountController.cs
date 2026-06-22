@@ -120,7 +120,7 @@ public class AccountController : ControllerBase
             ? returnUrl[1..]
             : returnUrl;
 
-        if (!normalizedReturnUrl.StartsWith('/', StringComparison.Ordinal) ||
+        if (!normalizedReturnUrl.StartsWith("/", StringComparison.Ordinal) ||
             (normalizedReturnUrl.Length > 1 &&
              (normalizedReturnUrl[1] == '/' || normalizedReturnUrl[1] == '\\')))
         {
