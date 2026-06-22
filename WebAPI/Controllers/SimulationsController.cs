@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Services;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
@@ -22,18 +23,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         private readonly HelloblueGKDbContext _context;
         private readonly HelloblueGKEngine _engine;
         private readonly ILogger<SimulationsController> _logger;
-        private readonly IServiceProvider _serviceProvider;
+        private readonly IBackgroundWorkQueue _backgroundWorkQueue;
 
         public SimulationsController(
             HelloblueGKDbContext context,
             HelloblueGKEngine engine,
             ILogger<SimulationsController> logger,
-            IServiceProvider serviceProvider)
+            IBackgroundWorkQueue backgroundWorkQueue)
         {
             _context = context;
             _engine = engine;
             _logger = logger;
-            _serviceProvider = serviceProvider;
+            _backgroundWorkQueue = backgroundWorkQueue;
         }
 
         /// <summary>
@@ -156,6 +157,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
+                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot))
+                {
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                    {
+                        message = "The server is currently running the maximum number of background workloads. Try again later."
+                    });
+                }
+
                 // Create simulation record
                 var simulation = new EngineSimulation
                 {
@@ -173,23 +182,25 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Run simulation asynchronously with a new scope to avoid DbContext disposal issues
                 var simulationId = simulation.Id;
                 var engineId = engine.Id;
-                _ = Task.Run(async () =>
+                try
                 {
-                    try
+                    backgroundWorkSlot!.Queue(async (serviceProvider, cancellationToken) =>
                     {
-                        using var scope = _serviceProvider.CreateScope();
-                        var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
-                        var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
+                        var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
+                        var scopedEngine = await scopedContext.Engines.FindAsync(
+                            [engineId],
+                            cancellationToken);
                         if (scopedEngine != null)
                         {
                             await ExecuteSimulationAsync(simulationId, scopedEngine, request, scopedContext);
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Background simulation task failed for SimulationId {SimulationId}", simulationId);
-                    }
-                });
+                    }, $"simulation:{simulationId}");
+                }
+                catch
+                {
+                    backgroundWorkSlot.Dispose();
+                    throw;
+                }
 
                 return CreatedAtAction(
                     nameof(GetSimulationById),

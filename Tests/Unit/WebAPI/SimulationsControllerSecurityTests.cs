@@ -4,6 +4,7 @@ using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -113,6 +114,35 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task RunSimulation_WhenBackgroundQueueIsFull_ReturnsServiceUnavailableWithoutCreatingSimulation()
+    {
+        await using var context = CreateContext();
+        var engine = new Engine
+        {
+            Name = "Shared Engine",
+            EngineType = "Test",
+            CreatedBy = null
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateController(
+            context,
+            CreatePrincipal("alice"),
+            new RejectingBackgroundWorkQueue());
+
+        var result = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "CFD"
+        });
+
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        context.EngineSimulations.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task GetSimulationStatus_WithStoredDiagnosticError_DoesNotExposeDetails()
     {
         await using var context = CreateContext();
@@ -184,13 +214,16 @@ public class SimulationsControllerSecurityTests
         return simulation;
     }
 
-    private static SimulationsController CreateController(HelloblueGKDbContext context, ClaimsPrincipal user)
+    private static SimulationsController CreateController(
+        HelloblueGKDbContext context,
+        ClaimsPrincipal user,
+        IBackgroundWorkQueue? backgroundWorkQueue = null)
     {
         return new SimulationsController(
             context,
             new HelloblueGKEngine(),
             NullLogger<SimulationsController>.Instance,
-            new ServiceCollection().BuildServiceProvider())
+            backgroundWorkQueue ?? new RejectingBackgroundWorkQueue())
         {
             ControllerContext = new ControllerContext
             {
@@ -220,5 +253,16 @@ public class SimulationsControllerSecurityTests
         };
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+    }
+
+    private sealed class RejectingBackgroundWorkQueue : IBackgroundWorkQueue
+    {
+        public int MaxConcurrency => 0;
+
+        public bool TryAcquire(out BackgroundWorkSlot? slot)
+        {
+            slot = null;
+            return false;
+        }
     }
 }

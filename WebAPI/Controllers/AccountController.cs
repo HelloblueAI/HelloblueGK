@@ -73,15 +73,15 @@ public class AccountController : ControllerBase
 
     private static string NormalizeReturnUrl(string? returnUrl)
     {
-        if (string.IsNullOrWhiteSpace(returnUrl) || !IsSafeLocalReturnUrl(returnUrl))
+        if (string.IsNullOrWhiteSpace(returnUrl))
         {
             return DefaultReturnUrl;
         }
 
         try
         {
-            var decodedReturnUrl = Uri.UnescapeDataString(returnUrl);
-            return IsSafeLocalReturnUrl(decodedReturnUrl) ? returnUrl : DefaultReturnUrl;
+            var decodedReturnUrl = DecodeReturnUrl(returnUrl);
+            return IsSafeSwaggerReturnUrl(decodedReturnUrl) ? decodedReturnUrl : DefaultReturnUrl;
         }
         catch (UriFormatException)
         {
@@ -89,23 +89,57 @@ public class AccountController : ControllerBase
         }
     }
 
-    private static bool IsSafeLocalReturnUrl(string returnUrl)
+    private static string DecodeReturnUrl(string returnUrl)
     {
-        if (returnUrl.Length == 0)
+        var decodedReturnUrl = returnUrl.Trim();
+        for (var i = 0; i < 3; i++)
+        {
+            var next = Uri.UnescapeDataString(decodedReturnUrl);
+            if (string.Equals(next, decodedReturnUrl, StringComparison.Ordinal))
+            {
+                return decodedReturnUrl;
+            }
+
+            decodedReturnUrl = next;
+        }
+
+        return decodedReturnUrl;
+    }
+
+    private static bool IsSafeSwaggerReturnUrl(string returnUrl)
+    {
+        if (returnUrl.Length == 0 ||
+            returnUrl.Any(char.IsControl) ||
+            returnUrl.Contains('\\', StringComparison.Ordinal) ||
+            returnUrl.Contains('%', StringComparison.Ordinal))
         {
             return false;
         }
 
-        if (returnUrl[0] == '/')
+        var normalizedReturnUrl = returnUrl.StartsWith("~/", StringComparison.Ordinal)
+            ? returnUrl[1..]
+            : returnUrl;
+
+        if (!normalizedReturnUrl.StartsWith('/', StringComparison.Ordinal) ||
+            (normalizedReturnUrl.Length > 1 &&
+             (normalizedReturnUrl[1] == '/' || normalizedReturnUrl[1] == '\\')))
         {
-            return returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\');
+            return false;
         }
 
-        if (returnUrl[0] == '~' && returnUrl.Length > 1 && returnUrl[1] == '/')
+        var pathEnd = normalizedReturnUrl.IndexOfAny(['?', '#']);
+        var path = pathEnd >= 0 ? normalizedReturnUrl[..pathEnd] : normalizedReturnUrl;
+
+        if (path.Contains("..", StringComparison.Ordinal) ||
+            path.Contains("//", StringComparison.Ordinal))
         {
-            return returnUrl.Length == 2 || (returnUrl[2] != '/' && returnUrl[2] != '\\');
+            return false;
         }
 
-        return false;
+        const string swaggerPath = "/swagger";
+        return path.Equals(swaggerPath, StringComparison.OrdinalIgnoreCase) ||
+            (path.StartsWith(swaggerPath, StringComparison.OrdinalIgnoreCase) &&
+             path.Length > swaggerPath.Length &&
+             path[swaggerPath.Length] == '/');
     }
 }

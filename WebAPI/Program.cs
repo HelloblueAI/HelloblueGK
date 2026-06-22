@@ -356,6 +356,7 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddSingleton<PerformanceMonitoringService>();
 builder.Services.AddHostedService(provider => provider.GetRequiredService<PerformanceMonitoringService>());
 builder.Services.AddSingleton<RateLimitingService>();
+builder.Services.AddSingleton<IBackgroundWorkQueue, BoundedBackgroundWorkQueue>();
 builder.Services.AddSingleton<StructuredLoggingService>();
 builder.Services.AddSingleton<ConfigurationValidationService>();
 builder.Services.AddSingleton<AdvancedHealthCheckService>();
