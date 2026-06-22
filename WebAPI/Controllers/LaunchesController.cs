@@ -221,7 +221,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
                 catch
                 {
-                    backgroundWorkSlot.Dispose();
+                    backgroundWorkSlot?.Dispose();
                     throw;
                 }
 
