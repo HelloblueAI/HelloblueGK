@@ -4,6 +4,7 @@ using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -65,6 +66,31 @@ public class ControllerAuthorizationSecurityTests
         });
 
         result.Should().BeOfType<ForbidResult>();
+        context.AIOptimizationRuns.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task StartOptimization_WhenBackgroundQueueIsFull_ReturnsServiceUnavailableWithoutCreatingRun()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("shared");
+        engine.CreatedBy = null;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            new RejectingBackgroundWorkQueue());
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic"
+        });
+
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
         context.AIOptimizationRuns.Should().BeEmpty();
     }
 
@@ -332,6 +358,24 @@ public class ControllerAuthorizationSecurityTests
         responseJson.Should().NotContain(nameof(Engine.SpecificImpulse));
     }
 
+    [Fact]
+    public async Task ExecuteLaunch_WhenBackgroundQueueIsFull_ReturnsServiceUnavailableWithoutStartingLaunch()
+    {
+        await using var context = CreateContext();
+        var launch = await SeedLaunchAsync(context, "admin");
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            new RejectingBackgroundWorkQueue());
+
+        var result = await controller.ExecuteLaunch(launch.Id);
+
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        launch.Status.Should().Be("Scheduled");
+        launch.LaunchedAt.Should().BeNull();
+    }
+
     private static HelloblueGKDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
@@ -423,13 +467,14 @@ public class ControllerAuthorizationSecurityTests
 
     private static AIOptimizationController CreateOptimizationController(
         HelloblueGKDbContext context,
-        ClaimsPrincipal user)
+        ClaimsPrincipal user,
+        IBackgroundWorkQueue? backgroundWorkQueue = null)
     {
         return new AIOptimizationController(
             context,
             new AdvancedAIOptimizationEngine(),
             NullLogger<AIOptimizationController>.Instance,
-            new ServiceCollection().BuildServiceProvider())
+            backgroundWorkQueue ?? new RejectingBackgroundWorkQueue())
         {
             ControllerContext = CreateControllerContext(user)
         };
@@ -450,13 +495,14 @@ public class ControllerAuthorizationSecurityTests
 
     private static LaunchesController CreateLaunchesController(
         HelloblueGKDbContext context,
-        ClaimsPrincipal user)
+        ClaimsPrincipal user,
+        IBackgroundWorkQueue? backgroundWorkQueue = null)
     {
         return new LaunchesController(
             context,
             new HelloblueGKEngine(),
             NullLogger<LaunchesController>.Instance,
-            new ServiceCollection().BuildServiceProvider())
+            backgroundWorkQueue ?? new RejectingBackgroundWorkQueue())
         {
             ControllerContext = CreateControllerContext(user)
         };
@@ -480,5 +526,16 @@ public class ControllerAuthorizationSecurityTests
         };
 
         return new ClaimsPrincipal(new ClaimsIdentity(claims, "Test"));
+    }
+
+    private sealed class RejectingBackgroundWorkQueue : IBackgroundWorkQueue
+    {
+        public int MaxConcurrency => 0;
+
+        public bool TryAcquire(out BackgroundWorkSlot? slot)
+        {
+            slot = null;
+            return false;
+        }
     }
 }

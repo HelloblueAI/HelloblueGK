@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Services;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
@@ -21,18 +22,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         private readonly HelloblueGKDbContext _context;
         private readonly HelloblueGKEngine _engine;
         private readonly ILogger<LaunchesController> _logger;
-        private readonly IServiceProvider _serviceProvider;
+        private readonly IBackgroundWorkQueue _backgroundWorkQueue;
 
         public LaunchesController(
             HelloblueGKDbContext context,
             HelloblueGKEngine engine,
             ILogger<LaunchesController> logger,
-            IServiceProvider serviceProvider)
+            IBackgroundWorkQueue backgroundWorkQueue)
         {
             _context = context;
             _engine = engine;
             _logger = logger;
-            _serviceProvider = serviceProvider;
+            _backgroundWorkQueue = backgroundWorkQueue;
         }
 
         /// <summary>
@@ -194,6 +195,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Launch is not in Scheduled status. Current status: {launch.Status}" });
                 }
 
+                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot))
+                {
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                    {
+                        message = "The server is currently running the maximum number of background workloads. Try again later."
+                    });
+                }
+
                 // Update status and start launch
                 launch.Status = "InProgress";
                 launch.LaunchedAt = DateTime.UtcNow;
@@ -202,12 +211,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Execute launch asynchronously
                 // Run launch asynchronously with a new scope to avoid DbContext disposal issues
                 var launchId = launch.Id;
-                _ = Task.Run(async () =>
+                try
                 {
-                    using var scope = _serviceProvider.CreateScope();
-                    var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
-                    await ExecuteLaunchAsync(launchId, scopedContext);
-                });
+                    backgroundWorkSlot!.Queue(async (serviceProvider, _) =>
+                    {
+                        var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
+                        await ExecuteLaunchAsync(launchId, scopedContext);
+                    }, $"launch:{launchId}");
+                }
+                catch
+                {
+                    backgroundWorkSlot.Dispose();
+                    throw;
+                }
 
                 return Ok(LaunchResponse.FromEntity(launch));
             }
