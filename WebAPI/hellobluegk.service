@@ -4,8 +4,8 @@ After=network.target
 
 [Service]
 Type=notify
-WorkingDirectory=/home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
-ExecStart=/usr/bin/dotnet /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI/bin/Release/net9.0/HelloblueGK.WebAPI.dll
+WorkingDirectory=/opt/hellobluegk/WebAPI
+ExecStart=/usr/bin/dotnet /opt/hellobluegk/WebAPI/bin/Release/net9.0/HelloblueGK.WebAPI.dll
 Restart=always
 RestartSec=10
 KillSignal=SIGINT

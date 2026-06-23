@@ -5,7 +5,7 @@
 ### ❌ BEFORE: Cluttered Root Directory
 
 ```
-PicoGK/
+HelloblueGK/
 ├── README.md
 ├── LICENSE
 ├── CONTRIBUTING.md
@@ -47,7 +47,7 @@ PicoGK/
 ### ✅ AFTER: Clean, Organized Structure
 
 ```
-PicoGK/
+HelloblueGK/
 ├── README.md                          ← Essential
 ├── LICENSE                            ← Essential
 ├── CONTRIBUTING.md                    ← Essential

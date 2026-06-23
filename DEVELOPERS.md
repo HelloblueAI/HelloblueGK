@@ -4,6 +4,10 @@ Get from zero to a running API and passing tests in about five minutes.
 
 This repository is the **Community Edition** — see [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) for what is public vs commercial.
 
+**Naming:** Clone into a folder named `HelloblueGK`. This project is **not** [LEAP 71's PicoGK](https://github.com/leap71/PicoGK) and is not a fork of that repository. See the [Project identity](README.md#project-identity) section in the README.
+
+If an older clone directory is still named `PicoGK`, rename it when convenient: `mv PicoGK HelloblueGK` (paths in systemd examples use `/opt/hellobluegk`).
+
 ## Prerequisites
 
 | Tool | Version | Notes |

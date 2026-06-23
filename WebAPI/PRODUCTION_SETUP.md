@@ -15,7 +15,7 @@ This guide will help you set up HelloblueGK to run as a production service that:
 First, build the application in Release mode:
 
 ```bash
-cd /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
+cd /opt/hellobluegk/WebAPI
 dotnet publish -c Release -o ./publish
 ```
 
@@ -29,7 +29,7 @@ This creates optimized production binaries in the `publish` folder.
 
 1. **Copy service file:**
 ```bash
-sudo cp /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI/hellobluegk.service /etc/systemd/system/
+sudo cp /opt/hellobluegk/WebAPI/hellobluegk.service /etc/systemd/system/
 ```
 
 2. **Update the service file** with correct paths:
@@ -90,7 +90,7 @@ sudo systemctl disable hellobluegk
 
 1. **Update appsettings.Production.json:**
 ```bash
-cd /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
+cd /opt/hellobluegk/WebAPI
 cp appsettings.Production.json.example appsettings.Production.json
 nano appsettings.Production.json
 ```
@@ -246,7 +246,7 @@ sudo lsof -i :5000
 ### Permission issues
 ```bash
 # Check file permissions
-ls -la /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
+ls -la /opt/hellobluegk/WebAPI
 
 # Ensure user in service file matches
 ```
@@ -258,7 +258,7 @@ ls -la /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
 I've created a setup script. Run:
 
 ```bash
-cd /home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
+cd /opt/hellobluegk/WebAPI
 chmod +x setup-production.sh
 ./setup-production.sh
 ```
