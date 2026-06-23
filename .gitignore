@@ -75,6 +75,9 @@ coverage-summary.json
 *.vspx
 *.scc
 
+## Cursor ##
+.cursor/
+
 ## Visual Studio Code ##
 .vscode/
 !.vscode/settings.json
