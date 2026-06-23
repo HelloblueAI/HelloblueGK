@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & discussion
+    url: https://github.com/HelloblueAI/HelloblueGK/discussions
+    about: Ask questions, share ideas, or get help before opening an issue
+  - name: Security vulnerability
+    url: https://github.com/HelloblueAI/HelloblueGK/security/advisories/new
+    about: Report a security issue privately (do not open a public issue)

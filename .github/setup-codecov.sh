@@ -84,6 +84,6 @@ else
 fi
 
 echo ""
-echo "📚 Full instructions: .github/CODECOV_SETUP.md"
+echo "📚 Full instructions: Docs/internal/github-runbooks/CODECOV_SETUP.md"
 echo ""
 

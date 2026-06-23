@@ -2,6 +2,12 @@
 
 HelloblueGK is a **public open-source project** (Apache 2.0). Production secrets and credentials are never stored in this repository.
 
+See also [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
+
+## Export control
+
+This project may be used in aerospace contexts subject to export control laws (e.g. U.S. ITAR/EAR). **Do not** commit export-controlled or classified material to this public repository. Users are responsible for compliance in their jurisdiction. See [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
+
 ## Supported versions
 
 | Version | Supported |

@@ -18,6 +18,11 @@
 # Documentation
 /Docs/ @HelloblueAI/hb-nlp-research-lab
 /README.md @HelloblueAI/hb-nlp-research-lab
+/OPEN_SOURCE_SCOPE.md @HelloblueAI/hb-nlp-research-lab
+/CONTRIBUTING.md @HelloblueAI/hb-nlp-research-lab
+/DEVELOPERS.md @HelloblueAI/hb-nlp-research-lab
+/ARCHITECTURE.md @HelloblueAI/hb-nlp-research-lab
+/CODE_OF_CONDUCT.md @HelloblueAI/hb-nlp-research-lab
 
 # Configuration files
 /*.csproj @HelloblueAI/hb-nlp-research-lab

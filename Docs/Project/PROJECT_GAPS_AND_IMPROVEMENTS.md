@@ -1,5 +1,7 @@
 # Project Gaps and Improvements Analysis
 
+> **Status (June 2026):** This document is a **historical audit** from an earlier phase. Several items below are now implemented (e.g. `WebAPI/Data/HelloblueGKDbContext.cs`, JWT auth, repositories). For current architecture, see [ARCHITECTURE.md](../../ARCHITECTURE.md). For honest capability boundaries, see [Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md](../Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md). Open [good first issues](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) for actionable starter tasks.
+
 ## Executive Summary
 
 This document identifies missing components, incomplete implementations, and areas for improvement in the HelloblueGK project. The project has a solid foundation, but several enterprise-grade features need to be completed or enhanced.
