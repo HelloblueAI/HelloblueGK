@@ -14,7 +14,7 @@ echo ""
 if ! command -v gh &> /dev/null; then
     echo "❌ GitHub CLI (gh) is not installed."
     echo "   Please install it from: https://cli.github.com/"
-    echo "   Or use the manual setup guide: .github/BRANCH_PROTECTION_SETUP.md"
+    echo "   Or use the manual setup guide: Docs/internal/github-runbooks/BRANCH_PROTECTION_SETUP.md"
     exit 1
 fi
 
@@ -55,7 +55,7 @@ if [ $? -eq 0 ]; then
 else
     echo "❌ Failed to configure branch protection rules."
     echo "   You may need admin access to the repository."
-    echo "   Check manual setup guide: .github/BRANCH_PROTECTION_SETUP.md"
+    echo "   Check manual setup guide: Docs/internal/github-runbooks/BRANCH_PROTECTION_SETUP.md"
     exit 1
 fi
 
