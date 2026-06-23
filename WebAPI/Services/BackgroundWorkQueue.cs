@@ -99,17 +99,20 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
             {
                 _logger.LogInformation("Background work item {WorkItemName} cancelled during application shutdown", workItemName);
             }
-            // codeql[generic-catch-clause]: Background work must log and contain failures without crashing the host.
-            // codeql[cs/catch-of-all-exceptions]: Background work must log and contain failures without crashing the host.
-            catch (Exception ex)
+            catch (Exception ex) when (LogBackgroundWorkFailure(ex, workItemName))
             {
-                _logger.LogError(ex, "Background work item {WorkItemName} failed", workItemName);
             }
             finally
             {
                 ReleaseSlot();
             }
         }, CancellationToken.None);
+    }
+
+    private bool LogBackgroundWorkFailure(Exception exception, string workItemName)
+    {
+        _logger.LogError(exception, "Background work item {WorkItemName} failed", workItemName);
+        return true;
     }
 
     internal void ReleaseSlot()
