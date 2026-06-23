@@ -1,8 +1,12 @@
-# Flight Software Certification Systems
+# Certification Workflow APIs (Community Edition)
+
+> **Scope:** Reference tooling in the public repository. **Not** formal DO-178C / NASA certification, flight approval, or ITAR compliance. See [OPEN_SOURCE_SCOPE.md](../OPEN_SOURCE_SCOPE.md).
 
 ## Overview
 
-This directory contains the foundational systems required for DO-178C Level A and NASA NPR 7150.2 Class A certification for production flight software.
+This directory contains **reference systems** that support aerospace software lifecycle practices (requirements traceability, problem reporting, configuration management, test coverage, code reviews). They are intended for **integration, education, and contribution** — not as certified flight software artifacts.
+
+Formal certification requires your organization's qualification program and, typically, commercial packages outside this public tree.
 
 ## Systems Implemented
 
