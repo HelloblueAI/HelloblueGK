@@ -207,6 +207,10 @@ public class SecurityHardeningTests
     [InlineData("/\\evil.example.com")]
     [InlineData("/%2fevil.example.com")]
     [InlineData("/%5cevil.example.com")]
+    [InlineData("/..%2f%2fevil.example.com")]
+    [InlineData("/.%2e/%2e%2f/evil.example.com")]
+    [InlineData("/swagger/../../../evil.example.com")]
+    [InlineData("/api/v1/Account/logout")]
     public void AccountLogin_WithUnsafeReturnUrl_FallsBackToSwagger(string returnUrl)
     {
         var controller = CreateAccountController();
@@ -296,6 +300,33 @@ public class SecurityHardeningTests
         unauthenticatedResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         userResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         adminResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public void BoundedBackgroundWorkQueue_WithSingleSlot_RejectsSecondReservationUntilReleased()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BackgroundWork:MaxConcurrentWorkItems"] = "1"
+            })
+            .Build();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var queue = new BoundedBackgroundWorkQueue(
+            configuration,
+            services.GetRequiredService<IServiceScopeFactory>(),
+            new TestHostApplicationLifetime(),
+            NullLogger<BoundedBackgroundWorkQueue>.Instance);
+
+        queue.MaxConcurrency.Should().Be(1);
+        queue.TryAcquire(out var firstSlot).Should().BeTrue();
+        queue.TryAcquire(out var rejectedSlot).Should().BeFalse();
+        rejectedSlot.Should().BeNull();
+
+        firstSlot!.Dispose();
+
+        queue.TryAcquire(out var secondSlot).Should().BeTrue();
+        secondSlot!.Dispose();
     }
 
     [Fact]
@@ -609,6 +640,16 @@ public class SecurityHardeningTests
         public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
         public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    private sealed class TestHostApplicationLifetime : IHostApplicationLifetime
+    {
+        public CancellationToken ApplicationStarted => CancellationToken.None;
+        public CancellationToken ApplicationStopping => CancellationToken.None;
+        public CancellationToken ApplicationStopped => CancellationToken.None;
+        public void StopApplication()
+        {
+        }
     }
 
     private sealed class TestWebApiFactory : WebApplicationFactory<Program>

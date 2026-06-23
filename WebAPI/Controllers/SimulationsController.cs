@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Services;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
@@ -22,18 +23,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         private readonly HelloblueGKDbContext _context;
         private readonly HelloblueGKEngine _engine;
         private readonly ILogger<SimulationsController> _logger;
-        private readonly IServiceProvider _serviceProvider;
+        private readonly IBackgroundWorkQueue _backgroundWorkQueue;
 
         public SimulationsController(
             HelloblueGKDbContext context,
             HelloblueGKEngine engine,
             ILogger<SimulationsController> logger,
-            IServiceProvider serviceProvider)
+            IBackgroundWorkQueue backgroundWorkQueue)
         {
             _context = context;
             _engine = engine;
             _logger = logger;
-            _serviceProvider = serviceProvider;
+            _backgroundWorkQueue = backgroundWorkQueue;
         }
 
         /// <summary>
@@ -156,45 +157,50 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
-                // Create simulation record
-                var simulation = new EngineSimulation
+                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot))
                 {
-                    EngineId = request.EngineId,
-                    SimulationType = request.SimulationType,
-                    Status = "Pending",
-                    ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
-                    CreatedAt = DateTime.UtcNow,
-                    CreatedBy = currentUsername
-                };
-
-                _context.EngineSimulations.Add(simulation);
-                await _context.SaveChangesAsync();
-
-                // Run simulation asynchronously with a new scope to avoid DbContext disposal issues
-                var simulationId = simulation.Id;
-                var engineId = engine.Id;
-                _ = Task.Run(async () =>
-                {
-                    try
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new
                     {
-                        using var scope = _serviceProvider.CreateScope();
-                        var scopedContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
-                        var scopedEngine = await scopedContext.Engines.FindAsync(engineId);
+                        message = "The server is currently running the maximum number of background workloads. Try again later."
+                    });
+                }
+
+                using (backgroundWorkSlot)
+                {
+                    // Create simulation record
+                    var simulation = new EngineSimulation
+                    {
+                        EngineId = request.EngineId,
+                        SimulationType = request.SimulationType,
+                        Status = "Pending",
+                        ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = currentUsername
+                    };
+
+                    _context.EngineSimulations.Add(simulation);
+                    await _context.SaveChangesAsync();
+
+                    // Run simulation asynchronously with a new scope to avoid DbContext disposal issues
+                    var simulationId = simulation.Id;
+                    var engineId = engine.Id;
+                    backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
+                    {
+                        var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
+                        var scopedEngine = await scopedContext.Engines.FindAsync(
+                            [engineId],
+                            cancellationToken);
                         if (scopedEngine != null)
                         {
                             await ExecuteSimulationAsync(simulationId, scopedEngine, request, scopedContext);
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Background simulation task failed for SimulationId {SimulationId}", simulationId);
-                    }
-                });
+                    }, $"simulation:{simulationId}");
 
-                return CreatedAtAction(
-                    nameof(GetSimulationById),
-                    new { id = simulation.Id },
-                    EngineSimulationResponse.FromEntity(simulation));
+                    return CreatedAtAction(
+                        nameof(GetSimulationById),
+                        new { id = simulation.Id },
+                        EngineSimulationResponse.FromEntity(simulation));
+                }
             }
             catch (Exception ex)
             {
