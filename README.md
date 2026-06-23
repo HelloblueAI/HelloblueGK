@@ -1,73 +1,110 @@
-### HelloblueGK - Aerospace Engine Simulation Platform
+# HelloblueGK — Aerospace Engine Simulation Platform
 
-> **Open-source aerospace engine simulation platform** with multi-physics coupling, AI optimization, and enterprise-grade compliance.
+[![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
+[![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
 
-**Status:** ✅ Production-ready and fully operational  
-**License:** [Apache 2.0](LICENSE) — public open source  
-**Contributing:** See [CONTRIBUTING.md](CONTRIBUTING.md) | **Security:** See [SECURITY.md](SECURITY.md)
+> **Community Edition** (Apache 2.0) — reference aerospace simulation platform for integration, research, and contribution.  
+> **Not certified flight software.** See [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) for tiers, warranties, and compliance boundaries.  
+> **License:** [Apache 2.0](LICENSE) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Security:** [SECURITY.md](SECURITY.md)
 
-### Open source model
+---
+
+## New here? Start in 5 minutes
+
+```bash
+git clone https://github.com/HelloblueAI/HelloblueGK.git
+cd HelloblueGK
+dotnet restore HelloblueGK.sln
+dotnet build HelloblueGK.sln
+dotnet test Tests/HelloblueGK.Tests.csproj
+
+cd WebAPI && dotnet run
+# Open http://localhost:5000/swagger
+```
+
+| I want to… | Go to |
+|------------|-------|
+| **Understand what's public vs commercial** | [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) |
+| **Set up locally** | [DEVELOPERS.md](DEVELOPERS.md) |
+| **Understand the codebase** | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| **Contribute (PRs, style, tests)** | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| **Pick a starter task** | [good first issues](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) |
+| **Report a bug** | [Issue template](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=bug_report.yml) |
+| **API reference** | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) |
+| **Run the interactive demo** | [Docs/Project/DEMO.md](Docs/Project/DEMO.md) |
+| **Deploy your own instance** | [Docs/Deployment/QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) |
+
+### Product tiers (how we open source)
+
+| Tier | Available | Notes |
+|------|-----------|--------|
+| **Community Edition** | This repo | Apache 2.0 — APIs, reference code, tests, docs |
+| **Hosted Platform** | [hellobluegk.onrender.com](https://hellobluegk.onrender.com) | Reference deployment; auth required; not open signup |
+| **Enterprise / Certification** | Commercial | Formal compliance packages, SLAs, production support — **not in this repo** |
+
+Full boundaries: **[OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md)**
+
+### What's in this repository
 
 | What | Public? | Notes |
 |------|---------|--------|
-| **Source code** | ✅ Yes | Apache 2.0 — fork, study, contribute |
-| **API reference** | ✅ Yes | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) in this repo |
-| **Live demo API** | ✅ URL is public | Health/metrics public; API requires auth |
-| **Hosted demo docs** | 🔐 Authenticated | Swagger on Render uses corporate SSO — run locally for open Swagger |
-| **Secrets** | 🔐 Never in git | Use Render/env vars for your deployment |
+| **Source code (Community)** | Yes | Fork, study, contribute under Apache 2.0 |
+| **API reference** | Yes | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) |
+| **Certification workflow APIs** | Yes (reference) | Tooling only — **not** formal flight certification |
+| **Production cert evidence / ITAR data** | No | Enterprise / controlled — not published here |
+| **Secrets** | Never in git | Use env vars for your deployment |
 
-Clone and run your own instance — you control registration, SSO, and secrets. The hosted demo at `hellobluegk.onrender.com` is our reference deployment, not an open signup sandbox.
+Clone and run your own instance — you control registration, SSO, and secrets. The hosted demo is our reference deployment, not an open sandbox.
 
-### Quick Start
+### Community
 
-### Live Production API
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [GitHub Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions) — questions and ideas
+- [GitHub Issues](https://github.com/HelloblueAI/HelloblueGK/issues) — bugs and features
 
-** API Base URL:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
+---
 
-- ** API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md) - Complete API reference with examples
-- ** Internal Swagger (SSO):** [https://hellobluegk.onrender.com/api/v1/Account/login](https://hellobluegk.onrender.com/api/v1/Account/login) - Microsoft sign-in required
-- ** Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health) - No auth required
-- ** Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md) - Production deployment guide
+## Full project documentation
 
-### API Documentation
+> **Note:** Sections below describe platform capabilities and roadmap. For **legal scope, warranties, and certification boundaries**, [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) is authoritative.
 
-** [View Complete API Documentation](API_DOCUMENTATION.md)**
+The sections below cover capabilities, architecture diagrams, deployment, API examples, and technical specifications in depth.
 
-The API documentation includes:
-- ✅ All available endpoints
-- ✅ Authentication guide
-- ✅ Request/response examples
-- ✅ Code examples (JavaScript, Python, cURL)
-- ✅ Error handling
-- ✅ Rate limiting information
-- ✅ Best practices
+### Quick Start (hosted reference)
 
-###  Flight Software Certification Systems
+**API Base URL:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
 
-**This project is being developed as certified flight software for NASA/SpaceX!**
+- **Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health) — no auth
+- **Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md)
+- **API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 
-** [Certification Systems Overview](Certification/README.md)**
-** [Certification Progress](Certification/CERTIFICATION_PROGRESS.md)**
-** [API Quick Start](Certification/API_QUICK_START.md)**
+### Certification workflow APIs (reference — Community Edition)
 
-**Certification Systems (All Live):**
-- ✅ **Requirements Traceability** - Full traceability from requirements to code to tests
-- ✅ **Problem Reporting** - Formal problem report tracking
-- ✅ **Configuration Management** - Software baseline and change management
-- ✅ **Test Coverage** - 100% coverage + MC/DC tracking
-- ✅ **Code Reviews** - Formal code review process
+Reference tooling that **supports** aerospace software lifecycle practices (requirements traceability, problem reports, configuration management, test coverage, code reviews). **This is not certified flight software** and does not replace your own qualification program or commercial certification packages.
 
-**30+ Certification API Endpoints Available:**
-- Requirements: `/api/v1/certification/requirements`
-- Problem Reports: `/api/v1/certification/problem-reports`
-- Configuration: `/api/v1/certification/configuration`
-- Test Coverage: `/api/v1/certification/test-coverage`
-- Code Reviews: `/api/v1/certification/code-reviews`
+- [Certification Systems Overview](Certification/README.md)
+- [Certification Progress](Certification/CERTIFICATION_PROGRESS.md)
+- [API Quick Start](Certification/API_QUICK_START.md)
 
-**Target Certifications:**
-- DO-178C Level A (Human-rated systems)
-- NASA NPR 7150.2 Class A (Human-rated systems)
-- ITAR Compliance (Category IV - Launch vehicles)
+**Reference modules in this repo:**
+- Requirements traceability — requirements → design → code → tests
+- Problem reporting — formal problem report tracking
+- Configuration management — software baseline and change management
+- Test coverage — coverage and MC/DC tracking APIs
+- Code reviews — formal code review workflow APIs
+
+**Example endpoints:**
+- `/api/v1/certification/requirements`
+- `/api/v1/certification/problem-reports`
+- `/api/v1/certification/configuration`
+- `/api/v1/certification/test-coverage`
+- `/api/v1/certification/code-reviews`
+
+**Design targets** (achieved only through your organization's qualification program, not by using this repo alone):
+- DO-178C-oriented workflows
+- NASA NPR 7150.2-oriented workflows
+- Export-controlled programs require separate legal review
 
 **Quick Example (local dev — enable registration in `appsettings.Development.json`):**
 ```bash
@@ -98,27 +135,6 @@ dotnet run
 
 See [DEMO.md](Docs/Project/DEMO.md) for detailed demo instructions.
 
-** Screenshots:** Add screenshots of Swagger UI here after taking them
-
-### Install
-
-```bash
-# Install .NET 9.0 SDK (if not already installed)
-# Visit: https://dotnet.microsoft.com/download
-
-# Clone and build
-git clone https://github.com/HelloblueAI/HelloblueGK.git
-cd HelloblueGK
-dotnet restore
-dotnet build
-dotnet test
-```
-
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## HelloblueGK - Advanced Aerospace Engine Simulation Platform
 
 <div align="left">
 <img src="Assets/Images/HB-NLP-Advanced-Engine-Design.png?v=4" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
@@ -143,14 +159,16 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 ## **Aerospace Readiness Assessment System**
 
+### Aerospace Industry Compliance (reference orientation)
+
+Documentation below describes **design targets** and **workflow orientation** — not certifications granted by Helloblue or any agency. See [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
+
 ### **Aerospace Compliance System**
-- **DO-178C Compliance**: Software Level A certification for human-rated systems
-- **NASA NPR 7150.2**: Class A compliance for human-rated systems  
-- **ITAR Compliance**: Category IV (Launch vehicles) export control
-- **FIPS 140-2**: Level 2 cryptographic security certification
-- **Mission-Critical Safety**: Human-rated safety standards
+- **DO-178C-oriented workflows**: Software lifecycle practices aligned with Level A goals
+- **NASA NPR 7150.2-oriented workflows**: Class A process orientation for human-rated systems
+- **Export control awareness**: Users must comply with ITAR/EAR and applicable regulations
+- **Security practices**: Industry-standard patterns — not FIPS certification claims for Community Edition
 - **Environmental Compliance**: Sustainable aerospace practices
-- **Export Control**: Comprehensive international trade compliance
 
 ### **Security Audit System**
 - **FIPS 140-2 Cryptographic Security**: Military-grade encryption
@@ -1067,15 +1085,11 @@ Current test coverage exceeds **95%** for core components:
 - **Cloud Deployable**: Scalable for enterprise cloud environments with containerization
 
 
-## Contributing to Technology
+## Contributing
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/enhancement`)
-3. Commit your changes (`git commit -m 'Add enhancement'`)
-4. Push to the branch (`git push origin feature/enhancement`)
-5. Open a Pull Request
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md), [DEVELOPERS.md](DEVELOPERS.md), and [ARCHITECTURE.md](ARCHITECTURE.md).
 
----
+## HelloblueGK - Advanced Aerospace Engine Simulation Platform
 
 ## Additional Documentation
 
@@ -1128,12 +1142,14 @@ HOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the Li
 
 ### Aerospace Industry Compliance
 
-This software is designed for aerospace engineering applications and complies with industry standards. Users are responsible for:
+This software is intended for **engineering simulation and reference APIs**. Users are responsible for:
 
 - **Validation**: Ensuring simulation results meet their specific requirements
-- **Safety**: Following aerospace industry safety protocols
-- **Compliance**: Adhering to relevant regulatory requirements
-- **Testing**: Conducting appropriate validation testing before production use
+- **Safety**: Following aerospace industry safety protocols in their own programs
+- **Compliance**: Adhering to export control and regulatory requirements (see [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md))
+- **Testing**: Conducting appropriate validation before production or flight use
+
+Community Edition is **not warranted** for human-rated or mission-critical flight without a separate qualification program.
 
 
 
@@ -1150,21 +1166,20 @@ This software is designed for aerospace engineering applications and complies wi
 ---
 
 
-### **LIVE PRODUCTION DEPLOYMENT**
-- **Docker Container**: Successfully running
-- **All Features**: Active and demonstrating
-- **Enterprise Ready**: Production-hardened
-- **Beyond SpaceX**: Technology achieved
+### **LIVE PRODUCTION DEPLOYMENT (Hosted reference)**
+- **Docker Container**: Reference deployment available
+- **API surface**: Demonstrates platform capabilities
+- **Community Edition**: Source in this repository under Apache 2.0
 
-### **Technology Breakthroughs**
+### **Technology highlights (simulation / reference)**
 - **AI-Driven Design**: 98.0% innovation score
 - **Digital Twin Learning**: 99.900% accuracy
 - **Multi-Physics Coupling**: 97.0% efficiency
 - **Architectures**: 92.3% innovation
 - **Quantum-Classical Hybrid**: Advanced computing integration
 
-### **Production Status: OPERATIONAL**
-The HelloblueGK platform is now **LIVE** and demonstrating validated capabilities in production!
+### **Hosted reference status**
+The hosted platform demonstrates Community Edition capabilities. For production mission use, see [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
 
 
 
@@ -1296,9 +1311,6 @@ python3 Scripts/Integration/open_in_plasticity.py
 <div align="center">
 
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
-[![CodeQL](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/codeql.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/codeql.yml)
-[![Build Status](https://img.shields.io/badge/build-passing-brightgreen)](https://github.com/HelloblueAI/HelloblueGK)
-[![Deployment](https://img.shields.io/badge/deployment-live-success)](https://github.com/HelloblueAI/HelloblueGK)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Technology](https://img.shields.io/badge/technology-advanced-blue)](https://github.com/HelloblueAI/HelloblueGK)
 [![Test Coverage](https://img.shields.io/badge/coverage-95%25-success)](https://github.com/HelloblueAI/HelloblueGK)

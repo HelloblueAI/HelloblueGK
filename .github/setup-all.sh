@@ -23,9 +23,9 @@ if ! command -v gh &> /dev/null; then
     echo "  ./.github/setup-all.sh"
     echo ""
     echo "📚 Or follow manual guides:"
-    echo "  - .github/QUICK_SETUP.md (quick steps)"
-    echo "  - .github/CODECOV_SETUP.md (detailed Codecov guide)"
-    echo "  - .github/BRANCH_PROTECTION_SETUP.md (detailed branch protection guide)"
+    echo "  - Docs/internal/github-runbooks/QUICK_SETUP.md (quick steps)"
+    echo "  - Docs/internal/github-runbooks/CODECOV_SETUP.md (detailed Codecov guide)"
+    echo "  - Docs/internal/github-runbooks/BRANCH_PROTECTION_SETUP.md (detailed branch protection guide)"
     exit 0
 fi
 
@@ -82,7 +82,7 @@ if gh api repos/$REPO/branches/main/protection \
     echo "✅ Branch protection configured successfully!"
 else
     echo "❌ Failed to configure branch protection. You may need admin access."
-    echo "   Follow manual guide: .github/BRANCH_PROTECTION_SETUP.md"
+    echo "   Follow manual guide: Docs/internal/github-runbooks/BRANCH_PROTECTION_SETUP.md"
 fi
 
 echo ""
