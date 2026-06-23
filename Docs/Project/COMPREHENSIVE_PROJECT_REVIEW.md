@@ -118,7 +118,7 @@ Your HelloblueGK project is in **excellent condition** and **production-ready**.
 
 ### Directory Structure
 ```
-PicoGK/
+HelloblueGK/
 ├── Aerospace/          # Engine models and compliance
 ├── AI/                 # AI optimization engines
 ├── Core/               # Core services and infrastructure

@@ -8,6 +8,17 @@
 > **Not certified flight software.** See [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) for tiers, warranties, and compliance boundaries.  
 > **License:** [Apache 2.0](LICENSE) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Security:** [SECURITY.md](SECURITY.md)
 
+### Project identity
+
+**HelloblueGK** is an independent open-source project maintained by [Helloblue](https://helloblue.com). It is **not** a GitHub fork of, affiliated with, or endorsed by [LEAP 71's PicoGK](https://github.com/leap71/PicoGK) geometry kernel. This repository ships original HelloblueGK code (aerospace engine simulation); it does **not** vendor PicoGK source.
+
+| Question | Answer |
+|----------|--------|
+| **Is this PicoGK?** | No — different product and maintainer. |
+| **Is this a fork of leap71/PicoGK?** | No — separate repository and codebase. |
+| **Clone folder name** | Use `HelloblueGK` (not `PicoGK`). See [DEVELOPERS.md](DEVELOPERS.md). |
+| **Future geometry integration** | Optional; may reference PicoGK as an external library later. See [ARCHITECTURE.md](ARCHITECTURE.md#optional-geometry-integration-picogk). |
+
 ---
 
 ## New here? Start in 5 minutes
