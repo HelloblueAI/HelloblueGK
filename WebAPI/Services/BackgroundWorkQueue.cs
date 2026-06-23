@@ -27,7 +27,15 @@ public sealed class BackgroundWorkSlot : IDisposable
             throw new InvalidOperationException("Background work slot has already been used.");
         }
 
-        _owner.QueueReservedWork(workItem, workItemName);
+        try
+        {
+            _owner.QueueReservedWork(workItem, workItemName);
+        }
+        catch
+        {
+            Interlocked.Exchange(ref _state, 0);
+            throw;
+        }
     }
 
     public void Dispose()
@@ -91,6 +99,7 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
             {
                 _logger.LogInformation("Background work item {WorkItemName} cancelled during application shutdown", workItemName);
             }
+            // codeql[generic-catch-clause]: Background work must log and contain failures without crashing the host.
             // codeql[cs/catch-of-all-exceptions]: Background work must log and contain failures without crashing the host.
             catch (Exception ex)
             {
