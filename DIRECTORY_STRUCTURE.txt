@@ -1,7 +1,7 @@
-PicoGK Project Directory Structure
-====================================
+HelloblueGK Project Directory Structure
+=======================================
 
-ROOT: /home/pejmanhaghighatnia/Documents/PicoGK/
+ROOT: HelloblueGK/   (clone path; avoid naming the folder PicoGK)
 
 📁 Documentation & Content
 └── Docs/

@@ -49,7 +49,7 @@ Your project root directory has **many files** that should be better organized:
 ## Recommended Structure
 
 ```
-PicoGK/
+HelloblueGK/
 ├── README.md                    # Main readme (KEEP in root)
 ├── LICENSE                      # License file (KEEP in root)
 ├── CONTRIBUTING.md              # Contributing guide (KEEP in root)

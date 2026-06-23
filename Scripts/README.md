@@ -1,6 +1,6 @@
 # Scripts Directory
 
-This directory contains utility scripts for the PicoGK project, organized by function.
+This directory contains utility scripts for the HelloblueGK project, organized by function.
 
 ## Directory Structure
 

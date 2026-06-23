@@ -65,7 +65,7 @@ After=network.target
 
 [Service]
 Type=notify
-WorkingDirectory=/home/pejmanhaghighatnia/Documents/PicoGK/WebAPI
+WorkingDirectory=/opt/hellobluegk/WebAPI
 ExecStart=/usr/bin/dotnet run
 Restart=always
 RestartSec=10

@@ -124,6 +124,18 @@ Flight-software style compliance subsystems (requirements traceability, problem 
 - **Render:** `render.yaml`, `Docker/Dockerfile.render`
 - **CI:** `.github/workflows/ci.yml` — build, test, coverage on every PR
 
+## Optional geometry integration (PicoGK)
+
+HelloblueGK does **not** currently depend on [LEAP 71 PicoGK](https://github.com/leap71/PicoGK). The projects are independent: PicoGK is a geometry kernel; HelloblueGK is a simulation and API platform.
+
+If voxel-based geometry or computational-engineering workflows become a priority, a clean integration path is:
+
+1. Add PicoGK as a **NuGet or project reference** (not by copying source into this tree).
+2. Isolate integration behind an adapter in `Core/` or `PlasticityDemo/`.
+3. Credit LEAP 71 in docs and retain Apache 2.0 notices for any PicoGK-derived artifacts.
+
+Until that integration exists, treat PicoGK as an optional adjacent project — not part of this codebase.
+
 ## Related docs
 
 - [DEVELOPERS.md](DEVELOPERS.md) — setup and commands

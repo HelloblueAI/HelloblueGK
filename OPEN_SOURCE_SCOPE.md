@@ -6,6 +6,20 @@ This document defines what this repository is — and what it is **not**.
 
 ---
 
+## Relationship to LEAP 71 PicoGK
+
+[LEAP 71 PicoGK](https://github.com/leap71/PicoGK) is a separate Apache 2.0 geometry kernel for computational engineering. **HelloblueGK is not a fork of PicoGK** and does not include PicoGK source code in this tree.
+
+| | **PicoGK** (LEAP 71) | **HelloblueGK** (this repo) |
+|--|----------------------|-----------------------------|
+| Focus | Computational geometry / voxels | Aerospace engine simulation platform |
+| Maintainer | LEAP 71 | Helloblue |
+| GitHub relationship | Upstream geometry project | Independent repository (not registered as a fork) |
+
+No upstream attribution to LEAP 71 is required for code in this repository because PicoGK source is not vendored here. If a future release adds PicoGK as a **dependency** (NuGet or submodule), that integration will document LEAP 71 attribution per Apache 2.0.
+
+---
+
 ## Product tiers
 
 | Tier | What it is | Where it lives |
