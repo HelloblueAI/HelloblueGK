@@ -165,26 +165,26 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     });
                 }
 
-                // Create simulation record
-                var simulation = new EngineSimulation
+                using (backgroundWorkSlot)
                 {
-                    EngineId = request.EngineId,
-                    SimulationType = request.SimulationType,
-                    Status = "Pending",
-                    ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
-                    CreatedAt = DateTime.UtcNow,
-                    CreatedBy = currentUsername
-                };
+                    // Create simulation record
+                    var simulation = new EngineSimulation
+                    {
+                        EngineId = request.EngineId,
+                        SimulationType = request.SimulationType,
+                        Status = "Pending",
+                        ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = currentUsername
+                    };
 
-                _context.EngineSimulations.Add(simulation);
-                await _context.SaveChangesAsync();
+                    _context.EngineSimulations.Add(simulation);
+                    await _context.SaveChangesAsync();
 
-                // Run simulation asynchronously with a new scope to avoid DbContext disposal issues
-                var simulationId = simulation.Id;
-                var engineId = engine.Id;
-                try
-                {
-                    backgroundWorkSlot!.Queue(async (serviceProvider, cancellationToken) =>
+                    // Run simulation asynchronously with a new scope to avoid DbContext disposal issues
+                    var simulationId = simulation.Id;
+                    var engineId = engine.Id;
+                    backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
                     {
                         var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
                         var scopedEngine = await scopedContext.Engines.FindAsync(
@@ -195,17 +195,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             await ExecuteSimulationAsync(simulationId, scopedEngine, request, scopedContext);
                         }
                     }, $"simulation:{simulationId}");
-                }
-                catch
-                {
-                    backgroundWorkSlot?.Dispose();
-                    throw;
-                }
 
-                return CreatedAtAction(
-                    nameof(GetSimulationById),
-                    new { id = simulation.Id },
-                    EngineSimulationResponse.FromEntity(simulation));
+                    return CreatedAtAction(
+                        nameof(GetSimulationById),
+                        new { id = simulation.Id },
+                        EngineSimulationResponse.FromEntity(simulation));
+                }
             }
             catch (Exception ex)
             {

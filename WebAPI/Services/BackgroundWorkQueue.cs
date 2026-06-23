@@ -91,6 +91,7 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
             {
                 _logger.LogInformation("Background work item {WorkItemName} cancelled during application shutdown", workItemName);
             }
+            // codeql[cs/catch-of-all-exceptions]: Background work must log and contain failures without crashing the host.
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Background work item {WorkItemName} failed", workItemName);
