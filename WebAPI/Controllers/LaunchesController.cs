@@ -203,29 +203,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     });
                 }
 
-                // Update status and start launch
-                launch.Status = "InProgress";
-                launch.LaunchedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
-
-                // Execute launch asynchronously
-                // Run launch asynchronously with a new scope to avoid DbContext disposal issues
-                var launchId = launch.Id;
-                try
+                using (backgroundWorkSlot)
                 {
-                    backgroundWorkSlot!.Queue(async (serviceProvider, _) =>
+                    // Update status and start launch
+                    launch.Status = "InProgress";
+                    launch.LaunchedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+
+                    // Execute launch asynchronously with a new scope to avoid DbContext disposal issues
+                    var launchId = launch.Id;
+                    backgroundWorkSlot.Queue(async (serviceProvider, _) =>
                     {
                         var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
                         await ExecuteLaunchAsync(launchId, scopedContext);
                     }, $"launch:{launchId}");
-                }
-                catch
-                {
-                    backgroundWorkSlot?.Dispose();
-                    throw;
-                }
 
-                return Ok(LaunchResponse.FromEntity(launch));
+                    return Ok(LaunchResponse.FromEntity(launch));
+                }
             }
             catch (Exception ex)
             {

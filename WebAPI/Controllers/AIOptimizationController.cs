@@ -158,26 +158,26 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     });
                 }
 
-                // Create optimization run record
-                var optimization = new AIOptimizationRun
+                using (backgroundWorkSlot)
                 {
-                    EngineId = request.EngineId,
-                    AlgorithmType = request.AlgorithmType,
-                    Status = "Pending",
-                    ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
-                    CreatedAt = DateTime.UtcNow,
-                    CreatedBy = currentUsername
-                };
+                    // Create optimization run record
+                    var optimization = new AIOptimizationRun
+                    {
+                        EngineId = request.EngineId,
+                        AlgorithmType = request.AlgorithmType,
+                        Status = "Pending",
+                        ParametersJson = JsonSerializer.Serialize(request.Parameters ?? new Dictionary<string, object>()),
+                        CreatedAt = DateTime.UtcNow,
+                        CreatedBy = currentUsername
+                    };
 
-                _context.AIOptimizationRuns.Add(optimization);
-                await _context.SaveChangesAsync();
+                    _context.AIOptimizationRuns.Add(optimization);
+                    await _context.SaveChangesAsync();
 
-                // Run optimization asynchronously with a new scope to avoid DbContext disposal issues
-                var optimizationId = optimization.Id;
-                var engineId = engine.Id;
-                try
-                {
-                    backgroundWorkSlot!.Queue(async (serviceProvider, cancellationToken) =>
+                    // Run optimization asynchronously with a new scope to avoid DbContext disposal issues
+                    var optimizationId = optimization.Id;
+                    var engineId = engine.Id;
+                    backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
                     {
                         var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
                         var scopedEngine = await scopedContext.Engines.FindAsync(
@@ -188,17 +188,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
                         }
                     }, $"optimization:{optimizationId}");
-                }
-                catch
-                {
-                    backgroundWorkSlot?.Dispose();
-                    throw;
-                }
 
-                return CreatedAtAction(
-                    nameof(GetOptimizationById),
-                    new { id = optimization.Id },
-                    AIOptimizationRunResponse.FromEntity(optimization));
+                    return CreatedAtAction(
+                        nameof(GetOptimizationById),
+                        new { id = optimization.Id },
+                        AIOptimizationRunResponse.FromEntity(optimization));
+                }
             }
             catch (Exception ex)
             {
