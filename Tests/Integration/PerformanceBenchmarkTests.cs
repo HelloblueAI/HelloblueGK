@@ -148,7 +148,7 @@ public class PerformanceBenchmarkTests
         }
 
         var metricCount = _performanceService.GetMetricsByCategory("MemoryTest").Count();
-        metricCount.Should().BeLessOrEqualTo(metricSeriesCapacity,
+        metricCount.Should().BeLessThanOrEqualTo(metricSeriesCapacity,
             "metric storage should be capped to prevent unbounded memory growth");
     }
 
