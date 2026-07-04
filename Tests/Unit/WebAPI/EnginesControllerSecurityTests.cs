@@ -39,6 +39,43 @@ public class EnginesControllerSecurityTests
     }
 
     [Fact]
+    public async Task GetAllEngines_WithExcessiveTake_ReturnsBadRequest()
+    {
+        await using var context = new HelloblueGKDbContext(CreateOptions());
+        var controller = CreateController(context, CreatePrincipal("alice", isAdmin: false));
+
+        var result = await controller.GetAllEngines(take: 101);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetAllEngines_WithPagination_ReturnsRequestedAccessiblePage()
+    {
+        var options = CreateOptions();
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-4), "shared-catalog", createdBy: null));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-3), "alice-old", createdBy: "alice"));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-2), "bob-private", createdBy: "bob"));
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-1), "alice-new", createdBy: "alice"));
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var readContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(readContext, CreatePrincipal("alice", isAdmin: false));
+
+            var result = await controller.GetAllEngines(skip: 1, take: 1);
+
+            var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+            var engines = okResult.Value.Should().BeAssignableTo<IEnumerable<Engine>>().Subject.ToList();
+            engines.Should().ContainSingle();
+            engines[0].CreatedBy.Should().NotBe("bob");
+        }
+    }
+
+    [Fact]
     public async Task GetActiveEngines_ForStandardUser_ReturnsOnlyActiveSharedAndOwnedEngines()
     {
         var options = CreateOptions();

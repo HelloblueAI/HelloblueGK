@@ -37,6 +37,38 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task GetAllSimulations_WithExcessiveTake_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetAllSimulations(take: 101);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task GetAllSimulations_WithPagination_ReturnsRequestedOwnedPage()
+    {
+        await using var context = CreateContext();
+        await SeedSimulationAsync(context, "alice", "Pending");
+        await SeedSimulationAsync(context, "alice", "Running");
+        await SeedSimulationAsync(context, "alice", "Completed");
+        await SeedSimulationAsync(context, "bob", "Pending");
+        var controller = CreateController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetAllSimulations(skip: 1, take: 1);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var simulations = okResult.Value.Should()
+            .BeAssignableTo<IEnumerable<EngineSimulationResponse>>()
+            .Subject
+            .ToList();
+        simulations.Should().ContainSingle();
+        simulations[0].CreatedBy.Should().Be("alice");
+    }
+
+    [Fact]
     public async Task CancelSimulation_ForDifferentStandardUser_ReturnsForbid()
     {
         await using var context = CreateContext();
