@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Models;
 using HB_NLP_Research_Lab.WebAPI.Services;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
@@ -43,10 +44,20 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         [HttpGet]
         [Authorize]
         [ProducesResponseType(typeof(IEnumerable<AIOptimizationRunResponse>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetAllOptimizations([FromQuery] int? engineId = null)
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetAllOptimizations(
+            [FromQuery] int? engineId = null,
+            [FromQuery] int skip = PaginationRequest.DefaultSkip,
+            [FromQuery] int take = PaginationRequest.DefaultTake)
         {
             try
             {
+                var pagination = PaginationRequest.Create(skip, take);
+                if (!pagination.TryValidate(out var validationMessage))
+                {
+                    return BadRequest(new { message = validationMessage });
+                }
+
                 var query = _context.AIOptimizationRuns
                     .Include(o => o.Engine)
                     .AsQueryable();
@@ -63,6 +74,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var optimizations = await query
                     .OrderByDescending(o => o.CreatedAt)
+                    .Skip(pagination.Skip)
+                    .Take(pagination.Take)
                     .ToListAsync();
 
                 return Ok(optimizations.Select(AIOptimizationRunResponse.FromEntity));

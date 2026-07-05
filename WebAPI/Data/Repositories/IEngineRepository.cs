@@ -9,8 +9,8 @@ public interface IEngineRepository
 {
     Task<Engine?> GetByIdAsync(int id);
     Task<Engine?> GetByNameAsync(string name);
-    Task<IEnumerable<Engine>> GetAllAsync();
-    Task<IEnumerable<Engine>> GetActiveEnginesAsync();
+    Task<IEnumerable<Engine>> GetAllAsync(string? currentUsername, bool isAdmin, int skip, int take);
+    Task<IEnumerable<Engine>> GetActiveEnginesAsync(string? currentUsername, bool isAdmin, int skip, int take);
     Task<Engine> CreateAsync(Engine engine);
     Task<Engine> UpdateAsync(Engine engine);
     Task<bool> DeleteAsync(int id);

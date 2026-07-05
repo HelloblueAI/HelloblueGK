@@ -3,6 +3,7 @@ using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Models;
 using Microsoft.AspNetCore.Authorization;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
@@ -33,17 +34,30 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         [HttpGet]
         [Authorize]
         [ProducesResponseType(typeof(IEnumerable<Engine>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetAllEngines()
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetAllEngines(
+            [FromQuery] int skip = PaginationRequest.DefaultSkip,
+            [FromQuery] int take = PaginationRequest.DefaultTake)
         {
             try
             {
+                var pagination = PaginationRequest.Create(skip, take);
+                if (!pagination.TryValidate(out var validationMessage))
+                {
+                    return BadRequest(new { message = validationMessage });
+                }
+
                 if (!TryGetCurrentUserAccessContext(out var currentUsername, out var isAdmin))
                 {
                     return Forbid();
                 }
 
-                var engines = await _engineRepository.GetAllAsync();
-                return Ok(FilterAccessibleEngines(engines, currentUsername, isAdmin));
+                var engines = await _engineRepository.GetAllAsync(
+                    currentUsername,
+                    isAdmin,
+                    pagination.Skip,
+                    pagination.Take);
+                return Ok(engines);
             }
             catch (Exception ex)
             {
@@ -59,17 +73,30 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         [HttpGet("active")]
         [Authorize]
         [ProducesResponseType(typeof(IEnumerable<Engine>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetActiveEngines()
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetActiveEngines(
+            [FromQuery] int skip = PaginationRequest.DefaultSkip,
+            [FromQuery] int take = PaginationRequest.DefaultTake)
         {
             try
             {
+                var pagination = PaginationRequest.Create(skip, take);
+                if (!pagination.TryValidate(out var validationMessage))
+                {
+                    return BadRequest(new { message = validationMessage });
+                }
+
                 if (!TryGetCurrentUserAccessContext(out var currentUsername, out var isAdmin))
                 {
                     return Forbid();
                 }
 
-                var engines = await _engineRepository.GetActiveEnginesAsync();
-                return Ok(FilterAccessibleEngines(engines, currentUsername, isAdmin));
+                var engines = await _engineRepository.GetActiveEnginesAsync(
+                    currentUsername,
+                    isAdmin,
+                    pagination.Skip,
+                    pagination.Take);
+                return Ok(engines);
             }
             catch (Exception ex)
             {
@@ -270,20 +297,6 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             isAdmin = User.IsInRole("Admin");
             currentUsername = GetCurrentUsername();
             return isAdmin || !string.IsNullOrWhiteSpace(currentUsername);
-        }
-
-        private IEnumerable<Engine> FilterAccessibleEngines(
-            IEnumerable<Engine> engines,
-            string? currentUsername,
-            bool isAdmin)
-        {
-            if (isAdmin)
-            {
-                return engines;
-            }
-
-            return engines.Where(engine =>
-                EngineAccessPolicy.CanUseEngine(User, engine, currentUsername));
         }
 
         private bool CurrentUserCanAccessEngine(Engine engine)

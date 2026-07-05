@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
+using HB_NLP_Research_Lab.WebAPI.Models;
 using HB_NLP_Research_Lab.WebAPI.Services;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
@@ -42,10 +43,20 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         [HttpGet]
         [Authorize]
         [ProducesResponseType(typeof(IEnumerable<LaunchResponse>), StatusCodes.Status200OK)]
-        public async Task<IActionResult> GetAllLaunches([FromQuery] string? status = null)
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> GetAllLaunches(
+            [FromQuery] string? status = null,
+            [FromQuery] int skip = PaginationRequest.DefaultSkip,
+            [FromQuery] int take = PaginationRequest.DefaultTake)
         {
             try
             {
+                var pagination = PaginationRequest.Create(skip, take);
+                if (!pagination.TryValidate(out var validationMessage))
+                {
+                    return BadRequest(new { message = validationMessage });
+                }
+
                 var query = _context.Launches
                     .Include(l => l.Engine)
                     .AsQueryable();
@@ -62,6 +73,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var launches = await query
                     .OrderByDescending(l => l.CreatedAt)
+                    .Skip(pagination.Skip)
+                    .Take(pagination.Take)
                     .ToListAsync();
 
                 return Ok(launches.Select(LaunchResponse.FromEntity));
@@ -286,18 +299,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var scheduled = await query.CountAsync(l => l.Status == "Scheduled");
                 var inProgress = await query.CountAsync(l => l.Status == "InProgress");
 
-                var launchesWithAltitude = await query
+                var launchesWithAltitude = query
                     .Where(l => l.MaxAltitude.HasValue)
-                    .ToListAsync();
-                var avgAltitude = launchesWithAltitude.Any() 
-                    ? launchesWithAltitude.Average(l => l.MaxAltitude!.Value) 
+                    .Select(l => l.MaxAltitude!.Value);
+                var avgAltitude = await launchesWithAltitude.AnyAsync()
+                    ? await launchesWithAltitude.AverageAsync()
                     : 0.0;
 
-                var launchesWithVelocity = await query
+                var launchesWithVelocity = query
                     .Where(l => l.MaxVelocity.HasValue)
-                    .ToListAsync();
-                var avgVelocity = launchesWithVelocity.Any() 
-                    ? launchesWithVelocity.Average(l => l.MaxVelocity!.Value) 
+                    .Select(l => l.MaxVelocity!.Value);
+                var avgVelocity = await launchesWithVelocity.AnyAsync()
+                    ? await launchesWithVelocity.AverageAsync()
                     : 0.0;
 
                 return Ok(new
