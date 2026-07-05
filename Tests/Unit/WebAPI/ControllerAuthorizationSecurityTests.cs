@@ -37,6 +37,17 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetAllOptimizations_WithExcessiveTake_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateOptimizationController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetAllOptimizations(take: 101);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
     public async Task GetOptimizationStatus_ForDifferentStandardUser_ReturnsForbid()
     {
         await using var context = CreateContext();
@@ -175,6 +186,17 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetAllDigitalTwins_WithExcessiveTake_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetAllDigitalTwins(take: 101);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
     public async Task GetPredictions_ForDifferentStandardUser_ReturnsForbid()
     {
         await using var context = CreateContext();
@@ -265,6 +287,17 @@ public class ControllerAuthorizationSecurityTests
 
         launches.Should().ContainSingle();
         launches[0].CreatedBy.Should().Be("alice");
+    }
+
+    [Fact]
+    public async Task GetAllLaunches_WithExcessiveTake_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateLaunchesController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetAllLaunches(take: 101);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
     }
 
     [Fact]
