@@ -223,7 +223,7 @@ public static class DatabaseConfiguration
     private static int IndexOfAny(string value, params char[] candidates)
     {
         var indexes = candidates
-            .Select(value.IndexOf)
+            .Select(candidate => value.IndexOf(candidate))
             .Where(index => index >= 0)
             .ToArray();
 

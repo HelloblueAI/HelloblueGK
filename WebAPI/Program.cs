@@ -382,7 +382,7 @@ var app = builder.Build();
             _ = await dbContext.AIOptimizationRuns.CountAsync();
             _ = await dbContext.DigitalTwins.CountAsync();
 
-            if (hasPostgresKeywords)
+            if (databaseSettings.Provider == DatabaseProvider.PostgreSql)
             {
                 await dbContext.Database.ExecuteSqlRawAsync(@"
                     ALTER TABLE ""AIOptimizationRuns""
@@ -420,7 +420,7 @@ var app = builder.Build();
                         // Since we can't easily extract just one table, we'll let EF handle it on first use
                         // or create it manually with a simple SQL statement
                         // Only execute PostgreSQL-specific SQL if we're using PostgreSQL
-                        if (hasPostgresKeywords)
+                        if (databaseSettings.Provider == DatabaseProvider.PostgreSql)
                         {
                             await dbContext.Database.ExecuteSqlRawAsync(@"
                             CREATE TABLE IF NOT EXISTS ""Launches"" (
