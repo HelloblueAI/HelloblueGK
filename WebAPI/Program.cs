@@ -182,94 +182,29 @@ builder.Services.AddCors(options =>
 });
 
 // Configure Entity Framework Core
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrWhiteSpace(connectionString))
+var databaseSettings = DatabaseConfiguration.Resolve(builder.Configuration, builder.Environment);
+var connectionString = databaseSettings.ConnectionString;
+
+// Select database provider based on parsed connection string settings.
+Action<IServiceProvider, DbContextOptionsBuilder> configureDbContext = databaseSettings.Provider switch
 {
-    // Fallback: Use SQLite for development, but require configuration in production
-    if (builder.Environment.IsDevelopment())
+    DatabaseProvider.PostgreSql => (serviceProvider, options) =>
+        options.UseNpgsql(serviceProvider.GetRequiredService<NpgsqlDataSource>()),
+    DatabaseProvider.Sqlite => (_, options) => options.UseSqlite(connectionString),
+    _ => (_, options) => options.UseSqlServer(connectionString)
+};
+
+if (databaseSettings.Provider == DatabaseProvider.PostgreSql)
+{
+    builder.Services.AddSingleton(_ =>
     {
-        connectionString = "Data Source=hellobluegk.db"; // SQLite for development
-    }
-    else
-    {
-        // In production, require connection string, but allow Railway/Render to set it
-        // Railway provides DATABASE_URL, Render expects ConnectionStrings__DefaultConnection
-        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
-        if (!string.IsNullOrWhiteSpace(databaseUrl))
-        {
-            // Convert Railway DATABASE_URL format to .NET connection string
-            // Format: postgresql://user:pass@host:port/db or postgresql://user@host:port/db (passwordless)
-            var uri = new Uri(databaseUrl);
-            var userInfo = uri.UserInfo.Split(':');
-            var username = userInfo.Length > 0 ? userInfo[0] : string.Empty;
-            var password = userInfo.Length > 1 ? Uri.UnescapeDataString(userInfo[1]) : string.Empty;
-            
-            // Build connection string - include password only if provided
-            if (!string.IsNullOrEmpty(password))
-            {
-                connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={username};Password={password}";
-            }
-            else
-            {
-                connectionString = $"Host={uri.Host};Port={uri.Port};Database={uri.LocalPath.TrimStart('/')};Username={username}";
-            }
-        }
-        else
-        {
-            throw new InvalidOperationException(
-                "DefaultConnection string must be configured in production. " +
-                "Please set ConnectionStrings:DefaultConnection or DATABASE_URL in your configuration. " +
-                "For SQL Server, use: Server=your-server;Database=HelloblueGK;...");
-        }
-    }
+        var postgresConnectionString = DatabaseConfiguration.AddPostgresApplicationName(
+            connectionString,
+            "HelloblueGK-API");
+        var dataSourceBuilder = new NpgsqlDataSourceBuilder(postgresConnectionString);
+        return dataSourceBuilder.Build();
+    });
 }
-
-// Auto-detect database provider from connection string format
-// Check for PostgreSQL-specific keywords first (highest priority)
-bool hasPostgresKeywords = connectionString.Contains("Host=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) && 
-                            (connectionString.Contains("Port=", StringComparison.OrdinalIgnoreCase) ||
-                             connectionString.Contains("Username=", StringComparison.OrdinalIgnoreCase) ||
-                             connectionString.Contains("User Id=", StringComparison.OrdinalIgnoreCase));
-
-// Check for SQL Server-specific keywords
-bool hasSqlServerKeywords = connectionString.Contains("Initial Catalog=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Integrated Security=", StringComparison.OrdinalIgnoreCase) ||
-                            connectionString.Contains("Trusted_Connection=", StringComparison.OrdinalIgnoreCase) ||
-                            (connectionString.Contains("Server=", StringComparison.OrdinalIgnoreCase) && 
-                             !hasPostgresKeywords);
-
-// Check for SQLite-specific indicators
-bool hasSqliteFileExtension = connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
-bool hasSqliteFilenameKeyword = connectionString.StartsWith("Filename=", StringComparison.OrdinalIgnoreCase);
-bool isDataSourceWithDbFile = connectionString.StartsWith("Data Source=", StringComparison.OrdinalIgnoreCase) &&
-                              connectionString.Contains(".db", StringComparison.OrdinalIgnoreCase);
-bool useSqlite = (hasSqliteFileExtension || hasSqliteFilenameKeyword || isDataSourceWithDbFile) && 
-                 !hasSqlServerKeywords && !hasPostgresKeywords;
-
-// Select database provider based on connection string format
-// For PostgreSQL, add ApplicationName to connection string to help identify connections in metrics
-Action<DbContextOptionsBuilder> configureDbContext = hasPostgresKeywords
-    ? options =>
-    {
-        // Add ApplicationName to connection string to help identify connections without exposing full connection details
-        // Note: Npgsql still uses the full connection string as pool identifier in metrics, but ApplicationName
-        // helps identify the application in PostgreSQL server logs
-        var connectionStringWithAppName = connectionString;
-        if (!connectionString.Contains("ApplicationName=", StringComparison.OrdinalIgnoreCase))
-        {
-            connectionStringWithAppName = $"{connectionString};ApplicationName=HelloblueGK-API";
-        }
-        
-        // Use NpgsqlDataSourceBuilder to create a data source
-        // This allows better connection pooling and management
-        var dataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionStringWithAppName);
-        var dataSource = dataSourceBuilder.Build();
-        options.UseNpgsql(dataSource);
-    }
-    : useSqlite
-        ? options => options.UseSqlite(connectionString)
-        : options => options.UseSqlServer(connectionString);
 
 // Main database context
 builder.Services.AddDbContext<HelloblueGKDbContext>(configureDbContext);
