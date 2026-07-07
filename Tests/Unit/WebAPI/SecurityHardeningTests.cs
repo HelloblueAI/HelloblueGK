@@ -29,6 +29,7 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 
 namespace HelloblueGK.Tests.Unit.WebAPI;
 
@@ -393,6 +394,39 @@ public class SecurityHardeningTests
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*TrustAll*Development*");
+    }
+
+    [Fact]
+    public void DatabaseConfiguration_DetectProvider_TreatsSqlServerWithPortAsSqlServer()
+    {
+        var provider = DatabaseConfiguration.DetectProvider(
+            "Server=localhost;Port=1433;Database=HelloblueGK;User Id=sa;Password=secret-password;Trust Server Certificate=True");
+
+        provider.Should().Be(DatabaseProvider.SqlServer);
+    }
+
+    [Fact]
+    public void DatabaseConfiguration_DetectProvider_TreatsHostConnectionStringAsPostgreSql()
+    {
+        var provider = DatabaseConfiguration.DetectProvider(
+            "Host=db.example.com;Port=5432;Database=HelloblueGK;Username=app;Password=secret-password");
+
+        provider.Should().Be(DatabaseProvider.PostgreSql);
+    }
+
+    [Fact]
+    public void DatabaseConfiguration_ConvertDatabaseUrl_PreservesSpecialPasswordCharacters()
+    {
+        var connectionString = DatabaseConfiguration.ConvertDatabaseUrlToConnectionString(
+            "postgresql://app:p@ss:w%40rd@db.example.com:5432/hellobluegk?sslmode=require");
+        var builder = new NpgsqlConnectionStringBuilder(connectionString);
+
+        builder.Host.Should().Be("db.example.com");
+        builder.Port.Should().Be(5432);
+        builder.Database.Should().Be("hellobluegk");
+        builder.Username.Should().Be("app");
+        builder.Password.Should().Be("p@ss:w@rd");
+        builder.SslMode.Should().Be(SslMode.Require);
     }
 
     [Fact]
