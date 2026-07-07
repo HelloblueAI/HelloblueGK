@@ -237,12 +237,16 @@ public static class DatabaseConfiguration
             return;
         }
 
-        foreach (var parameter in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        foreach (var (key, value) in query.TrimStart('?')
+            .Split('&', StringSplitOptions.RemoveEmptyEntries)
+            .Select(parameter =>
+            {
+                var parts = parameter.Split('=', 2);
+                var parsedKey = Uri.UnescapeDataString(parts[0]).Replace("_", " ", StringComparison.Ordinal);
+                var parsedValue = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : string.Empty;
+                return (parsedKey, parsedValue);
+            }))
         {
-            var parts = parameter.Split('=', 2);
-            var key = Uri.UnescapeDataString(parts[0]).Replace("_", " ", StringComparison.Ordinal);
-            var value = parts.Length > 1 ? Uri.UnescapeDataString(parts[1]) : string.Empty;
-
             if (!string.IsNullOrWhiteSpace(key))
             {
                 builder[key] = value;
