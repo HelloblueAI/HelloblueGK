@@ -111,7 +111,7 @@ public class AuthController : ControllerBase
             {
                 Token = token,
                 RefreshToken = refreshToken,
-                ExpiresIn = 86400, // 24 hours in seconds
+                ExpiresIn = _jwtService.GetTokenExpirationSeconds(),
                 User = new UserInfo
                 {
                     Id = user.Id,

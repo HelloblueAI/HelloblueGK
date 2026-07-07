@@ -109,7 +109,9 @@ namespace HB_NLP_Research_Lab.Core
                 SimulationResults = simulationResults,
                 ValidationMetrics = metrics,
                 IsValidated = metrics.OverallAccuracy >= 0.99, // 99% accuracy threshold
-                ValidationTimestamp = DateTime.UtcNow
+                ValidationTimestamp = DateTime.UtcNow,
+                ValidationScore = metrics.OverallAccuracy,
+                OverallAccuracy = metrics.OverallAccuracy
             };
         }
 
@@ -242,42 +244,58 @@ namespace HB_NLP_Research_Lab.Core
 
         private double ValidateThrust(double simulatedThrust, double testThrust)
         {
-            double error = Math.Abs(simulatedThrust - testThrust) / testThrust;
-            return Math.Max(0, 1.0 - error);
+            return CalculateRelativeAccuracy(simulatedThrust, testThrust);
         }
 
         private double ValidateISP(double simulatedISP, double testISP)
         {
-            double error = Math.Abs(simulatedISP - testISP) / testISP;
-            return Math.Max(0, 1.0 - error);
+            return CalculateRelativeAccuracy(simulatedISP, testISP);
         }
 
         private double ValidateChamberPressure(double simulatedPressure, double testPressure)
         {
-            double error = Math.Abs(simulatedPressure - testPressure) / testPressure;
-            return Math.Max(0, 1.0 - error);
+            return CalculateRelativeAccuracy(simulatedPressure, testPressure);
         }
 
         private double ValidateThermalPerformance(ThermalData simulated, ThermalData test)
         {
-            double maxTempError = Math.Abs(simulated.MaxTemperature - test.MaxTemperature) / test.MaxTemperature;
-            double heatTransferError = Math.Abs(simulated.HeatTransferCoefficient - test.HeatTransferCoefficient) / test.HeatTransferCoefficient;
-            
-            return Math.Max(0, 1.0 - (maxTempError + heatTransferError) / 2.0);
+            var maxTempAccuracy = CalculateRelativeAccuracy(simulated.MaxTemperature, test.MaxTemperature);
+            var heatTransferAccuracy = CalculateRelativeAccuracy(
+                simulated.HeatTransferCoefficient,
+                test.HeatTransferCoefficient);
+
+            return (maxTempAccuracy + heatTransferAccuracy) / 2.0;
         }
 
         private double ValidateStructuralPerformance(StructuralData simulated, StructuralData test)
         {
-            double stressError = Math.Abs(simulated.MaxStress - test.MaxStress) / test.MaxStress;
-            double displacementError = Math.Abs(simulated.MaxDisplacement - test.MaxDisplacement) / test.MaxDisplacement;
-            
-            return Math.Max(0, 1.0 - (stressError + displacementError) / 2.0);
+            var stressAccuracy = CalculateRelativeAccuracy(simulated.MaxStress, test.MaxStress);
+            var displacementAccuracy = CalculateRelativeAccuracy(simulated.MaxDisplacement, test.MaxDisplacement);
+
+            return (stressAccuracy + displacementAccuracy) / 2.0;
         }
 
         private double CalculateOverallAccuracy(ValidationMetrics metrics)
         {
             return (metrics.ThrustAccuracy + metrics.ISPAccuracy + metrics.ChamberPressureAccuracy + 
                    metrics.ThermalAccuracy + metrics.StructuralAccuracy) / 5.0;
+        }
+
+        private static double CalculateRelativeAccuracy(double simulatedValue, double testValue)
+        {
+            if (!double.IsFinite(simulatedValue) || !double.IsFinite(testValue))
+            {
+                return 0.0;
+            }
+
+            if (Math.Abs(testValue) < double.Epsilon)
+            {
+                return Math.Abs(simulatedValue) < double.Epsilon ? 1.0 : 0.0;
+            }
+
+            var error = Math.Abs(simulatedValue - testValue) / Math.Abs(testValue);
+            var accuracy = 1.0 - error;
+            return double.IsFinite(accuracy) ? Math.Clamp(accuracy, 0.0, 1.0) : 0.0;
         }
 
         private Dictionary<string, TestData> InitializeTestDataDatabase()
@@ -357,12 +375,33 @@ namespace HB_NLP_Research_Lab.Core
 
         public ValidationSummary GenerateValidationSummary()
         {
+            if (_validationResults.Count == 0)
+            {
+                return new ValidationSummary
+                {
+                    TotalEnginesValidated = 0,
+                    AverageAccuracy = 0.0,
+                    HighestAccuracy = 0.0,
+                    LowestAccuracy = 0.0,
+                    ValidatedEngines = new List<string>(),
+                    ValidationTimestamp = DateTime.UtcNow,
+                    IsValid = false,
+                    ValidationScore = 0.0,
+                    CriticalIssues = 0,
+                    Warnings = 0
+                };
+            }
+
+            var resultAccuracies = _validationResults
+                .Select(GetValidationResultAccuracy)
+                .ToList();
+
             var summary = new ValidationSummary
             {
                 TotalEnginesValidated = _validationResults.Count,
-                AverageAccuracy = _validationResults.Average(v => v.TestResults.Values.Average()),
-                HighestAccuracy = _validationResults.Max(v => v.TestResults.Values.Max()),
-                LowestAccuracy = _validationResults.Min(v => v.TestResults.Values.Min()),
+                AverageAccuracy = resultAccuracies.Average(),
+                HighestAccuracy = resultAccuracies.Max(),
+                LowestAccuracy = resultAccuracies.Min(),
                 ValidatedEngines = _validationResults.Select(v => v.EngineId).ToList(),
                 ValidationTimestamp = DateTime.UtcNow
             };
@@ -373,6 +412,20 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Validation] Lowest accuracy: {summary.LowestAccuracy:P2}");
 
             return summary;
+        }
+
+        private static double GetValidationResultAccuracy(ValidationResult validationResult)
+        {
+            if (validationResult.TestResults.TryGetValue("Overall", out var overall) && double.IsFinite(overall))
+            {
+                return overall;
+            }
+
+            var finiteValues = validationResult.TestResults.Values
+                .Where(double.IsFinite)
+                .ToList();
+
+            return finiteValues.Count == 0 ? 0.0 : finiteValues.Average();
         }
     }
 

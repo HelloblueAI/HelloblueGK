@@ -116,5 +116,40 @@ public class ValidationEngineTests
         report.Should().NotBeNull();
         report.OverallAccuracy.Should().BeGreaterThanOrEqualTo(0).And.BeLessThanOrEqualTo(100);
     }
+
+    [Fact]
+    public void ValidateEngineModel_WithZeroTelemetry_ShouldReturnFiniteAccuracyMetrics()
+    {
+        // Arrange
+        var simulationResults = new SimulationResults();
+
+        // Act
+        var report = _validationEngine.ValidateEngineModel("ZeroTelemetryEngine", simulationResults);
+
+        // Assert
+        report.ValidationMetrics.ThrustAccuracy.Should().BeInRange(0.0, 1.0);
+        report.ValidationMetrics.ISPAccuracy.Should().BeInRange(0.0, 1.0);
+        report.ValidationMetrics.ChamberPressureAccuracy.Should().BeInRange(0.0, 1.0);
+        report.ValidationMetrics.ThermalAccuracy.Should().BeInRange(0.0, 1.0);
+        report.ValidationMetrics.StructuralAccuracy.Should().BeInRange(0.0, 1.0);
+        report.ValidationMetrics.OverallAccuracy.Should().BeInRange(0.0, 1.0);
+        double.IsNaN(report.ValidationMetrics.OverallAccuracy).Should().BeFalse();
+        double.IsInfinity(report.ValidationMetrics.OverallAccuracy).Should().BeFalse();
+    }
+
+    [Fact]
+    public void GenerateValidationSummary_WithNoResults_ShouldReturnEmptySummary()
+    {
+        // Act
+        var summary = _validationEngine.GenerateValidationSummary();
+
+        // Assert
+        summary.TotalEnginesValidated.Should().Be(0);
+        summary.AverageAccuracy.Should().Be(0.0);
+        summary.HighestAccuracy.Should().Be(0.0);
+        summary.LowestAccuracy.Should().Be(0.0);
+        summary.ValidatedEngines.Should().BeEmpty();
+        summary.IsValid.Should().BeFalse();
+    }
 }
 

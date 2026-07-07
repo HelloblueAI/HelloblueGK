@@ -87,6 +87,9 @@ public class SecurityHardeningTests
         jwtService
             .Setup(service => service.GenerateRefreshToken())
             .Returns("refresh-token");
+        jwtService
+            .Setup(service => service.GetTokenExpirationSeconds())
+            .Returns(7200);
         var controller = CreateAuthController(context, jwtService.Object, Environments.Development);
 
         var result = await controller.Login(new LoginRequest
@@ -95,13 +98,36 @@ public class SecurityHardeningTests
             Password = "correct-password"
         });
 
-        result.Should().BeOfType<OkObjectResult>();
+        var response = result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<LoginResponse>().Subject;
+        response.ExpiresIn.Should().Be(7200);
         user.PasswordHash.Should().NotBe(legacyHash);
         user.PasswordHash.Split(':').Should().HaveCount(3);
         user.LastLoginAt.Should().NotBeNull();
         user.UpdatedAt.Should().NotBeNull();
         jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Once);
         jwtService.Verify(service => service.GenerateRefreshToken(), Times.Once);
+        jwtService.Verify(service => service.GetTokenExpirationSeconds(), Times.Once);
+    }
+
+    [Fact]
+    public void JwtService_GetTokenExpirationSeconds_UsesConfiguredTokenLifetime()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Key"] = "01234567890123456789012345678901",
+                ["Jwt:TokenExpirationHours"] = "2"
+            })
+            .Build();
+        var service = new JwtService(
+            configuration,
+            NullLogger<JwtService>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production });
+
+        var expirationSeconds = service.GetTokenExpirationSeconds();
+
+        expirationSeconds.Should().Be(7200);
     }
 
     [Theory]
