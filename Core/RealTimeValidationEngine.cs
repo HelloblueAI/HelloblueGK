@@ -132,7 +132,11 @@ namespace HB_NLP_Research_Lab.Core
                     return cachedResult;
                 }
 
-                if (!_inFlightValidations.TryGetValue(engineModel, out validationTask))
+                if (_inFlightValidations.TryGetValue(engineModel, out var existingTask))
+                {
+                    validationTask = existingTask;
+                }
+                else
                 {
                     validationTask = PerformRealTimeValidationAsync(engineModel);
                     _inFlightValidations[engineModel] = validationTask;
