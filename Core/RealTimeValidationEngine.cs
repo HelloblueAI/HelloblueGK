@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Net.Http;
 using System.Text.Json;
+using System.Threading;
 using HB_NLP_Research_Lab.Core;
 
 namespace HB_NLP_Research_Lab.Core
@@ -13,7 +14,7 @@ namespace HB_NLP_Research_Lab.Core
     /// Provides live validation against real-world test data and flight results
     /// Integration with NASA, SpaceX, and industry databases
     /// </summary>
-    public class RealTimeValidationEngine : IValidationEngine
+    public class RealTimeValidationEngine : IValidationEngine, IDisposable
     {
         private readonly HttpClient _httpClient;
         private readonly ValidationDatabase _validationDatabase;
@@ -21,9 +22,11 @@ namespace HB_NLP_Research_Lab.Core
         private readonly ValidationAnalytics _analytics;
         
         private readonly Dictionary<string, ValidationResult> _validationCache;
+        private readonly Dictionary<string, Task<ValidationResult>> _inFlightValidations;
         private readonly object _cacheLock = new object();
         private readonly HashSet<string> _processingEngines = new HashSet<string>();
         private readonly object _processingLock = new object();
+        private bool _disposed;
 
         public RealTimeValidationEngine()
         {
@@ -32,6 +35,7 @@ namespace HB_NLP_Research_Lab.Core
             _dataCollector = new RealTimeDataCollector();
             _analytics = new ValidationAnalytics();
             _validationCache = new Dictionary<string, ValidationResult>();
+            _inFlightValidations = new Dictionary<string, Task<ValidationResult>>();
             
             // Set up real-time data collection
             _dataCollector.DataReceived += OnValidationDataReceived;
@@ -39,42 +43,13 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<ValidationReport> ValidateEngineModelAsync(string engineModel)
         {
-            // Check cache first
-            if (_validationCache.TryGetValue(engineModel, out var cachedResult))
-            {
-                return await CreateValidationReportAsync(engineModel, cachedResult);
-            }
-
-            // Perform real-time validation
-            var validationResult = await PerformRealTimeValidationAsync(engineModel);
-            
-            // Cache the result
-            lock (_cacheLock)
-            {
-                _validationCache[engineModel] = validationResult;
-            }
-            
+            var validationResult = await GetOrRunValidationAsync(engineModel);
             return await CreateValidationReportAsync(engineModel, validationResult);
         }
 
         public async Task<ValidationResult> ValidateEngineAsync(string engineModel)
         {
-            // Check cache first
-            if (_validationCache.TryGetValue(engineModel, out var cachedResult))
-            {
-                return cachedResult;
-            }
-
-            // Perform real-time validation
-            var validationResult = await PerformRealTimeValidationAsync(engineModel);
-            
-            // Cache the result
-            lock (_cacheLock)
-            {
-                _validationCache[engineModel] = validationResult;
-            }
-            
-            return validationResult;
+            return await GetOrRunValidationAsync(engineModel);
         }
 
         public async Task<ValidationSummary> GenerateValidationSummaryAsync()
@@ -82,7 +57,13 @@ namespace HB_NLP_Research_Lab.Core
             // Simulate async operation
             await Task.Delay(5);
             
-            var validatedEngines = _validationCache.Keys.ToList();
+            List<KeyValuePair<string, ValidationResult>> cacheSnapshot;
+            lock (_cacheLock)
+            {
+                cacheSnapshot = _validationCache.ToList();
+            }
+
+            var validatedEngines = cacheSnapshot.Select(entry => entry.Key).ToList();
             var totalEngines = validatedEngines.Count;
             
             if (totalEngines == 0)
@@ -102,7 +83,7 @@ namespace HB_NLP_Research_Lab.Core
                 };
             }
             
-            var accuracies = validatedEngines.Select(engine => _validationCache[engine].Accuracy).ToList();
+            var accuracies = cacheSnapshot.Select(entry => entry.Value.Accuracy).ToList();
             var averageAccuracy = accuracies.Average();
             var highestAccuracy = accuracies.Max();
             var lowestAccuracy = accuracies.Min();
@@ -125,13 +106,69 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<List<ValidationResult>> GetValidationHistoryAsync()
         {
             await Task.Delay(1);
-            return _validationCache.Values.ToList();
+            lock (_cacheLock)
+            {
+                return _validationCache.Values.ToList();
+            }
         }
 
         public async Task<bool> IsEngineValidatedAsync(string engineModel)
         {
             await Task.Delay(1);
-            return _validationCache.ContainsKey(engineModel);
+            lock (_cacheLock)
+            {
+                return _validationCache.ContainsKey(engineModel);
+            }
+        }
+
+        private async Task<ValidationResult> GetOrRunValidationAsync(string engineModel)
+        {
+            Task<ValidationResult> validationTask;
+
+            lock (_cacheLock)
+            {
+                if (_validationCache.TryGetValue(engineModel, out var cachedResult))
+                {
+                    return cachedResult;
+                }
+
+                if (_inFlightValidations.TryGetValue(engineModel, out var existingTask))
+                {
+                    validationTask = existingTask;
+                }
+                else
+                {
+                    validationTask = PerformRealTimeValidationAsync(engineModel);
+                    _inFlightValidations[engineModel] = validationTask;
+                }
+            }
+
+            try
+            {
+                var validationResult = await validationTask;
+
+                lock (_cacheLock)
+                {
+                    if (_validationCache.TryGetValue(engineModel, out var cachedResult))
+                    {
+                        return cachedResult;
+                    }
+
+                    _validationCache[engineModel] = validationResult;
+                    return validationResult;
+                }
+            }
+            finally
+            {
+                lock (_cacheLock)
+                {
+                    if (_inFlightValidations.TryGetValue(engineModel, out var currentTask)
+                        && ReferenceEquals(currentTask, validationTask))
+                    {
+                        _inFlightValidations.Remove(engineModel);
+                    }
+                }
+            }
         }
 
         private async Task<ValidationResult> PerformRealTimeValidationAsync(string engineModel)
@@ -490,13 +527,25 @@ namespace HB_NLP_Research_Lab.Core
             // Override method for custom validation options
             return await ValidateEngineModelAsync(engineModel);
         }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _dataCollector.DataReceived -= OnValidationDataReceived;
+            _httpClient.Dispose();
+            _disposed = true;
+        }
     }
 
     // Real-time data collector
     public class RealTimeDataCollector
     {
         public event EventHandler<ValidationDataEventArgs> DataReceived = null!;
-        private bool _suppressEvents = false; // Flag to prevent infinite loops during validation
+        private int _suppressEventsCount; // Reference-counted to support overlapping validations.
         
         public async Task<FlightData> CollectFlightDataAsync(string engineModel)
         {
@@ -504,7 +553,7 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(100);
             
             // Only trigger event if not suppressing (to prevent infinite loops during validation)
-            if (!_suppressEvents)
+            if (Volatile.Read(ref _suppressEventsCount) == 0)
             {
                 DataReceived?.Invoke(this, new ValidationDataEventArgs
                 {
@@ -531,7 +580,7 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(150);
             
             // Only trigger event if not suppressing (to prevent infinite loops during validation)
-            if (!_suppressEvents)
+            if (Volatile.Read(ref _suppressEventsCount) == 0)
             {
                 DataReceived?.Invoke(this, new ValidationDataEventArgs
                 {
@@ -554,7 +603,25 @@ namespace HB_NLP_Research_Lab.Core
         
         public void SuppressEvents(bool suppress)
         {
-            _suppressEvents = suppress;
+            if (suppress)
+            {
+                Interlocked.Increment(ref _suppressEventsCount);
+                return;
+            }
+
+            while (true)
+            {
+                var current = Volatile.Read(ref _suppressEventsCount);
+                if (current == 0)
+                {
+                    return;
+                }
+
+                if (Interlocked.CompareExchange(ref _suppressEventsCount, current - 1, current) == current)
+                {
+                    return;
+                }
+            }
         }
     }
 

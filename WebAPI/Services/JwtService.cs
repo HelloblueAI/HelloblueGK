@@ -15,11 +15,14 @@ public interface IJwtService
     string GenerateToken(User user);
     ClaimsPrincipal? ValidateToken(string token);
     string GenerateRefreshToken();
+    int GetTokenExpirationSeconds();
 }
 
 public class JwtService : IJwtService
 {
     private const string DefaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
+    private const int DefaultTokenExpirationHours = 24;
+    private const int MaxTokenExpirationHours = 24 * 30;
 
     private readonly IConfiguration _configuration;
     private readonly ILogger<JwtService> _logger;
@@ -46,7 +49,7 @@ public class JwtService : IJwtService
         
         var jwtIssuer = _configuration["Jwt:Issuer"] ?? "hellobluegk";
         var jwtAudience = _configuration["Jwt:Audience"] ?? "hellobluegk-api";
-        var expirationHours = int.Parse(_configuration["Jwt:TokenExpirationHours"] ?? "24");
+        var tokenLifetime = GetTokenLifetime();
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -73,7 +76,7 @@ public class JwtService : IJwtService
             issuer: jwtIssuer,
             audience: jwtAudience,
             claims: claims,
-            expires: DateTime.UtcNow.AddHours(expirationHours),
+            expires: DateTime.UtcNow.Add(tokenLifetime),
             signingCredentials: credentials
         );
 
@@ -121,6 +124,11 @@ public class JwtService : IJwtService
         return Convert.ToBase64String(randomNumber);
     }
 
+    public int GetTokenExpirationSeconds()
+    {
+        return checked((int)GetTokenLifetime().TotalSeconds);
+    }
+
     private string GetJwtKey()
     {
         var jwtKey = _configuration["Jwt:Key"];
@@ -146,6 +154,27 @@ public class JwtService : IJwtService
         }
 
         return jwtKey;
+    }
+
+    private TimeSpan GetTokenLifetime()
+    {
+        var configuredHours = _configuration["Jwt:TokenExpirationHours"];
+        if (string.IsNullOrWhiteSpace(configuredHours))
+        {
+            return TimeSpan.FromHours(DefaultTokenExpirationHours);
+        }
+
+        if (int.TryParse(configuredHours, out var expirationHours)
+            && expirationHours > 0
+            && expirationHours <= MaxTokenExpirationHours)
+        {
+            return TimeSpan.FromHours(expirationHours);
+        }
+
+        _logger.LogWarning(
+            "Invalid Jwt:TokenExpirationHours value configured; using {DefaultTokenExpirationHours} hours",
+            DefaultTokenExpirationHours);
+        return TimeSpan.FromHours(DefaultTokenExpirationHours);
     }
 }
 
