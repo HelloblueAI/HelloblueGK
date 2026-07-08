@@ -118,10 +118,34 @@ public class RealTimeValidationEngineTests : IDisposable
         isValidated.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task ConcurrentValidationAndSummaryOperations_ShouldNotCorruptCache()
+    {
+        // Arrange
+        var engineIds = Enumerable.Range(0, 5)
+            .Select(index => $"ConcurrentEngine_{index}")
+            .ToArray();
+
+        var validationTasks = Enumerable.Range(0, 25)
+            .Select(index => _validationEngine.ValidateEngineAsync(engineIds[index % engineIds.Length]))
+            .ToArray();
+        var summaryTasks = Enumerable.Range(0, 10)
+            .Select(_ => _validationEngine.GenerateValidationSummaryAsync())
+            .ToArray();
+
+        // Act
+        var act = async () => await Task.WhenAll(validationTasks.Cast<Task>().Concat(summaryTasks));
+
+        // Assert
+        await act.Should().NotThrowAsync();
+        var summary = await _validationEngine.GenerateValidationSummaryAsync();
+        summary.TotalEnginesValidated.Should().Be(engineIds.Length);
+        summary.ValidatedEngines.Should().BeEquivalentTo(engineIds);
+    }
+
     public void Dispose()
     {
-        // RealTimeValidationEngine doesn't implement IDisposable
-        // No cleanup needed
+        _validationEngine.Dispose();
     }
 }
 
