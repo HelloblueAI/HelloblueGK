@@ -77,7 +77,9 @@ public class RequirementsController : ControllerBase
             {
                 StatusCode = 500,
                 Message = "An error occurred while creating the requirement",
-                Details = ex.Message
+                Timestamp = DateTime.UtcNow,
+                Path = HttpContext.Request.Path,
+                Method = HttpContext.Request.Method
             });
         }
     }

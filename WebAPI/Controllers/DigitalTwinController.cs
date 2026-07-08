@@ -224,7 +224,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// </summary>
         [HttpPost("{id}/learn")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(DigitalTwin), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(DigitalTwinResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateDigitalTwinLearning(int id, [FromBody] LearningDataRequest request)
         {
@@ -271,7 +271,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 await _context.SaveChangesAsync();
 
-                return Ok(digitalTwin);
+                return Ok(DigitalTwinResponse.FromEntity(digitalTwin));
             }
             catch (Exception ex)
             {

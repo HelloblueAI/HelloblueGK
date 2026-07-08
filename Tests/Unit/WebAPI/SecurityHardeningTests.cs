@@ -9,6 +9,7 @@ using System.Text.Json;
 using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Configuration;
 using HB_NLP_Research_Lab.WebAPI.Controllers;
+using HB_NLP_Research_Lab.WebAPI.Controllers.Certification;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Extensions;
@@ -179,6 +180,49 @@ public class SecurityHardeningTests
         response.RootElement.GetProperty("message").GetString()
             .Should().Be("The request could not be processed");
         responseText.Should().NotContain(sensitiveMessage);
+    }
+
+    [Fact]
+    public async Task SystemHealthFailureResponses_DoNotExposeExceptionDetails()
+    {
+        var controller = new SystemHealthController(
+            NullLogger<SystemHealthController>.Instance,
+            null!,
+            null!);
+
+        var comprehensiveResult = await controller.GetComprehensiveHealth();
+        var basicResult = await controller.GetBasicStatus();
+        var summaryResult = await controller.GetHealthSummary();
+
+        AssertObjectResultDoesNotExpose(comprehensiveResult.Result, "Object reference");
+        AssertObjectResultDoesNotExpose(basicResult.Result, "Object reference");
+        AssertObjectResultDoesNotExpose(summaryResult.Result, "Object reference");
+    }
+
+    [Fact]
+    public async Task RequirementCreationFailure_DoesNotExposeExceptionDetails()
+    {
+        var controller = new RequirementsController(
+            null!,
+            null!,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+        controller.HttpContext.Request.Method = HttpMethods.Post;
+        controller.HttpContext.Request.Path = "/api/v1/certification/requirements";
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-SEC-001",
+            Title = "Security requirement",
+            Description = "Should not expose exception details"
+        });
+
+        AssertObjectResultDoesNotExpose(result, "Object reference");
     }
 
     [Fact]
@@ -594,6 +638,14 @@ public class SecurityHardeningTests
         return roles
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .ToHashSet(StringComparer.Ordinal);
+    }
+
+    private static void AssertObjectResultDoesNotExpose(IActionResult? result, string sensitiveText)
+    {
+        var objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
+        var responseJson = JsonSerializer.Serialize(objectResult.Value);
+        responseJson.Should().NotContain(sensitiveText);
     }
 
     private static HelloblueGKDbContext CreateContext()
