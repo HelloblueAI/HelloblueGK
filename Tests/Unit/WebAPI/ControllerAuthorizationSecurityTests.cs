@@ -245,6 +245,7 @@ public class ControllerAuthorizationSecurityTests
             Engine = engine,
             Name = "Alice twin",
             PredictionAccuracy = 0.99,
+            ModelDataJson = "{\"secret\":\"model-data\",\"Thrust\":100}",
             CreatedBy = "alice",
             CreatedAt = DateTime.UtcNow,
             IsActive = true
@@ -262,10 +263,54 @@ public class ControllerAuthorizationSecurityTests
         response.Engine!.Id.Should().Be(engine.Id);
         response.Engine.Name.Should().Be(engine.Name);
         response.Engine.EngineType.Should().Be(engine.EngineType);
+        response.ModelDataJson.Should().BeNull();
 
         var responseJson = JsonSerializer.Serialize(response);
+        responseJson.Should().NotContain("model-data");
         responseJson.Should().NotContain("engine-owner");
         responseJson.Should().NotContain(nameof(Engine.Thrust));
+    }
+
+    [Fact]
+    public async Task UpdateDigitalTwinLearning_ReturnsSafeDigitalTwinResponseInsteadOfRawEntity()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var digitalTwinEngine = new DigitalTwinEngine();
+        var controller = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            digitalTwinEngine);
+
+        var createResult = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Learning twin"
+        });
+        var createdTwin = createResult.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        var result = await controller.UpdateDigitalTwinLearning(createdTwin.Id, new LearningDataRequest
+        {
+            TelemetryData = new Dictionary<string, double>
+            {
+                ["ChamberPressure"] = 1.0,
+                ["Thrust"] = 1.0
+            }
+        });
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        okResult.Value.Should().NotBeOfType<DigitalTwin>();
+        var response = okResult.Value.Should().BeOfType<DigitalTwinResponse>().Subject;
+        response.Engine.Should().NotBeNull();
+        response.Engine!.Name.Should().Be(engine.Name);
+        response.ModelDataJson.Should().BeNull();
+
+        var responseJson = JsonSerializer.Serialize(response);
+        responseJson.Should().NotContain(nameof(Engine.Thrust));
+        responseJson.Should().NotContain(nameof(Engine.SpecificImpulse));
     }
 
     [Fact]
@@ -515,11 +560,12 @@ public class ControllerAuthorizationSecurityTests
 
     private static DigitalTwinController CreateDigitalTwinController(
         HelloblueGKDbContext context,
-        ClaimsPrincipal user)
+        ClaimsPrincipal user,
+        DigitalTwinEngine? digitalTwinEngine = null)
     {
         return new DigitalTwinController(
             context,
-            new DigitalTwinEngine(),
+            digitalTwinEngine ?? new DigitalTwinEngine(),
             NullLogger<DigitalTwinController>.Instance)
         {
             ControllerContext = CreateControllerContext(user)

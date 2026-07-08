@@ -77,7 +77,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Take(pagination.Take)
                     .ToListAsync();
 
-                return Ok(digitalTwins.Select(DigitalTwinResponse.FromEntity));
+                return Ok(digitalTwins.Select(digitalTwin => DigitalTwinResponse.FromEntity(digitalTwin)));
             }
             catch (Exception ex)
             {
@@ -224,7 +224,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// </summary>
         [HttpPost("{id}/learn")]
         [Authorize(Roles = "Admin")]
-        [ProducesResponseType(typeof(DigitalTwin), StatusCodes.Status200OK)]
+        [ProducesResponseType(typeof(DigitalTwinResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<IActionResult> UpdateDigitalTwinLearning(int id, [FromBody] LearningDataRequest request)
         {
@@ -271,7 +271,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 await _context.SaveChangesAsync();
 
-                return Ok(digitalTwin);
+                return Ok(DigitalTwinResponse.FromEntity(digitalTwin));
             }
             catch (Exception ex)
             {
@@ -456,7 +456,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         public string? CreatedBy { get; set; }
         public EngineSummaryResponse? Engine { get; set; }
 
-        public static DigitalTwinResponse FromEntity(DigitalTwin digitalTwin)
+        public static DigitalTwinResponse FromEntity(DigitalTwin digitalTwin, bool includeModelData = false)
         {
             return new DigitalTwinResponse
             {
@@ -465,7 +465,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 Name = digitalTwin.Name,
                 PredictionAccuracy = digitalTwin.PredictionAccuracy,
                 RealTimeLearning = digitalTwin.RealTimeLearning,
-                ModelDataJson = digitalTwin.ModelDataJson,
+                ModelDataJson = includeModelData ? digitalTwin.ModelDataJson : null,
                 ModelImprovement = digitalTwin.ModelImprovement,
                 TrainingIterations = digitalTwin.TrainingIterations,
                 LastUpdated = digitalTwin.LastUpdated,
