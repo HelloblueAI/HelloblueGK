@@ -53,12 +53,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get comprehensive health report");
-                return StatusCode(500, new ProblemDetails
-                {
-                    Title = "Health Check Failed",
-                    Detail = ex.Message,
-                    Status = 500
-                });
+                return CreateHealthFailure("Health Check Failed");
             }
         }
 
@@ -94,12 +89,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get basic health status");
-                return Ok(new
+                return StatusCode(500, new
                 {
                     Status = "Unknown",
                     Timestamp = DateTime.UtcNow,
                     IsHealthy = false,
-                    Error = ex.Message
+                    Error = "Health status unavailable"
                 });
             }
         }
@@ -121,12 +116,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get resource health");
-                return StatusCode(500, new ProblemDetails
-                {
-                    Title = "Resource Health Check Failed",
-                    Detail = ex.Message,
-                    Status = 500
-                });
+                return CreateHealthFailure("Resource Health Check Failed");
             }
         }
 
@@ -147,12 +137,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get performance health");
-                return StatusCode(500, new ProblemDetails
-                {
-                    Title = "Performance Health Check Failed",
-                    Detail = ex.Message,
-                    Status = 500
-                });
+                return CreateHealthFailure("Performance Health Check Failed");
             }
         }
 
@@ -173,12 +158,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get security health");
-                return StatusCode(500, new ProblemDetails
-                {
-                    Title = "Security Health Check Failed",
-                    Detail = ex.Message,
-                    Status = 500
-                });
+                return CreateHealthFailure("Security Health Check Failed");
             }
         }
 
@@ -199,12 +179,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get configuration health");
-                return StatusCode(500, new ProblemDetails
-                {
-                    Title = "Configuration Health Check Failed",
-                    Detail = ex.Message,
-                    Status = 500
-                });
+                return CreateHealthFailure("Configuration Health Check Failed");
             }
         }
 
@@ -234,12 +209,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get health recommendations");
-                return StatusCode(500, new ProblemDetails
-                {
-                    Title = "Recommendations Failed",
-                    Detail = ex.Message,
-                    Status = 500
-                });
+                return CreateHealthFailure("Recommendations Failed");
             }
         }
 
@@ -279,13 +249,25 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Failed to get health summary");
-                return Ok(new
+                return StatusCode(500, new
                 {
                     Status = "error",
                     Timestamp = DateTime.UtcNow,
-                    Error = ex.Message
+                    Error = "Health summary unavailable"
                 });
             }
+        }
+
+        private static ObjectResult CreateHealthFailure(string title)
+        {
+            return new ObjectResult(new ProblemDetails
+            {
+                Title = title,
+                Status = StatusCodes.Status500InternalServerError
+            })
+            {
+                StatusCode = StatusCodes.Status500InternalServerError
+            };
         }
     }
 }
