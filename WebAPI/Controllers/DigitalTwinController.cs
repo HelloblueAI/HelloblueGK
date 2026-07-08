@@ -456,7 +456,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         public string? CreatedBy { get; set; }
         public EngineSummaryResponse? Engine { get; set; }
 
-        public static DigitalTwinResponse FromEntity(DigitalTwin digitalTwin)
+        public static DigitalTwinResponse FromEntity(DigitalTwin digitalTwin, bool includeModelData = false)
         {
             return new DigitalTwinResponse
             {
@@ -465,7 +465,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 Name = digitalTwin.Name,
                 PredictionAccuracy = digitalTwin.PredictionAccuracy,
                 RealTimeLearning = digitalTwin.RealTimeLearning,
-                ModelDataJson = digitalTwin.ModelDataJson,
+                ModelDataJson = includeModelData ? digitalTwin.ModelDataJson : null,
                 ModelImprovement = digitalTwin.ModelImprovement,
                 TrainingIterations = digitalTwin.TrainingIterations,
                 LastUpdated = digitalTwin.LastUpdated,

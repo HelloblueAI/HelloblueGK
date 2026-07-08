@@ -245,6 +245,7 @@ public class ControllerAuthorizationSecurityTests
             Engine = engine,
             Name = "Alice twin",
             PredictionAccuracy = 0.99,
+            ModelDataJson = "{\"secret\":\"model-data\",\"Thrust\":100}",
             CreatedBy = "alice",
             CreatedAt = DateTime.UtcNow,
             IsActive = true
@@ -262,8 +263,10 @@ public class ControllerAuthorizationSecurityTests
         response.Engine!.Id.Should().Be(engine.Id);
         response.Engine.Name.Should().Be(engine.Name);
         response.Engine.EngineType.Should().Be(engine.EngineType);
+        response.ModelDataJson.Should().BeNull();
 
         var responseJson = JsonSerializer.Serialize(response);
+        responseJson.Should().NotContain("model-data");
         responseJson.Should().NotContain("engine-owner");
         responseJson.Should().NotContain(nameof(Engine.Thrust));
     }
@@ -303,6 +306,7 @@ public class ControllerAuthorizationSecurityTests
         var response = okResult.Value.Should().BeOfType<DigitalTwinResponse>().Subject;
         response.Engine.Should().NotBeNull();
         response.Engine!.Name.Should().Be(engine.Name);
+        response.ModelDataJson.Should().BeNull();
 
         var responseJson = JsonSerializer.Serialize(response);
         responseJson.Should().NotContain(nameof(Engine.Thrust));

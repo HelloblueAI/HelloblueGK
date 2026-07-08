@@ -528,17 +528,19 @@ public class SecurityHardeningTests
         var bobTwin = bobResult.Should().BeOfType<CreatedAtActionResult>().Subject.Value
             .Should().BeOfType<DigitalTwinResponse>().Subject;
 
-        var aliceEngineKey = ReadStoredEngineKey(aliceTwin);
-        var bobEngineKey = ReadStoredEngineKey(bobTwin);
+        var aliceEngineKey = ReadStoredEngineKey(context.DigitalTwins.Single(twin => twin.Id == aliceTwin.Id).ModelDataJson!);
+        var bobEngineKey = ReadStoredEngineKey(context.DigitalTwins.Single(twin => twin.Id == bobTwin.Id).ModelDataJson!);
 
         aliceEngineKey.Should().NotBe(bobEngineKey);
         aliceEngineKey.Should().NotBe($"Engine_{engine.Id}");
         bobEngineKey.Should().NotBe($"Engine_{engine.Id}");
+        aliceTwin.ModelDataJson.Should().BeNull();
+        bobTwin.ModelDataJson.Should().BeNull();
     }
 
-    private static string? ReadStoredEngineKey(DigitalTwinResponse digitalTwin)
+    private static string? ReadStoredEngineKey(string modelDataJson)
     {
-        using var modelData = JsonDocument.Parse(digitalTwin.ModelDataJson!);
+        using var modelData = JsonDocument.Parse(modelDataJson);
         return modelData.RootElement.GetProperty("EngineId").GetString();
     }
 
