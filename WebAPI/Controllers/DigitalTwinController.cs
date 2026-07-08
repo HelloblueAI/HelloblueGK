@@ -77,7 +77,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Take(pagination.Take)
                     .ToListAsync();
 
-                return Ok(digitalTwins.Select(DigitalTwinResponse.FromEntity));
+                return Ok(digitalTwins.Select(digitalTwin => DigitalTwinResponse.FromEntity(digitalTwin)));
             }
             catch (Exception ex)
             {
