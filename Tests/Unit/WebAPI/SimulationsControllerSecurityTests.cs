@@ -192,6 +192,69 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task GetSimulationById_WithTelemetry_DoesNotExposeSimulationNavigationOrDiagnosticError()
+    {
+        await using var context = CreateContext();
+        const string sensitiveError = "SQL connection failed for user admin with password secret";
+        var simulation = await SeedSimulationAsync(context, "alice", "Failed", sensitiveError);
+        context.EngineTelemetry.Add(new HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry
+        {
+            SimulationId = simulation.Id,
+            Timestamp = DateTime.UtcNow,
+            Thrust = 100,
+            Temperature = 300,
+            Simulation = simulation
+        });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var controller = CreateController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetSimulationById(simulation.Id);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var response = okResult.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
+        response.ErrorMessage.Should().Be("Simulation failed. See server logs for details.");
+        response.Telemetry.Should().ContainSingle();
+
+        var responseJson = JsonSerializer.Serialize(response);
+        responseJson.Should().NotContain(sensitiveError);
+        using var document = JsonDocument.Parse(responseJson);
+        var telemetryItem = document.RootElement.GetProperty("Telemetry")[0];
+        telemetryItem.TryGetProperty("Simulation", out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetSimulationById_WithManyTelemetrySamples_ReturnsBoundedTelemetry()
+    {
+        await using var context = CreateContext();
+        var simulation = await SeedSimulationAsync(context, "alice", "Completed");
+        var start = DateTime.UtcNow.AddMinutes(-120);
+        for (var index = 0; index < 105; index++)
+        {
+            context.EngineTelemetry.Add(new HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry
+            {
+                SimulationId = simulation.Id,
+                Timestamp = start.AddMinutes(index),
+                Thrust = index,
+                Simulation = simulation
+            });
+        }
+
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var controller = CreateController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetSimulationById(simulation.Id);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var response = okResult.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
+        response.Telemetry.Should().NotBeNull();
+        var telemetry = response.Telemetry!.ToList();
+        telemetry.Should().HaveCount(100);
+        telemetry.Should().OnlyContain(sample => sample.Thrust >= 5);
+    }
+
+    [Fact]
     public void EngineSimulationSerialization_ExcludesStackTrace()
     {
         var simulation = new EngineSimulation

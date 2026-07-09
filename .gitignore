@@ -153,9 +153,6 @@ dist/
 build/
 *.egg
 
-## Docker ##
-.dockerignore
-
 ## Logs ##
 *.log
 logs/

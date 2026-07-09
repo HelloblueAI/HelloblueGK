@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace HB_NLP_Research_Lab.WebAPI.Data.Models;
 
 /// <summary>
@@ -22,6 +24,7 @@ public class EngineTelemetry
     public string? MetricsJson { get; set; } // JSON for additional metrics
 
     // Navigation properties
+    [JsonIgnore]
     public EngineSimulation Simulation { get; set; } = null!;
 }
 
