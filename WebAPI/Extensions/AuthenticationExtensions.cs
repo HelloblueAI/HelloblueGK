@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using System.Text;
+using HB_NLP_Research_Lab.WebAPI.Data;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Tokens;
 
@@ -72,6 +74,61 @@ public static class AuthenticationExtensions
                     ValidAudience = jwtAudience,
                     ValidateLifetime = true,
                     ClockSkew = TimeSpan.Zero
+                };
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = async context =>
+                    {
+                        var principal = context.Principal;
+                        var userIdClaim = principal?.FindFirstValue(ClaimTypes.NameIdentifier)
+                            ?? principal?.FindFirstValue("userId");
+
+                        if (!int.TryParse(userIdClaim, out var userId))
+                        {
+                            context.Fail("JWT token is missing a valid user identifier.");
+                            return;
+                        }
+
+                        var dbContext = context.HttpContext.RequestServices
+                            .GetRequiredService<HelloblueGKDbContext>();
+                        var user = await dbContext.Users
+                            .AsNoTracking()
+                            .Where(candidate => candidate.Id == userId)
+                            .Select(candidate => new
+                            {
+                                candidate.Username,
+                                candidate.IsActive,
+                                candidate.IsAdmin
+                            })
+                            .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
+
+                        if (user is null || !user.IsActive)
+                        {
+                            context.Fail("JWT token user is no longer active.");
+                            return;
+                        }
+
+                        var tokenUsername = principal!.FindFirstValue("username")
+                            ?? principal.FindFirstValue(ClaimTypes.Name);
+                        if (string.IsNullOrWhiteSpace(tokenUsername)
+                            || !string.Equals(tokenUsername, user.Username, StringComparison.OrdinalIgnoreCase))
+                        {
+                            context.Fail("JWT token user claims no longer match the account.");
+                            return;
+                        }
+
+                        var hasAdminRole = principal.IsInRole("Admin");
+                        if (hasAdminRole != user.IsAdmin)
+                        {
+                            context.Fail("JWT token role claims no longer match the account.");
+                            return;
+                        }
+
+                        if (!user.IsAdmin && !principal.IsInRole("User"))
+                        {
+                            context.Fail("JWT token role claims no longer match the account.");
+                        }
+                    }
                 };
             })
             .AddCookie(CookieAuthenticationDefaults.AuthenticationScheme, options =>
