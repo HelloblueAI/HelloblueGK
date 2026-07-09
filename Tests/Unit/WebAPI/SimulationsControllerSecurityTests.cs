@@ -248,7 +248,8 @@ public class SimulationsControllerSecurityTests
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
         var response = okResult.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
-        var telemetry = response.Telemetry.Should().NotBeNull().And.HaveCount(100).Subject.ToList();
+        var telemetry = response.Telemetry.Should().NotBeNull().Subject.ToList();
+        telemetry.Should().HaveCount(100);
         telemetry.Should().OnlyContain(sample => sample.Thrust >= 5);
     }
 
