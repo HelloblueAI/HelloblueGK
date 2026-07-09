@@ -432,6 +432,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     /// </summary>
     public class EngineSimulationResponse
     {
+        private const int MaxTelemetrySamples = 100;
+
         public int Id { get; set; }
         public int EngineId { get; set; }
         public string SimulationType { get; set; } = string.Empty;
@@ -448,7 +450,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         public DateTime? CompletedAt { get; set; }
         public string? CreatedBy { get; set; }
         public EngineSummaryResponse? Engine { get; set; }
-        public IEnumerable<HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry>? Telemetry { get; set; }
+        public IEnumerable<EngineTelemetryResponse>? Telemetry { get; set; }
 
         public static EngineSimulationResponse FromEntity(EngineSimulation simulation, bool includeTelemetry = false)
         {
@@ -470,7 +472,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 CompletedAt = simulation.CompletedAt,
                 CreatedBy = simulation.CreatedBy,
                 Engine = simulation.Engine == null ? null : EngineSummaryResponse.FromEntity(simulation.Engine),
-                Telemetry = includeTelemetry ? simulation.Telemetry : null
+                Telemetry = includeTelemetry
+                    ? simulation.Telemetry
+                        .OrderByDescending(telemetry => telemetry.Timestamp)
+                        .Take(MaxTelemetrySamples)
+                        .Select(EngineTelemetryResponse.FromEntity)
+                        .ToList()
+                    : null
             };
         }
 
@@ -480,6 +488,37 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 !string.IsNullOrWhiteSpace(errorMessage)
                     ? "Simulation failed. See server logs for details."
                     : null;
+        }
+    }
+
+    public class EngineTelemetryResponse
+    {
+        public int Id { get; set; }
+        public int SimulationId { get; set; }
+        public DateTime Timestamp { get; set; }
+        public double? Thrust { get; set; }
+        public double? ChamberPressure { get; set; }
+        public double? Temperature { get; set; }
+        public double? MassFlowRate { get; set; }
+        public double? Efficiency { get; set; }
+        public double? SpecificImpulse { get; set; }
+        public string? MetricsJson { get; set; }
+
+        public static EngineTelemetryResponse FromEntity(HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry telemetry)
+        {
+            return new EngineTelemetryResponse
+            {
+                Id = telemetry.Id,
+                SimulationId = telemetry.SimulationId,
+                Timestamp = telemetry.Timestamp,
+                Thrust = telemetry.Thrust,
+                ChamberPressure = telemetry.ChamberPressure,
+                Temperature = telemetry.Temperature,
+                MassFlowRate = telemetry.MassFlowRate,
+                Efficiency = telemetry.Efficiency,
+                SpecificImpulse = telemetry.SpecificImpulse,
+                MetricsJson = telemetry.MetricsJson
+            };
         }
     }
 

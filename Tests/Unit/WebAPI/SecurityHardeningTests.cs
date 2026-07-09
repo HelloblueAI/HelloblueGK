@@ -330,15 +330,17 @@ public class SecurityHardeningTests
         {
             AllowAutoRedirect = false
         });
+        var alice = await SeedFactoryUserAsync(factory, "alice", isAdmin: false);
+        var admin = await SeedFactoryUserAsync(factory, "admin", isAdmin: true);
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
-            CreateJwtToken("alice", isAdmin: false));
+            CreateJwtToken(alice.Id, alice.Username, isAdmin: false));
         var userResponse = await client.GetAsync("/swagger/v1/swagger.json");
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
-            CreateJwtToken("admin", isAdmin: true));
+            CreateJwtToken(admin.Id, admin.Username, isAdmin: true));
         var adminResponse = await client.GetAsync("/swagger/v1/swagger.json");
         var adminBody = await adminResponse.Content.ReadAsStringAsync();
 
@@ -355,22 +357,69 @@ public class SecurityHardeningTests
         {
             AllowAutoRedirect = false
         });
+        var alice = await SeedFactoryUserAsync(factory, "alice", isAdmin: false);
+        var admin = await SeedFactoryUserAsync(factory, "admin", isAdmin: true);
 
         var unauthenticatedResponse = await client.GetAsync("/metrics");
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
-            CreateJwtToken("alice", isAdmin: false));
+            CreateJwtToken(alice.Id, alice.Username, isAdmin: false));
         var userResponse = await client.GetAsync("/metrics");
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
-            CreateJwtToken("admin", isAdmin: true));
+            CreateJwtToken(admin.Id, admin.Username, isAdmin: true));
         var adminResponse = await client.GetAsync("/metrics");
 
         unauthenticatedResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         userResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         adminResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task JwtBearer_WithInactiveUser_RejectsPreviouslyIssuedToken()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        var inactiveAdmin = await SeedFactoryUserAsync(
+            factory,
+            "inactive-admin",
+            isAdmin: true,
+            isActive: false);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            CreateJwtToken(inactiveAdmin.Id, inactiveAdmin.Username, isAdmin: true));
+
+        var response = await client.GetAsync("/metrics");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task JwtBearer_WithDemotedUser_RejectsStaleAdminToken()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        var demotedUser = await SeedFactoryUserAsync(
+            factory,
+            "demoted-user",
+            isAdmin: false);
+
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            CreateJwtToken(demotedUser.Id, demotedUser.Username, isAdmin: true));
+
+        var response = await client.GetAsync("/metrics");
+
+        response.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
     }
 
     [Fact]
@@ -576,14 +625,15 @@ public class SecurityHardeningTests
         return Convert.ToBase64String(sha256.ComputeHash(Encoding.UTF8.GetBytes(password)));
     }
 
-    private static string CreateJwtToken(string username, bool isAdmin)
+    private static string CreateJwtToken(int userId, string username, bool isAdmin)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("01234567890123456789012345678901"));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
         var claims = new[]
         {
-            new Claim(ClaimTypes.NameIdentifier, isAdmin ? "1" : "2"),
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(ClaimTypes.Name, username),
+            new Claim("userId", userId.ToString()),
             new Claim("username", username),
             new Claim(ClaimTypes.Role, isAdmin ? "Admin" : "User")
         };
@@ -596,6 +646,27 @@ public class SecurityHardeningTests
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static async Task<User> SeedFactoryUserAsync(
+        TestWebApiFactory factory,
+        string username,
+        bool isAdmin,
+        bool isActive = true)
+    {
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+        var user = new User
+        {
+            Username = username,
+            Email = $"{username}@example.com",
+            PasswordHash = "test-password-hash",
+            IsAdmin = isAdmin,
+            IsActive = isActive
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        return user;
     }
 
     private static AccountController CreateAccountController()

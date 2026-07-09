@@ -1,0 +1,59 @@
+.git
+.gitignore
+.cursor
+.vs
+.vscode
+.idea
+
+# Local secrets and environment overrides must never enter remote build contexts.
+.env
+.env.*
+!.env.example
+appsettings.*.json
+!appsettings.json
+!appsettings.*.example
+*secrets*
+*credentials*
+*passwords*
+
+# Build, test, and publish artifacts
+**/bin
+**/obj
+**/publish
+TestResults
+CoverageReport
+*.trx
+*.coverage
+*.coveragexml
+coverage.cobertura.xml
+*.binlog
+
+# Logs and temporary files
+*.log
+logs
+tmp
+temp
+*.tmp
+*.temp
+*.swp
+*.swo
+*.bak
+*.backup
+
+# Package/cache artifacts and archives
+artifacts
+*.nupkg
+*.snupkg
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.deb
+*.rpm
+*.dmg
+
+# OS/editor metadata
+.DS_Store
+Thumbs.db
+Desktop.ini

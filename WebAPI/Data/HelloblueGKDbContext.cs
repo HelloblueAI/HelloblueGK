@@ -69,7 +69,7 @@ public class HelloblueGKDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasOne(e => e.Simulation)
-                  .WithMany()
+                  .WithMany(simulation => simulation.Telemetry)
                   .HasForeignKey(e => e.SimulationId)
                   .OnDelete(DeleteBehavior.Cascade);
             entity.HasIndex(e => e.SimulationId);
