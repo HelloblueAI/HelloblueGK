@@ -80,8 +80,14 @@ public static class AuthenticationExtensions
                     OnTokenValidated = async context =>
                     {
                         var principal = context.Principal;
-                        var userIdClaim = principal?.FindFirstValue(ClaimTypes.NameIdentifier)
-                            ?? principal?.FindFirstValue("userId");
+                        if (principal is null)
+                        {
+                            context.Fail("JWT token principal is missing.");
+                            return;
+                        }
+
+                        var userIdClaim = principal.FindFirstValue(ClaimTypes.NameIdentifier)
+                            ?? principal.FindFirstValue("userId");
 
                         if (!int.TryParse(userIdClaim, out var userId))
                         {
@@ -108,7 +114,7 @@ public static class AuthenticationExtensions
                             return;
                         }
 
-                        var tokenUsername = principal!.FindFirstValue("username")
+                        var tokenUsername = principal.FindFirstValue("username")
                             ?? principal.FindFirstValue(ClaimTypes.Name);
                         if (string.IsNullOrWhiteSpace(tokenUsername)
                             || !string.Equals(tokenUsername, user.Username, StringComparison.OrdinalIgnoreCase))
