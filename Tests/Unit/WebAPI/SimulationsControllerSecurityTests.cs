@@ -197,7 +197,7 @@ public class SimulationsControllerSecurityTests
         await using var context = CreateContext();
         const string sensitiveError = "SQL connection failed for user admin with password secret";
         var simulation = await SeedSimulationAsync(context, "alice", "Failed", sensitiveError);
-        context.EngineTelemetry.Add(new EngineTelemetry
+        context.EngineTelemetry.Add(new HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry
         {
             SimulationId = simulation.Id,
             Timestamp = DateTime.UtcNow,
@@ -231,7 +231,7 @@ public class SimulationsControllerSecurityTests
         var start = DateTime.UtcNow.AddMinutes(-120);
         for (var index = 0; index < 105; index++)
         {
-            context.EngineTelemetry.Add(new EngineTelemetry
+            context.EngineTelemetry.Add(new HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry
             {
                 SimulationId = simulation.Id,
                 Timestamp = start.AddMinutes(index),

@@ -504,7 +504,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         public double? SpecificImpulse { get; set; }
         public string? MetricsJson { get; set; }
 
-        public static EngineTelemetryResponse FromEntity(EngineTelemetry telemetry)
+        public static EngineTelemetryResponse FromEntity(HB_NLP_Research_Lab.WebAPI.Data.Models.EngineTelemetry telemetry)
         {
             return new EngineTelemetryResponse
             {
