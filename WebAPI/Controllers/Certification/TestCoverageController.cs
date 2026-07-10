@@ -52,7 +52,15 @@ public class TestCoverageController : ControllerBase
             CoveredConditions = request.CoveredConditions
         };
 
-        await _tcs.RecordCoverageAsync(request.FilePath, metrics);
+        try
+        {
+            await _tcs.RecordCoverageAsync(request.FilePath, metrics);
+        }
+        catch (ArgumentException ex) when (IsCoverageFilePathException(ex))
+        {
+            return BadRequest(new { message = "Coverage file path must be repository-relative and must not contain traversal segments." });
+        }
+
         return Ok(new { message = "Coverage recorded successfully" });
     }
 
@@ -63,7 +71,15 @@ public class TestCoverageController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> MarkAsSafetyCritical(string filePath, [FromBody] SafetyCriticalRequest request)
     {
-        await _tcs.MarkAsSafetyCriticalAsync(filePath, request.IsSafetyCritical);
+        try
+        {
+            await _tcs.MarkAsSafetyCriticalAsync(filePath, request.IsSafetyCritical);
+        }
+        catch (ArgumentException ex) when (IsCoverageFilePathException(ex))
+        {
+            return BadRequest(new { message = "Coverage file path must be repository-relative and must not contain traversal segments." });
+        }
+
         return Ok(new { message = "File safety-critical status updated" });
     }
 
@@ -122,6 +138,9 @@ public class TestCoverageController : ControllerBase
             Issues = check.Issues
         });
     }
+
+    private static bool IsCoverageFilePathException(ArgumentException exception) =>
+        string.Equals(exception.ParamName, "filePath", StringComparison.OrdinalIgnoreCase);
 }
 
 // Request/Response Models
