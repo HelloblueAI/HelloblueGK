@@ -263,7 +263,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var normalized = filePath.Trim().Replace('\\', '/');
-            if (normalized.StartsWith('/', StringComparison.Ordinal)
+            if (normalized.StartsWith("/", StringComparison.Ordinal)
                 || normalized.StartsWith("//", StringComparison.Ordinal)
                 || (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':'))
             {
