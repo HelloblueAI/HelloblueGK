@@ -277,7 +277,7 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Coverage file path must not contain traversal segments.", nameof(filePath));
             }
 
-            return string.Join('/', segments);
+            return string.Join("/", segments);
         }
     }
 
