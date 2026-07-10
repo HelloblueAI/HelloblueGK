@@ -14,6 +14,15 @@ public static class AuthenticationExtensions
 {
     public const string SmartScheme = "Smart";
     public const string SmartChallengeScheme = "SmartChallenge";
+    private const string AdminRole = "Admin";
+    private static readonly string[] DefaultOidcAdminRoles = [AdminRole];
+    private static readonly string[] DefaultOidcAdminRoleClaimTypes =
+    [
+        ClaimTypes.Role,
+        "role",
+        "roles",
+        "groups"
+    ];
 
     public static bool AddHelloblueGKAuthentication(
         this WebApplicationBuilder builder,
@@ -163,6 +172,14 @@ public static class AuthenticationExtensions
                     "Authentication:OpenIdConnect:Audience is required when OpenIdConnect is enabled.");
             }
 
+            var oidcAdminRoles = GetConfiguredValues(
+                oidcSection,
+                "AdminRoles",
+                DefaultOidcAdminRoles);
+            var oidcAdminRoleClaimTypes = GetConfiguredValues(
+                oidcSection,
+                "AdminRoleClaimTypes",
+                DefaultOidcAdminRoleClaimTypes);
             var configuredCallbackUrl = oidcSection["CallbackUrl"];
             if (!builder.Environment.IsDevelopment())
             {
@@ -234,6 +251,11 @@ public static class AuthenticationExtensions
                     },
                     OnTokenValidated = context =>
                     {
+                        MapOidcAdminRole(
+                            context.Principal,
+                            oidcAdminRoleClaimTypes,
+                            oidcAdminRoles);
+
                         var logger = context.HttpContext.RequestServices
                             .GetRequiredService<ILoggerFactory>()
                             .CreateLogger("OpenIdConnect");
@@ -251,6 +273,48 @@ public static class AuthenticationExtensions
         }
 
         return oidcEnabled;
+    }
+
+    private static string[] GetConfiguredValues(
+        IConfigurationSection section,
+        string key,
+        IReadOnlyCollection<string> defaultValues)
+    {
+        var values = section
+            .GetSection(key)
+            .Get<string[]>()
+            ?? section[key]
+                ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var configuredValues = values?
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return configuredValues is { Length: > 0 }
+            ? configuredValues
+            : defaultValues.ToArray();
+    }
+
+    private static void MapOidcAdminRole(
+        ClaimsPrincipal? principal,
+        IReadOnlyCollection<string> adminRoleClaimTypes,
+        IReadOnlyCollection<string> adminRoleValues)
+    {
+        if (principal?.Identity is not ClaimsIdentity identity || principal.IsInRole(AdminRole))
+        {
+            return;
+        }
+
+        var hasConfiguredAdminClaim = principal.Claims.Any(claim =>
+            adminRoleClaimTypes.Contains(claim.Type, StringComparer.OrdinalIgnoreCase)
+            && adminRoleValues.Contains(claim.Value, StringComparer.OrdinalIgnoreCase));
+
+        if (hasConfiguredAdminClaim)
+        {
+            identity.AddClaim(new Claim(ClaimTypes.Role, AdminRole));
+        }
     }
 
     public static void ConfigureSwaggerOAuth(

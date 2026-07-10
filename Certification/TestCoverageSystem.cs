@@ -29,6 +29,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task RecordCoverageAsync(string filePath, CoverageMetrics metrics)
         {
+            filePath = NormalizeFilePath(filePath);
+
             var coverage = await _context.CodeCoverage
                 .FirstOrDefaultAsync(c => c.FilePath == filePath);
 
@@ -71,6 +73,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task MarkAsSafetyCriticalAsync(string filePath, bool isSafetyCritical)
         {
+            filePath = NormalizeFilePath(filePath);
+
             var coverage = await _context.CodeCoverage
                 .FirstOrDefaultAsync(c => c.FilePath == filePath);
 
@@ -100,6 +104,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkTestCaseAsync(string filePath, string testCaseId, string testFile, CoverageType coverageType)
         {
+            filePath = NormalizeFilePath(filePath);
+
             var coverage = await _context.CodeCoverage
                 .FirstOrDefaultAsync(c => c.FilePath == filePath);
 
@@ -247,6 +253,31 @@ namespace HB_NLP_Research_Lab.Certification
                 gaps.Add($"{100.0 - coverage.MCDCCoverage:F1}% MC/DC coverage missing (CRITICAL for safety-critical code)");
 
             return string.Join(", ", gaps);
+        }
+
+        private static string NormalizeFilePath(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                throw new ArgumentException("Coverage file path is required.", nameof(filePath));
+            }
+
+            var normalized = filePath.Trim().Replace('\\', '/');
+            if (normalized.StartsWith('/', StringComparison.Ordinal)
+                || normalized.StartsWith("//", StringComparison.Ordinal)
+                || (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':'))
+            {
+                throw new ArgumentException("Coverage file path must be relative to the repository.", nameof(filePath));
+            }
+
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0
+                || segments.Any(segment => segment is "." or ".."))
+            {
+                throw new ArgumentException("Coverage file path must not contain traversal segments.", nameof(filePath));
+            }
+
+            return string.Join('/', segments);
         }
     }
 

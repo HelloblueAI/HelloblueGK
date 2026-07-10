@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using HB_NLP_Research_Lab.Core;
+using HB_NLP_Research_Lab.Certification;
 using HB_NLP_Research_Lab.WebAPI.Configuration;
 using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Controllers.Certification;
@@ -15,6 +16,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Extensions;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Builder;
@@ -29,6 +31,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
 
@@ -270,6 +273,56 @@ public class SecurityHardeningTests
 
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("*OpenIdConnect:CallbackUrl*");
+    }
+
+    [Fact]
+    public async Task OpenIdConnect_WithConfiguredAdminGroup_AddsApplicationAdminRole()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = Environments.Production
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Authentication:OpenIdConnect:Enabled"] = "true",
+            ["Authentication:OpenIdConnect:Authority"] = "https://identity.example.com",
+            ["Authentication:OpenIdConnect:ClientId"] = "hellobluegk",
+            ["Authentication:OpenIdConnect:Audience"] = "api://hellobluegk",
+            ["Authentication:OpenIdConnect:CallbackUrl"] = "https://api.example.com/api/v1/Account/sso-callback",
+            ["Authentication:OpenIdConnect:AdminRoles:0"] = "aerospace-admins",
+            ["Authentication:OpenIdConnect:AdminRoleClaimTypes:0"] = "groups"
+        });
+        builder.AddHelloblueGKAuthentication(
+            "01234567890123456789012345678901",
+            "hellobluegk",
+            "hellobluegk-api");
+        using var provider = builder.Services.BuildServiceProvider();
+        var options = provider.GetRequiredService<IOptionsMonitor<OpenIdConnectOptions>>()
+            .Get(OpenIdConnectDefaults.AuthenticationScheme);
+        var httpContext = new DefaultHttpContext
+        {
+            RequestServices = provider
+        };
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(
+            [
+                new Claim("groups", "aerospace-admins"),
+                new Claim(ClaimTypes.Email, "admin@example.com")
+            ],
+            OpenIdConnectDefaults.AuthenticationScheme));
+        var context = new TokenValidatedContext(
+            httpContext,
+            new AuthenticationScheme(
+                OpenIdConnectDefaults.AuthenticationScheme,
+                OpenIdConnectDefaults.AuthenticationScheme,
+                typeof(OpenIdConnectHandler)),
+            options,
+            principal,
+            new AuthenticationProperties());
+
+        await options.Events.TokenValidated(context);
+
+        principal.IsInRole("Admin").Should().BeTrue();
+        principal.Claims.Should().Contain(claim => claim.Type == ClaimTypes.Role && claim.Value == "Admin");
     }
 
     [Theory]
@@ -587,6 +640,47 @@ public class SecurityHardeningTests
         bobTwin.ModelDataJson.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("/etc/passwd")]
+    [InlineData("C:\\temp\\coverage.cs")]
+    [InlineData("../Core/Engine.cs")]
+    [InlineData("Core/../Secrets.cs")]
+    public async Task RecordCoverage_WithUnsafeFilePath_ReturnsBadRequestAndDoesNotPersist(string filePath)
+    {
+        await using var context = CreateTestCoverageContext();
+        var controller = CreateTestCoverageController(context);
+
+        var result = await controller.RecordCoverage(new RecordCoverageRequest
+        {
+            FilePath = filePath,
+            StatementCoverage = 100,
+            BranchCoverage = 100,
+            MCDCCoverage = 100
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.CodeCoverage.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RecordCoverage_WithRepositoryRelativeFilePath_StoresNormalizedPath()
+    {
+        await using var context = CreateTestCoverageContext();
+        var controller = CreateTestCoverageController(context);
+
+        var result = await controller.RecordCoverage(new RecordCoverageRequest
+        {
+            FilePath = " Core\\Control\\EngineController.cs ",
+            StatementCoverage = 100,
+            BranchCoverage = 100,
+            MCDCCoverage = 100
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+        context.CodeCoverage.Single().FilePath.Should().Be("Core/Control/EngineController.cs");
+    }
+
     private static string? ReadStoredEngineKey(string modelDataJson)
     {
         using var modelData = JsonDocument.Parse(modelDataJson);
@@ -728,6 +822,24 @@ public class SecurityHardeningTests
             .Options;
 
         return new HelloblueGKDbContext(options);
+    }
+
+    private static TestCoverageDbContext CreateTestCoverageContext()
+    {
+        var options = new DbContextOptionsBuilder<TestCoverageDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+
+        return new TestCoverageDbContext(options);
+    }
+
+    private static TestCoverageController CreateTestCoverageController(TestCoverageDbContext context)
+    {
+        var service = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        return new TestCoverageController(
+            service,
+            context,
+            NullLogger<TestCoverageController>.Instance);
     }
 
     private static DigitalTwinController CreateDigitalTwinController(
