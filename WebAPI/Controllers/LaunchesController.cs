@@ -222,7 +222,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Launch is not in Scheduled status. Current status: {launch.Status}" });
                 }
 
-                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot))
+                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot) || backgroundWorkSlot == null)
                 {
                     return StatusCode(StatusCodes.Status503ServiceUnavailable, new
                     {

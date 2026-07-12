@@ -177,7 +177,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
-                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot))
+                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot) || backgroundWorkSlot == null)
                 {
                     return StatusCode(StatusCodes.Status503ServiceUnavailable, new
                     {
