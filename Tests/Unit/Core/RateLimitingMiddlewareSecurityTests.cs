@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
+using System.Text;
 
 namespace HelloblueGK.Tests.Unit.Core;
 
@@ -138,6 +139,41 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldLimitRepeatedUsernameAcrossDifferentIps()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        const string requestBody = """{"username":"victim","password":"bad-password"}""";
+
+        // Act
+        MiddlewareInvocationResult allowedResult = default!;
+        for (var i = 0; i < 5; i++)
+        {
+            allowedResult = await InvokeMiddlewareAsync(
+                rateLimitingService,
+                "/api/v1/auth/login",
+                HttpMethods.Post,
+                IPAddress.Parse($"203.0.113.{10 + i}"),
+                requestBody);
+        }
+
+        var blockedResult = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            IPAddress.Parse("203.0.113.99"),
+            requestBody);
+
+        // Assert
+        allowedResult.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        allowedResult.NextCalled.Should().BeTrue();
+        allowedResult.Headers["X-RateLimit-Limit"].Should().Be("5");
+        blockedResult.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        blockedResult.NextCalled.Should().BeFalse();
+        blockedResult.Headers["X-RateLimit-Limit"].Should().Be("5");
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAiOptimizationReadEndpoint_ShouldUseAiPolicy()
     {
         // Arrange
@@ -158,7 +194,9 @@ public class RateLimitingMiddlewareSecurityTests
     private static async Task<MiddlewareInvocationResult> InvokeMiddlewareAsync(
         RateLimitingService rateLimitingService,
         string path,
-        string method)
+        string method,
+        IPAddress? remoteIpAddress = null,
+        string? requestBody = null)
     {
         var nextCalled = false;
         RequestDelegate next = context =>
@@ -174,9 +212,16 @@ public class RateLimitingMiddlewareSecurityTests
             rateLimitingService);
 
         var context = new DefaultHttpContext();
-        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.10");
+        context.Connection.RemoteIpAddress = remoteIpAddress ?? IPAddress.Parse("203.0.113.10");
         context.Request.Path = path;
         context.Request.Method = method;
+        if (requestBody != null)
+        {
+            var bodyBytes = Encoding.UTF8.GetBytes(requestBody);
+            context.Request.Body = new MemoryStream(bodyBytes);
+            context.Request.ContentLength = bodyBytes.Length;
+            context.Request.ContentType = "application/json";
+        }
         context.Response.Body = new MemoryStream();
 
         await middleware.InvokeAsync(context);

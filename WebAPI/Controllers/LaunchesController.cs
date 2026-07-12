@@ -4,6 +4,7 @@ using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using HB_NLP_Research_Lab.WebAPI.Validation;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
@@ -135,6 +136,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (!ModelState.IsValid)
                 {
                     return BadRequest(ModelState);
+                }
+
+                if (request == null)
+                {
+                    return BadRequest(new { message = "Request body is required" });
+                }
+
+                if (!RequestPayloadLimits.TryValidateDictionary(
+                    request.LaunchParameters,
+                    nameof(request.LaunchParameters),
+                    out var launchParametersValidationMessage))
+                {
+                    return BadRequest(new { message = launchParametersValidationMessage });
                 }
 
                 // Validate engine exists

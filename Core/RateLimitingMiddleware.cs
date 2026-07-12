@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace HB_NLP_Research_Lab.Core
@@ -54,35 +56,58 @@ namespace HB_NLP_Research_Lab.Core
                 return;
             }
 
-            AddRateLimitHeaders(context.Response, rateLimitResult, policy);
-
             if (!rateLimitResult.IsAllowed)
             {
-                _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint} with {PolicyName} policy. Remaining: {Remaining}, Reset: {ResetTime}",
-                    clientIdentifier, endpoint, policyName, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
-
-                context.Response.StatusCode = 429; // Too Many Requests
-                context.Response.ContentType = "application/json";
-
-                var retryAfter = Math.Max(0, (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds);
-                var errorResponse = new
-                {
-                    error = "Rate limit exceeded",
-                    message = $"Rate limit exceeded. Try again at {rateLimitResult.ResetTime:yyyy-MM-dd HH:mm:ss UTC}",
-                    retryAfter,
-                    remainingRequests = rateLimitResult.RemainingRequests,
-                    resetTime = rateLimitResult.ResetTime
-                };
-
-                var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
-
-                await context.Response.WriteAsync(jsonResponse);
+                await WriteRateLimitExceededResponseAsync(
+                    context,
+                    rateLimitResult,
+                    policy,
+                    clientIdentifier,
+                    endpoint,
+                    policyName);
                 return;
             }
 
+            if (string.Equals(policyName, "Auth", StringComparison.OrdinalIgnoreCase))
+            {
+                var usernameIdentifier = await GetAuthenticationUsernameIdentifierAsync(context);
+                if (!string.IsNullOrWhiteSpace(usernameIdentifier))
+                {
+                    var usernamePolicyName = "AuthUsername";
+                    var usernamePolicy = _policies[usernamePolicyName];
+
+                    try
+                    {
+                        rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(
+                            $"{usernamePolicyName}:{usernameIdentifier}",
+                            usernamePolicy);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Error in username rate limiting middleware for {ClientIdentifier} on {Endpoint}",
+                            clientIdentifier, endpoint);
+
+                        await WriteRateLimitingUnavailableResponseAsync(context);
+                        return;
+                    }
+
+                    if (!rateLimitResult.IsAllowed)
+                    {
+                        await WriteRateLimitExceededResponseAsync(
+                            context,
+                            rateLimitResult,
+                            usernamePolicy,
+                            usernameIdentifier,
+                            endpoint,
+                            usernamePolicyName);
+                        return;
+                    }
+
+                    policy = usernamePolicy;
+                }
+            }
+
+            AddRateLimitHeaders(context.Response, rateLimitResult, policy);
             await _next(context);
         }
 
@@ -220,6 +245,111 @@ namespace HB_NLP_Research_Lab.Core
             await context.Response.WriteAsync(jsonResponse);
         }
 
+        private async Task WriteRateLimitExceededResponseAsync(
+            HttpContext context,
+            RateLimitResult rateLimitResult,
+            RateLimitPolicy policy,
+            string clientIdentifier,
+            string endpoint,
+            string policyName)
+        {
+            AddRateLimitHeaders(context.Response, rateLimitResult, policy);
+
+            _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint} with {PolicyName} policy. Remaining: {Remaining}, Reset: {ResetTime}",
+                clientIdentifier, endpoint, policyName, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
+
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            context.Response.ContentType = "application/json";
+
+            var retryAfter = Math.Max(0, (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds);
+            var errorResponse = new
+            {
+                error = "Rate limit exceeded",
+                message = $"Rate limit exceeded. Try again at {rateLimitResult.ResetTime:yyyy-MM-dd HH:mm:ss UTC}",
+                retryAfter,
+                remainingRequests = rateLimitResult.RemainingRequests,
+                resetTime = rateLimitResult.ResetTime
+            };
+
+            var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            await context.Response.WriteAsync(jsonResponse);
+        }
+
+        private static async Task<string?> GetAuthenticationUsernameIdentifierAsync(HttpContext context)
+        {
+            if (!HttpMethods.IsPost(context.Request.Method)
+                || !context.Request.Body.CanRead
+                || context.Request.ContentLength > 64 * 1024)
+            {
+                return null;
+            }
+
+            try
+            {
+                context.Request.EnableBuffering();
+                context.Request.Body.Position = 0;
+
+                using var document = await JsonDocument.ParseAsync(
+                    context.Request.Body,
+                    cancellationToken: context.RequestAborted);
+
+                context.Request.Body.Position = 0;
+
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    return null;
+                }
+
+                foreach (var property in document.RootElement.EnumerateObject())
+                {
+                    if (!string.Equals(property.Name, "username", StringComparison.OrdinalIgnoreCase)
+                        || property.Value.ValueKind != JsonValueKind.String)
+                    {
+                        continue;
+                    }
+
+                    var username = property.Value.GetString()?.Trim();
+                    if (string.IsNullOrWhiteSpace(username))
+                    {
+                        return null;
+                    }
+
+                    var normalizedUsername = username.ToUpperInvariant();
+                    var usernameHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedUsername)))[..16];
+                    return $"username:{usernameHash}";
+                }
+            }
+            catch (JsonException)
+            {
+                if (context.Request.Body.CanSeek)
+                {
+                    context.Request.Body.Position = 0;
+                }
+
+                return null;
+            }
+            catch (IOException)
+            {
+                if (context.Request.Body.CanSeek)
+                {
+                    context.Request.Body.Position = 0;
+                }
+
+                return null;
+            }
+
+            if (context.Request.Body.CanSeek)
+            {
+                context.Request.Body.Position = 0;
+            }
+
+            return null;
+        }
+
         private void AddRateLimitHeaders(HttpResponse response, RateLimitResult result, RateLimitPolicy policy)
         {
             response.Headers["X-RateLimit-Limit"] = policy.RequestsPerWindow.ToString();
@@ -253,6 +383,12 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     RequestsPerWindow = 10,
                     WindowSize = TimeSpan.FromMinutes(1),
+                    Algorithm = RateLimitAlgorithm.SlidingWindow
+                },
+                ["AuthUsername"] = new RateLimitPolicy
+                {
+                    RequestsPerWindow = 5,
+                    WindowSize = TimeSpan.FromMinutes(15),
                     Algorithm = RateLimitAlgorithm.SlidingWindow
                 },
                 ["AI"] = new RateLimitPolicy

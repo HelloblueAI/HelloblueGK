@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using HB_NLP_Research_Lab.WebAPI.Validation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -102,6 +103,24 @@ public class ControllerAuthorizationSecurityTests
 
         var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
         statusResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        context.AIOptimizationRuns.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task StartOptimization_WithTooManyParameters_ReturnsBadRequestWithoutCreatingRun()
+    {
+        await using var context = CreateContext();
+        var controller = CreateOptimizationController(context, CreatePrincipal("alice"));
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = 1,
+            AlgorithmType = "Genetic",
+            Parameters = CreateOversizedObjectDictionary()
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("Parameters");
         context.AIOptimizationRuns.Should().BeEmpty();
     }
 
@@ -230,6 +249,21 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetPredictions_WithTooManyScenarioParameters_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetPredictions(1, new PredictionRequest
+        {
+            ScenarioParameters = CreateOversizedDoubleDictionary()
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("ScenarioParameters");
+    }
+
+    [Fact]
     public async Task GetDigitalTwinById_DoesNotExposeFullEngineMetadata()
     {
         await using var context = CreateContext();
@@ -311,6 +345,21 @@ public class ControllerAuthorizationSecurityTests
         var responseJson = JsonSerializer.Serialize(response);
         responseJson.Should().NotContain(nameof(Engine.Thrust));
         responseJson.Should().NotContain(nameof(Engine.SpecificImpulse));
+    }
+
+    [Fact]
+    public async Task UpdateDigitalTwinLearning_WithTooManyTelemetryFields_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.UpdateDigitalTwinLearning(1, new LearningDataRequest
+        {
+            TelemetryData = CreateOversizedDoubleDictionary()
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("TelemetryData");
     }
 
     [Fact]
@@ -434,6 +483,24 @@ public class ControllerAuthorizationSecurityTests
         var responseJson = JsonSerializer.Serialize(response);
         responseJson.Should().NotContain(nameof(Engine.Thrust));
         responseJson.Should().NotContain(nameof(Engine.SpecificImpulse));
+    }
+
+    [Fact]
+    public async Task ScheduleLaunch_WithTooManyLaunchParameters_ReturnsBadRequestWithoutCreatingLaunch()
+    {
+        await using var context = CreateContext();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = 1,
+            MissionName = "Oversized Mission",
+            LaunchParameters = CreateOversizedObjectDictionary()
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("LaunchParameters");
+        context.Launches.Should().BeEmpty();
     }
 
     [Fact]
@@ -593,6 +660,18 @@ public class ControllerAuthorizationSecurityTests
         {
             HttpContext = new DefaultHttpContext { User = user }
         };
+    }
+
+    private static Dictionary<string, object> CreateOversizedObjectDictionary()
+    {
+        return Enumerable.Range(0, RequestPayloadLimits.MaxDictionaryEntries + 1)
+            .ToDictionary(index => $"parameter-{index}", index => (object)index);
+    }
+
+    private static Dictionary<string, double> CreateOversizedDoubleDictionary()
+    {
+        return Enumerable.Range(0, RequestPayloadLimits.MaxDictionaryEntries + 1)
+            .ToDictionary(index => $"parameter-{index}", index => (double)index);
     }
 
     private static ClaimsPrincipal CreatePrincipal(string username, bool isAdmin = false)
