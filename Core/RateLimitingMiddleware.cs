@@ -91,7 +91,17 @@ namespace HB_NLP_Research_Lab.Core
                             $"{usernamePolicyName}:{usernameIdentifier}",
                             usernamePolicy);
                     }
-                    catch (Exception ex)
+                    catch (TimeoutException ex)
+                    {
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
+                        return;
+                    }
+                    catch (OperationCanceledException ex)
+                    {
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
+                        return;
+                    }
+                    catch (CryptographicException ex)
                     {
                         await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
                         return;

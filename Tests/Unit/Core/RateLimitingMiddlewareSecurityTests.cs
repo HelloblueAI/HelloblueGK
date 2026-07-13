@@ -376,7 +376,7 @@ public class RateLimitingMiddlewareSecurityTests
         {
             if (identifier.StartsWith("AuthUsername:", StringComparison.Ordinal))
             {
-                throw new InvalidOperationException("simulated username limiter failure");
+                throw new TimeoutException("simulated username limiter failure");
             }
 
             return base.CheckRateLimitAsync(identifier, policy);
