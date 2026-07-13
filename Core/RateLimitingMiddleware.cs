@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace HB_NLP_Research_Lab.Core
@@ -10,6 +12,8 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class RateLimitingMiddleware
     {
+        private const int MaxAuthUsernameBodyBytes = 64 * 1024;
+
         private readonly RequestDelegate _next;
         private readonly ILogger<RateLimitingMiddleware> _logger;
         private readonly RateLimitingService _rateLimitingService;
@@ -54,35 +58,72 @@ namespace HB_NLP_Research_Lab.Core
                 return;
             }
 
-            AddRateLimitHeaders(context.Response, rateLimitResult, policy);
-
             if (!rateLimitResult.IsAllowed)
             {
-                _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint} with {PolicyName} policy. Remaining: {Remaining}, Reset: {ResetTime}",
-                    clientIdentifier, endpoint, policyName, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
-
-                context.Response.StatusCode = 429; // Too Many Requests
-                context.Response.ContentType = "application/json";
-
-                var retryAfter = Math.Max(0, (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds);
-                var errorResponse = new
-                {
-                    error = "Rate limit exceeded",
-                    message = $"Rate limit exceeded. Try again at {rateLimitResult.ResetTime:yyyy-MM-dd HH:mm:ss UTC}",
-                    retryAfter,
-                    remainingRequests = rateLimitResult.RemainingRequests,
-                    resetTime = rateLimitResult.ResetTime
-                };
-
-                var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
-                {
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-                });
-
-                await context.Response.WriteAsync(jsonResponse);
+                await WriteRateLimitExceededResponseAsync(
+                    context,
+                    rateLimitResult,
+                    policy,
+                    clientIdentifier,
+                    endpoint,
+                    policyName);
                 return;
             }
 
+            if (string.Equals(policyName, "Auth", StringComparison.OrdinalIgnoreCase))
+            {
+                var authBodyInspection = await InspectAuthRequestBodyAsync(context);
+                if (authBodyInspection.IsPayloadTooLarge)
+                {
+                    await WritePayloadTooLargeResponseAsync(context);
+                    return;
+                }
+
+                var usernameIdentifier = authBodyInspection.UsernameIdentifier;
+                if (!string.IsNullOrWhiteSpace(usernameIdentifier))
+                {
+                    var usernamePolicyName = "AuthUsername";
+                    var usernamePolicy = _policies[usernamePolicyName];
+
+                    try
+                    {
+                        rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(
+                            $"{usernamePolicyName}:{usernameIdentifier}",
+                            usernamePolicy);
+                    }
+                    catch (TimeoutException ex)
+                    {
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
+                        return;
+                    }
+                    catch (OperationCanceledException ex)
+                    {
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
+                        return;
+                    }
+                    catch (CryptographicException ex)
+                    {
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
+                        return;
+                    }
+
+                    if (!rateLimitResult.IsAllowed)
+                    {
+                        await WriteRateLimitExceededResponseAsync(
+                            context,
+                            rateLimitResult,
+                            usernamePolicy,
+                            usernameIdentifier,
+                            endpoint,
+                            usernamePolicyName);
+                        return;
+                    }
+
+                    policy = usernamePolicy;
+                }
+            }
+
+            AddRateLimitHeaders(context.Response, rateLimitResult, policy);
             await _next(context);
         }
 
@@ -220,6 +261,206 @@ namespace HB_NLP_Research_Lab.Core
             await context.Response.WriteAsync(jsonResponse);
         }
 
+        private async Task WriteRateLimitExceededResponseAsync(
+            HttpContext context,
+            RateLimitResult rateLimitResult,
+            RateLimitPolicy policy,
+            string clientIdentifier,
+            string endpoint,
+            string policyName)
+        {
+            AddRateLimitHeaders(context.Response, rateLimitResult, policy);
+
+            _logger.LogWarning("Rate limit exceeded for {ClientIdentifier} on {Endpoint} with {PolicyName} policy. Remaining: {Remaining}, Reset: {ResetTime}",
+                clientIdentifier, endpoint, policyName, rateLimitResult.RemainingRequests, rateLimitResult.ResetTime);
+
+            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            context.Response.ContentType = "application/json";
+
+            var retryAfter = Math.Max(0, (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds);
+            var errorResponse = new
+            {
+                error = "Rate limit exceeded",
+                message = $"Rate limit exceeded. Try again at {rateLimitResult.ResetTime:yyyy-MM-dd HH:mm:ss UTC}",
+                retryAfter,
+                remainingRequests = rateLimitResult.RemainingRequests,
+                resetTime = rateLimitResult.ResetTime
+            };
+
+            var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            await context.Response.WriteAsync(jsonResponse);
+        }
+
+        private async Task HandleUsernameRateLimitingFailureAsync(
+            HttpContext context,
+            Exception ex,
+            string clientIdentifier,
+            string endpoint)
+        {
+            _logger.LogError(ex, "Error in username rate limiting middleware for {ClientIdentifier} on {Endpoint}",
+                clientIdentifier, endpoint);
+
+            await WriteRateLimitingUnavailableResponseAsync(context);
+        }
+
+        private static async Task WritePayloadTooLargeResponseAsync(HttpContext context)
+        {
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            context.Response.ContentType = "application/json";
+
+            var errorResponse = new
+            {
+                error = "Payload too large",
+                message = "Authentication request payloads must be 64 KB or smaller."
+            };
+
+            var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            await context.Response.WriteAsync(jsonResponse);
+        }
+
+        private sealed record AuthRequestBodyInspection(string? UsernameIdentifier, bool IsPayloadTooLarge);
+
+        private static async Task<AuthRequestBodyInspection> InspectAuthRequestBodyAsync(HttpContext context)
+        {
+            if (!HttpMethods.IsPost(context.Request.Method) || !context.Request.Body.CanRead)
+            {
+                return new AuthRequestBodyInspection(null, false);
+            }
+
+            if (context.Request.ContentLength is > MaxAuthUsernameBodyBytes)
+            {
+                return new AuthRequestBodyInspection(null, true);
+            }
+
+            try
+            {
+                context.Request.EnableBuffering();
+                context.Request.Body.Position = 0;
+
+                var (limitedBody, exceedsLimit) = await ReadLimitedRequestBodyAsync(
+                    context.Request.Body,
+                    MaxAuthUsernameBodyBytes,
+                    context.RequestAborted);
+
+                await using (limitedBody)
+                {
+                    context.Request.Body.Position = 0;
+
+                    if (exceedsLimit)
+                    {
+                        return new AuthRequestBodyInspection(null, true);
+                    }
+
+                    var usernameIdentifier = await ExtractUsernameIdentifierAsync(
+                        limitedBody,
+                        context.RequestAborted);
+
+                    context.Request.Body.Position = 0;
+                    return new AuthRequestBodyInspection(usernameIdentifier, false);
+                }
+            }
+            catch (JsonException)
+            {
+                if (context.Request.Body.CanSeek)
+                {
+                    context.Request.Body.Position = 0;
+                }
+
+                return new AuthRequestBodyInspection(null, false);
+            }
+            catch (IOException)
+            {
+                if (context.Request.Body.CanSeek)
+                {
+                    context.Request.Body.Position = 0;
+                }
+
+                return new AuthRequestBodyInspection(null, false);
+            }
+        }
+
+        private static async Task<string?> ExtractUsernameIdentifierAsync(
+            Stream body,
+            CancellationToken cancellationToken)
+        {
+            using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
+
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            string? usernameIdentifier = null;
+
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, "username", StringComparison.OrdinalIgnoreCase)
+                    || property.Value.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var username = property.Value.GetString()?.Trim();
+                if (string.IsNullOrWhiteSpace(username))
+                {
+                    continue;
+                }
+
+                var normalizedUsername = username.ToUpperInvariant();
+                var usernameHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedUsername)))[..16];
+                usernameIdentifier = $"username:{usernameHash}";
+            }
+
+            return usernameIdentifier;
+        }
+
+        private static async Task<(MemoryStream LimitedBody, bool ExceedsLimit)> ReadLimitedRequestBodyAsync(
+            Stream requestBody,
+            int maxBytes,
+            CancellationToken cancellationToken)
+        {
+            var limitedBody = new MemoryStream();
+            var buffer = new byte[8192];
+            var totalRead = 0;
+
+            while (totalRead < maxBytes)
+            {
+                var bytesToRead = Math.Min(buffer.Length, maxBytes - totalRead);
+                var read = await requestBody.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                limitedBody.Write(buffer, 0, read);
+                totalRead += read;
+            }
+
+            var exceedsLimit = false;
+            if (totalRead >= maxBytes)
+            {
+                var extra = new byte[1];
+                var extraRead = await requestBody.ReadAsync(extra.AsMemory(), cancellationToken);
+                exceedsLimit = extraRead > 0;
+            }
+
+            limitedBody.Position = 0;
+            return (limitedBody, exceedsLimit);
+        }
+
         private void AddRateLimitHeaders(HttpResponse response, RateLimitResult result, RateLimitPolicy policy)
         {
             response.Headers["X-RateLimit-Limit"] = policy.RequestsPerWindow.ToString();
@@ -253,6 +494,12 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     RequestsPerWindow = 10,
                     WindowSize = TimeSpan.FromMinutes(1),
+                    Algorithm = RateLimitAlgorithm.SlidingWindow
+                },
+                ["AuthUsername"] = new RateLimitPolicy
+                {
+                    RequestsPerWindow = 5,
+                    WindowSize = TimeSpan.FromMinutes(15),
                     Algorithm = RateLimitAlgorithm.SlidingWindow
                 },
                 ["AI"] = new RateLimitPolicy

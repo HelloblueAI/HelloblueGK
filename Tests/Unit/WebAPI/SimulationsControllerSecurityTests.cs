@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using HB_NLP_Research_Lab.WebAPI.Validation;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -171,6 +172,25 @@ public class SimulationsControllerSecurityTests
 
         var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
         statusResult.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        context.EngineSimulations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RunSimulation_WithTooManyParameters_ReturnsBadRequestWithoutCreatingSimulation()
+    {
+        await using var context = CreateContext();
+        var controller = CreateController(context, CreatePrincipal("alice"));
+
+        var result = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = 1,
+            SimulationType = "CFD",
+            Parameters = Enumerable.Range(0, RequestPayloadLimits.MaxDictionaryEntries + 1)
+                .ToDictionary(index => $"parameter-{index}", index => (object)index)
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("Parameters");
         context.EngineSimulations.Should().BeEmpty();
     }
 

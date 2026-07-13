@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using System.Net;
+using System.Text;
 
 namespace HelloblueGK.Tests.Unit.Core;
 
@@ -138,6 +139,142 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldLimitRepeatedUsernameAcrossDifferentIps()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        const string requestBody = """{"username":"victim","password":"bad-password"}""";
+
+        // Act
+        MiddlewareInvocationResult allowedResult = default!;
+        for (var i = 0; i < 5; i++)
+        {
+            allowedResult = await InvokeMiddlewareAsync(
+                rateLimitingService,
+                "/api/v1/auth/login",
+                HttpMethods.Post,
+                IPAddress.Parse($"203.0.113.{10 + i}"),
+                requestBody);
+        }
+
+        var blockedResult = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            IPAddress.Parse("203.0.113.99"),
+            requestBody);
+
+        // Assert
+        allowedResult.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        allowedResult.NextCalled.Should().BeTrue();
+        allowedResult.Headers["X-RateLimit-Limit"].Should().Be("5");
+        blockedResult.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        blockedResult.NextCalled.Should().BeFalse();
+        blockedResult.Headers["X-RateLimit-Limit"].Should().Be("5");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldThrottleLastDuplicateUsernameValue()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        const string requestBody = """{"username":"decoy","username":"victim","password":"bad-password"}""";
+
+        // Act
+        for (var i = 0; i < 5; i++)
+        {
+            await InvokeMiddlewareAsync(
+                rateLimitingService,
+                "/api/v1/auth/login",
+                HttpMethods.Post,
+                IPAddress.Parse($"203.0.113.{10 + i}"),
+                requestBody);
+        }
+
+        var blockedResult = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            IPAddress.Parse("203.0.113.99"),
+            requestBody);
+
+        // Assert
+        blockedResult.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        blockedResult.NextCalled.Should().BeFalse();
+        blockedResult.Headers["X-RateLimit-Limit"].Should().Be("5");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenUsernameRateLimiterFails_ShouldFailClosed()
+    {
+        // Arrange
+        const string requestBody = """{"username":"victim","password":"bad-password"}""";
+        var middleware = new RateLimitingMiddleware(
+            _ => Task.CompletedTask,
+            NullLogger<RateLimitingMiddleware>.Instance,
+            new UsernameThrowingRateLimitingService());
+
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.10");
+        context.Request.Path = "/api/v1/auth/login";
+        context.Request.Method = HttpMethods.Post;
+        var bodyBytes = Encoding.UTF8.GetBytes(requestBody);
+        context.Request.Body = new MemoryStream(bodyBytes);
+        context.Request.ContentLength = bodyBytes.Length;
+        context.Request.ContentType = "application/json";
+        context.Response.Body = new MemoryStream();
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        context.Response.ContentType.Should().Be("application/json");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_WithOversizedBody_ShouldRejectPayload()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var requestBody = $$"""{"username":"victim","password":"{{new string('x', 64 * 1024)}}"}""";
+
+        // Act
+        var result = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            requestBody: requestBody);
+
+        // Assert
+        result.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        result.NextCalled.Should().BeFalse();
+        result.ResponseBody.Should().Contain("Payload too large");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_WithChunkedOversizedBody_ShouldRejectPayload()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var padding = new string('x', 64 * 1024);
+        var requestBody = $$"""{"padding":"{{padding}}","username":"victim","password":"bad-password"}""";
+
+        // Act
+        var result = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            requestBody: requestBody,
+            includeContentLength: false);
+
+        // Assert
+        result.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        result.NextCalled.Should().BeFalse();
+        result.ResponseBody.Should().Contain("Payload too large");
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAiOptimizationReadEndpoint_ShouldUseAiPolicy()
     {
         // Arrange
@@ -158,7 +295,10 @@ public class RateLimitingMiddlewareSecurityTests
     private static async Task<MiddlewareInvocationResult> InvokeMiddlewareAsync(
         RateLimitingService rateLimitingService,
         string path,
-        string method)
+        string method,
+        IPAddress? remoteIpAddress = null,
+        string? requestBody = null,
+        bool includeContentLength = true)
     {
         var nextCalled = false;
         RequestDelegate next = context =>
@@ -174,9 +314,20 @@ public class RateLimitingMiddlewareSecurityTests
             rateLimitingService);
 
         var context = new DefaultHttpContext();
-        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.10");
+        context.Connection.RemoteIpAddress = remoteIpAddress ?? IPAddress.Parse("203.0.113.10");
         context.Request.Path = path;
         context.Request.Method = method;
+        if (requestBody != null)
+        {
+            var bodyBytes = Encoding.UTF8.GetBytes(requestBody);
+            context.Request.Body = new MemoryStream(bodyBytes);
+            if (includeContentLength)
+            {
+                context.Request.ContentLength = bodyBytes.Length;
+            }
+
+            context.Request.ContentType = "application/json";
+        }
         context.Response.Body = new MemoryStream();
 
         await middleware.InvokeAsync(context);
@@ -211,6 +362,24 @@ public class RateLimitingMiddlewareSecurityTests
         public override Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
         {
             throw new InvalidOperationException("simulated limiter failure");
+        }
+    }
+
+    private sealed class UsernameThrowingRateLimitingService : RateLimitingService
+    {
+        public UsernameThrowingRateLimitingService()
+            : base(NullLogger<RateLimitingService>.Instance)
+        {
+        }
+
+        public override Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
+        {
+            if (identifier.StartsWith("AuthUsername:", StringComparison.Ordinal))
+            {
+                throw new TimeoutException("simulated username limiter failure");
+            }
+
+            return base.CheckRateLimitAsync(identifier, policy);
         }
     }
 }

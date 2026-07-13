@@ -4,6 +4,7 @@ using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
+using HB_NLP_Research_Lab.WebAPI.Validation;
 using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.AI;
 using Microsoft.AspNetCore.Authorization;
@@ -230,6 +231,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             try
             {
+                if (request == null)
+                {
+                    return BadRequest(new { message = "Request body is required" });
+                }
+
+                if (!RequestPayloadLimits.TryValidateDictionary(
+                    request.TelemetryData,
+                    nameof(request.TelemetryData),
+                    out var telemetryValidationMessage))
+                {
+                    return BadRequest(new { message = telemetryValidationMessage });
+                }
+
                 var digitalTwin = await _context.DigitalTwins
                     .Include(dt => dt.Engine)
                     .FirstOrDefaultAsync(dt => dt.Id == id);
@@ -291,6 +305,37 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             try
             {
+                if (request == null)
+                {
+                    return BadRequest(new { message = "Request body is required" });
+                }
+
+                if (!RequestPayloadLimits.TryValidateOptionalText(
+                    request.ScenarioName,
+                    nameof(request.ScenarioName),
+                    RequestPayloadLimits.MaxShortTextLength,
+                    out var scenarioNameValidationMessage))
+                {
+                    return BadRequest(new { message = scenarioNameValidationMessage });
+                }
+
+                if (!RequestPayloadLimits.TryValidateOptionalText(
+                    request.ScenarioDescription,
+                    nameof(request.ScenarioDescription),
+                    RequestPayloadLimits.MaxLongTextLength,
+                    out var scenarioDescriptionValidationMessage))
+                {
+                    return BadRequest(new { message = scenarioDescriptionValidationMessage });
+                }
+
+                if (!RequestPayloadLimits.TryValidateDictionary(
+                    request.ScenarioParameters,
+                    nameof(request.ScenarioParameters),
+                    out var scenarioParametersValidationMessage))
+                {
+                    return BadRequest(new { message = scenarioParametersValidationMessage });
+                }
+
                 var digitalTwin = await _context.DigitalTwins
                     .Include(dt => dt.Engine)
                     .FirstOrDefaultAsync(dt => dt.Id == id);

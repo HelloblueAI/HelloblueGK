@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Authorization;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using HB_NLP_Research_Lab.WebAPI.Validation;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Authorization;
 using System.Text.Json;
@@ -138,6 +139,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(ModelState);
                 }
 
+                if (request == null)
+                {
+                    return BadRequest(new { message = "Request body is required" });
+                }
+
+                if (!RequestPayloadLimits.TryValidateDictionary(
+                    request.Parameters,
+                    nameof(request.Parameters),
+                    out var parametersValidationMessage))
+                {
+                    return BadRequest(new { message = parametersValidationMessage });
+                }
+
                 // Validate engine exists
                 var engine = await _context.Engines.FindAsync(request.EngineId);
                 if (engine == null)
@@ -163,7 +177,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
-                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot))
+                if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot) || backgroundWorkSlot == null)
                 {
                     return StatusCode(StatusCodes.Status503ServiceUnavailable, new
                     {
