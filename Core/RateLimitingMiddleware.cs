@@ -12,6 +12,8 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class RateLimitingMiddleware
     {
+        private const int MaxAuthUsernameBodyBytes = 64 * 1024;
+
         private readonly RequestDelegate _next;
         private readonly ILogger<RateLimitingMiddleware> _logger;
         private readonly RateLimitingService _rateLimitingService;
@@ -70,6 +72,12 @@ namespace HB_NLP_Research_Lab.Core
 
             if (string.Equals(policyName, "Auth", StringComparison.OrdinalIgnoreCase))
             {
+                if (context.Request.ContentLength is > MaxAuthUsernameBodyBytes)
+                {
+                    await WritePayloadTooLargeResponseAsync(context);
+                    return;
+                }
+
                 var usernameIdentifier = await GetAuthenticationUsernameIdentifierAsync(context);
                 if (!string.IsNullOrWhiteSpace(usernameIdentifier))
                 {
@@ -82,12 +90,19 @@ namespace HB_NLP_Research_Lab.Core
                             $"{usernamePolicyName}:{usernameIdentifier}",
                             usernamePolicy);
                     }
-                    catch (Exception ex)
+                    catch (TimeoutException ex)
                     {
-                        _logger.LogError(ex, "Error in username rate limiting middleware for {ClientIdentifier} on {Endpoint}",
-                            clientIdentifier, endpoint);
-
-                        await WriteRateLimitingUnavailableResponseAsync(context);
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
+                        return;
+                    }
+                    catch (CryptographicException ex)
+                    {
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
+                        return;
+                    }
+                    catch (JsonException ex)
+                    {
+                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
                         return;
                     }
 
@@ -279,11 +294,45 @@ namespace HB_NLP_Research_Lab.Core
             await context.Response.WriteAsync(jsonResponse);
         }
 
+        private async Task HandleUsernameRateLimitingFailureAsync(
+            HttpContext context,
+            Exception ex,
+            string clientIdentifier,
+            string endpoint)
+        {
+            _logger.LogError(ex, "Error in username rate limiting middleware for {ClientIdentifier} on {Endpoint}",
+                clientIdentifier, endpoint);
+
+            await WriteRateLimitingUnavailableResponseAsync(context);
+        }
+
+        private static async Task WritePayloadTooLargeResponseAsync(HttpContext context)
+        {
+            if (context.Response.HasStarted)
+            {
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            context.Response.ContentType = "application/json";
+
+            var errorResponse = new
+            {
+                error = "Payload too large",
+                message = "Authentication request payloads must be 64 KB or smaller."
+            };
+
+            var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+            });
+
+            await context.Response.WriteAsync(jsonResponse);
+        }
+
         private static async Task<string?> GetAuthenticationUsernameIdentifierAsync(HttpContext context)
         {
-            if (!HttpMethods.IsPost(context.Request.Method)
-                || !context.Request.Body.CanRead
-                || context.Request.ContentLength > 64 * 1024)
+            if (!HttpMethods.IsPost(context.Request.Method) || !context.Request.Body.CanRead)
             {
                 return null;
             }
@@ -293,8 +342,15 @@ namespace HB_NLP_Research_Lab.Core
                 context.Request.EnableBuffering();
                 context.Request.Body.Position = 0;
 
-                using var document = await JsonDocument.ParseAsync(
+                await using var limitedBody = await ReadLimitedRequestBodyAsync(
                     context.Request.Body,
+                    MaxAuthUsernameBodyBytes,
+                    context.RequestAborted);
+
+                context.Request.Body.Position = 0;
+
+                using var document = await JsonDocument.ParseAsync(
+                    limitedBody,
                     cancellationToken: context.RequestAborted);
 
                 context.Request.Body.Position = 0;
@@ -348,6 +404,32 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             return null;
+        }
+
+        private static async Task<MemoryStream> ReadLimitedRequestBodyAsync(
+            Stream requestBody,
+            int maxBytes,
+            CancellationToken cancellationToken)
+        {
+            var limitedBody = new MemoryStream();
+            var buffer = new byte[8192];
+            var totalRead = 0;
+
+            while (totalRead < maxBytes)
+            {
+                var bytesToRead = Math.Min(buffer.Length, maxBytes - totalRead);
+                var read = await requestBody.ReadAsync(buffer.AsMemory(0, bytesToRead), cancellationToken);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                limitedBody.Write(buffer, 0, read);
+                totalRead += read;
+            }
+
+            limitedBody.Position = 0;
+            return limitedBody;
         }
 
         private void AddRateLimitHeaders(HttpResponse response, RateLimitResult result, RateLimitPolicy policy)

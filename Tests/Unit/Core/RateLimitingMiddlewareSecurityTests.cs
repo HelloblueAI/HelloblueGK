@@ -174,6 +174,26 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_WithOversizedBody_ShouldRejectPayload()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var requestBody = $$"""{"username":"victim","password":"{{new string('x', 64 * 1024)}}"}""";
+
+        // Act
+        var result = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            requestBody: requestBody);
+
+        // Assert
+        result.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        result.NextCalled.Should().BeFalse();
+        result.ResponseBody.Should().Contain("Payload too large");
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAiOptimizationReadEndpoint_ShouldUseAiPolicy()
     {
         // Arrange
