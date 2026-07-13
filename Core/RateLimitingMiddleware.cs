@@ -72,13 +72,14 @@ namespace HB_NLP_Research_Lab.Core
 
             if (string.Equals(policyName, "Auth", StringComparison.OrdinalIgnoreCase))
             {
-                if (context.Request.ContentLength is > MaxAuthUsernameBodyBytes)
+                var authBodyInspection = await InspectAuthRequestBodyAsync(context);
+                if (authBodyInspection.IsPayloadTooLarge)
                 {
                     await WritePayloadTooLargeResponseAsync(context);
                     return;
                 }
 
-                var usernameIdentifier = await GetAuthenticationUsernameIdentifierAsync(context);
+                var usernameIdentifier = authBodyInspection.UsernameIdentifier;
                 if (!string.IsNullOrWhiteSpace(usernameIdentifier))
                 {
                     var usernamePolicyName = "AuthUsername";
@@ -330,11 +331,18 @@ namespace HB_NLP_Research_Lab.Core
             await context.Response.WriteAsync(jsonResponse);
         }
 
-        private static async Task<string?> GetAuthenticationUsernameIdentifierAsync(HttpContext context)
+        private sealed record AuthRequestBodyInspection(string? UsernameIdentifier, bool IsPayloadTooLarge);
+
+        private static async Task<AuthRequestBodyInspection> InspectAuthRequestBodyAsync(HttpContext context)
         {
             if (!HttpMethods.IsPost(context.Request.Method) || !context.Request.Body.CanRead)
             {
-                return null;
+                return new AuthRequestBodyInspection(null, false);
+            }
+
+            if (context.Request.ContentLength is > MaxAuthUsernameBodyBytes)
+            {
+                return new AuthRequestBodyInspection(null, true);
             }
 
             try
@@ -342,41 +350,26 @@ namespace HB_NLP_Research_Lab.Core
                 context.Request.EnableBuffering();
                 context.Request.Body.Position = 0;
 
-                await using var limitedBody = await ReadLimitedRequestBodyAsync(
+                var (limitedBody, exceedsLimit) = await ReadLimitedRequestBodyAsync(
                     context.Request.Body,
                     MaxAuthUsernameBodyBytes,
                     context.RequestAborted);
 
-                context.Request.Body.Position = 0;
-
-                using var document = await JsonDocument.ParseAsync(
-                    limitedBody,
-                    cancellationToken: context.RequestAborted);
-
-                context.Request.Body.Position = 0;
-
-                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                await using (limitedBody)
                 {
-                    return null;
-                }
+                    context.Request.Body.Position = 0;
 
-                foreach (var property in document.RootElement.EnumerateObject())
-                {
-                    if (!string.Equals(property.Name, "username", StringComparison.OrdinalIgnoreCase)
-                        || property.Value.ValueKind != JsonValueKind.String)
+                    if (exceedsLimit)
                     {
-                        continue;
+                        return new AuthRequestBodyInspection(null, true);
                     }
 
-                    var username = property.Value.GetString()?.Trim();
-                    if (string.IsNullOrWhiteSpace(username))
-                    {
-                        return null;
-                    }
+                    var usernameIdentifier = await ExtractUsernameIdentifierAsync(
+                        limitedBody,
+                        context.RequestAborted);
 
-                    var normalizedUsername = username.ToUpperInvariant();
-                    var usernameHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedUsername)))[..16];
-                    return $"username:{usernameHash}";
+                    context.Request.Body.Position = 0;
+                    return new AuthRequestBodyInspection(usernameIdentifier, false);
                 }
             }
             catch (JsonException)
@@ -386,7 +379,7 @@ namespace HB_NLP_Research_Lab.Core
                     context.Request.Body.Position = 0;
                 }
 
-                return null;
+                return new AuthRequestBodyInspection(null, false);
             }
             catch (IOException)
             {
@@ -395,18 +388,44 @@ namespace HB_NLP_Research_Lab.Core
                     context.Request.Body.Position = 0;
                 }
 
+                return new AuthRequestBodyInspection(null, false);
+            }
+        }
+
+        private static async Task<string?> ExtractUsernameIdentifierAsync(
+            Stream body,
+            CancellationToken cancellationToken)
+        {
+            using var document = await JsonDocument.ParseAsync(body, cancellationToken: cancellationToken);
+
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
                 return null;
             }
 
-            if (context.Request.Body.CanSeek)
+            foreach (var property in document.RootElement.EnumerateObject())
             {
-                context.Request.Body.Position = 0;
+                if (!string.Equals(property.Name, "username", StringComparison.OrdinalIgnoreCase)
+                    || property.Value.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                var username = property.Value.GetString()?.Trim();
+                if (string.IsNullOrWhiteSpace(username))
+                {
+                    return null;
+                }
+
+                var normalizedUsername = username.ToUpperInvariant();
+                var usernameHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedUsername)))[..16];
+                return $"username:{usernameHash}";
             }
 
             return null;
         }
 
-        private static async Task<MemoryStream> ReadLimitedRequestBodyAsync(
+        private static async Task<(MemoryStream LimitedBody, bool ExceedsLimit)> ReadLimitedRequestBodyAsync(
             Stream requestBody,
             int maxBytes,
             CancellationToken cancellationToken)
@@ -428,8 +447,16 @@ namespace HB_NLP_Research_Lab.Core
                 totalRead += read;
             }
 
+            var exceedsLimit = false;
+            if (totalRead >= maxBytes)
+            {
+                var extra = new byte[1];
+                var extraRead = await requestBody.ReadAsync(extra.AsMemory(), cancellationToken);
+                exceedsLimit = extraRead > 0;
+            }
+
             limitedBody.Position = 0;
-            return limitedBody;
+            return (limitedBody, exceedsLimit);
         }
 
         private void AddRateLimitHeaders(HttpResponse response, RateLimitResult result, RateLimitPolicy policy)

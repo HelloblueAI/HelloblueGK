@@ -194,6 +194,28 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_WithChunkedOversizedBody_ShouldRejectPayload()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var padding = new string('x', 64 * 1024);
+        var requestBody = $$"""{"padding":"{{padding}}","username":"victim","password":"bad-password"}""";
+
+        // Act
+        var result = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            requestBody: requestBody,
+            includeContentLength: false);
+
+        // Assert
+        result.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        result.NextCalled.Should().BeFalse();
+        result.ResponseBody.Should().Contain("Payload too large");
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAiOptimizationReadEndpoint_ShouldUseAiPolicy()
     {
         // Arrange
@@ -216,7 +238,8 @@ public class RateLimitingMiddlewareSecurityTests
         string path,
         string method,
         IPAddress? remoteIpAddress = null,
-        string? requestBody = null)
+        string? requestBody = null,
+        bool includeContentLength = true)
     {
         var nextCalled = false;
         RequestDelegate next = context =>
@@ -239,7 +262,11 @@ public class RateLimitingMiddlewareSecurityTests
         {
             var bodyBytes = Encoding.UTF8.GetBytes(requestBody);
             context.Request.Body = new MemoryStream(bodyBytes);
-            context.Request.ContentLength = bodyBytes.Length;
+            if (includeContentLength)
+            {
+                context.Request.ContentLength = bodyBytes.Length;
+            }
+
             context.Request.ContentType = "application/json";
         }
         context.Response.Body = new MemoryStream();
