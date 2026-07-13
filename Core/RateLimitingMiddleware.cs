@@ -91,17 +91,7 @@ namespace HB_NLP_Research_Lab.Core
                             $"{usernamePolicyName}:{usernameIdentifier}",
                             usernamePolicy);
                     }
-                    catch (TimeoutException ex)
-                    {
-                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
-                        return;
-                    }
-                    catch (CryptographicException ex)
-                    {
-                        await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
-                        return;
-                    }
-                    catch (JsonException ex)
+                    catch (Exception ex)
                     {
                         await HandleUsernameRateLimitingFailureAsync(context, ex, clientIdentifier, endpoint);
                         return;
@@ -403,6 +393,8 @@ namespace HB_NLP_Research_Lab.Core
                 return null;
             }
 
+            string? usernameIdentifier = null;
+
             foreach (var property in document.RootElement.EnumerateObject())
             {
                 if (!string.Equals(property.Name, "username", StringComparison.OrdinalIgnoreCase)
@@ -414,15 +406,15 @@ namespace HB_NLP_Research_Lab.Core
                 var username = property.Value.GetString()?.Trim();
                 if (string.IsNullOrWhiteSpace(username))
                 {
-                    return null;
+                    continue;
                 }
 
                 var normalizedUsername = username.ToUpperInvariant();
                 var usernameHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalizedUsername)))[..16];
-                return $"username:{usernameHash}";
+                usernameIdentifier = $"username:{usernameHash}";
             }
 
-            return null;
+            return usernameIdentifier;
         }
 
         private static async Task<(MemoryStream LimitedBody, bool ExceedsLimit)> ReadLimitedRequestBodyAsync(

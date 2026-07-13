@@ -174,6 +174,65 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldThrottleLastDuplicateUsernameValue()
+    {
+        // Arrange
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        const string requestBody = """{"username":"decoy","username":"victim","password":"bad-password"}""";
+
+        // Act
+        for (var i = 0; i < 5; i++)
+        {
+            await InvokeMiddlewareAsync(
+                rateLimitingService,
+                "/api/v1/auth/login",
+                HttpMethods.Post,
+                IPAddress.Parse($"203.0.113.{10 + i}"),
+                requestBody);
+        }
+
+        var blockedResult = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/auth/login",
+            HttpMethods.Post,
+            IPAddress.Parse("203.0.113.99"),
+            requestBody);
+
+        // Assert
+        blockedResult.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        blockedResult.NextCalled.Should().BeFalse();
+        blockedResult.Headers["X-RateLimit-Limit"].Should().Be("5");
+    }
+
+    [Fact]
+    public async Task InvokeAsync_WhenUsernameRateLimiterFails_ShouldFailClosed()
+    {
+        // Arrange
+        const string requestBody = """{"username":"victim","password":"bad-password"}""";
+        var middleware = new RateLimitingMiddleware(
+            _ => Task.CompletedTask,
+            NullLogger<RateLimitingMiddleware>.Instance,
+            new UsernameThrowingRateLimitingService());
+
+        var context = new DefaultHttpContext();
+        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.10");
+        context.Request.Path = "/api/v1/auth/login";
+        context.Request.Method = HttpMethods.Post;
+        var bodyBytes = Encoding.UTF8.GetBytes(requestBody);
+        context.Request.Body = new MemoryStream(bodyBytes);
+        context.Request.ContentLength = bodyBytes.Length;
+        context.Request.ContentType = "application/json";
+        context.Response.Body = new MemoryStream();
+
+        // Act
+        await middleware.InvokeAsync(context);
+
+        // Assert
+        context.Response.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
+        context.Response.ContentType.Should().Be("application/json");
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAuthenticationEntrypoints_WithOversizedBody_ShouldRejectPayload()
     {
         // Arrange
@@ -303,6 +362,24 @@ public class RateLimitingMiddlewareSecurityTests
         public override Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
         {
             throw new InvalidOperationException("simulated limiter failure");
+        }
+    }
+
+    private sealed class UsernameThrowingRateLimitingService : RateLimitingService
+    {
+        public UsernameThrowingRateLimitingService()
+            : base(NullLogger<RateLimitingService>.Instance)
+        {
+        }
+
+        public override Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
+        {
+            if (identifier.StartsWith("AuthUsername:", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException("simulated username limiter failure");
+            }
+
+            return base.CheckRateLimitAsync(identifier, policy);
         }
     }
 }
