@@ -929,7 +929,7 @@ Create `appsettings.Production.json`:
     }
   },
   "ConnectionStrings": {
-    "DefaultConnection": "Server=postgres;Database=hellobluegk;Username=aerospace;Password=SECURE_PASSWORD"
+    "DefaultConnection": "SET_VIA_ENV_OR_USER_SECRETS"
   },
   "Jwt": {
     "Key": "YOUR_SECURE_JWT_KEY",

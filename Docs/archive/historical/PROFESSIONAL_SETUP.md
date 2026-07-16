@@ -59,7 +59,7 @@ Jwt__Issuer=hellobluegk
 Jwt__Audience=hellobluegk-api
 
 # Database (REQUIRED)
-ConnectionStrings__DefaultConnection=Host=host;Port=5432;Database=db;Username=user;Password=pass
+DATABASE_URL=<paste from host dashboard — never commit>
 ```
 
 ### Optional Environment Variables

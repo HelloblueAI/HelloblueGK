@@ -33,11 +33,10 @@ jobs:
         dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
         dotnet restore Tests/HelloblueGK.Tests.csproj
 
-    - name: Scan for vulnerable packages
+    - name: Fail on vulnerable packages
       run: |
-        dotnet list HelloblueGK.csproj package --vulnerable --include-transitive
-        dotnet list WebAPI/HelloblueGK.WebAPI.csproj package --vulnerable --include-transitive
-        dotnet list Tests/HelloblueGK.Tests.csproj package --vulnerable --include-transitive
+        chmod +x .github/scripts/fail-on-vulnerable-packages.sh
+        .github/scripts/fail-on-vulnerable-packages.sh
 
     - name: Report deprecated packages
       run: |

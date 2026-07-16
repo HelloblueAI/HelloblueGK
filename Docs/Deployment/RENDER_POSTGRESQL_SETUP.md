@@ -18,161 +18,96 @@
    - **User:** Leave default (auto-generated)
    - **Region:** Choose same region as your web service (Oregon for US West)
    - **PostgreSQL Version:** Latest (15 or 16)
-   - **Plan:** 
+   - **Plan:**
      - **Free:** For testing (limited connections, may sleep)
      - **Starter ($7/month):** For production (always on, better performance)
 
 4. **Click "Create Database"**
    - Wait 2-3 minutes for database to be created
 
-### Step 2: Get Connection String
+### Step 2: Get the Internal Database URL
 
-After database is created:
+After the database is created:
 
-1. **Go to your PostgreSQL database** in Render dashboard
-2. **Find "Connections" section**
-3. **Copy the "Internal Database URL"** - it looks like:
-   ```
-   postgresql://hellobluegk_user:password@dpg-xxxxx-a.oregon-postgres.render.com/hellobluegk
-   ```
+1. Open the PostgreSQL instance in the Render dashboard
+2. Open **Connections**
+3. Copy the **Internal Database URL** (starts with `postgresql://…`)
 
-### Step 3: Convert to .NET Connection String Format
+Prefer this URL over building a keyword-style connection string by hand.
 
-Render provides a PostgreSQL URL, but .NET needs a specific format. Convert it:
+### Step 3: Configure the Web Service (recommended)
 
-**From Render format:**
-```
-postgresql://username:password@host:port/database
-```
+HelloblueGK accepts Render’s URL directly:
 
-**To .NET format:**
-```
-Host=host;Port=port;Database=database;Username=username;Password=password
-```
+1. Open your **HelloblueGK** web service → **Environment**
+2. Add:
 
-**Example conversion:**
-- Render URL: `postgresql://hellobluegk_user:abc123@dpg-xxxxx-a.oregon-postgres.render.com:5432/hellobluegk`
-- .NET format: `Host=dpg-xxxxx-a.oregon-postgres.render.com;Port=5432;Database=hellobluegk;Username=hellobluegk_user;Password=abc123`
+   | Key | Value |
+   |-----|--------|
+   | `DATABASE_URL` | *(paste Internal Database URL from Step 2 — Dashboard only)* |
 
-### Step 4: Add Connection String to Web Service
+3. Also set a strong `Jwt__Key` (32+ characters)
+4. Save — Render redeploys automatically
 
-1. **Go to your Web Service** (HelloblueGK)
-2. **Click "Environment" tab**
-3. **Add/Update this environment variable:**
+The app converts `DATABASE_URL` to the provider connection string at runtime
+(`WebAPI/Configuration/DatabaseConfiguration.cs`). **Do not commit the URL or
+any password to git.**
 
-   **Key:**
-   ```
-   ConnectionStrings__DefaultConnection
-   ```
+### Step 4 (optional): Keyword-style connection string
 
-   **Value:**
-   ```
-   Host=your-host;Port=5432;Database=hellobluegk;Username=your-username;Password=your-password
-   ```
-   (Replace with your actual values from Step 3)
+If you must use `ConnectionStrings__DefaultConnection` instead of `DATABASE_URL`:
 
-4. **Click "Save Changes"**
-   - Render will automatically redeploy your service
+1. In the Dashboard, convert Render’s URL using a local scratch pad (not a repo file)
+2. Set env var `ConnectionStrings__DefaultConnection` to that value
+3. Never paste real host/user/password values into markdown, issues, or PRs
+
+Keyword form uses host / port / database / user / password fields separated by
+`;` — copy the mapping from [Npgsql connection string docs](https://www.npgsql.org/doc/connection-string-parameters.html),
+not from this repository.
 
 ### Step 5: Verify Database Connection
 
 After deployment completes:
 
-1. **Check Logs** in Render dashboard
-   - Look for: `"Database and tables created successfully"`
-   - If you see errors, check the connection string format
+1. Check service logs for database initialization messages
+2. Hit `/Health`
+3. Confirm login / API flows that need persistence
 
-2. **Test Login Endpoint**
-   ```bash
-   curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/login \
-     -H "Content-Type: application/json" \
-     -d '{"username":"test","password":"test"}'
-   ```
-   - Should return 401 (unauthorized) not 500 (server error)
-   - 500 means database connection failed
-   - 401 means database works, just no user exists yet
+## Local development
 
-### Step 6: Create First User (Optional)
-
-You can create a user via the register endpoint:
-
-```bash
-curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "admin",
-    "email": "admin@example.com",
-    "password": "<your-strong-password>",
-    "firstName": "Admin",
-    "lastName": "User"
-  }'
-```
+| Mode | Configuration |
+|------|----------------|
+| SQLite (default in Development) | No env vars required (`Data Source=hellobluegk.db`) |
+| Local PostgreSQL | Set `DATABASE_URL` or `ConnectionStrings__DefaultConnection` in your shell / user secrets — never in committed files |
 
 ## Troubleshooting
 
-### Error: "Database connection failed"
-- Check connection string format (must use `Host=...;Port=...` format)
-- Verify database is running (check Render dashboard)
-- Check if database is sleeping (free tier) - it will wake up on first connection
+### Error: "Connection refused" / "timeout"
+- Verify the database is running (Render dashboard)
+- Free-tier DBs can sleep; first connect may take 30–60s
+- Prefer **Internal** URL when the web service is in the same region
 
 ### Error: "Database already exists"
-- This is normal - means database was created successfully
-- Application will use existing database
+- Normal on redeploy — the app reuses the existing database
 
 ### Error: "Table does not exist"
-- Database connection works but tables weren't created
-- Check application logs for database initialization errors
-- Tables are created automatically on first run via `EnsureCreated()`
-
-### Database is Sleeping (Free Tier)
-- Free tier databases sleep after 90 days of inactivity
-- First request after sleep takes 30-60 seconds
-- Consider upgrading to Starter plan for production
-
-## Connection String Examples
-
-### Render PostgreSQL (Production)
-```
-Host=dpg-xxxxx-a.oregon-postgres.render.com;Port=5432;Database=hellobluegk;Username=hellobluegk_user;Password=your-password
-```
-
-### Local Development (SQLite)
-```
-Data Source=hellobluegk.db
-```
-
-### Local Development (PostgreSQL)
-```
-Host=localhost;Port=5432;Database=hellobluegk;Username=postgres;Password=your-password
-```
+- Check logs for `DatabaseInitializer` errors
+- Tables are created from the EF Core model on first run (migrations when present)
 
 ## Security Best Practices
 
-1. **Never commit connection strings to git**
-   - Always use environment variables
-   - Render automatically keeps secrets secure
-
-2. **Use different databases for dev/staging/prod**
-   - Create separate PostgreSQL databases in Render
-   - Use different environment variables per service
-
-3. **Rotate passwords regularly**
-   - Change database password in Render dashboard
-   - Update environment variable immediately
-
-4. **Use Internal Database URL for same-region services**
-   - Faster and more secure
-   - No external network exposure
+1. **Never commit connection strings or database URLs**
+2. Use Dashboard / secret stores only (`DATABASE_URL`, `Jwt__Key`)
+3. Separate databases for staging vs production
+4. Rotate the database password in Render if it was ever pasted into chat, tickets, or git
+5. Prefer Internal Database URL (no public network exposure)
 
 ## Next Steps
 
 After database is set up:
-1. ✅ Database connection configured
-2. ✅ Tables created automatically
-3. ✅ Login endpoint should work
-4. ✅ Ready to create users and use the API
 
-For production, consider:
-- Setting up database backups (Render Pro plan)
-- Monitoring database performance
-- Setting up connection pooling if needed
+1. Database URL configured in Dashboard
+2. Tables created automatically on deploy
+3. Auth and API persistence paths available
+
+For production, consider backups (paid plans), monitoring, and connection pooling as load grows.

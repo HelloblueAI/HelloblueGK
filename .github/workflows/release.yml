@@ -55,43 +55,30 @@ jobs:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
         tag_name: ${{ github.ref }}
-        release_name: HB-NLP Revolutionary Engine Design v${{ github.ref_name }}
+        release_name: HelloblueGK Community Edition ${{ github.ref_name }}
         body: |
-          🚀 **Revolutionary HB-NLP Engine Design Release**
-          
-          ## 🎯 HB-NLP-REV-001: Quantum-Classical Hybrid Engine
-          
-          ### **Performance Specifications**
-          - **Thrust**: 2,000,000 N (2.0 MN) - Beyond SpaceX capabilities
-          - **Specific Impulse**: 450 s - Exceptional efficiency
-          - **Efficiency**: 95.0% - Revolutionary performance
-          - **Technology Readiness Level**: 9 - Production ready
-          
-          ### **Plasticity Integration**
-          - **Hardware Acceleration**: ✅ ENABLED
-          - **Real-time 3D Modeling**: ✅ ACTIVE
-          - **CFD Simulation**: ✅ RUNNING
-          - **Multi-physics Coupling**: ✅ OPERATIONAL
-          
-          ### **What's Included**
-          - ✅ PlasticityDemo - Working demonstration
-          - ✅ Engine design files (JSON, Python scripts)
-          - ✅ Plasticity integration scripts
-          - ✅ Complete documentation
-          - ✅ Production-ready engine specifications
-          
-          ### **Quick Start**
+          ## HelloblueGK Community Edition ${{ github.ref_name }}
+
+          Open-source aerospace engine simulation reference stack (.NET 9).
+
+          This release is the **Community Edition** — useful for research, integration,
+          and education. It is **not** a flight-certified or mission-ready package.
+          See [OPEN_SOURCE_SCOPE.md](https://github.com/HelloblueAI/HelloblueGK/blob/main/OPEN_SOURCE_SCOPE.md).
+
+          ### Included
+          - PlasticityDemo publish output
+          - Sample engine design files / scripts
+          - README and Apache 2.0 license
+
+          ### Quick start
           ```bash
-          # Extract and run
           unzip hellobluegk-release-${{ github.ref_name }}.zip
           cd release
           dotnet PlasticityDemo.dll
           ```
-          
-          **Status**: ✅ **PRODUCTION READY**
-          
-          ---
-          *HB-NLP Research Lab - Beyond SpaceX Capabilities*
+
+          For production/enterprise needs, contact Helloblue — do not treat this
+          repository alone as regulatory or flight evidence.
         draft: false
         prerelease: false
     
