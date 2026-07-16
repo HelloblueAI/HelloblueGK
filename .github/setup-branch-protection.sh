@@ -36,8 +36,7 @@ gh api "repos/$REPO/branches/$BRANCH/protection" \
       "Build and Test",
       "Integration Tests",
       "Code Quality Checks",
-      "Security Scan",
-      "Analyze (csharp)"
+      "Security Scan"
     ]
   },
   "enforce_admins": true,
@@ -61,7 +60,7 @@ EOF
 echo ""
 echo "Branch protection configured:"
 echo "   - PRs required (code owner review)"
-echo "   - Required checks: Build and Test, Integration Tests, Code Quality Checks, Security Scan, Analyze (csharp)"
+echo "   - Required checks: Build and Test, Integration Tests, Code Quality Checks, Security Scan"
 echo "   - Branches must be up to date before merge"
 echo "   - Linear history required (squash-only merges)"
 echo "   - Conversation resolution required"
