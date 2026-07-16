@@ -1,58 +1,43 @@
-# Production Dockerfile for Railway Deployment
-# This file is a copy of Docker/Dockerfile.render for Railway compatibility
-# Railway requires the Dockerfile to be in the root directory
-# Source: Docker/Dockerfile.render
+# Deprecated path — prefer Docker/Dockerfile
+# Primary production image: HelloblueGK WebAPI
+# This is what runs in production (Render/Railway) and is validated by CI.
+# Build from repo root: docker build -f Docker/Dockerfile .
 
-# Build stage
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:9.0-bookworm-slim AS build
 WORKDIR /src
 
-# Copy solution and project files for dependency restoration
 COPY HelloblueGK.csproj ./
 COPY WebAPI/HelloblueGK.WebAPI.csproj ./WebAPI/
 
-# Restore dependencies - restore WebAPI project which will automatically restore its dependencies
-# This ensures all transitive dependencies are properly resolved
 RUN dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
 
-# Copy all source files
 COPY . .
 
-# Build and publish WebAPI (includes main project as dependency)
-# Remove --no-restore to allow full dependency resolution
 WORKDIR /src/WebAPI
 RUN dotnet publish -c Release -o /app/publish
 
-# Runtime stage - optimized production image
-FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+# Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:9.0-bookworm-slim AS runtime
 WORKDIR /app
 
-# Install curl for health checks (minimal .NET runtime image doesn't include it by default)
 RUN apt-get update && apt-get install -y --no-install-recommends curl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy published application
 COPY --from=build /app/publish .
 
-# Set production environment
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+
 ENV ASPNETCORE_ENVIRONMENT=Production
+# Default port when PORT is not set (e.g. local docker run); Render/Railway set PORT at runtime
+ENV PORT=8080
 ENV DOTNET_SKIP_FIRST_TIME_EXPERIENCE=true
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=true
 
-# Railway sets PORT dynamically at runtime
-# Application reads PORT env var (defaults to 5000 per Program.cs)
-# We can't hardcode EXPOSE since PORT is dynamic, but Docker requires it
-EXPOSE 5000
+EXPOSE 8080
 
-# Health check endpoint
-# Railway sets PORT dynamically at runtime - must read it from environment at runtime, not build time
-# Application listens on PORT env var (default 5000 per Program.cs:241)
-# Using shell to expand PORT variable at container runtime, ensuring it matches the app's listening port
-# Using curl instead of wget (curl is more commonly available in minimal .NET runtime images)
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD ["/bin/sh", "-c", "port=${PORT:-5000} && curl -f http://localhost:${port}/Health || exit 1"]
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD ["/bin/sh", "-c", "port=${PORT:-8080} && curl -f http://localhost:${port}/Health || exit 1"]
 
-# Start the application
-# PORT is set by Railway via environment variable
+USER appuser
+
 ENTRYPOINT ["dotnet", "HelloblueGK.WebAPI.dll"]
-

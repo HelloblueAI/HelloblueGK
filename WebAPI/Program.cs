@@ -320,39 +320,21 @@ builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
 var app = builder.Build();
 
-// Ensure database is created and initialized
-// This runs in both Development and Production to ensure database tables exist
-    using (var scope = app.Services.CreateScope())
-    {
+// Apply EF migrations when present; otherwise create schema from the current model.
+using (var scope = app.Services.CreateScope())
+{
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
-        var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
-        var requirementsContext = scope.ServiceProvider.GetRequiredService<RequirementsDbContext>();
-        var problemReportContext = scope.ServiceProvider.GetRequiredService<ProblemReportDbContext>();
-        var configurationContext = scope.ServiceProvider.GetRequiredService<ConfigurationDbContext>();
-        var testCoverageContext = scope.ServiceProvider.GetRequiredService<TestCoverageDbContext>();
-        var codeReviewContext = scope.ServiceProvider.GetRequiredService<CodeReviewDbContext>();
-    
+    var dbContext = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+    var requirementsContext = scope.ServiceProvider.GetRequiredService<RequirementsDbContext>();
+    var problemReportContext = scope.ServiceProvider.GetRequiredService<ProblemReportDbContext>();
+    var configurationContext = scope.ServiceProvider.GetRequiredService<ConfigurationDbContext>();
+    var testCoverageContext = scope.ServiceProvider.GetRequiredService<TestCoverageDbContext>();
+    var codeReviewContext = scope.ServiceProvider.GetRequiredService<CodeReviewDbContext>();
+
     try
     {
-        // Ensure database exists first
-        var dbExists = dbContext.Database.CanConnect();
-        if (!dbExists)
-        {
-            logger.LogInformation("Database does not exist. Creating database...");
-            var created = dbContext.Database.EnsureCreated();
-            logger.LogInformation("Database created: {Created}", created);
-        }
-        else
-        {
-            logger.LogInformation("Database already exists");
-        }
-        
-        // For multiple DbContexts sharing the same database, we need to ensure tables exist
-        // EnsureCreated() only works if database doesn't exist, so we use a different approach
-        // We'll try to ensure tables exist by attempting to query them, which will create them if missing
-        
-        // Initialize certification contexts using improved initializer
-        // This handles the case where multiple DbContexts share the same database
+        await DatabaseInitializer.InitializeAsync(dbContext, logger);
+
         try
         {
             await CertificationDatabaseInitializer.InitializeAllAsync(
@@ -362,130 +344,13 @@ var app = builder.Build();
                 testCoverageContext,
                 codeReviewContext,
                 logger);
+            logger.LogInformation("Flight Software Certification systems initialization completed");
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to initialize certification databases: {Error}", ex.Message);
-            // Continue - individual contexts will handle errors
         }
-        
-        logger.LogInformation("Flight Software Certification systems initialization completed");
-        
-        // Ensure all tables exist (including new ones like Launch)
-        // This handles the case where new tables are added after initial database creation
-        try
-        {
-            logger.LogInformation("Ensuring all database tables exist...");
-            // Try to query each table to ensure it exists
-            _ = await dbContext.Engines.CountAsync();
-            _ = await dbContext.EngineSimulations.CountAsync();
-            _ = await dbContext.AIOptimizationRuns.CountAsync();
-            _ = await dbContext.DigitalTwins.CountAsync();
 
-            if (databaseSettings.Provider == DatabaseProvider.PostgreSql)
-            {
-                await dbContext.Database.ExecuteSqlRawAsync(@"
-                    ALTER TABLE ""AIOptimizationRuns""
-                    ADD COLUMN IF NOT EXISTS ""CreatedBy"" VARCHAR(255);
-
-                    ALTER TABLE ""DigitalTwins""
-                    ADD COLUMN IF NOT EXISTS ""CreatedBy"" VARCHAR(255);
-
-                    CREATE INDEX IF NOT EXISTS ""IX_AIOptimizationRuns_CreatedBy""
-                    ON ""AIOptimizationRuns""(""CreatedBy"");
-
-                    CREATE INDEX IF NOT EXISTS ""IX_DigitalTwins_CreatedBy""
-                    ON ""DigitalTwins""(""CreatedBy"");
-                ");
-            }
-            
-            // Ensure Launch table exists - try to query it, create if missing
-            try
-            {
-                _ = await dbContext.Launches.CountAsync();
-                logger.LogInformation("Launch table exists");
-            }
-            catch
-            {
-                // Table doesn't exist - try to create it using EF Core model
-                logger.LogInformation("Launch table does not exist, attempting to create...");
-                try
-                {
-                    // Use GenerateCreateScript to get SQL for Launch table only
-                    var createScript = dbContext.Database.GenerateCreateScript();
-                    // Extract just the Launch table creation SQL
-                    if (createScript.Contains("CREATE TABLE", StringComparison.OrdinalIgnoreCase))
-                    {
-                        // For PostgreSQL, we can try to create just the Launch table
-                        // Since we can't easily extract just one table, we'll let EF handle it on first use
-                        // or create it manually with a simple SQL statement
-                        // Only execute PostgreSQL-specific SQL if we're using PostgreSQL
-                        if (databaseSettings.Provider == DatabaseProvider.PostgreSql)
-                        {
-                            await dbContext.Database.ExecuteSqlRawAsync(@"
-                            CREATE TABLE IF NOT EXISTS ""Launches"" (
-                                ""Id"" SERIAL PRIMARY KEY,
-                                ""MissionName"" VARCHAR(200) NOT NULL,
-                                ""Description"" VARCHAR(500),
-                                ""EngineId"" INTEGER NOT NULL,
-                                ""EngineCount"" INTEGER NOT NULL DEFAULT 1,
-                                ""Status"" VARCHAR(50) DEFAULT 'Scheduled',
-                                ""LaunchParametersJson"" TEXT,
-                                ""ResultsJson"" TEXT,
-                                ""MissionDurationSeconds"" DOUBLE PRECISION,
-                                ""MaxAltitude"" DOUBLE PRECISION,
-                                ""MaxVelocity"" DOUBLE PRECISION,
-                                ""MissionSuccess"" BOOLEAN,
-                                ""ErrorMessage"" TEXT,
-                                ""ScheduledAt"" TIMESTAMP NOT NULL,
-                                ""LaunchedAt"" TIMESTAMP,
-                                ""CompletedAt"" TIMESTAMP,
-                                ""CreatedBy"" VARCHAR(255),
-                                ""CreatedAt"" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-                            );
-                        ");
-                        // Create indexes
-                        await dbContext.Database.ExecuteSqlRawAsync(@"
-                            CREATE INDEX IF NOT EXISTS ""IX_Launches_EngineId"" ON ""Launches""(""EngineId"");
-                            CREATE INDEX IF NOT EXISTS ""IX_Launches_Status"" ON ""Launches""(""Status"");
-                            CREATE INDEX IF NOT EXISTS ""IX_Launches_ScheduledAt"" ON ""Launches""(""ScheduledAt"");
-                            CREATE INDEX IF NOT EXISTS ""IX_Launches_CreatedAt"" ON ""Launches""(""CreatedAt"");
-                        ");
-                        // Add foreign key constraint
-                        await dbContext.Database.ExecuteSqlRawAsync(@"
-                            DO $$
-                            BEGIN
-                                IF NOT EXISTS (
-                                    SELECT 1 FROM pg_constraint 
-                                    WHERE conname = 'FK_Launches_Engines_EngineId'
-                                ) THEN
-                                    ALTER TABLE ""Launches""
-                                    ADD CONSTRAINT ""FK_Launches_Engines_EngineId""
-                                    FOREIGN KEY (""EngineId"") REFERENCES ""Engines""(""Id"") ON DELETE RESTRICT;
-                                END IF;
-                            END $$;
-                        ");
-                            logger.LogInformation("Launch table created successfully");
-                        }
-                        else
-                        {
-                            logger.LogWarning("Launch table creation skipped - PostgreSQL-specific SQL only works with PostgreSQL. Table will be created via EF Core migrations or EnsureCreated on first use.");
-                        }
-                    }
-                }
-                catch (Exception createEx)
-                {
-                    logger.LogWarning(createEx, "Could not create Launch table automatically: {Error}. It will be created on first use.", createEx.Message);
-                }
-            }
-            logger.LogInformation("All database tables verified");
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Warning while verifying tables: {Error}. Tables will be created on first use.", ex.Message);
-        }
-        
-        // Seed initial engines if database is empty
         try
         {
             await EngineSeeder.SeedEnginesAsync(dbContext, logger);
@@ -493,15 +358,16 @@ var app = builder.Build();
         catch (Exception ex)
         {
             logger.LogError(ex, "Failed to seed engines: {Error}", ex.Message);
-            // Continue - engines can be added manually via API
         }
     }
     catch (Exception ex)
     {
-        logger.LogError(ex, "Failed to initialize database: {Error}. The application will continue, but database operations may fail.", ex.Message);
-        // Don't throw - allow application to start and fail gracefully if database operations are attempted
+        logger.LogError(
+            ex,
+            "Failed to initialize database: {Error}. The application will continue, but database operations may fail.",
+            ex.Message);
     }
-    }
+}
 
 // Configure the HTTP request pipeline
 

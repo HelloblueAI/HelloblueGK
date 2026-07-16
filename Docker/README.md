@@ -1,47 +1,30 @@
 # Docker images
 
-Build from **repository root**: `docker build -f Docker/<file> .`
+## Canonical production image
 
-## Run the WebAPI container
-
-Production mode requires:
-1. **JWT key** (at least 32 characters): `Jwt__Key`
-2. **Database**: either set `ConnectionStrings__DefaultConnection` (e.g. SQLite) or `DATABASE_URL` (PostgreSQL on Render/Railway). If you omit both, the app will fail in production.
-
-**Example: run with SQLite (no SQL Server needed; DB stored in a Docker volume)**
+Use **`Docker/Dockerfile`** for Render, Railway, and CI.
 
 ```bash
-docker run -d -p 8080:8080 \
-  -e Jwt__Key="your-secure-key-at-least-32-characters-long" \
-  -e ConnectionStrings__DefaultConnection="Data Source=/app/data/hellobluegk.db" \
-  -v hellobluegk-data:/app/data \
-  --name hellobluegk hellobluegk:latest
+docker build -f Docker/Dockerfile -t hellobluegk:local .
+docker run --rm -p 8080:8080 -e PORT=8080 hellobluegk:local
 ```
 
-Then open http://localhost:8080/swagger and http://localhost:8080/Health.
+- Non-root `appuser`
+- Health check on `/Health`
+- Binds via `PORT` (default `8080`)
 
-| File | Purpose |
+`render.yaml` and `railway.json` point at this file.
+
+## Compatibility shims
+
+| File | Status |
 |------|--------|
-| **Dockerfile** | WebAPI (production). Default image for CI and local runs. Port 8080. |
-| **Dockerfile.render** | WebAPI for Render/Railway. Uses `PORT` from environment (default 5000). |
-| **Dockerfile.production** | WebAPI with security hardening (non-root user, minimal layers). Port 8080. |
-| **Dockerfile.console** | Console engine + PlasticityDemo only (no HTTP server). |
+| `Docker/Dockerfile.render` | Same content as canonical (legacy path) |
+| `Dockerfile.render` (repo root) | Deprecated; prefer `Docker/Dockerfile` |
+| `Docker/Dockerfile.webapi`, `Dockerfile.production`, `Dockerfile.console` | Legacy variants; not CI-validated |
+| `WebAPI/Dockerfile*` | Legacy; not used by Render/Railway |
+| `PlasticityDemo/Dockerfile` | Demo-only |
 
-Root **Dockerfile.render** is a copy of **Docker/Dockerfile.render** for platforms that require the Dockerfile in the repo root.
+## Dependabot
 
-## Fix "client version 1.43 too old" / "legacy builder deprecated"
-
-**Option A – Use the fallback build (works immediately)**  
-If BuildKit fails with "client version 1.43 is too old", use the legacy builder:
-
-```bash
-./Docker/build.sh
-docker run -p 8080:8080 hellobluegk:latest
-```
-
-You may see a one-line deprecation warning; the image still builds. To get rid of it permanently, upgrade Docker (Option B).
-
-**Option B – Use BuildKit (after upgrading Docker)**  
-1. Upgrade **Docker Desktop** (or your `docker` and `docker-buildx` packages) so the client matches the daemon (API 1.44+).  
-2. Run `./Docker/fix-buildkit.sh` so the default builder uses the host Docker driver.  
-3. Build as usual: `docker build -f Docker/Dockerfile -t hellobluegk:latest .`
+Docker base-image updates are tracked for `/Docker` (see `.github/dependabot.yml`).

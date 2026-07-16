@@ -44,7 +44,7 @@ DOTNET_CLI_TELEMETRY_OPTOUT=true
 3. Convert it to .NET format:
    ```
    # Railway gives you: postgresql://user:pass@host:port/db
-   # Convert to: Host=host;Port=port;Database=db;Username=user;Password=pass
+   # Prefer DATABASE_URL from Railway; avoid pasting keyword-style secrets into git
    ```
 
 **Option B: Use External PostgreSQL**

@@ -37,10 +37,10 @@ jobs:
       run: dotnet restore Tests/HelloblueGK.Tests.csproj
       
     - name: Build solution
-      run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false /p:WarningsAsErrors=""
+      run: dotnet build --no-restore --configuration Release
       
     - name: Build test project
-      run: dotnet build Tests/HelloblueGK.Tests.csproj --no-restore --configuration Release /p:TreatWarningsAsErrors=false
+      run: dotnet build Tests/HelloblueGK.Tests.csproj --no-restore --configuration Release
       
     - name: Run unit tests
       run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build --logger "console;verbosity=normal"
@@ -99,7 +99,7 @@ jobs:
       run: dotnet restore
       
     - name: Build solution
-      run: dotnet build --no-restore --configuration Release /p:TreatWarningsAsErrors=false
+      run: dotnet build --no-restore --configuration Release
       
     - name: Run integration tests
       run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --no-build --filter "Category=Integration" --verbosity minimal --logger "console;verbosity=minimal"
@@ -120,19 +120,20 @@ jobs:
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
         
-    - name: Install .NET format tool
-      run: dotnet tool install -g dotnet-format || true
-      
-    - name: Check code formatting
-      run: dotnet format --verify-no-changes --verbosity diagnostic || true
-      continue-on-error: true
-      
     - name: Restore dependencies
       run: dotnet restore
       
-    - name: Run code analysis
-      run: dotnet build --no-restore --configuration Release /p:RunAnalyzers=true /p:AnalysisLevel=latest /p:TreatWarningsAsErrors=false /p:WarningsAsErrors="" /p:WarningsNotAsErrors=""
+    # Soft until a dedicated format PR lands; restore/format OOMs on some local hosts.
+    - name: Check code formatting
+      run: dotnet format --verify-no-changes --verbosity minimal
       continue-on-error: true
+      
+    - name: Run code analysis
+      run: >
+        dotnet build --no-restore --configuration Release
+        /p:RunAnalyzers=true
+        /p:AnalysisLevel=latest
+        /p:EnforceCodeStyleInBuild=true
 
   security-scan:
     name: Security Scan
@@ -146,14 +147,19 @@ jobs:
       uses: actions/setup-dotnet@v5
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-        
-    - name: Run security audit
+
+    - name: Restore dependencies
       run: |
-        dotnet list HelloblueGK.csproj package --vulnerable --include-transitive
-        dotnet list WebAPI/HelloblueGK.WebAPI.csproj package --vulnerable --include-transitive
-        dotnet list Tests/HelloblueGK.Tests.csproj package --vulnerable --include-transitive
+        dotnet restore HelloblueGK.csproj
+        dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
+        dotnet restore Tests/HelloblueGK.Tests.csproj
+
+    - name: Fail on vulnerable NuGet packages
+      run: |
+        chmod +x .github/scripts/fail-on-vulnerable-packages.sh
+        .github/scripts/fail-on-vulnerable-packages.sh
       
-    - name: Check for known vulnerabilities
+    - name: Report deprecated packages
       run: |
         dotnet list HelloblueGK.csproj package --deprecated
         dotnet list WebAPI/HelloblueGK.WebAPI.csproj package --deprecated
@@ -182,9 +188,15 @@ jobs:
     steps:
     - name: Check overall status
       run: |
-        echo "✅ All CI/CD checks completed"
+        echo "CI/CD checks completed"
         echo "Build: ${{ needs.build.result }}"
         echo "Integration Tests: ${{ needs.integration-tests.result }}"
         echo "Code Quality: ${{ needs.code-quality.result }}"
         echo "Security Scan: ${{ needs.security-scan.result }}"
-
+        if [ "${{ needs.build.result }}" != "success" ] || \
+           [ "${{ needs.integration-tests.result }}" != "success" ] || \
+           [ "${{ needs.code-quality.result }}" != "success" ] || \
+           [ "${{ needs.security-scan.result }}" != "success" ]; then
+          echo "One or more required jobs failed"
+          exit 1
+        fi

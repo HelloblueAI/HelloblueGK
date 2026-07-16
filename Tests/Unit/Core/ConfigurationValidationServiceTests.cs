@@ -62,7 +62,12 @@ public class ConfigurationValidationServiceTests
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["Jwt:Key"] = "super-secret-jwt-key-that-should-not-leak",
-                ["ConnectionStrings:DefaultConnection"] = "Host=db;Username=admin;Password=secret-password"
+                ["ConnectionStrings:DefaultConnection"] = new Npgsql.NpgsqlConnectionStringBuilder
+                {
+                    Host = "db",
+                    Username = "admin",
+                    Password = "secret-password"
+                }.ConnectionString
             })
             .Build();
         var service = new ConfigurationValidationService(configuration, _mockLogger.Object);
