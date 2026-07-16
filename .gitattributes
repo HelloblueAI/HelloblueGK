@@ -1,0 +1,39 @@
+# Normalize text files; keep diffs readable on Linux/macOS/Windows.
+* text=auto eol=lf
+
+# .NET / project files
+*.cs        text diff=csharp
+*.csproj    text
+*.sln       text
+*.props     text
+*.targets   text
+*.json      text
+*.yml       text
+*.yaml      text
+*.md        text
+*.sh        text eol=lf
+
+# Windows scripts keep CRLF when present
+*.bat       text eol=crlf
+*.cmd       text eol=crlf
+*.ps1       text eol=crlf
+
+# Binary assets
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.pdf       binary
+*.dll       binary
+*.so        binary
+*.dylib     binary
+*.exe       binary
+*.pdb       binary
+*.nupkg     binary
+*.snupkg    binary
+*.zip       binary
+*.gz        binary
+*.tgz       binary
+*.woff      binary
+*.woff2     binary

@@ -238,3 +238,7 @@ BRANCH_STRATEGY*.md
 CEO_UPDATE_EMAIL.md
 .env.hellobluegk
 .env.*
+
+## Local git recovery / history rewrite backups ##
+*.bundle
+*.bundle.zstd
