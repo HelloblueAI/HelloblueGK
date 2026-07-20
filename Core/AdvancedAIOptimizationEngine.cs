@@ -21,8 +21,10 @@ namespace HB_NLP_Research_Lab.Core
         private readonly MultiObjectiveOptimizer _multiObjectiveOptimizer;
         private readonly PerformancePredictor _performancePredictor;
         private readonly InnovationAnalyzer _innovationAnalyzer;
-        
+
+        private const int MaximumCachedOptimizations = 256;
         private readonly ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>> _optimizationCache;
+        private readonly object _cacheLock = new();
 
         public AdvancedAIOptimizationEngine()
         {
@@ -40,11 +42,27 @@ namespace HB_NLP_Research_Lab.Core
             
             // Check cache first
             var cacheKey = GenerateCacheKey(parameters);
-            var optimization = _optimizationCache.GetOrAdd(
-                cacheKey,
-                _ => new Lazy<Task<OptimizationResult>>(
+            if (!_optimizationCache.TryGetValue(cacheKey, out var optimization))
+            {
+                var candidate = new Lazy<Task<OptimizationResult>>(
                     () => PerformMultiStageOptimizationAsync(parameters),
-                    LazyThreadSafetyMode.ExecutionAndPublication));
+                    LazyThreadSafetyMode.ExecutionAndPublication);
+
+                lock (_cacheLock)
+                {
+                    if (!_optimizationCache.TryGetValue(cacheKey, out optimization)
+                        && _optimizationCache.Count < MaximumCachedOptimizations)
+                    {
+                        _optimizationCache[cacheKey] = candidate;
+                        optimization = candidate;
+                    }
+                }
+            }
+
+            // Continue serving new parameter sets without retaining them once the
+            // bounded cache is full.
+            if (optimization == null)
+                return await PerformMultiStageOptimizationAsync(parameters);
 
             try
             {
@@ -52,9 +70,13 @@ namespace HB_NLP_Research_Lab.Core
             }
             catch
             {
-                // Do not permanently cache a transient failure. Removing by key is
-                // safe because entries are never replaced while they are running.
-                _optimizationCache.TryRemove(cacheKey, out _);
+                // Remove only this failed lazy value so another caller's retry
+                // cannot be evicted by an earlier waiter observing the failure.
+                lock (_cacheLock)
+                {
+                    ((ICollection<KeyValuePair<string, Lazy<Task<OptimizationResult>>>>)_optimizationCache)
+                        .Remove(new KeyValuePair<string, Lazy<Task<OptimizationResult>>>(cacheKey, optimization));
+                }
                 throw;
             }
         }

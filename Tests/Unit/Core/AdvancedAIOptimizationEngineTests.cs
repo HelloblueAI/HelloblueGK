@@ -25,4 +25,29 @@ public class AdvancedAIOptimizationEngineTests
         // Assert
         results.Should().OnlyContain(result => ReferenceEquals(result, results[0]));
     }
+
+    [Fact]
+    public async Task ManyUniqueOptimizations_ShouldKeepCacheBounded()
+    {
+        // Arrange
+        var engine = new AdvancedAIOptimizationEngine();
+        var requests = Enumerable.Range(0, 300)
+            .Select(index => new EngineDesignParameters
+            {
+                Thrust = 1_500_000 + index,
+                SpecificImpulse = 380,
+                ChamberPressure = 20_000_000,
+                Efficiency = 0.92
+            });
+
+        // Act
+        await Task.WhenAll(requests.Select(engine.OptimizeEngineDesignAsync));
+
+        // Assert
+        var cacheField = typeof(AdvancedAIOptimizationEngine)
+            .GetField("_optimizationCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var cache = cacheField.Should().NotBeNull().And.Subject.GetValue(engine);
+        var cacheCount = (int)cache!.GetType().GetProperty("Count")!.GetValue(cache)!;
+        cacheCount.Should().BeLessThanOrEqualTo(256);
+    }
 }
