@@ -51,7 +51,9 @@ namespace HB_NLP_Research_Lab.Core
             var optimization = _inflightOptimizations.GetOrAdd(
                 cacheKey,
                 _ => new Lazy<Task<OptimizationResult>>(
-                    () => PerformMultiStageOptimizationAsync(parameters),
+                    () => _optimizationCache.TryGetValue(cacheKey, out var completedResult)
+                        ? Task.FromResult(completedResult)
+                        : PerformMultiStageOptimizationAsync(parameters),
                     LazyThreadSafetyMode.ExecutionAndPublication));
 
             try

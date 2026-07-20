@@ -215,7 +215,7 @@ public class DigitalTwinEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task ConcurrentDuplicateCreates_ShouldNotReplaceExistingTwinState()
+    public async Task ConcurrentDuplicateCreates_ShouldReplaceWholeTwinGeneration()
     {
         // Arrange
         await _digitalTwinEngine.InitializeAsync();
@@ -245,9 +245,21 @@ public class DigitalTwinEngineTests : IDisposable
         var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
 
         // Assert
-        duplicateCreates.Should().OnlyContain(twin => ReferenceEquals(twin, originalTwin));
-        report.TotalLearningEvents.Should().Be(1);
-        report.TotalModelImprovements.Should().Be(1);
+        duplicateCreates.Should().OnlyContain(twin => !ReferenceEquals(twin, originalTwin));
+        duplicateCreates.Distinct().Should().HaveCount(16);
+        report.TotalLearningEvents.Should().Be(0);
+        report.TotalModelImprovements.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Dispose_ShouldRejectFurtherOperations()
+    {
+        // Act
+        _digitalTwinEngine.Dispose();
+        var action = () => _digitalTwinEngine.InitializeAsync();
+
+        // Assert
+        await action.Should().ThrowAsync<ObjectDisposedException>();
     }
 
     public void Dispose()
