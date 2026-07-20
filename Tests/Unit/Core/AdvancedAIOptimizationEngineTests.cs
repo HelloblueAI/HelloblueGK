@@ -46,7 +46,8 @@ public class AdvancedAIOptimizationEngineTests
         // Assert
         var cacheField = typeof(AdvancedAIOptimizationEngine)
             .GetField("_optimizationCache", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
-        var cache = cacheField.Should().NotBeNull().And.Subject.GetValue(engine);
+        cacheField.Should().NotBeNull();
+        var cache = cacheField!.GetValue(engine);
         var cacheCount = (int)cache!.GetType().GetProperty("Count")!.GetValue(cache)!;
         cacheCount.Should().BeLessThanOrEqualTo(256);
     }
