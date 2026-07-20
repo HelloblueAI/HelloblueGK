@@ -71,17 +71,21 @@ namespace HB_NLP_Research_Lab.Core
             await _learningEngine.InitializeAsync();
             
             await Task.Delay(300); // Simulate initialization time
-            
-            _isInitialized = true;
-            
-            return new DigitalTwinStatus
+
+            lock (_lifecycleLock)
             {
-                IsReady = true,
-                ActiveSystems = new[] { "Live Learning", "Predictive Twin", "Autonomous Testing", "Real-Time Learning" },
-                LearningMode = "Continuous",
-                PredictionAccuracy = "99.9%",
-                TwinCount = _digitalTwins.Count
-            };
+                ThrowIfDisposed();
+                _isInitialized = true;
+
+                return new DigitalTwinStatus
+                {
+                    IsReady = true,
+                    ActiveSystems = new[] { "Live Learning", "Predictive Twin", "Autonomous Testing", "Real-Time Learning" },
+                    LearningMode = "Continuous",
+                    PredictionAccuracy = "99.9%",
+                    TwinCount = _digitalTwins.Count
+                };
+            }
         }
 
         public async Task<EngineDigitalTwin> CreateDigitalTwinAsync(string engineId, EngineModel engineModel)
@@ -242,63 +246,70 @@ namespace HB_NLP_Research_Lab.Core
             await engineGate.WaitAsync();
             try
             {
-                if (!_digitalTwins.ContainsKey(engineId))
-                {
-                    Console.WriteLine($"[Digital Twin] ERROR: Digital twin not found for engine: {engineId}");
-                    throw new ArgumentException($"Digital twin not found for engine: {engineId}");
-                }
-
-                Console.WriteLine($"[Digital Twin] 📚 Learning from Test Flight Data for {engineId}...");
-
-                var learningEvent = new LearningEvent
-                {
-                    Timestamp = DateTime.UtcNow,
-                    EventType = "TestFlight",
-                    FlightData = flightData,
-                    LearningMetrics = await _liveLearning.ProcessLearningEventAsync(flightData)
-                };
-
-                var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
-                var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
-                var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(engineId, flightData);
-
-                // Commit the learning result only after every asynchronous stage
-                // succeeds and while replacement/disposal are excluded.
-                lock (_lifecycleLock)
-                {
-                    ThrowIfDisposed();
-                    lock (GetHistoryLock(engineId))
-                    {
-                        if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
-                            throw new InvalidOperationException($"Digital twin was removed while learning: {engineId}");
-
-                        var history = _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
-                        history.LearningEvents.Add(learningEvent);
-                        history.ModelImprovements.Add(modelImprovement);
-                        _predictionAccuracies[engineId] = accuracyUpdate;
-                        digitalTwin.LastUpdateTimestamp = DateTime.UtcNow;
-                        digitalTwin.PredictionAccuracy = accuracyUpdate.OverallAccuracy;
-                    }
-                }
-
-                Console.WriteLine($"[Digital Twin] Learning complete for {engineId}");
-                Console.WriteLine($"[Digital Twin] Model improvement: {modelImprovement.ImprovementPercentage:P2}");
-                Console.WriteLine($"[Digital Twin] Updated prediction accuracy: {accuracyUpdate.OverallAccuracy:P3}");
-
-                return new LiveLearningResult
-                {
-                    EngineId = engineId,
-                    LearningEvent = learningEvent,
-                    AILearningResult = aiLearningResult,
-                    ModelImprovement = modelImprovement,
-                    UpdatedPredictionAccuracy = accuracyUpdate,
-                    LearningTimestamp = DateTime.UtcNow
-                };
+                return await LearnFromTestFlightWithGateAsync(engineId, flightData);
             }
             finally
             {
                 engineGate.Release();
             }
+        }
+
+        private async Task<LiveLearningResult> LearnFromTestFlightWithGateAsync(
+            string engineId,
+            TestFlightData flightData)
+        {
+            if (!_digitalTwins.ContainsKey(engineId))
+            {
+                Console.WriteLine($"[Digital Twin] ERROR: Digital twin not found for engine: {engineId}");
+                throw new ArgumentException($"Digital twin not found for engine: {engineId}");
+            }
+
+            Console.WriteLine($"[Digital Twin] 📚 Learning from Test Flight Data for {engineId}...");
+
+            var learningEvent = new LearningEvent
+            {
+                Timestamp = DateTime.UtcNow,
+                EventType = "TestFlight",
+                FlightData = flightData,
+                LearningMetrics = await _liveLearning.ProcessLearningEventAsync(flightData)
+            };
+
+            var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
+            var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
+            var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(engineId, flightData);
+
+            // Commit the learning result only after every asynchronous stage
+            // succeeds and while replacement/disposal are excluded.
+            lock (_lifecycleLock)
+            {
+                ThrowIfDisposed();
+                lock (GetHistoryLock(engineId))
+                {
+                    if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
+                        throw new InvalidOperationException($"Digital twin was removed while learning: {engineId}");
+
+                    var history = _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
+                    history.LearningEvents.Add(learningEvent);
+                    history.ModelImprovements.Add(modelImprovement);
+                    _predictionAccuracies[engineId] = accuracyUpdate;
+                    digitalTwin.LastUpdateTimestamp = DateTime.UtcNow;
+                    digitalTwin.PredictionAccuracy = accuracyUpdate.OverallAccuracy;
+                }
+            }
+
+            Console.WriteLine($"[Digital Twin] Learning complete for {engineId}");
+            Console.WriteLine($"[Digital Twin] Model improvement: {modelImprovement.ImprovementPercentage:P2}");
+            Console.WriteLine($"[Digital Twin] Updated prediction accuracy: {accuracyUpdate.OverallAccuracy:P3}");
+
+            return new LiveLearningResult
+            {
+                EngineId = engineId,
+                LearningEvent = learningEvent,
+                AILearningResult = aiLearningResult,
+                ModelImprovement = modelImprovement,
+                UpdatedPredictionAccuracy = accuracyUpdate,
+                LearningTimestamp = DateTime.UtcNow
+            };
         }
 
         public async Task<EnginePrediction> PredictEngineBehaviorAsync(string engineId, PredictionScenario scenario)
@@ -351,41 +362,45 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<AutonomousTestingResult> RunAutonomousTestsAsync(string engineId, TestingRequirements requirements)
         {
             ThrowIfDisposed();
-            // Use TryGetValue instead of ContainsKey + indexer for efficiency
-            if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
-                throw new ArgumentException($"Digital twin not found for engine: {engineId}");
+            var engineGate = GetEngineGate(engineId);
+            await engineGate.WaitAsync();
+            try
+            {
+                if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
+                    throw new ArgumentException($"Digital twin not found for engine: {engineId}");
 
-            Console.WriteLine($"[Digital Twin] 🧪 Running Autonomous Tests for {engineId}...");
-            var engineArchitecture = new EngineArchitecture
-            {
-                Id = engineId,
-                Name = digitalTwin.EngineModel.Name
-            };
-            
-            // Design and run autonomous tests
-            var testResult = await _autonomousTesting.DesignAndRunTestsAsync(engineArchitecture, requirements);
-            
-            // Learn from test results
-            var testFlightData = new TestFlightData
-            {
-                EngineId = engineId,
-                FlightDate = DateTime.UtcNow,
-                FlightMetrics = new Dictionary<string, double>
+                Console.WriteLine($"[Digital Twin] 🧪 Running Autonomous Tests for {engineId}...");
+                var engineArchitecture = new EngineArchitecture
                 {
-                    ["Thrust"] = testResult.Analysis.AveragePerformance * 1500000,
-                    ["Efficiency"] = testResult.Analysis.AveragePerformance,
-                    ["Reliability"] = testResult.Analysis.ReliabilityScore
-                }
-            };
-            
-            // Update digital twin with test results
-            await LearnFromTestFlightAsync(engineId, testFlightData);
-            
-            Console.WriteLine($"[Digital Twin] Autonomous testing complete for {engineId}");
-            Console.WriteLine($"[Digital Twin] Test coverage: {testResult.TestCoverage:P2}");
-            Console.WriteLine($"[Digital Twin] Test accuracy: {testResult.TestAccuracy:P2}");
-            
-            return testResult;
+                    Id = engineId,
+                    Name = digitalTwin.EngineModel.Name
+                };
+
+                var testResult = await _autonomousTesting.DesignAndRunTestsAsync(engineArchitecture, requirements);
+                var testFlightData = new TestFlightData
+                {
+                    EngineId = engineId,
+                    FlightDate = DateTime.UtcNow,
+                    FlightMetrics = new Dictionary<string, double>
+                    {
+                        ["Thrust"] = testResult.Analysis.AveragePerformance * 1500000,
+                        ["Efficiency"] = testResult.Analysis.AveragePerformance,
+                        ["Reliability"] = testResult.Analysis.ReliabilityScore
+                    }
+                };
+
+                await LearnFromTestFlightWithGateAsync(engineId, testFlightData);
+
+                Console.WriteLine($"[Digital Twin] Autonomous testing complete for {engineId}");
+                Console.WriteLine($"[Digital Twin] Test coverage: {testResult.TestCoverage:P2}");
+                Console.WriteLine($"[Digital Twin] Test accuracy: {testResult.TestAccuracy:P2}");
+
+                return testResult;
+            }
+            finally
+            {
+                engineGate.Release();
+            }
         }
 
         public async Task<MultiPhysicsPrediction> RunPredictiveMultiPhysicsAsync(string engineId, EngineModel engineModel)

@@ -262,6 +262,44 @@ public class DigitalTwinEngineTests : IDisposable
         await action.Should().ThrowAsync<ObjectDisposedException>();
     }
 
+    [Fact]
+    public async Task DisposeDuringInitialization_ShouldNotReturnReady()
+    {
+        // Act
+        var initialization = _digitalTwinEngine.InitializeAsync();
+        await Task.Delay(50);
+        _digitalTwinEngine.Dispose();
+
+        // Assert
+        await initialization.Should().ThrowAsync<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public async Task ForceCreateDuringAutonomousTest_ShouldNotApplyOldResultsToReplacement()
+    {
+        // Arrange
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "AutonomousReplacementEngine";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Original Engine", Parameters = new Dictionary<string, double>() });
+
+        // Act
+        var autonomousTest = _digitalTwinEngine.RunAutonomousTestsAsync(
+            engineId,
+            new TestingRequirements { TestType = "Regression" });
+        await Task.Delay(50);
+        var replacement = _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Replacement Engine", Parameters = new Dictionary<string, double>() });
+        await Task.WhenAll(autonomousTest, replacement);
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+
+        // Assert
+        report.TotalLearningEvents.Should().Be(0);
+        report.TotalModelImprovements.Should().Be(0);
+    }
+
     public void Dispose()
     {
         _digitalTwinEngine?.Dispose();
