@@ -172,6 +172,135 @@ public class DigitalTwinEngineTests : IDisposable
         report.PredictionAccuracy.Should().BeGreaterThanOrEqualTo(0);
     }
 
+    [Fact]
+    public async Task ConcurrentLearningAndPredictions_ShouldPreserveCompleteHistory()
+    {
+        // Arrange
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "ConcurrentEngine";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Concurrent Test Engine", Parameters = new Dictionary<string, double>() });
+
+        const int operationCount = 32;
+        var learningTasks = Enumerable.Range(0, operationCount)
+            .Select(index => _digitalTwinEngine.LearnFromTestFlightAsync(
+                engineId,
+                new TestFlightData
+                {
+                    EngineId = engineId,
+                    FlightDate = DateTime.UtcNow,
+                    FlightMetrics = new Dictionary<string, double> { ["Sequence"] = index }
+                }));
+        var predictionTasks = Enumerable.Range(0, operationCount)
+            .Select(index => _digitalTwinEngine.PredictEngineBehaviorAsync(
+                engineId,
+                new PredictionScenario
+                {
+                    Name = $"Concurrent scenario {index}",
+                    Parameters = new Dictionary<string, object>()
+                }));
+
+        // Act
+        await Task.WhenAll(learningTasks.Cast<Task>().Concat(predictionTasks));
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+        var summary = await _digitalTwinEngine.GenerateDigitalTwinSummaryAsync();
+
+        // Assert
+        report.TotalLearningEvents.Should().Be(operationCount);
+        report.TotalModelImprovements.Should().Be(operationCount);
+        report.TotalPredictions.Should().Be(operationCount);
+        summary.TotalLearningEvents.Should().Be(operationCount);
+        summary.TotalPredictions.Should().Be(operationCount);
+    }
+
+    [Fact]
+    public async Task ConcurrentDuplicateCreates_ShouldReplaceWholeTwinGeneration()
+    {
+        // Arrange
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "StableEngine";
+        var originalTwin = await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Original Engine", Parameters = new Dictionary<string, double>() });
+        await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double> { ["Thrust"] = 1_500_000 }
+            });
+
+        // Act
+        var duplicateCreates = await Task.WhenAll(
+            Enumerable.Range(0, 16)
+                .Select(index => _digitalTwinEngine.CreateDigitalTwinAsync(
+                    engineId,
+                    new EngineModel
+                    {
+                        Name = $"Replacement {index}",
+                        Parameters = new Dictionary<string, double>()
+                    })));
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+
+        // Assert
+        duplicateCreates.Should().OnlyContain(twin => !ReferenceEquals(twin, originalTwin));
+        duplicateCreates.Distinct().Should().HaveCount(16);
+        report.TotalLearningEvents.Should().Be(0);
+        report.TotalModelImprovements.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Dispose_ShouldRejectFurtherOperations()
+    {
+        // Act
+        _digitalTwinEngine.Dispose();
+        var action = () => _digitalTwinEngine.InitializeAsync();
+
+        // Assert
+        await action.Should().ThrowAsync<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public async Task DisposeDuringInitialization_ShouldNotReturnReady()
+    {
+        // Act
+        var initialization = _digitalTwinEngine.InitializeAsync();
+        await Task.Delay(50);
+        _digitalTwinEngine.Dispose();
+
+        // Assert
+        var action = async () => await initialization;
+        await action.Should().ThrowAsync<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public async Task ForceCreateDuringAutonomousTest_ShouldNotApplyOldResultsToReplacement()
+    {
+        // Arrange
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "AutonomousReplacementEngine";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Original Engine", Parameters = new Dictionary<string, double>() });
+
+        // Act
+        var autonomousTest = _digitalTwinEngine.RunAutonomousTestsAsync(
+            engineId,
+            new TestingRequirements { TestType = "Regression" });
+        await Task.Delay(50);
+        var replacement = _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Replacement Engine", Parameters = new Dictionary<string, double>() });
+        await Task.WhenAll(autonomousTest, replacement);
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+
+        // Assert
+        report.TotalLearningEvents.Should().Be(0);
+        report.TotalModelImprovements.Should().Be(0);
+    }
+
     public void Dispose()
     {
         _digitalTwinEngine?.Dispose();
