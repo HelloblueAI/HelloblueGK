@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Concurrent;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
@@ -20,8 +22,7 @@ namespace HB_NLP_Research_Lab.Core
         private readonly PerformancePredictor _performancePredictor;
         private readonly InnovationAnalyzer _innovationAnalyzer;
         
-        private readonly Dictionary<string, OptimizationResult> _optimizationCache;
-        private readonly object _cacheLock = new object();
+        private readonly ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>> _optimizationCache;
 
         public AdvancedAIOptimizationEngine()
         {
@@ -30,7 +31,7 @@ namespace HB_NLP_Research_Lab.Core
             _multiObjectiveOptimizer = new MultiObjectiveOptimizer();
             _performancePredictor = new PerformancePredictor();
             _innovationAnalyzer = new InnovationAnalyzer();
-            _optimizationCache = new Dictionary<string, OptimizationResult>();
+            _optimizationCache = new ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>>();
         }
 
         public async Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters)
@@ -39,22 +40,23 @@ namespace HB_NLP_Research_Lab.Core
             
             // Check cache first
             var cacheKey = GenerateCacheKey(parameters);
-            if (_optimizationCache.TryGetValue(cacheKey, out var cachedResult))
-            {
-                Console.WriteLine($"[Advanced AI] Using cached optimization result");
-                return cachedResult;
-            }
+            var optimization = _optimizationCache.GetOrAdd(
+                cacheKey,
+                _ => new Lazy<Task<OptimizationResult>>(
+                    () => PerformMultiStageOptimizationAsync(parameters),
+                    LazyThreadSafetyMode.ExecutionAndPublication));
 
-            // Perform multi-stage optimization
-            var optimizationResult = await PerformMultiStageOptimizationAsync(parameters);
-            
-            // Cache the result
-            lock (_cacheLock)
+            try
             {
-                _optimizationCache[cacheKey] = optimizationResult;
+                return await optimization.Value;
             }
-            
-            return optimizationResult;
+            catch
+            {
+                // Do not permanently cache a transient failure. Removing by key is
+                // safe because entries are never replaced while they are running.
+                _optimizationCache.TryRemove(cacheKey, out _);
+                throw;
+            }
         }
 
         private async Task<OptimizationResult> PerformMultiStageOptimizationAsync(EngineDesignParameters parameters)

@@ -28,6 +28,7 @@ namespace HB_NLP_Research_Lab.Core
         private readonly ConcurrentDictionary<string, EngineDigitalTwin> _digitalTwins;
         private readonly ConcurrentDictionary<string, LearningHistory> _learningHistories;
         private readonly ConcurrentDictionary<string, PredictionAccuracy> _predictionAccuracies;
+        private readonly ConcurrentDictionary<string, object> _historyLocks;
         
         private bool _isInitialized = false;
 
@@ -46,6 +47,7 @@ namespace HB_NLP_Research_Lab.Core
             _digitalTwins = new ConcurrentDictionary<string, EngineDigitalTwin>();
             _learningHistories = new ConcurrentDictionary<string, LearningHistory>();
             _predictionAccuracies = new ConcurrentDictionary<string, PredictionAccuracy>();
+            _historyLocks = new ConcurrentDictionary<string, object>();
         }
 
         public async Task<DigitalTwinStatus> InitializeAsync()
@@ -117,13 +119,10 @@ namespace HB_NLP_Research_Lab.Core
             };
             
             // Initialize learning history
-            _learningHistories[engineId] = new LearningHistory
+            lock (GetHistoryLock(engineId))
             {
-                EngineId = engineId,
-                LearningEvents = new List<LearningEvent>(),
-                ModelImprovements = new List<ModelImprovement>(),
-                PredictionHistory = new List<PredictionRecord>()
-            };
+                _learningHistories[engineId] = CreateLearningHistory(engineId);
+            }
             
             // Initialize prediction accuracy tracking
             _predictionAccuracies[engineId] = new PredictionAccuracy
@@ -163,13 +162,7 @@ namespace HB_NLP_Research_Lab.Core
             if (!_isInitialized)
                 await InitializeAsync();
 
-            _learningHistories.GetOrAdd(engineId, static id => new LearningHistory
-            {
-                EngineId = id,
-                LearningEvents = new List<LearningEvent>(),
-                ModelImprovements = new List<ModelImprovement>(),
-                PredictionHistory = new List<PredictionRecord>()
-            });
+            _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
 
             _predictionAccuracies.GetOrAdd(engineId, id => new PredictionAccuracy
             {
@@ -210,16 +203,10 @@ namespace HB_NLP_Research_Lab.Core
                 throw new ArgumentNullException(nameof(flightData));
             }
             // Use TryGetValue instead of ContainsKey + indexer for efficiency
-            if (!_learningHistories.TryGetValue(engineId, out var learningHistory) || learningHistory == null)
+            if (!_learningHistories.ContainsKey(engineId))
             {
                 Console.WriteLine($"[Digital Twin] WARNING: Learning history missing for {engineId}, initializing new history.");
-                _learningHistories[engineId] = new LearningHistory
-                {
-                    EngineId = engineId,
-                    LearningEvents = new List<LearningEvent>(),
-                    ModelImprovements = new List<ModelImprovement>(),
-                    PredictionHistory = new List<PredictionRecord>()
-                };
+                _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
             }
             // Use TryGetValue instead of ContainsKey + indexer for efficiency
             if (!_predictionAccuracies.TryGetValue(engineId, out var predictionAccuracy) || predictionAccuracy == null)
@@ -251,14 +238,20 @@ namespace HB_NLP_Research_Lab.Core
                 LearningMetrics = await _liveLearning.ProcessLearningEventAsync(flightData)
             };
             
-            _learningHistories[engineId].LearningEvents.Add(learningEvent);
+            lock (GetHistoryLock(engineId))
+            {
+                _learningHistories.GetOrAdd(engineId, CreateLearningHistory).LearningEvents.Add(learningEvent);
+            }
             
             // Update AI models with new data
             var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
             
             // Update prediction models
             var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
-            _learningHistories[engineId].ModelImprovements.Add(modelImprovement);
+            lock (GetHistoryLock(engineId))
+            {
+                _learningHistories.GetOrAdd(engineId, CreateLearningHistory).ModelImprovements.Add(modelImprovement);
+            }
             
             // Update prediction accuracy
             var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(engineId, flightData);
@@ -310,7 +303,10 @@ namespace HB_NLP_Research_Lab.Core
                 ExpectedAccuracy = predictionAccuracy.OverallAccuracy
             };
             
-            _learningHistories[engineId].PredictionHistory.Add(predictionRecord);
+            lock (GetHistoryLock(engineId))
+            {
+                _learningHistories.GetOrAdd(engineId, CreateLearningHistory).PredictionHistory.Add(predictionRecord);
+            }
             
             Console.WriteLine($"[Digital Twin] Prediction complete for {engineId}");
             Console.WriteLine($"[Digital Twin] Confidence level: {prediction.ConfidenceLevel:P2}");
@@ -413,13 +409,11 @@ namespace HB_NLP_Research_Lab.Core
             if (_predictionAccuracies != null && _predictionAccuracies.Count > 0)
                 avgPredictionAccuracy = _predictionAccuracies.Values.Average(p => p.OverallAccuracy);
 
-            int totalLearningEvents = 0;
-            if (_learningHistories != null && _learningHistories.Count > 0)
-                totalLearningEvents = _learningHistories.Values.Sum(h => h.LearningEvents != null ? h.LearningEvents.Count : 0);
-
-            int totalPredictions = 0;
-            if (_learningHistories != null && _learningHistories.Count > 0)
-                totalPredictions = _learningHistories.Values.Sum(h => h.PredictionHistory != null ? h.PredictionHistory.Count : 0);
+            var historyCounts = _learningHistories.Keys
+                .Select(GetHistoryCounts)
+                .ToArray();
+            int totalLearningEvents = historyCounts.Sum(counts => counts.LearningEvents);
+            int totalPredictions = historyCounts.Sum(counts => counts.Predictions);
 
             var summary = new DigitalTwinSummary
             {
@@ -446,28 +440,22 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(1); // Simulate async operation
             
             // Use TryGetValue instead of ContainsKey + indexer for efficiency
-            if (_learningHistories == null || !_learningHistories.TryGetValue(engineId, out var history))
-                throw new ArgumentException($"Learning history not found for engine: {engineId}");
-
-            // Use TryGetValue instead of ContainsKey + indexer for efficiency
-            var accuracy = _predictionAccuracies != null && _predictionAccuracies.TryGetValue(engineId, out var acc)
+            var accuracy = _predictionAccuracies.TryGetValue(engineId, out var acc)
                 ? acc
                 : new PredictionAccuracy { OverallAccuracy = 0.0 };
 
-            int totalLearningEvents = history.LearningEvents != null ? history.LearningEvents.Count : 0;
-            int totalModelImprovements = history.ModelImprovements != null ? history.ModelImprovements.Count : 0;
-            int totalPredictions = history.PredictionHistory != null ? history.PredictionHistory.Count : 0;
-            double avgModelImprovement = 0.0;
-            if (history.ModelImprovements != null && history.ModelImprovements.Count > 0)
-                avgModelImprovement = history.ModelImprovements.Average(m => m.ImprovementPercentage);
+            if (!_learningHistories.ContainsKey(engineId))
+                throw new ArgumentException($"Learning history not found for engine: {engineId}");
+
+            var historyCounts = GetHistoryCounts(engineId);
 
             var report = new LearningPerformanceReport
             {
                 EngineId = engineId,
-                TotalLearningEvents = totalLearningEvents,
-                TotalModelImprovements = totalModelImprovements,
-                TotalPredictions = totalPredictions,
-                AverageModelImprovement = avgModelImprovement,
+                TotalLearningEvents = historyCounts.LearningEvents,
+                TotalModelImprovements = historyCounts.ModelImprovements,
+                TotalPredictions = historyCounts.Predictions,
+                AverageModelImprovement = historyCounts.AverageModelImprovement,
                 PredictionAccuracy = accuracy.OverallAccuracy,
                 LearningTrend = "Improving",
                 PerformanceRating = "Excellent"
@@ -476,12 +464,44 @@ namespace HB_NLP_Research_Lab.Core
             return report;
         }
 
+        private static LearningHistory CreateLearningHistory(string engineId) => new()
+        {
+            EngineId = engineId,
+            LearningEvents = new List<LearningEvent>(),
+            ModelImprovements = new List<ModelImprovement>(),
+            PredictionHistory = new List<PredictionRecord>()
+        };
+
+        private object GetHistoryLock(string engineId) =>
+            _historyLocks.GetOrAdd(engineId, static _ => new object());
+
+        private (int LearningEvents, int ModelImprovements, int Predictions, double AverageModelImprovement)
+            GetHistoryCounts(string engineId)
+        {
+            lock (GetHistoryLock(engineId))
+            {
+                if (!_learningHistories.TryGetValue(engineId, out var history))
+                    return (0, 0, 0, 0.0);
+
+                int learningEvents = history.LearningEvents?.Count ?? 0;
+                var modelImprovementHistory = history.ModelImprovements;
+                int modelImprovements = modelImprovementHistory?.Count ?? 0;
+                int predictions = history.PredictionHistory?.Count ?? 0;
+                double averageModelImprovement = modelImprovements > 0
+                    ? modelImprovementHistory!.Average(improvement => improvement.ImprovementPercentage)
+                    : 0.0;
+
+                return (learningEvents, modelImprovements, predictions, averageModelImprovement);
+            }
+        }
+
         public void Dispose()
         {
             // Cleanup resources
             _digitalTwins.Clear();
             _learningHistories.Clear();
             _predictionAccuracies.Clear();
+            _historyLocks.Clear();
         }
     }
 

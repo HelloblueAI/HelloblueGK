@@ -172,6 +172,48 @@ public class DigitalTwinEngineTests : IDisposable
         report.PredictionAccuracy.Should().BeGreaterThanOrEqualTo(0);
     }
 
+    [Fact]
+    public async Task ConcurrentLearningAndPredictions_ShouldPreserveCompleteHistory()
+    {
+        // Arrange
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "ConcurrentEngine";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Concurrent Test Engine", Parameters = new Dictionary<string, double>() });
+
+        const int operationCount = 32;
+        var learningTasks = Enumerable.Range(0, operationCount)
+            .Select(index => _digitalTwinEngine.LearnFromTestFlightAsync(
+                engineId,
+                new TestFlightData
+                {
+                    EngineId = engineId,
+                    FlightDate = DateTime.UtcNow,
+                    FlightMetrics = new Dictionary<string, double> { ["Sequence"] = index }
+                }));
+        var predictionTasks = Enumerable.Range(0, operationCount)
+            .Select(index => _digitalTwinEngine.PredictEngineBehaviorAsync(
+                engineId,
+                new PredictionScenario
+                {
+                    Name = $"Concurrent scenario {index}",
+                    Parameters = new Dictionary<string, object>()
+                }));
+
+        // Act
+        await Task.WhenAll(learningTasks.Cast<Task>().Concat(predictionTasks));
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+        var summary = await _digitalTwinEngine.GenerateDigitalTwinSummaryAsync();
+
+        // Assert
+        report.TotalLearningEvents.Should().Be(operationCount);
+        report.TotalModelImprovements.Should().Be(operationCount);
+        report.TotalPredictions.Should().Be(operationCount);
+        summary.TotalLearningEvents.Should().Be(operationCount);
+        summary.TotalPredictions.Should().Be(operationCount);
+    }
+
     public void Dispose()
     {
         _digitalTwinEngine?.Dispose();
