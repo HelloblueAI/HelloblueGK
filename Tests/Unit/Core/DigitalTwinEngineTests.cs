@@ -271,7 +271,8 @@ public class DigitalTwinEngineTests : IDisposable
         _digitalTwinEngine.Dispose();
 
         // Assert
-        await initialization.Should().ThrowAsync<ObjectDisposedException>();
+        var action = async () => await initialization;
+        await action.Should().ThrowAsync<ObjectDisposedException>();
     }
 
     [Fact]
