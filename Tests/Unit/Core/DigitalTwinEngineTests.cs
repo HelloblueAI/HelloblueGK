@@ -214,6 +214,42 @@ public class DigitalTwinEngineTests : IDisposable
         summary.TotalPredictions.Should().Be(operationCount);
     }
 
+    [Fact]
+    public async Task ConcurrentDuplicateCreates_ShouldNotReplaceExistingTwinState()
+    {
+        // Arrange
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "StableEngine";
+        var originalTwin = await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Original Engine", Parameters = new Dictionary<string, double>() });
+        await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double> { ["Thrust"] = 1_500_000 }
+            });
+
+        // Act
+        var duplicateCreates = await Task.WhenAll(
+            Enumerable.Range(0, 16)
+                .Select(index => _digitalTwinEngine.CreateDigitalTwinAsync(
+                    engineId,
+                    new EngineModel
+                    {
+                        Name = $"Replacement {index}",
+                        Parameters = new Dictionary<string, double>()
+                    })));
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+
+        // Assert
+        duplicateCreates.Should().OnlyContain(twin => ReferenceEquals(twin, originalTwin));
+        report.TotalLearningEvents.Should().Be(1);
+        report.TotalModelImprovements.Should().Be(1);
+    }
+
     public void Dispose()
     {
         _digitalTwinEngine?.Dispose();

@@ -23,7 +23,9 @@ namespace HB_NLP_Research_Lab.Core
         private readonly InnovationAnalyzer _innovationAnalyzer;
 
         private const int MaximumCachedOptimizations = 256;
-        private readonly ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>> _optimizationCache;
+        private readonly ConcurrentDictionary<string, OptimizationResult> _optimizationCache;
+        private readonly ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>> _inflightOptimizations;
+        private readonly Queue<string> _cacheOrder = new();
         private readonly object _cacheLock = new();
 
         public AdvancedAIOptimizationEngine()
@@ -33,7 +35,8 @@ namespace HB_NLP_Research_Lab.Core
             _multiObjectiveOptimizer = new MultiObjectiveOptimizer();
             _performancePredictor = new PerformancePredictor();
             _innovationAnalyzer = new InnovationAnalyzer();
-            _optimizationCache = new ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>>();
+            _optimizationCache = new ConcurrentDictionary<string, OptimizationResult>();
+            _inflightOptimizations = new ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>>();
         }
 
         public async Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters)
@@ -42,42 +45,40 @@ namespace HB_NLP_Research_Lab.Core
             
             // Check cache first
             var cacheKey = GenerateCacheKey(parameters);
-            if (!_optimizationCache.TryGetValue(cacheKey, out var optimization))
-            {
-                var candidate = new Lazy<Task<OptimizationResult>>(
+            if (_optimizationCache.TryGetValue(cacheKey, out var cachedResult))
+                return cachedResult;
+
+            var optimization = _inflightOptimizations.GetOrAdd(
+                cacheKey,
+                _ => new Lazy<Task<OptimizationResult>>(
                     () => PerformMultiStageOptimizationAsync(parameters),
-                    LazyThreadSafetyMode.ExecutionAndPublication);
-
-                lock (_cacheLock)
-                {
-                    if (!_optimizationCache.TryGetValue(cacheKey, out optimization)
-                        && _optimizationCache.Count < MaximumCachedOptimizations)
-                    {
-                        _optimizationCache[cacheKey] = candidate;
-                        optimization = candidate;
-                    }
-                }
-            }
-
-            // Continue serving new parameter sets without retaining them once the
-            // bounded cache is full.
-            if (optimization == null)
-                return await PerformMultiStageOptimizationAsync(parameters);
+                    LazyThreadSafetyMode.ExecutionAndPublication));
 
             try
             {
-                return await optimization.Value;
-            }
-            catch
-            {
-                // Remove only this failed lazy value so another caller's retry
-                // cannot be evicted by an earlier waiter observing the failure.
+                var result = await optimization.Value;
+
                 lock (_cacheLock)
                 {
-                    ((ICollection<KeyValuePair<string, Lazy<Task<OptimizationResult>>>>)_optimizationCache)
-                        .Remove(new KeyValuePair<string, Lazy<Task<OptimizationResult>>>(cacheKey, optimization));
+                    if (!_optimizationCache.ContainsKey(cacheKey))
+                    {
+                        while (_optimizationCache.Count >= MaximumCachedOptimizations
+                            && _cacheOrder.TryDequeue(out var oldestKey))
+                        {
+                            _optimizationCache.TryRemove(oldestKey, out _);
+                        }
+
+                        _optimizationCache[cacheKey] = result;
+                        _cacheOrder.Enqueue(cacheKey);
+                    }
                 }
-                throw;
+
+                return result;
+            }
+            finally
+            {
+                ((ICollection<KeyValuePair<string, Lazy<Task<OptimizationResult>>>>)_inflightOptimizations)
+                    .Remove(new KeyValuePair<string, Lazy<Task<OptimizationResult>>>(cacheKey, optimization));
             }
         }
 

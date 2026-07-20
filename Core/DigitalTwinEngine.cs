@@ -118,24 +118,25 @@ namespace HB_NLP_Research_Lab.Core
                 TwinVersion = "1.0.0"
             };
             
-            // Initialize learning history
             lock (GetHistoryLock(engineId))
             {
+                if (_digitalTwins.TryGetValue(engineId, out var existingTwin))
+                    return existingTwin;
+
+                // Publish all per-engine state as one atomic generation. The twin
+                // is written last so readers never observe it without history.
                 _learningHistories[engineId] = CreateLearningHistory(engineId);
+                _predictionAccuracies[engineId] = new PredictionAccuracy
+                {
+                    EngineId = engineId,
+                    OverallAccuracy = 0.999,
+                    ThrustPredictionAccuracy = 0.998,
+                    ThermalPredictionAccuracy = 0.997,
+                    StructuralPredictionAccuracy = 0.999,
+                    FailurePredictionAccuracy = 0.999
+                };
+                _digitalTwins[engineId] = digitalTwin;
             }
-            
-            // Initialize prediction accuracy tracking
-            _predictionAccuracies[engineId] = new PredictionAccuracy
-            {
-                EngineId = engineId,
-                OverallAccuracy = 0.999,
-                ThrustPredictionAccuracy = 0.998,
-                ThermalPredictionAccuracy = 0.997,
-                StructuralPredictionAccuracy = 0.999,
-                FailurePredictionAccuracy = 0.999
-            };
-            
-            _digitalTwins[engineId] = digitalTwin;
             
             Console.WriteLine($"[Digital Twin] Digital Twin created successfully for {engineId}");
             Console.WriteLine($"[Digital Twin] Initial prediction accuracy: {digitalTwin.PredictionAccuracy:P3}");
@@ -162,28 +163,35 @@ namespace HB_NLP_Research_Lab.Core
             if (!_isInitialized)
                 await InitializeAsync();
 
-            _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
-
-            _predictionAccuracies.GetOrAdd(engineId, id => new PredictionAccuracy
+            lock (GetHistoryLock(engineId))
             {
-                EngineId = id,
-                OverallAccuracy = predictionAccuracy,
-                ThrustPredictionAccuracy = predictionAccuracy,
-                ThermalPredictionAccuracy = predictionAccuracy,
-                StructuralPredictionAccuracy = predictionAccuracy,
-                FailurePredictionAccuracy = predictionAccuracy
-            });
+                if (_digitalTwins.TryGetValue(engineId, out existingTwin))
+                    return existingTwin;
 
-            return _digitalTwins.GetOrAdd(engineId, id => new EngineDigitalTwin
-            {
-                EngineId = id,
-                EngineModel = engineModel,
-                CreationTimestamp = DateTime.UtcNow,
-                LastUpdateTimestamp = DateTime.UtcNow,
-                LearningStatus = "Active",
-                PredictionAccuracy = predictionAccuracy,
-                TwinVersion = "1.0.0"
-            });
+                _learningHistories[engineId] = CreateLearningHistory(engineId);
+                _predictionAccuracies[engineId] = new PredictionAccuracy
+                {
+                    EngineId = engineId,
+                    OverallAccuracy = predictionAccuracy,
+                    ThrustPredictionAccuracy = predictionAccuracy,
+                    ThermalPredictionAccuracy = predictionAccuracy,
+                    StructuralPredictionAccuracy = predictionAccuracy,
+                    FailurePredictionAccuracy = predictionAccuracy
+                };
+
+                var restoredTwin = new EngineDigitalTwin
+                {
+                    EngineId = engineId,
+                    EngineModel = engineModel,
+                    CreationTimestamp = DateTime.UtcNow,
+                    LastUpdateTimestamp = DateTime.UtcNow,
+                    LearningStatus = "Active",
+                    PredictionAccuracy = predictionAccuracy,
+                    TwinVersion = "1.0.0"
+                };
+                _digitalTwins[engineId] = restoredTwin;
+                return restoredTwin;
+            }
         }
 
         public async Task<LiveLearningResult> LearnFromTestFlightAsync(string engineId, TestFlightData flightData)
@@ -225,10 +233,6 @@ namespace HB_NLP_Research_Lab.Core
 
             Console.WriteLine($"[Digital Twin] 📚 Learning from Test Flight Data for {engineId}...");
             
-            // Update digital twin with flight data
-            var digitalTwin = _digitalTwins[engineId];
-            digitalTwin.LastUpdateTimestamp = DateTime.UtcNow;
-            
             // Process learning event
             var learningEvent = new LearningEvent
             {
@@ -237,26 +241,30 @@ namespace HB_NLP_Research_Lab.Core
                 FlightData = flightData,
                 LearningMetrics = await _liveLearning.ProcessLearningEventAsync(flightData)
             };
-            
-            lock (GetHistoryLock(engineId))
-            {
-                _learningHistories.GetOrAdd(engineId, CreateLearningHistory).LearningEvents.Add(learningEvent);
-            }
-            
+
             // Update AI models with new data
             var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
             
             // Update prediction models
             var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
-            lock (GetHistoryLock(engineId))
-            {
-                _learningHistories.GetOrAdd(engineId, CreateLearningHistory).ModelImprovements.Add(modelImprovement);
-            }
             
             // Update prediction accuracy
             var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(engineId, flightData);
-            _predictionAccuracies[engineId] = accuracyUpdate;
-            digitalTwin.PredictionAccuracy = accuracyUpdate.OverallAccuracy;
+
+            // Commit the learning result only after every asynchronous stage has
+            // succeeded, preventing partial or split history records.
+            lock (GetHistoryLock(engineId))
+            {
+                if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
+                    throw new InvalidOperationException($"Digital twin was removed while learning: {engineId}");
+
+                var history = _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
+                history.LearningEvents.Add(learningEvent);
+                history.ModelImprovements.Add(modelImprovement);
+                _predictionAccuracies[engineId] = accuracyUpdate;
+                digitalTwin.LastUpdateTimestamp = DateTime.UtcNow;
+                digitalTwin.PredictionAccuracy = accuracyUpdate.OverallAccuracy;
+            }
             
             var learningResult = new LiveLearningResult
             {
@@ -501,7 +509,6 @@ namespace HB_NLP_Research_Lab.Core
             _digitalTwins.Clear();
             _learningHistories.Clear();
             _predictionAccuracies.Clear();
-            _historyLocks.Clear();
         }
     }
 

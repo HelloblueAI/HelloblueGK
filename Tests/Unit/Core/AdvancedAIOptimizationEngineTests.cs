@@ -49,6 +49,19 @@ public class AdvancedAIOptimizationEngineTests
         cacheField.Should().NotBeNull();
         var cache = cacheField!.GetValue(engine);
         var cacheCount = (int)cache!.GetType().GetProperty("Count")!.GetValue(cache)!;
-        cacheCount.Should().BeLessThanOrEqualTo(256);
+        cacheCount.Should().Be(256);
+
+        var uncachedParameters = new EngineDesignParameters
+        {
+            Thrust = 2_000_000,
+            SpecificImpulse = 390,
+            ChamberPressure = 21_000_000,
+            Efficiency = 0.93
+        };
+        var concurrentResults = await Task.WhenAll(
+            engine.OptimizeEngineDesignAsync(uncachedParameters),
+            engine.OptimizeEngineDesignAsync(uncachedParameters));
+
+        concurrentResults[0].Should().BeSameAs(concurrentResults[1]);
     }
 }
