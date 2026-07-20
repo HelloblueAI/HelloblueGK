@@ -173,19 +173,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
 
                 // Create engine model from engine data
-                var engineModel = new EngineModel
-                {
-                    Name = engine.Name,
-                    Parameters = new Dictionary<string, double>
-                    {
-                        ["Thrust"] = engine.Thrust,
-                        ["SpecificImpulse"] = engine.SpecificImpulse,
-                        ["ChamberPressure"] = engine.ChamberPressure,
-                        ["Efficiency"] = engine.Efficiency,
-                        ["ExpansionRatio"] = engine.ExpansionRatio,
-                        ["MassFlowRate"] = engine.MassFlowRate
-                    }
-                };
+                var engineModel = BuildEngineModel(engine);
 
                 // Create digital twin using DigitalTwinEngine
                 var engineId = BuildDigitalTwinEngineKey(request.EngineId, currentUsername);
@@ -260,6 +248,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 // Update digital twin with learning data
                 var engineId = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
+                await _digitalTwinEngine.EnsureDigitalTwinAsync(
+                    engineId,
+                    BuildEngineModel(digitalTwin.Engine),
+                    digitalTwin.PredictionAccuracy);
                 
                 // Convert telemetry data to TestFlightData format
                 var flightData = new TestFlightData
@@ -351,6 +343,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
 
                 var engineId = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
+                await _digitalTwinEngine.EnsureDigitalTwinAsync(
+                    engineId,
+                    BuildEngineModel(digitalTwin.Engine),
+                    digitalTwin.PredictionAccuracy);
                 
                 // Create prediction scenario from parameters
                 var scenario = new PredictionScenario
@@ -451,6 +447,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(owner.Trim().ToUpperInvariant())))[..16];
 
             return $"Owner_{ownerKey}_Engine_{engineId}";
+        }
+
+        private static EngineModel BuildEngineModel(Engine engine)
+        {
+            return new EngineModel
+            {
+                Name = engine.Name,
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = engine.Thrust,
+                    ["SpecificImpulse"] = engine.SpecificImpulse,
+                    ["ChamberPressure"] = engine.ChamberPressure,
+                    ["Efficiency"] = engine.Efficiency,
+                    ["ExpansionRatio"] = engine.ExpansionRatio,
+                    ["MassFlowRate"] = engine.MassFlowRate
+                }
+            };
         }
     }
 

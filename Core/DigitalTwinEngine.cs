@@ -144,6 +144,55 @@ namespace HB_NLP_Research_Lab.Core
             return digitalTwin;
         }
 
+        /// <summary>
+        /// Rebuilds the process-local state for a persisted digital twin after an
+        /// application restart. Existing runtime state is never overwritten.
+        /// </summary>
+        public async Task<EngineDigitalTwin> EnsureDigitalTwinAsync(
+            string engineId,
+            EngineModel engineModel,
+            double predictionAccuracy = 0.999)
+        {
+            if (string.IsNullOrWhiteSpace(engineId))
+                throw new ArgumentException("engineId cannot be null or empty", nameof(engineId));
+            ArgumentNullException.ThrowIfNull(engineModel);
+
+            if (_digitalTwins.TryGetValue(engineId, out var existingTwin))
+                return existingTwin;
+
+            if (!_isInitialized)
+                await InitializeAsync();
+
+            _learningHistories.GetOrAdd(engineId, static id => new LearningHistory
+            {
+                EngineId = id,
+                LearningEvents = new List<LearningEvent>(),
+                ModelImprovements = new List<ModelImprovement>(),
+                PredictionHistory = new List<PredictionRecord>()
+            });
+
+            _predictionAccuracies.GetOrAdd(engineId, id => new PredictionAccuracy
+            {
+                EngineId = id,
+                OverallAccuracy = predictionAccuracy,
+                ThrustPredictionAccuracy = predictionAccuracy,
+                ThermalPredictionAccuracy = predictionAccuracy,
+                StructuralPredictionAccuracy = predictionAccuracy,
+                FailurePredictionAccuracy = predictionAccuracy
+            });
+
+            return _digitalTwins.GetOrAdd(engineId, id => new EngineDigitalTwin
+            {
+                EngineId = id,
+                EngineModel = engineModel,
+                CreationTimestamp = DateTime.UtcNow,
+                LastUpdateTimestamp = DateTime.UtcNow,
+                LearningStatus = "Active",
+                PredictionAccuracy = predictionAccuracy,
+                TwinVersion = "1.0.0"
+            });
+        }
+
         public async Task<LiveLearningResult> LearnFromTestFlightAsync(string engineId, TestFlightData flightData)
         {
             Console.WriteLine($"[Debug] Entered LearnFromTestFlightAsync for engineId: {engineId}");

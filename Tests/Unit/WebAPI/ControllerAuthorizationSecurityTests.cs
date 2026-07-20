@@ -229,6 +229,53 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetPredictions_AfterRuntimeRestart_RestoresPersistedTwin()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
+        using var restartedEngine = new DigitalTwinEngine();
+        var controller = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("alice"),
+            restartedEngine);
+
+        var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest
+        {
+            ScenarioName = "Post-deployment prediction"
+        });
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var responseJson = JsonSerializer.Serialize(okResult.Value);
+        responseJson.Should().Contain($"\"digitalTwinId\":{digitalTwin.Id}");
+        responseJson.Should().Contain("\"predictions\"");
+    }
+
+    [Fact]
+    public async Task UpdateDigitalTwinLearning_AfterRuntimeRestart_RestoresPersistedTwin()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "admin");
+        using var restartedEngine = new DigitalTwinEngine();
+        var controller = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            restartedEngine);
+
+        var result = await controller.UpdateDigitalTwinLearning(digitalTwin.Id, new LearningDataRequest
+        {
+            TelemetryData = new Dictionary<string, double>
+            {
+                ["Thrust"] = 1.0
+            }
+        });
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var response = okResult.Value.Should().BeOfType<DigitalTwinResponse>().Subject;
+        response.TrainingIterations.Should().Be(1);
+        response.ModelDataJson.Should().BeNull();
+    }
+
+    [Fact]
     public async Task CreateDigitalTwin_ForEngineOwnedByDifferentUser_ReturnsForbidWithoutCreatingTwin()
     {
         await using var context = CreateContext();
