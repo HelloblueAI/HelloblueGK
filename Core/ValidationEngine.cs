@@ -22,6 +22,9 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class ValidationEngine : IValidationEngine
     {
+        internal const int MaxValidationHistoryEntries = 256;
+
+        private readonly object _historyLock = new();
         private readonly Dictionary<string, TestData> _testDataDatabase;
         private readonly List<ValidationResult> _validationResults;
         private readonly List<ValidationResult> _validationHistory;
@@ -93,14 +96,19 @@ namespace HB_NLP_Research_Lab.Core
             // Calculate overall accuracy
             metrics.OverallAccuracy = CalculateOverallAccuracy(metrics);
             
-            _validationResults.Add(new ValidationResult { EngineId = engineModel, TestResults = new Dictionary<string, double> {
-                ["Thrust"] = metrics.ThrustAccuracy,
-                ["ISP"] = metrics.ISPAccuracy,
-                ["ChamberPressure"] = metrics.ChamberPressureAccuracy,
-                ["Thermal"] = metrics.ThermalAccuracy,
-                ["Structural"] = metrics.StructuralAccuracy,
-                ["Overall"] = metrics.OverallAccuracy
-            }});
+            RecordValidationResult(new ValidationResult
+            {
+                EngineId = engineModel,
+                TestResults = new Dictionary<string, double>
+                {
+                    ["Thrust"] = metrics.ThrustAccuracy,
+                    ["ISP"] = metrics.ISPAccuracy,
+                    ["ChamberPressure"] = metrics.ChamberPressureAccuracy,
+                    ["Thermal"] = metrics.ThermalAccuracy,
+                    ["Structural"] = metrics.StructuralAccuracy,
+                    ["Overall"] = metrics.OverallAccuracy
+                }
+            });
 
             return new ValidationReport
             {
@@ -148,9 +156,8 @@ namespace HB_NLP_Research_Lab.Core
                     ["Overall"] = metrics.OverallAccuracy
                 }
             };
-            
-            _validationResults.Add(result);
-            _validationHistory.Add(result);
+
+            RecordValidationResult(result);
             
             return result;
         }
@@ -161,8 +168,14 @@ namespace HB_NLP_Research_Lab.Core
             
             // Simulate async operation
             await Task.Delay(5);
-            
-            var totalEngines = _validationResults.Count;
+
+            List<ValidationResult> snapshot;
+            lock (_historyLock)
+            {
+                snapshot = _validationResults.ToList();
+            }
+
+            var totalEngines = snapshot.Count;
             if (totalEngines == 0)
             {
                 return new ValidationSummary
@@ -180,7 +193,7 @@ namespace HB_NLP_Research_Lab.Core
                 };
             }
             
-            var accuracies = _validationResults.Select(r => r.TestResults.GetValueOrDefault("Overall", 0.0)).ToList();
+            var accuracies = snapshot.Select(r => r.TestResults.GetValueOrDefault("Overall", 0.0)).ToList();
             var averageAccuracy = accuracies.Average();
             var highestAccuracy = accuracies.Max();
             var lowestAccuracy = accuracies.Min();
@@ -191,7 +204,7 @@ namespace HB_NLP_Research_Lab.Core
                 AverageAccuracy = averageAccuracy,
                 HighestAccuracy = highestAccuracy,
                 LowestAccuracy = lowestAccuracy,
-                ValidatedEngines = _validationResults.Select(r => r.EngineId).ToList(),
+                ValidatedEngines = snapshot.Select(r => r.EngineId).ToList(),
                 ValidationTimestamp = DateTime.UtcNow,
                 IsValid = averageAccuracy > 90.0,
                 ValidationScore = averageAccuracy,
@@ -204,13 +217,37 @@ namespace HB_NLP_Research_Lab.Core
         {
             Console.WriteLine("[Validation] 📚 Retrieving validation history...");
             await Task.Delay(1);
-            return _validationHistory;
+            lock (_historyLock)
+            {
+                return _validationHistory.ToList();
+            }
         }
 
         public async Task<bool> IsEngineValidatedAsync(string engineModel)
         {
             await Task.Delay(1);
-            return _validationResults.Any(r => r.EngineId == engineModel);
+            lock (_historyLock)
+            {
+                return _validationResults.Any(r => r.EngineId == engineModel);
+            }
+        }
+
+        private void RecordValidationResult(ValidationResult result)
+        {
+            lock (_historyLock)
+            {
+                AppendBounded(_validationResults, result);
+                AppendBounded(_validationHistory, result);
+            }
+        }
+
+        private static void AppendBounded(List<ValidationResult> history, ValidationResult result)
+        {
+            history.Add(result);
+            if (history.Count > MaxValidationHistoryEntries)
+            {
+                history.RemoveRange(0, history.Count - MaxValidationHistoryEntries);
+            }
         }
 
         private TestData CreateSyntheticTestData(string engineModel, SimulationResults simulationResults)
@@ -375,7 +412,13 @@ namespace HB_NLP_Research_Lab.Core
 
         public ValidationSummary GenerateValidationSummary()
         {
-            if (_validationResults.Count == 0)
+            List<ValidationResult> snapshot;
+            lock (_historyLock)
+            {
+                snapshot = _validationResults.ToList();
+            }
+
+            if (snapshot.Count == 0)
             {
                 return new ValidationSummary
                 {
@@ -392,17 +435,17 @@ namespace HB_NLP_Research_Lab.Core
                 };
             }
 
-            var resultAccuracies = _validationResults
+            var resultAccuracies = snapshot
                 .Select(GetValidationResultAccuracy)
                 .ToList();
 
             var summary = new ValidationSummary
             {
-                TotalEnginesValidated = _validationResults.Count,
+                TotalEnginesValidated = snapshot.Count,
                 AverageAccuracy = resultAccuracies.Average(),
                 HighestAccuracy = resultAccuracies.Max(),
                 LowestAccuracy = resultAccuracies.Min(),
-                ValidatedEngines = _validationResults.Select(v => v.EngineId).ToList(),
+                ValidatedEngines = snapshot.Select(v => v.EngineId).ToList(),
                 ValidationTimestamp = DateTime.UtcNow
             };
 
