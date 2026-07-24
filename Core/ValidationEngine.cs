@@ -22,7 +22,7 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class ValidationEngine : IValidationEngine
     {
-        internal const int MaxValidationHistoryEntries = 256;
+        public const int MaxValidationHistoryEntries = 256;
 
         private readonly object _historyLock = new();
         private readonly Dictionary<string, TestData> _testDataDatabase;

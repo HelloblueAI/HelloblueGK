@@ -670,11 +670,16 @@ public class ControllerAuthorizationSecurityTests
 
     private static HelloblueGKDbContext CreateContext(string? databaseName = null)
     {
+        // Use SQLite instead of the EF InMemory provider so ExecuteUpdate-based
+        // conditional status transitions can be exercised in tests.
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
-            .UseInMemoryDatabase(databaseName ?? Guid.NewGuid().ToString())
+            .UseSqlite($"Data Source=file:{(databaseName ?? Guid.NewGuid().ToString("N"))}?mode=memory&cache=shared")
             .Options;
 
-        return new HelloblueGKDbContext(options);
+        var context = new HelloblueGKDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static async Task<AIOptimizationRun> SeedOptimizationAsync(
