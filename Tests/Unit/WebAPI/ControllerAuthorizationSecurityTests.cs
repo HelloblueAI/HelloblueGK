@@ -660,8 +660,11 @@ public class ControllerAuthorizationSecurityTests
         var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
         deferredQueue.PendingWork.Should().ContainSingle();
 
-        context.Engines.Remove(engine);
-        await context.SaveChangesAsync();
+        // Simulate a missing engine row without cascading the optimization run away.
+        await context.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF;");
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM Engines WHERE Id = {engine.Id}");
+        await context.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
 
         await using var workerContext = CreateContext(databaseName);
         var serviceProvider = new SingleServiceProvider(workerContext);
