@@ -15,6 +15,8 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class DigitalTwinEngine : IDisposable
     {
+        public const int MaxHistoryEntries = 256;
+
         private readonly AdvancedPhysicsEngine _physicsEngine;
         private readonly ValidationEngine _validationEngine;
         private readonly AutonomousEngineDesigner _aiDesigner;
@@ -28,6 +30,7 @@ namespace HB_NLP_Research_Lab.Core
         private readonly ConcurrentDictionary<string, EngineDigitalTwin> _digitalTwins;
         private readonly ConcurrentDictionary<string, LearningHistory> _learningHistories;
         private readonly ConcurrentDictionary<string, PredictionAccuracy> _predictionAccuracies;
+        private readonly ConcurrentDictionary<string, object> _historyLocks;
         
         private bool _isInitialized = false;
 
@@ -46,6 +49,7 @@ namespace HB_NLP_Research_Lab.Core
             _digitalTwins = new ConcurrentDictionary<string, EngineDigitalTwin>();
             _learningHistories = new ConcurrentDictionary<string, LearningHistory>();
             _predictionAccuracies = new ConcurrentDictionary<string, PredictionAccuracy>();
+            _historyLocks = new ConcurrentDictionary<string, object>();
         }
 
         public async Task<DigitalTwinStatus> InitializeAsync()
@@ -251,14 +255,14 @@ namespace HB_NLP_Research_Lab.Core
                 LearningMetrics = await _liveLearning.ProcessLearningEventAsync(flightData)
             };
             
-            _learningHistories[engineId].LearningEvents.Add(learningEvent);
+            AppendBoundedHistory(engineId, history => history.LearningEvents, learningEvent);
             
             // Update AI models with new data
             var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
             
             // Update prediction models
             var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
-            _learningHistories[engineId].ModelImprovements.Add(modelImprovement);
+            AppendBoundedHistory(engineId, history => history.ModelImprovements, modelImprovement);
             
             // Update prediction accuracy
             var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(engineId, flightData);
@@ -310,7 +314,7 @@ namespace HB_NLP_Research_Lab.Core
                 ExpectedAccuracy = predictionAccuracy.OverallAccuracy
             };
             
-            _learningHistories[engineId].PredictionHistory.Add(predictionRecord);
+            AppendBoundedHistory(engineId, history => history.PredictionHistory, predictionRecord);
             
             Console.WriteLine($"[Digital Twin] Prediction complete for {engineId}");
             Console.WriteLine($"[Digital Twin] Confidence level: {prediction.ConfidenceLevel:P2}");
@@ -476,12 +480,38 @@ namespace HB_NLP_Research_Lab.Core
             return report;
         }
 
+        private void AppendBoundedHistory<T>(
+            string engineId,
+            Func<LearningHistory, List<T>> listSelector,
+            T item)
+        {
+            var history = _learningHistories.GetOrAdd(engineId, _ => new LearningHistory
+            {
+                EngineId = engineId,
+                LearningEvents = new List<LearningEvent>(),
+                ModelImprovements = new List<ModelImprovement>(),
+                PredictionHistory = new List<PredictionRecord>()
+            });
+            var historyLock = _historyLocks.GetOrAdd(engineId, static _ => new object());
+
+            lock (historyLock)
+            {
+                var list = listSelector(history);
+                list.Add(item);
+                if (list.Count > MaxHistoryEntries)
+                {
+                    list.RemoveRange(0, list.Count - MaxHistoryEntries);
+                }
+            }
+        }
+
         public void Dispose()
         {
             // Cleanup resources
             _digitalTwins.Clear();
             _learningHistories.Clear();
             _predictionAccuracies.Clear();
+            _historyLocks.Clear();
         }
     }
 

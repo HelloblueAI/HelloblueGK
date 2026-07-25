@@ -143,6 +143,24 @@ public class RealTimeValidationEngineTests : IDisposable
         summary.ValidatedEngines.Should().BeEquivalentTo(engineIds);
     }
 
+    [Fact]
+    public async Task ValidateEngineAsync_CapsCacheUnderDistinctKeys()
+    {
+        var totalKeys = RealTimeValidationEngine.MaxCachedValidations + 64;
+        for (var index = 0; index < totalKeys; index++)
+        {
+            await _validationEngine.ValidateEngineAsync($"BoundedEngine_{index}");
+        }
+
+        var history = await _validationEngine.GetValidationHistoryAsync();
+        history.Should().HaveCount(RealTimeValidationEngine.MaxCachedValidations);
+
+        var summary = await _validationEngine.GenerateValidationSummaryAsync();
+        summary.TotalEnginesValidated.Should().Be(RealTimeValidationEngine.MaxCachedValidations);
+        summary.ValidatedEngines.Should().NotContain("BoundedEngine_0");
+        summary.ValidatedEngines.Should().Contain($"BoundedEngine_{totalKeys - 1}");
+    }
+
     public void Dispose()
     {
         _validationEngine.Dispose();

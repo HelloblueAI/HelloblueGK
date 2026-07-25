@@ -210,10 +210,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         var scopedEngine = await scopedContext.Engines.FindAsync(
                             [engineId],
                             cancellationToken);
-                        if (scopedEngine != null)
+                        if (scopedEngine == null)
                         {
-                            await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
+                            await FailOptimizationAsync(
+                                scopedContext,
+                                optimizationId,
+                                "Optimization failed because the engine no longer exists.");
+                            return;
                         }
+
+                        await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
                     }, $"optimization:{optimizationId}");
 
                     return CreatedAtAction(
@@ -276,12 +282,20 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             try
             {
-                var optimization = await context.AIOptimizationRuns.FindAsync(optimizationId);
-                if (optimization == null) return;
+                var startedAt = DateTime.UtcNow;
+                var claimed = await context.AIOptimizationRuns
+                    .Where(o => o.Id == optimizationId && o.Status == "Pending")
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.Status, "Running")
+                        .SetProperty(o => o.StartedAt, startedAt));
 
-                optimization.Status = "Running";
-                optimization.StartedAt = DateTime.UtcNow;
-                await context.SaveChangesAsync();
+                if (claimed == 0)
+                {
+                    _logger.LogInformation(
+                        "Optimization {OptimizationId} was no longer Pending; skipping execution",
+                        optimizationId);
+                    return;
+                }
 
                 var startTime = DateTime.UtcNow;
 
@@ -307,15 +321,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     ? ((optimizedEfficiency - originalEfficiency) / originalEfficiency) * 100 
                     : 0.0;
 
-                // Update optimization with results
-                optimization.Status = "Completed";
-                optimization.CompletedAt = DateTime.UtcNow;
-                optimization.ExecutionTimeSeconds = executionTime;
-                optimization.ImprovementPercentage = improvement;
-                optimization.Generations = result.OptimizationStages?.Length ?? 100;
-                optimization.BestFitness = result.OverallImprovement;
-
-                var results = new
+                var generations = result.OptimizationStages?.Length ?? 100;
+                var resultsJson = JsonSerializer.Serialize(new
                 {
                     originalParameters = new
                     {
@@ -334,11 +341,27 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     improvement = improvement,
                     overallImprovement = result.OverallImprovement,
                     innovationScore = innovationReport.InnovationScore,
-                    generations = result.OptimizationStages?.Length ?? 100
-                };
+                    generations = generations
+                });
 
-                optimization.ResultsJson = JsonSerializer.Serialize(results);
-                await context.SaveChangesAsync();
+                var completed = await context.AIOptimizationRuns
+                    .Where(o => o.Id == optimizationId && o.Status == "Running")
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.Status, "Completed")
+                        .SetProperty(o => o.CompletedAt, DateTime.UtcNow)
+                        .SetProperty(o => o.ExecutionTimeSeconds, executionTime)
+                        .SetProperty(o => o.ImprovementPercentage, improvement)
+                        .SetProperty(o => o.Generations, generations)
+                        .SetProperty(o => o.BestFitness, result.OverallImprovement)
+                        .SetProperty(o => o.ResultsJson, resultsJson));
+
+                if (completed == 0)
+                {
+                    _logger.LogInformation(
+                        "Optimization {OptimizationId} changed status before results were persisted; discarding completion",
+                        optimizationId);
+                    return;
+                }
 
                 _logger.LogInformation("Optimization {OptimizationId} completed: {Improvement}% improvement", 
                     optimizationId, improvement);
@@ -346,16 +369,25 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error executing optimization {OptimizationId}", optimizationId);
-
-                var optimization = await context.AIOptimizationRuns.FindAsync(optimizationId);
-                if (optimization != null)
-                {
-                    optimization.Status = "Failed";
-                    optimization.CompletedAt = DateTime.UtcNow;
-                    optimization.ErrorMessage = "Optimization failed. See server logs for details.";
-                    await context.SaveChangesAsync();
-                }
+                await FailOptimizationAsync(
+                    context,
+                    optimizationId,
+                    "Optimization failed. See server logs for details.");
             }
+        }
+
+        private static async Task FailOptimizationAsync(
+            HelloblueGKDbContext context,
+            int optimizationId,
+            string errorMessage)
+        {
+            await context.AIOptimizationRuns
+                .Where(o => o.Id == optimizationId &&
+                            (o.Status == "Pending" || o.Status == "Running"))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(o => o.Status, "Failed")
+                    .SetProperty(o => o.CompletedAt, DateTime.UtcNow)
+                    .SetProperty(o => o.ErrorMessage, errorMessage));
         }
 
         private bool ApplyCurrentUserFilter(ref IQueryable<AIOptimizationRun> query)

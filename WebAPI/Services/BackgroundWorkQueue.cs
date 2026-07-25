@@ -3,10 +3,17 @@ namespace HB_NLP_Research_Lab.WebAPI.Services;
 public interface IBackgroundWorkQueue
 {
     int MaxConcurrency { get; }
-    bool TryAcquire(out BackgroundWorkSlot? slot);
+    bool TryAcquire(out IBackgroundWorkSlot? slot);
 }
 
-public sealed class BackgroundWorkSlot : IDisposable
+public interface IBackgroundWorkSlot : IDisposable
+{
+    void Queue(
+        Func<IServiceProvider, CancellationToken, Task> workItem,
+        string workItemName);
+}
+
+public sealed class BackgroundWorkSlot : IBackgroundWorkSlot
 {
     private readonly BoundedBackgroundWorkQueue _owner;
     private int _state;
@@ -72,7 +79,7 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
 
     public int MaxConcurrency { get; }
 
-    public bool TryAcquire(out BackgroundWorkSlot? slot)
+    public bool TryAcquire(out IBackgroundWorkSlot? slot)
     {
         if (!_slots.Wait(0))
         {

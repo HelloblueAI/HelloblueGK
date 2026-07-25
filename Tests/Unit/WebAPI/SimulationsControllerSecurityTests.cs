@@ -374,7 +374,7 @@ public class SimulationsControllerSecurityTests
     {
         public int MaxConcurrency => 0;
 
-        public bool TryAcquire(out BackgroundWorkSlot? slot)
+        public bool TryAcquire(out IBackgroundWorkSlot? slot)
         {
             slot = null;
             return false;
