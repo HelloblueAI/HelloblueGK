@@ -55,11 +55,6 @@ namespace HB_NLP_Research_Lab.Physics
 
         public async Task<CouplingStatus> InitializeAsync()
         {
-            if (_isInitialized)
-            {
-                return CreateReadyStatus();
-            }
-
             await _initializationGate.WaitAsync();
             try
             {
