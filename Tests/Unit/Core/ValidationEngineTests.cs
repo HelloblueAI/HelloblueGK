@@ -151,5 +151,22 @@ public class ValidationEngineTests
         summary.ValidatedEngines.Should().BeEmpty();
         summary.IsValid.Should().BeFalse();
     }
+
+    [Fact]
+    public async Task ValidateEngineAsync_CapsHistoryUnderConcurrentLoad()
+    {
+        var engine = new ValidationEngine();
+        var tasks = Enumerable.Range(0, ValidationEngine.MaxValidationHistoryEntries + 64)
+            .Select(index => engine.ValidateEngineAsync($"Engine_{index}"))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        var history = await engine.GetValidationHistoryAsync();
+        history.Should().HaveCount(ValidationEngine.MaxValidationHistoryEntries);
+
+        var summary = await engine.GenerateValidationSummaryAsync();
+        summary.TotalEnginesValidated.Should().Be(ValidationEngine.MaxValidationHistoryEntries);
+    }
 }
 

@@ -677,6 +677,73 @@ public class ControllerAuthorizationSecurityTests
         persisted.ErrorMessage.Should().Contain("engine no longer exists");
     }
 
+    [Fact]
+    public async Task CreateDigitalTwin_WithForceCreate_DeactivatesExistingActiveTwins()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+        var firstCreate = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin A"
+        });
+        var firstTwin = firstCreate.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        var secondCreate = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin B",
+            ForceCreate = true
+        });
+        var secondTwin = secondCreate.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        var persistedFirst = await context.DigitalTwins.AsNoTracking().SingleAsync(dt => dt.Id == firstTwin.Id);
+        var persistedSecond = await context.DigitalTwins.AsNoTracking().SingleAsync(dt => dt.Id == secondTwin.Id);
+        persistedFirst.IsActive.Should().BeFalse();
+        persistedSecond.IsActive.Should().BeTrue();
+        context.DigitalTwins.Count(dt => dt.EngineId == engine.Id && dt.IsActive).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetPredictions_ForInactiveDigitalTwin_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
+        digitalTwin.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+        var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest
+        {
+            ScenarioName = "Inactive prediction"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task UpdateDigitalTwinLearning_ForInactiveDigitalTwin_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "admin");
+        digitalTwin.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("admin", isAdmin: true));
+        var result = await controller.UpdateDigitalTwinLearning(digitalTwin.Id, new LearningDataRequest
+        {
+            TelemetryData = new Dictionary<string, double> { ["Thrust"] = 1.0 }
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
     private static HelloblueGKDbContext CreateContext(string? databaseName = null)
     {
         // Use SQLite instead of the EF InMemory provider so ExecuteUpdate-based
@@ -917,4 +984,5 @@ public class ControllerAuthorizationSecurityTests
             return null;
         }
     }
+
 }

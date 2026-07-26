@@ -165,11 +165,21 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     existingTwinQuery = existingTwinQuery.Where(dt => dt.CreatedBy == currentUsername);
                 }
 
-                var existingTwin = await existingTwinQuery.FirstOrDefaultAsync();
+                var existingTwins = await existingTwinQuery.ToListAsync();
 
-                if (existingTwin != null && !request.ForceCreate)
+                if (existingTwins.Count > 0 && !request.ForceCreate)
                 {
                     return Conflict(new { message = $"Active digital twin already exists for engine {request.EngineId}. Use forceCreate=true to create a new one." });
+                }
+
+                if (existingTwins.Count > 0 && request.ForceCreate)
+                {
+                    var deactivatedAt = DateTime.UtcNow;
+                    foreach (var existingTwin in existingTwins)
+                    {
+                        existingTwin.IsActive = false;
+                        existingTwin.LastUpdated = deactivatedAt;
+                    }
                 }
 
                 // Create engine model from engine data
@@ -239,6 +249,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (digitalTwin == null)
                 {
                     return NotFound(new { message = $"Digital twin with ID {id} not found" });
+                }
+
+                if (!digitalTwin.IsActive)
+                {
+                    return BadRequest(new { message = "Cannot update learning for an inactive digital twin" });
                 }
 
                 if (!digitalTwin.RealTimeLearning)
@@ -340,6 +355,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (!CurrentUserCanAccessDigitalTwin(digitalTwin))
                 {
                     return Forbid();
+                }
+
+                if (!digitalTwin.IsActive)
+                {
+                    return BadRequest(new { message = "Cannot generate predictions for an inactive digital twin" });
                 }
 
                 var engineId = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
