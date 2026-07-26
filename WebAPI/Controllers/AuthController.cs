@@ -98,28 +98,15 @@ public class AuthController : ControllerBase
                 user.UpdatedAt = DateTime.UtcNow;
             }
 
-            // Update last login
+            // Update last login and persist rotated refresh token in one write.
             user.LastLoginAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-
             var token = _jwtService.GenerateToken(user);
-            var refreshToken = _jwtService.GenerateRefreshToken();
+            var refreshToken = IssueRefreshToken(user);
+            await _context.SaveChangesAsync();
 
             _logger.LogInformation("User {Username} logged in successfully", LogSanitizer.SanitizeIdentifier(user.Username));
 
-            return Ok(new LoginResponse
-            {
-                Token = token,
-                RefreshToken = refreshToken,
-                ExpiresIn = _jwtService.GetTokenExpirationSeconds(),
-                User = new UserInfo
-                {
-                    Id = user.Id,
-                    Username = user.Username,
-                    Email = user.Email,
-                    IsAdmin = user.IsAdmin
-                }
-            });
+            return Ok(BuildAuthResponse(user, token, refreshToken));
         }
         catch (Exception ex)
         {
@@ -127,6 +114,59 @@ public class AuthController : ControllerBase
             // Let the global exception handler catch this, but log it first
             throw;
         }
+    }
+
+    /// <summary>
+    /// Exchange a persisted refresh token for a new access token and rotated refresh token.
+    /// </summary>
+    [HttpPost("refresh")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Refresh([FromBody] RefreshTokenRequest? request)
+    {
+        if (string.IsNullOrWhiteSpace(request?.RefreshToken))
+        {
+            return InvalidRefreshTokenResponse();
+        }
+
+        string refreshTokenHash;
+        try
+        {
+            refreshTokenHash = _jwtService.HashRefreshToken(request.RefreshToken);
+        }
+        catch (ArgumentException)
+        {
+            return InvalidRefreshTokenResponse();
+        }
+
+        var user = await _context.Users
+            .FirstOrDefaultAsync(candidate =>
+                candidate.RefreshTokenHash == refreshTokenHash && candidate.IsActive);
+
+        if (user == null
+            || user.RefreshTokenExpiresAt == null
+            || user.RefreshTokenExpiresAt <= DateTime.UtcNow)
+        {
+            if (user != null)
+            {
+                ClearRefreshToken(user);
+                await _context.SaveChangesAsync();
+            }
+
+            return InvalidRefreshTokenResponse();
+        }
+
+        var accessToken = _jwtService.GenerateToken(user);
+        var rotatedRefreshToken = IssueRefreshToken(user);
+        user.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
+
+        _logger.LogInformation(
+            "Refresh token rotated for user {Username}",
+            LogSanitizer.SanitizeIdentifier(user.Username));
+
+        return Ok(BuildAuthResponse(user, accessToken, rotatedRefreshToken));
     }
 
     /// <summary>
@@ -373,6 +413,51 @@ public class AuthController : ControllerBase
         });
     }
 
+    private UnauthorizedObjectResult InvalidRefreshTokenResponse()
+    {
+        return Unauthorized(new ErrorResponse
+        {
+            StatusCode = 401,
+            Message = "Invalid or expired refresh token",
+            Timestamp = DateTime.UtcNow,
+            Path = Request.Path,
+            Method = Request.Method
+        });
+    }
+
+    private string IssueRefreshToken(User user)
+    {
+        var refreshToken = _jwtService.GenerateRefreshToken();
+        user.RefreshTokenHash = _jwtService.HashRefreshToken(refreshToken);
+        user.RefreshTokenExpiresAt = DateTime.UtcNow.AddSeconds(
+            _jwtService.GetRefreshTokenExpirationSeconds());
+        return refreshToken;
+    }
+
+    private static void ClearRefreshToken(User user)
+    {
+        user.RefreshTokenHash = null;
+        user.RefreshTokenExpiresAt = null;
+        user.UpdatedAt = DateTime.UtcNow;
+    }
+
+    private LoginResponse BuildAuthResponse(User user, string accessToken, string refreshToken)
+    {
+        return new LoginResponse
+        {
+            Token = accessToken,
+            RefreshToken = refreshToken,
+            ExpiresIn = _jwtService.GetTokenExpirationSeconds(),
+            User = new UserInfo
+            {
+                Id = user.Id,
+                Username = user.Username,
+                Email = user.Email,
+                IsAdmin = user.IsAdmin
+            }
+        };
+    }
+
     private static bool IsLegacyPasswordHash(string storedHash)
     {
         if (string.IsNullOrWhiteSpace(storedHash))
@@ -392,6 +477,14 @@ public class LoginRequest
 {
     public string Username { get; set; } = string.Empty;
     public string Password { get; set; } = string.Empty;
+}
+
+/// <summary>
+/// Refresh token exchange request
+/// </summary>
+public class RefreshTokenRequest
+{
+    public string RefreshToken { get; set; } = string.Empty;
 }
 
 /// <summary>

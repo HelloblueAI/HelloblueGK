@@ -15,7 +15,9 @@ public interface IJwtService
     string GenerateToken(User user);
     ClaimsPrincipal? ValidateToken(string token);
     string GenerateRefreshToken();
+    string HashRefreshToken(string refreshToken);
     int GetTokenExpirationSeconds();
+    int GetRefreshTokenExpirationSeconds();
 }
 
 public class JwtService : IJwtService
@@ -23,6 +25,8 @@ public class JwtService : IJwtService
     private const string DefaultJwtKey = "your-super-secret-jwt-key-change-in-production-min-32-chars";
     private const int DefaultTokenExpirationHours = 24;
     private const int MaxTokenExpirationHours = 24 * 30;
+    private const int DefaultRefreshTokenExpirationDays = 7;
+    private const int MaxRefreshTokenExpirationDays = 90;
 
     private readonly IConfiguration _configuration;
     private readonly ILogger<JwtService> _logger;
@@ -124,9 +128,22 @@ public class JwtService : IJwtService
         return Convert.ToBase64String(randomNumber);
     }
 
+    public string HashRefreshToken(string refreshToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(refreshToken);
+
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(refreshToken));
+        return Convert.ToBase64String(hash);
+    }
+
     public int GetTokenExpirationSeconds()
     {
         return checked((int)GetTokenLifetime().TotalSeconds);
+    }
+
+    public int GetRefreshTokenExpirationSeconds()
+    {
+        return checked((int)GetRefreshTokenLifetime().TotalSeconds);
     }
 
     private string GetJwtKey()
@@ -175,6 +192,27 @@ public class JwtService : IJwtService
             "Invalid Jwt:TokenExpirationHours value configured; using {DefaultTokenExpirationHours} hours",
             DefaultTokenExpirationHours);
         return TimeSpan.FromHours(DefaultTokenExpirationHours);
+    }
+
+    private TimeSpan GetRefreshTokenLifetime()
+    {
+        var configuredDays = _configuration["Jwt:RefreshTokenExpirationDays"];
+        if (string.IsNullOrWhiteSpace(configuredDays))
+        {
+            return TimeSpan.FromDays(DefaultRefreshTokenExpirationDays);
+        }
+
+        if (int.TryParse(configuredDays, out var expirationDays)
+            && expirationDays > 0
+            && expirationDays <= MaxRefreshTokenExpirationDays)
+        {
+            return TimeSpan.FromDays(expirationDays);
+        }
+
+        _logger.LogWarning(
+            "Invalid Jwt:RefreshTokenExpirationDays value configured; using {DefaultRefreshTokenExpirationDays} days",
+            DefaultRefreshTokenExpirationDays);
+        return TimeSpan.FromDays(DefaultRefreshTokenExpirationDays);
     }
 }
 

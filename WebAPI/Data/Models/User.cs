@@ -30,6 +30,17 @@ public class User
     public bool IsActive { get; set; } = true;
     public bool IsAdmin { get; set; } = false;
 
+    /// <summary>
+    /// SHA-256 hash of the currently valid refresh token (base64). Null when no refresh token is active.
+    /// </summary>
+    [MaxLength(128)]
+    public string? RefreshTokenHash { get; set; }
+
+    /// <summary>
+    /// UTC expiry for the currently valid refresh token.
+    /// </summary>
+    public DateTime? RefreshTokenExpiresAt { get; set; }
+
     // Metadata
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLoginAt { get; set; }

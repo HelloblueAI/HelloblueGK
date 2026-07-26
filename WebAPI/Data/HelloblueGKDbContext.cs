@@ -99,6 +99,21 @@ public class HelloblueGKDbContext : DbContext
                   .OnDelete(DeleteBehavior.Restrict);
             entity.HasIndex(e => e.EngineId);
             entity.HasIndex(e => e.CreatedBy);
+
+            // At most one active twin per (engine, owner). Filter SQL is provider-specific.
+            // Skip on non-relational providers (e.g. InMemory test doubles).
+            if (Database.IsRelational())
+            {
+                var activeTwinFilter = Database.IsSqlite()
+                    ? "\"IsActive\" = 1 AND \"CreatedBy\" IS NOT NULL"
+                    : Database.IsNpgsql()
+                        ? "\"IsActive\" = TRUE AND \"CreatedBy\" IS NOT NULL"
+                        : "[IsActive] = 1 AND [CreatedBy] IS NOT NULL";
+
+                entity.HasIndex(e => new { e.EngineId, e.CreatedBy })
+                    .IsUnique()
+                    .HasFilter(activeTwinFilter);
+            }
         });
 
         // Launch
@@ -123,8 +138,20 @@ public class HelloblueGKDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Username).IsRequired().HasMaxLength(100);
             entity.Property(e => e.Email).IsRequired().HasMaxLength(255);
+            entity.Property(e => e.RefreshTokenHash).HasMaxLength(128);
             entity.HasIndex(e => e.Username).IsUnique();
             entity.HasIndex(e => e.Email).IsUnique();
+
+            if (Database.IsRelational())
+            {
+                var refreshTokenFilter = Database.IsSqlite() || Database.IsNpgsql()
+                    ? "\"RefreshTokenHash\" IS NOT NULL"
+                    : "[RefreshTokenHash] IS NOT NULL";
+
+                entity.HasIndex(e => e.RefreshTokenHash)
+                    .IsUnique()
+                    .HasFilter(refreshTokenFilter);
+            }
         });
 
         // API Key
