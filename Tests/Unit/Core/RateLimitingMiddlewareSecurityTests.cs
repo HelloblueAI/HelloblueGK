@@ -48,6 +48,7 @@ public class RateLimitingMiddlewareSecurityTests
     [Theory]
     [InlineData("/api/v1/auth/login")]
     [InlineData("/api/v1/auth/register")]
+    [InlineData("/api/v1/auth/refresh")]
     [InlineData("/api/v1/account/login")]
     public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldUseAuthPolicy(string path)
     {

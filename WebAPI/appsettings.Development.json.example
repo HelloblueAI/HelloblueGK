@@ -17,7 +17,8 @@
     "Key": "your-development-jwt-secret-key-minimum-32-characters-long",
     "Issuer": "hellobluegk-dev",
     "Audience": "hellobluegk-api-dev",
-    "TokenExpirationHours": "24"
+    "TokenExpirationHours": "24",
+    "RefreshTokenExpirationDays": "7"
   },
   "AllowedHosts": "*"
 }

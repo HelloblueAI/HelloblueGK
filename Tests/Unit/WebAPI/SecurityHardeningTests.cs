@@ -199,6 +199,136 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Refresh_WithExpiredToken_ClearsStoredHashAndReturnsUnauthorized()
+    {
+        await using var context = CreateContext();
+        var user = new User
+        {
+            Username = "expired-refresh",
+            Email = "expired-refresh@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true,
+            RefreshTokenHash = "expired-refresh-hash",
+            RefreshTokenExpiresAt = DateTime.UtcNow.AddMinutes(-5)
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.HashRefreshToken("expired-refresh-token"))
+            .Returns("expired-refresh-hash");
+
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Production);
+
+        var result = await controller.Refresh(new RefreshTokenRequest
+        {
+            RefreshToken = "expired-refresh-token"
+        });
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        user.RefreshTokenHash.Should().BeNull();
+        user.RefreshTokenExpiresAt.Should().BeNull();
+        jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Never);
+        jwtService.Verify(service => service.GenerateRefreshToken(), Times.Never);
+    }
+
+    [Fact]
+    public async Task DatabaseInitializer_AddsMissingRefreshTokenColumnsOnLegacySqliteSchema()
+    {
+        var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE "Users" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_Users" PRIMARY KEY AUTOINCREMENT,
+                    "Username" TEXT NOT NULL,
+                    "Email" TEXT NOT NULL,
+                    "PasswordHash" TEXT NOT NULL,
+                    "FirstName" TEXT NULL,
+                    "LastName" TEXT NULL,
+                    "IsActive" INTEGER NOT NULL,
+                    "IsAdmin" INTEGER NOT NULL,
+                    "CreatedAt" TEXT NOT NULL,
+                    "LastLoginAt" TEXT NULL,
+                    "UpdatedAt" TEXT NULL
+                );
+                CREATE TABLE "Engines" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_Engines" PRIMARY KEY AUTOINCREMENT,
+                    "Name" TEXT NOT NULL,
+                    "EngineType" TEXT NOT NULL,
+                    "Status" TEXT NULL,
+                    "Thrust" REAL NOT NULL,
+                    "Isp" REAL NOT NULL,
+                    "Weight" REAL NOT NULL,
+                    "CreatedAt" TEXT NOT NULL,
+                    "UpdatedAt" TEXT NULL,
+                    "CreatedBy" TEXT NULL,
+                    "IsActive" INTEGER NOT NULL
+                );
+                CREATE TABLE "DigitalTwins" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_DigitalTwins" PRIMARY KEY AUTOINCREMENT,
+                    "EngineId" INTEGER NOT NULL,
+                    "Name" TEXT NULL,
+                    "PredictionAccuracy" REAL NOT NULL,
+                    "RealTimeLearning" INTEGER NOT NULL,
+                    "ModelDataJson" TEXT NULL,
+                    "CreatedAt" TEXT NOT NULL,
+                    "LastUpdated" TEXT NULL,
+                    "IsActive" INTEGER NOT NULL,
+                    "CreatedBy" TEXT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var context = new HelloblueGKDbContext(options);
+
+        await DatabaseInitializer.EnsureSchemaCompatibilityAsync(
+            context,
+            NullLogger.Instance);
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """PRAGMA table_info("Users")""";
+            await using var reader = await command.ExecuteReaderAsync();
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (await reader.ReadAsync())
+            {
+                columns.Add(reader.GetString(1));
+            }
+
+            columns.Should().Contain("RefreshTokenHash");
+            columns.Should().Contain("RefreshTokenExpiresAt");
+        }
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """SELECT name FROM sqlite_master WHERE type = 'index'""";
+            await using var reader = await command.ExecuteReaderAsync();
+            var indexes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (await reader.ReadAsync())
+            {
+                indexes.Add(reader.GetString(0));
+            }
+
+            indexes.Should().Contain("IX_Users_RefreshTokenHash");
+            indexes.Should().Contain("IX_DigitalTwins_EngineId_CreatedBy_Active");
+        }
+
+        // Compatibility patch must be idempotent.
+        await DatabaseInitializer.EnsureSchemaCompatibilityAsync(
+            context,
+            NullLogger.Instance);
+    }
+
+    [Fact]
     public void JwtService_HashRefreshToken_IsDeterministicSha256()
     {
         var configuration = new ConfigurationBuilder()
