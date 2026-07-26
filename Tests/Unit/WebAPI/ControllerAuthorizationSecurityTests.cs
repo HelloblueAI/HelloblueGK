@@ -571,7 +571,7 @@ public class ControllerAuthorizationSecurityTests
     [Fact]
     public async Task ExecuteLaunch_ConcurrentCalls_OnlyOneTransitionsAndQueuesWork()
     {
-        var databaseName = Guid.NewGuid().ToString();
+        var databaseName = Guid.NewGuid().ToString("N");
         await using var context = CreateContext(databaseName);
         var launch = await SeedLaunchAsync(context, "admin");
 
@@ -599,6 +599,82 @@ public class ControllerAuthorizationSecurityTests
         var persisted = await context.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
         persisted.Status.Should().Be("InProgress");
         persisted.LaunchedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task CancelLaunch_ForInProgressLaunch_IsNotOverwrittenByBackgroundWorkerCompletion()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var executeController = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var executeResult = await executeController.ExecuteLaunch(launch.Id);
+        executeResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var cancelContext = CreateContext(databaseName);
+        var cancelController = CreateLaunchesController(
+            cancelContext,
+            CreatePrincipal("admin", isAdmin: true));
+        var cancelResult = await cancelController.CancelLaunch(launch.Id);
+        cancelResult.Should().BeOfType<OkObjectResult>();
+
+        await using var workerContext = CreateContext(databaseName);
+        var serviceProvider = new SingleServiceProvider(workerContext);
+        await deferredQueue.PendingWork[0].Work(serviceProvider, CancellationToken.None);
+
+        var persisted = await context.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Cancelled");
+        persisted.CompletedAt.Should().NotBeNull();
+        persisted.MissionSuccess.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task StartOptimization_WhenEngineIsDeletedBeforeWorkerRuns_MarksRunFailed()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic"
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        // Simulate a missing engine row without cascading the optimization run away.
+        await context.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF;");
+        await context.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM Engines WHERE Id = {engine.Id}");
+        await context.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = ON;");
+
+        await using var workerContext = CreateContext(databaseName);
+        var serviceProvider = new SingleServiceProvider(workerContext);
+        await deferredQueue.PendingWork[0].Work(serviceProvider, CancellationToken.None);
+
+        var persisted = await context.AIOptimizationRuns.AsNoTracking()
+            .SingleAsync(o => o.Id == response.Id);
+        persisted.Status.Should().Be("Failed");
+        persisted.CompletedAt.Should().NotBeNull();
+        persisted.ErrorMessage.Should().Contain("engine no longer exists");
     }
 
     [Fact]
@@ -888,4 +964,25 @@ public class ControllerAuthorizationSecurityTests
             Interlocked.CompareExchange(ref _state, 1, 0);
         }
     }
+
+    private sealed class SingleServiceProvider : IServiceProvider
+    {
+        private readonly HelloblueGKDbContext _context;
+
+        public SingleServiceProvider(HelloblueGKDbContext context)
+        {
+            _context = context;
+        }
+
+        public object? GetService(Type serviceType)
+        {
+            if (serviceType == typeof(HelloblueGKDbContext))
+            {
+                return _context;
+            }
+
+            return null;
+        }
+    }
+
 }

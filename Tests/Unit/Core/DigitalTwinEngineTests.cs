@@ -173,6 +173,44 @@ public class DigitalTwinEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task PredictAndLearn_CapsHistoryUnderRepeatedOperations()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "BoundedHistoryEngine";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(engineId, new EngineModel
+        {
+            Name = "Bounded History Engine",
+            Parameters = new Dictionary<string, double>()
+        });
+
+        var operations = DigitalTwinEngine.MaxHistoryEntries + 40;
+        for (var index = 0; index < operations; index++)
+        {
+            await _digitalTwinEngine.PredictEngineBehaviorAsync(engineId, new PredictionScenario
+            {
+                Name = $"Scenario_{index}",
+                Parameters = new Dictionary<string, object>()
+            });
+
+            await _digitalTwinEngine.LearnFromTestFlightAsync(engineId, new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000 + index,
+                    ["Efficiency"] = 0.9
+                }
+            });
+        }
+
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+        report.TotalPredictions.Should().Be(DigitalTwinEngine.MaxHistoryEntries);
+        report.TotalLearningEvents.Should().Be(DigitalTwinEngine.MaxHistoryEntries);
+        report.TotalModelImprovements.Should().Be(DigitalTwinEngine.MaxHistoryEntries);
+    }
+
+    [Fact]
     public async Task ConcurrentLearningAndPredictions_ShouldPreserveCompleteHistory()
     {
         // Arrange
