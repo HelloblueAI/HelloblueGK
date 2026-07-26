@@ -46,12 +46,6 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<PhysicsStatus> InitializeAsync()
         {
-            if (_isInitialized)
-            {
-                Console.WriteLine("[High Performance Physics] Already initialized");
-                return await GetCurrentStatusAsync();
-            }
-
             await _initializationGate.WaitAsync();
             try
             {
