@@ -568,13 +568,118 @@ public class ControllerAuthorizationSecurityTests
         launch.LaunchedAt.Should().BeNull();
     }
 
-    private static HelloblueGKDbContext CreateContext()
+    [Fact]
+    public async Task ExecuteLaunch_ConcurrentCalls_OnlyOneTransitionsAndQueuesWork()
     {
+        var databaseName = Guid.NewGuid().ToString();
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+
+        await using var contextA = CreateContext(databaseName);
+        await using var contextB = CreateContext(databaseName);
+        var queueA = new DeferredBackgroundWorkQueue();
+        var queueB = new DeferredBackgroundWorkQueue();
+        var controllerA = CreateLaunchesController(
+            contextA,
+            CreatePrincipal("admin", isAdmin: true),
+            queueA);
+        var controllerB = CreateLaunchesController(
+            contextB,
+            CreatePrincipal("admin", isAdmin: true),
+            queueB);
+
+        var results = await Task.WhenAll(
+            controllerA.ExecuteLaunch(launch.Id),
+            controllerB.ExecuteLaunch(launch.Id));
+
+        results.Count(result => result is OkObjectResult).Should().Be(1);
+        results.Count(result => result is BadRequestObjectResult).Should().Be(1);
+        (queueA.PendingWork.Count + queueB.PendingWork.Count).Should().Be(1);
+
+        var persisted = await context.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("InProgress");
+        persisted.LaunchedAt.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwin_WithForceCreate_DeactivatesExistingActiveTwins()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+        var firstCreate = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin A"
+        });
+        var firstTwin = firstCreate.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        var secondCreate = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin B",
+            ForceCreate = true
+        });
+        var secondTwin = secondCreate.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        var persistedFirst = await context.DigitalTwins.AsNoTracking().SingleAsync(dt => dt.Id == firstTwin.Id);
+        var persistedSecond = await context.DigitalTwins.AsNoTracking().SingleAsync(dt => dt.Id == secondTwin.Id);
+        persistedFirst.IsActive.Should().BeFalse();
+        persistedSecond.IsActive.Should().BeTrue();
+        context.DigitalTwins.Count(dt => dt.EngineId == engine.Id && dt.IsActive).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task GetPredictions_ForInactiveDigitalTwin_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
+        digitalTwin.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+        var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest
+        {
+            ScenarioName = "Inactive prediction"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Fact]
+    public async Task UpdateDigitalTwinLearning_ForInactiveDigitalTwin_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "admin");
+        digitalTwin.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("admin", isAdmin: true));
+        var result = await controller.UpdateDigitalTwinLearning(digitalTwin.Id, new LearningDataRequest
+        {
+            TelemetryData = new Dictionary<string, double> { ["Thrust"] = 1.0 }
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    private static HelloblueGKDbContext CreateContext(string? databaseName = null)
+    {
+        // Use SQLite instead of the EF InMemory provider so ExecuteUpdate-based
+        // conditional status transitions can be exercised in tests.
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseSqlite($"Data Source=file:{(databaseName ?? Guid.NewGuid().ToString("N"))}?mode=memory&cache=shared")
             .Options;
 
-        return new HelloblueGKDbContext(options);
+        var context = new HelloblueGKDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static async Task<AIOptimizationRun> SeedOptimizationAsync(
@@ -737,10 +842,50 @@ public class ControllerAuthorizationSecurityTests
     {
         public int MaxConcurrency => 0;
 
-        public bool TryAcquire(out BackgroundWorkSlot? slot)
+        public bool TryAcquire(out IBackgroundWorkSlot? slot)
         {
             slot = null;
             return false;
+        }
+    }
+
+    private sealed class DeferredBackgroundWorkQueue : IBackgroundWorkQueue
+    {
+        public int MaxConcurrency => 1;
+        public List<(Func<IServiceProvider, CancellationToken, Task> Work, string Name)> PendingWork { get; } = new();
+
+        public bool TryAcquire(out IBackgroundWorkSlot? slot)
+        {
+            slot = new DeferredBackgroundWorkSlot(this);
+            return true;
+        }
+    }
+
+    private sealed class DeferredBackgroundWorkSlot : IBackgroundWorkSlot
+    {
+        private readonly DeferredBackgroundWorkQueue _owner;
+        private int _state;
+
+        public DeferredBackgroundWorkSlot(DeferredBackgroundWorkQueue owner)
+        {
+            _owner = owner;
+        }
+
+        public void Queue(
+            Func<IServiceProvider, CancellationToken, Task> workItem,
+            string workItemName)
+        {
+            if (Interlocked.CompareExchange(ref _state, 1, 0) != 0)
+            {
+                throw new InvalidOperationException("Background work slot has already been used.");
+            }
+
+            _owner.PendingWork.Add((workItem, workItemName));
+        }
+
+        public void Dispose()
+        {
+            Interlocked.CompareExchange(ref _state, 1, 0);
         }
     }
 }

@@ -26,8 +26,8 @@ namespace HB_NLP_Research_Lab.Core
         private readonly ParallelProcessor _parallelProcessor;
         
         private bool _isInitialized = false;
-        private readonly object _lockObject = new object();
-        private readonly Stopwatch _performanceTimer = new Stopwatch();
+        private readonly SemaphoreSlim _initializationGate = new(1, 1);
+        private readonly Stopwatch _uptimeTimer = new Stopwatch();
 
         // Performance tracking
         private long _totalCalculations = 0;
@@ -46,42 +46,50 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task<PhysicsStatus> InitializeAsync()
         {
-            if (_isInitialized)
+            await _initializationGate.WaitAsync();
+            try
             {
-                Console.WriteLine("[High Performance Physics] Already initialized");
+                if (_isInitialized)
+                {
+                    Console.WriteLine("[High Performance Physics] Already initialized");
+                    return await GetCurrentStatusAsync();
+                }
+
+                Console.WriteLine("[High Performance Physics] 🚀 Initializing high-performance physics engine...");
+
+                // Initialize all solvers in parallel
+                var initTasks = new[]
+                {
+                    _cfdSolver.InitializeAsync(),
+                    _thermalSolver.InitializeAsync(),
+                    _structuralSolver.InitializeAsync(),
+                    _performanceOptimizer.InitializeAsync(),
+                    _parallelProcessor.InitializeAsync()
+                };
+
+                await Task.WhenAll(initTasks);
+
+                // Performance optimization
+                await _performanceOptimizer.OptimizeSolversAsync();
+
+                _isInitialized = true;
+                _uptimeTimer.Start();
+
+                Console.WriteLine($"[High Performance Physics] ✅ Initialized with {Environment.ProcessorCount} cores");
+
                 return await GetCurrentStatusAsync();
             }
-            
-            Console.WriteLine("[High Performance Physics] 🚀 Initializing high-performance physics engine...");
-            
-            // Initialize all solvers in parallel
-            var initTasks = new[]
+            finally
             {
-                _cfdSolver.InitializeAsync(),
-                _thermalSolver.InitializeAsync(),
-                _structuralSolver.InitializeAsync(),
-                _performanceOptimizer.InitializeAsync(),
-                _parallelProcessor.InitializeAsync()
-            };
-
-            await Task.WhenAll(initTasks);
-            
-            // Performance optimization
-            await _performanceOptimizer.OptimizeSolversAsync();
-            
-            _isInitialized = true;
-            _performanceTimer.Start();
-            
-            Console.WriteLine($"[High Performance Physics] ✅ Initialized with {Environment.ProcessorCount} cores");
-            
-            return await GetCurrentStatusAsync();
+                _initializationGate.Release();
+            }
         }
 
         public async Task<CfdAnalysisResult> RunCfdAnalysisAsync()
         {
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
-            
-            _performanceTimer.Restart();
+
+            var performanceTimer = Stopwatch.StartNew();
             Console.WriteLine("[High Performance Physics] 🌊 Running high-performance CFD analysis...");
             
             // Parallel processing for high performance
@@ -94,11 +102,11 @@ namespace HB_NLP_Research_Lab.Core
                 
                 return cfdResult;
             });
-            
-            _performanceTimer.Stop();
+
+            performanceTimer.Stop();
             
             // Performance metrics
-            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var elapsedSeconds = performanceTimer.ElapsedMilliseconds / 1000.0;
             var calculationsPerSecond = elapsedSeconds > 0
                 ? result.CalculationCount / elapsedSeconds
                 : 0.0;
@@ -106,7 +114,7 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing CFD metrics; reporting 0 calc/sec.");
             }
-            Console.WriteLine($"[High Performance Physics] CFD completed: {result.CalculationCount:N0} calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
+            Console.WriteLine($"[High Performance Physics] CFD completed: {result.CalculationCount:N0} calculations in {performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             
             return result;
         }
@@ -114,8 +122,8 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ThermalAnalysisResult> RunThermalAnalysisAsync()
         {
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
-            
-            _performanceTimer.Restart();
+
+            var performanceTimer = Stopwatch.StartNew();
             Console.WriteLine("[High Performance Physics] 🔥 Running high-performance thermal analysis...");
             
             var result = await _parallelProcessor.ExecuteParallelAsync(async () =>
@@ -124,10 +132,10 @@ namespace HB_NLP_Research_Lab.Core
                 Interlocked.Add(ref _totalCalculations, thermalResult.CalculationCount);
                 return thermalResult;
             });
+
+            performanceTimer.Stop();
             
-            _performanceTimer.Stop();
-            
-            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var elapsedSeconds = performanceTimer.ElapsedMilliseconds / 1000.0;
             var calculationsPerSecond = elapsedSeconds > 0
                 ? result.CalculationCount / elapsedSeconds
                 : 0.0;
@@ -135,7 +143,7 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing thermal metrics; reporting 0 calc/sec.");
             }
-            Console.WriteLine($"[High Performance Physics] Thermal completed: {result.CalculationCount:N0} calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
+            Console.WriteLine($"[High Performance Physics] Thermal completed: {result.CalculationCount:N0} calculations in {performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             
             return result;
         }
@@ -143,8 +151,8 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<StructuralAnalysisResult> RunStructuralAnalysisAsync()
         {
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
-            
-            _performanceTimer.Restart();
+
+            var performanceTimer = Stopwatch.StartNew();
             Console.WriteLine("[High Performance Physics] 🏗️ Running high-performance structural analysis...");
             
             var result = await _parallelProcessor.ExecuteParallelAsync(async () =>
@@ -153,10 +161,10 @@ namespace HB_NLP_Research_Lab.Core
                 Interlocked.Add(ref _totalCalculations, structuralResult.CalculationCount);
                 return structuralResult;
             });
+
+            performanceTimer.Stop();
             
-            _performanceTimer.Stop();
-            
-            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var elapsedSeconds = performanceTimer.ElapsedMilliseconds / 1000.0;
             var calculationsPerSecond = elapsedSeconds > 0
                 ? result.CalculationCount / elapsedSeconds
                 : 0.0;
@@ -164,7 +172,7 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing structural metrics; reporting 0 calc/sec.");
             }
-            Console.WriteLine($"[High Performance Physics] Structural completed: {result.CalculationCount:N0} calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
+            Console.WriteLine($"[High Performance Physics] Structural completed: {result.CalculationCount:N0} calculations in {performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             
             return result;
         }
@@ -219,7 +227,7 @@ namespace HB_NLP_Research_Lab.Core
                 ActiveSolvers = 3,
                 MemoryUsage = GC.GetTotalMemory(false),
                 CpuUsage = await GetCpuUsageAsync(),
-                Uptime = _performanceTimer.Elapsed,
+                Uptime = _uptimeTimer.Elapsed,
                 OptimizationLevel = await _performanceOptimizer.GetOptimizationLevelAsync()
             };
             
@@ -255,8 +263,8 @@ namespace HB_NLP_Research_Lab.Core
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
             
             Console.WriteLine("[High Performance Physics] 🚀 Running high-performance multi-physics analysis...");
-            
-            _performanceTimer.Restart();
+
+            var performanceTimer = Stopwatch.StartNew();
             
             // Parallel execution of all physics solvers
             var cfdTask = RunCfdAnalysisAsync();
@@ -269,10 +277,10 @@ namespace HB_NLP_Research_Lab.Core
             var thermalResult = await thermalTask;
             var structuralResult = await structuralTask;
 
-            _performanceTimer.Stop();
+            performanceTimer.Stop();
             
             var totalCalculations = cfdResult.CalculationCount + thermalResult.CalculationCount + structuralResult.CalculationCount;
-            var elapsedSeconds = _performanceTimer.ElapsedMilliseconds / 1000.0;
+            var elapsedSeconds = performanceTimer.ElapsedMilliseconds / 1000.0;
             var calculationsPerSecond = elapsedSeconds > 0
                 ? totalCalculations / elapsedSeconds
                 : 0.0;
@@ -281,7 +289,7 @@ namespace HB_NLP_Research_Lab.Core
                 Console.WriteLine("[High Performance Physics] ⚠️ Elapsed time was zero when computing multi-physics metrics; reporting 0 calc/sec.");
             }
             
-            Console.WriteLine($"[High Performance Physics] Multi-physics completed: {totalCalculations:N0} total calculations in {_performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
+            Console.WriteLine($"[High Performance Physics] Multi-physics completed: {totalCalculations:N0} total calculations in {performanceTimer.ElapsedMilliseconds}ms ({calculationsPerSecond:N0} calc/sec)");
             
             return new MultiPhysicsResult
             {
@@ -289,7 +297,7 @@ namespace HB_NLP_Research_Lab.Core
                 ThermalResult = thermalResult,
                 StructuralResult = structuralResult,
                 TotalCalculationCount = totalCalculations,
-                ExecutionTime = _performanceTimer.Elapsed,
+                ExecutionTime = performanceTimer.Elapsed,
                 CalculationsPerSecond = calculationsPerSecond
             };
         }

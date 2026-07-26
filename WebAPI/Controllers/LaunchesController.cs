@@ -232,10 +232,24 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 using (backgroundWorkSlot)
                 {
-                    // Update status and start launch
+                    var launchedAt = DateTime.UtcNow;
+                    var transitioned = await _context.Launches
+                        .Where(l => l.Id == id && l.Status == "Scheduled")
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(l => l.Status, "InProgress")
+                            .SetProperty(l => l.LaunchedAt, launchedAt));
+
+                    if (transitioned == 0)
+                    {
+                        await _context.Entry(launch).ReloadAsync();
+                        return BadRequest(new
+                        {
+                            message = $"Launch is not in Scheduled status. Current status: {launch.Status}"
+                        });
+                    }
+
                     launch.Status = "InProgress";
-                    launch.LaunchedAt = DateTime.UtcNow;
-                    await _context.SaveChangesAsync();
+                    launch.LaunchedAt = launchedAt;
 
                     // Execute launch asynchronously with a new scope to avoid DbContext disposal issues
                     var launchId = launch.Id;

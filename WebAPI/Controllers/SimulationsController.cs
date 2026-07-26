@@ -217,10 +217,21 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         var scopedEngine = await scopedContext.Engines.FindAsync(
                             [engineId],
                             cancellationToken);
-                        if (scopedEngine != null)
+                        if (scopedEngine == null)
                         {
-                            await ExecuteSimulationAsync(simulationId, scopedEngine, request, scopedContext);
+                            await FailSimulationAsync(
+                                scopedContext,
+                                simulationId,
+                                "Simulation failed because the target engine no longer exists.");
+                            return;
                         }
+
+                        await ExecuteSimulationAsync(
+                            simulationId,
+                            scopedEngine,
+                            request,
+                            scopedContext,
+                            cancellationToken);
                     }, $"simulation:{simulationId}");
 
                     return CreatedAtAction(
@@ -304,9 +315,21 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Cannot cancel simulation with status: {simulation.Status}" });
                 }
 
+                var completedAt = DateTime.UtcNow;
+                var cancelled = await _context.EngineSimulations
+                    .Where(s => s.Id == id && (s.Status == "Running" || s.Status == "Pending"))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(s => s.Status, "Cancelled")
+                        .SetProperty(s => s.CompletedAt, completedAt));
+
+                if (cancelled == 0)
+                {
+                    await _context.Entry(simulation).ReloadAsync();
+                    return BadRequest(new { message = $"Cannot cancel simulation with status: {simulation.Status}" });
+                }
+
                 simulation.Status = "Cancelled";
-                simulation.CompletedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                simulation.CompletedAt = completedAt;
 
                 return Ok(new { message = "Simulation cancelled successfully" });
             }
@@ -317,34 +340,47 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
         }
 
-        private async Task ExecuteSimulationAsync(int simulationId, Engine engine, RunSimulationRequest request, HelloblueGKDbContext context)
+        private async Task ExecuteSimulationAsync(
+            int simulationId,
+            Engine engine,
+            RunSimulationRequest request,
+            HelloblueGKDbContext context,
+            CancellationToken cancellationToken)
         {
             try
             {
-                var simulation = await context.EngineSimulations.FindAsync(simulationId);
-                if (simulation == null) return;
+                var startedAt = DateTime.UtcNow;
+                var transitionedToRunning = await context.EngineSimulations
+                    .Where(s => s.Id == simulationId && s.Status == "Pending")
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(s => s.Status, "Running")
+                            .SetProperty(s => s.StartedAt, startedAt),
+                        cancellationToken);
 
-                simulation.Status = "Running";
-                simulation.StartedAt = DateTime.UtcNow;
-                await context.SaveChangesAsync();
+                if (transitionedToRunning == 0)
+                {
+                    var currentStatus = await context.EngineSimulations
+                        .AsNoTracking()
+                        .Where(s => s.Id == simulationId)
+                        .Select(s => s.Status)
+                        .FirstOrDefaultAsync(cancellationToken);
 
-                var startTime = DateTime.UtcNow;
+                    _logger.LogInformation(
+                        "Skipping simulation {SimulationId} because it is already {Status}",
+                        simulationId,
+                        currentStatus ?? "missing");
+                    return;
+                }
 
                 // Run the actual simulation using HelloblueGKEngine
                 var analysisResult = await _engine.AnalyzeEngineAsync(engine.Name);
+                cancellationToken.ThrowIfCancellationRequested();
 
-                var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
-
-                // Update simulation with results
-                simulation.Status = "Completed";
-                simulation.CompletedAt = DateTime.UtcNow;
-                simulation.ExecutionTimeSeconds = executionTime;
-                simulation.Accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0 ?? 0.95;
-                simulation.Iterations = 1000; // Default iterations for multi-physics simulation
-                simulation.ConvergenceRate = 0.99;
-
-                // Serialize results
-                var results = new
+                var executionTime = (DateTime.UtcNow - startedAt).TotalSeconds;
+                var accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0 ?? 0.95;
+                var completedAt = DateTime.UtcNow;
+                var resultsJson = JsonSerializer.Serialize(new
                 {
                     thrustAnalysis = new
                     {
@@ -366,28 +402,76 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         overallAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
                         confidenceLevel = analysisResult.ValidationReport?.ConfidenceLevel
                     }
-                };
+                });
 
-                simulation.ResultsJson = JsonSerializer.Serialize(results);
-                await context.SaveChangesAsync();
+                // Only complete if still Running so a concurrent cancel is preserved.
+                var completed = await context.EngineSimulations
+                    .Where(s => s.Id == simulationId && s.Status == "Running")
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(s => s.Status, "Completed")
+                            .SetProperty(s => s.CompletedAt, completedAt)
+                            .SetProperty(s => s.ExecutionTimeSeconds, executionTime)
+                            .SetProperty(s => s.Accuracy, accuracy)
+                            .SetProperty(s => s.Iterations, 1000)
+                            .SetProperty(s => s.ConvergenceRate, 0.99)
+                            .SetProperty(s => s.ResultsJson, resultsJson),
+                        cancellationToken);
+
+                if (completed == 0)
+                {
+                    var currentStatus = await context.EngineSimulations
+                        .AsNoTracking()
+                        .Where(s => s.Id == simulationId)
+                        .Select(s => s.Status)
+                        .FirstOrDefaultAsync(cancellationToken);
+
+                    _logger.LogInformation(
+                        "Simulation {SimulationId} was {Status} before results were persisted; discarding completion",
+                        simulationId,
+                        currentStatus ?? "missing");
+                    return;
+                }
 
                 _logger.LogInformation("Simulation {SimulationId} completed successfully in {ExecutionTime}s", 
                     simulationId, executionTime);
             }
+            catch (OperationCanceledException)
+            {
+                await FailSimulationAsync(
+                    context,
+                    simulationId,
+                    "Simulation cancelled during execution.",
+                    markAsCancelled: true);
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error executing simulation {SimulationId}", simulationId);
-                
-                var simulation = await context.EngineSimulations.FindAsync(simulationId);
-                if (simulation != null)
-                {
-                    simulation.Status = "Failed";
-                    simulation.CompletedAt = DateTime.UtcNow;
-                    simulation.ErrorMessage = "Simulation failed. See server logs for details.";
-                    simulation.StackTrace = null;
-                    await context.SaveChangesAsync();
-                }
+                await FailSimulationAsync(
+                    context,
+                    simulationId,
+                    "Simulation failed. See server logs for details.");
             }
+        }
+
+        private static async Task FailSimulationAsync(
+            HelloblueGKDbContext context,
+            int simulationId,
+            string errorMessage,
+            bool markAsCancelled = false)
+        {
+            var completedAt = DateTime.UtcNow;
+            var status = markAsCancelled ? "Cancelled" : "Failed";
+
+            await context.EngineSimulations
+                .Where(s => s.Id == simulationId &&
+                            (s.Status == "Pending" || s.Status == "Running"))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(s => s.Status, status)
+                    .SetProperty(s => s.CompletedAt, completedAt)
+                    .SetProperty(s => s.ErrorMessage, errorMessage)
+                    .SetProperty(s => s.StackTrace, (string?)null));
         }
 
         private string? GetCurrentUsername()
