@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Numerics;
 using System.Linq;
@@ -23,10 +24,10 @@ namespace HB_NLP_Research_Lab.Physics
         private readonly CouplingController _couplingController;
         private readonly RealTimeFeedbackSystem _feedbackSystem;
         private readonly ConvergenceMonitor _convergenceMonitor;
+        private readonly SemaphoreSlim _analysisGate = new(1, 1);
+        private readonly SemaphoreSlim _initializationGate = new(1, 1);
         
         private bool _isInitialized = false;
-        private readonly Dictionary<string, object> _couplingData;
-        private readonly List<CouplingIteration> _couplingHistory;
 
         public AdvancedMultiPhysicsCoupler()
         {
@@ -50,41 +51,44 @@ namespace HB_NLP_Research_Lab.Physics
             _couplingController = new CouplingController();
             _feedbackSystem = new RealTimeFeedbackSystem();
             _convergenceMonitor = new ConvergenceMonitor();
-            
-            _couplingData = new Dictionary<string, object>();
-            _couplingHistory = new List<CouplingIteration>();
         }
 
         public async Task<CouplingStatus> InitializeAsync()
         {
-            Console.WriteLine("[Multi-Physics Coupler] 🔗 Initializing Multi-Physics Coupling System...");
-            Console.WriteLine("[Multi-Physics Coupler] Real-Time Feedback Loops Enabled");
-            Console.WriteLine("[Multi-Physics Coupler] Complete Physics Integration Active");
-            
-            // Initialize all physics solvers
-            _cfdSolver.Initialize();
-            _thermalSolver.Initialize();
-            _structuralSolver.Initialize();
-            _electromagneticSolver.Initialize();
-            _molecularSolver.Initialize();
-            
-            // Initialize coupling systems
-            await _couplingController.InitializeAsync();
-            await _feedbackSystem.InitializeAsync();
-            await _convergenceMonitor.InitializeAsync();
-            
-            await Task.Delay(200); // Simulate initialization time
-            
-            _isInitialized = true;
-            
-            return new CouplingStatus
+            await _initializationGate.WaitAsync();
+            try
             {
-                IsReady = true,
-                ActiveSolvers = new[] { "CFD", "Thermal", "Structural", "Electromagnetic", "Molecular Dynamics" },
-                CouplingMode = "Real-Time Multi-Physics",
-                FeedbackLoops = "Active",
-                ConvergenceStatus = "Ready"
-            };
+                if (_isInitialized)
+                {
+                    return CreateReadyStatus();
+                }
+
+                Console.WriteLine("[Multi-Physics Coupler] 🔗 Initializing Multi-Physics Coupling System...");
+                Console.WriteLine("[Multi-Physics Coupler] Real-Time Feedback Loops Enabled");
+                Console.WriteLine("[Multi-Physics Coupler] Complete Physics Integration Active");
+                
+                // Initialize all physics solvers
+                _cfdSolver.Initialize();
+                _thermalSolver.Initialize();
+                _structuralSolver.Initialize();
+                _electromagneticSolver.Initialize();
+                _molecularSolver.Initialize();
+                
+                // Initialize coupling systems
+                await _couplingController.InitializeAsync();
+                await _feedbackSystem.InitializeAsync();
+                await _convergenceMonitor.InitializeAsync();
+                
+                await Task.Delay(200); // Simulate initialization time
+                
+                _isInitialized = true;
+                
+                return CreateReadyStatus();
+            }
+            finally
+            {
+                _initializationGate.Release();
+            }
         }
 
         public async Task<MultiPhysicsResult> RunCoupledAnalysisAsync(EngineModel engineModel)
@@ -92,85 +96,93 @@ namespace HB_NLP_Research_Lab.Physics
             if (!_isInitialized)
                 await InitializeAsync();
 
-            Console.WriteLine("[Multi-Physics Coupler] 🚀 Running Coupled Analysis...");
-            Console.WriteLine("[Multi-Physics Coupler] All Physics Solvers Running Simultaneously");
-            
-            var startTime = DateTime.UtcNow;
-            var iteration = 0;
-            var maxIterations = 50;
-            var convergenceThreshold = 1e-6;
-            
-            // Initialize coupling data
-            _couplingData.Clear();
-            _couplingHistory.Clear();
-            
-            // Initial solution from each solver
-            var cfdResult = _cfdSolver.RunSimulation(engineModel);
-            var thermalResult = _thermalSolver.RunSimulation(engineModel);
-            var structuralResult = _structuralSolver.RunSimulation(engineModel);
-            var electromagneticResult = _electromagneticSolver.RunSimulation(engineModel);
-            var molecularResult = _molecularSolver.RunSimulation(engineModel);
-            
-            // Coupling loop with real-time feedback
-            while (iteration < maxIterations)
+            await _analysisGate.WaitAsync();
+            try
             {
-                iteration++;
-                Console.WriteLine($"[Multi-Physics Coupler] Coupling Iteration {iteration}");
+                Console.WriteLine("[Multi-Physics Coupler] 🚀 Running Coupled Analysis...");
+                Console.WriteLine("[Multi-Physics Coupler] All Physics Solvers Running Simultaneously");
                 
-                // Create coupling iteration
-                var couplingIteration = new CouplingIteration
+                var startTime = DateTime.UtcNow;
+                var iteration = 0;
+                var maxIterations = 50;
+                var convergenceThreshold = 1e-6;
+                
+                // Keep coupling history local so concurrent callers cannot observe
+                // or mutate another run's iteration stream.
+                var couplingHistory = new List<CouplingIteration>();
+                
+                // Initial solution from each solver
+                var cfdResult = _cfdSolver.RunSimulation(engineModel);
+                var thermalResult = _thermalSolver.RunSimulation(engineModel);
+                var structuralResult = _structuralSolver.RunSimulation(engineModel);
+                var electromagneticResult = _electromagneticSolver.RunSimulation(engineModel);
+                var molecularResult = _molecularSolver.RunSimulation(engineModel);
+                
+                // Coupling loop with real-time feedback
+                while (iteration < maxIterations)
                 {
-                    IterationNumber = iteration,
-                    Timestamp = DateTime.UtcNow,
-                    CfdData = cfdResult,
-                    ThermalData = thermalResult,
-                    StructuralData = structuralResult,
-                    ElectromagneticData = electromagneticResult,
-                    MolecularData = molecularResult
-                };
-                
-                // Apply coupling constraints and feedback
-                var feedbackData = await _feedbackSystem.ProcessFeedbackAsync(couplingIteration);
-                
-                // Update solvers with coupled data
-                cfdResult = await UpdateCFDWithCouplingAsync(cfdResult, feedbackData);
-                thermalResult = await UpdateThermalWithCouplingAsync(thermalResult, feedbackData);
-                structuralResult = await UpdateStructuralWithCouplingAsync(structuralResult, feedbackData);
-                electromagneticResult = await UpdateElectromagneticWithCouplingAsync(electromagneticResult, feedbackData);
-                molecularResult = await UpdateMolecularWithCouplingAsync(molecularResult, feedbackData);
-                
-                // Check convergence
-                var convergenceStatus = await _convergenceMonitor.CheckConvergenceAsync(couplingIteration);
-                couplingIteration.ConvergenceStatus = convergenceStatus;
-                _couplingHistory.Add(couplingIteration);
-                
-                if (convergenceStatus.ResidualNorm < convergenceThreshold)
-                {
-                    Console.WriteLine($"[Multi-Physics Coupler] Convergence achieved at iteration {iteration}");
-                    break;
+                    iteration++;
+                    Console.WriteLine($"[Multi-Physics Coupler] Coupling Iteration {iteration}");
+                    
+                    // Create coupling iteration
+                    var couplingIteration = new CouplingIteration
+                    {
+                        IterationNumber = iteration,
+                        Timestamp = DateTime.UtcNow,
+                        CfdData = cfdResult,
+                        ThermalData = thermalResult,
+                        StructuralData = structuralResult,
+                        ElectromagneticData = electromagneticResult,
+                        MolecularData = molecularResult
+                    };
+                    
+                    // Apply coupling constraints and feedback
+                    var feedbackData = await _feedbackSystem.ProcessFeedbackAsync(couplingIteration);
+                    
+                    // Update solvers with coupled data
+                    cfdResult = await UpdateCFDWithCouplingAsync(cfdResult, feedbackData);
+                    thermalResult = await UpdateThermalWithCouplingAsync(thermalResult, feedbackData);
+                    structuralResult = await UpdateStructuralWithCouplingAsync(structuralResult, feedbackData);
+                    electromagneticResult = await UpdateElectromagneticWithCouplingAsync(electromagneticResult, feedbackData);
+                    molecularResult = await UpdateMolecularWithCouplingAsync(molecularResult, feedbackData);
+                    
+                    // Check convergence
+                    var convergenceStatus = await _convergenceMonitor.CheckConvergenceAsync(couplingIteration);
+                    couplingIteration.ConvergenceStatus = convergenceStatus;
+                    couplingHistory.Add(couplingIteration);
+                    
+                    if (convergenceStatus.ResidualNorm < convergenceThreshold)
+                    {
+                        Console.WriteLine($"[Multi-Physics Coupler] Convergence achieved at iteration {iteration}");
+                        break;
+                    }
+                    
+                    // Real-time feedback to coupling controller
+                    await _couplingController.UpdateCouplingStrategyAsync(convergenceStatus);
                 }
                 
-                // Real-time feedback to coupling controller
-                await _couplingController.UpdateCouplingStrategyAsync(convergenceStatus);
+                var analysisTime = DateTime.UtcNow - startTime;
+                
+                return new MultiPhysicsResult
+                {
+                    CfdAnalysis = cfdResult as AdvancedCFDResult ?? new AdvancedCFDResult(),
+                    ThermalAnalysis = thermalResult as AdvancedThermalResult ?? new AdvancedThermalResult(),
+                    StructuralAnalysis = structuralResult as AdvancedStructuralResult ?? new AdvancedStructuralResult(),
+                    ElectromagneticAnalysis = electromagneticResult as ElectromagneticResult ?? new ElectromagneticResult(),
+                    MolecularAnalysis = molecularResult as MolecularDynamicsResult ?? new MolecularDynamicsResult(),
+                    CouplingHistory = couplingHistory,
+                    TotalIterations = iteration,
+                    AnalysisTime = analysisTime,
+                    ConvergenceAchieved = iteration < maxIterations,
+                    FinalResidualNorm = couplingHistory.LastOrDefault()?.ConvergenceStatus?.ResidualNorm ?? 0.0,
+                    CouplingEfficiency = CalculateCouplingEfficiency(couplingHistory),
+                    PhysicsIntegrationLevel = "Complete"
+                };
             }
-            
-            var analysisTime = DateTime.UtcNow - startTime;
-            
-            return new MultiPhysicsResult
+            finally
             {
-                CfdAnalysis = cfdResult as AdvancedCFDResult ?? new AdvancedCFDResult(),
-                ThermalAnalysis = thermalResult as AdvancedThermalResult ?? new AdvancedThermalResult(),
-                StructuralAnalysis = structuralResult as AdvancedStructuralResult ?? new AdvancedStructuralResult(),
-                ElectromagneticAnalysis = electromagneticResult as ElectromagneticResult ?? new ElectromagneticResult(),
-                MolecularAnalysis = molecularResult as MolecularDynamicsResult ?? new MolecularDynamicsResult(),
-                CouplingHistory = _couplingHistory ?? new List<CouplingIteration>(),
-                TotalIterations = iteration,
-                AnalysisTime = analysisTime,
-                ConvergenceAchieved = iteration < maxIterations,
-                FinalResidualNorm = _couplingHistory?.Last()?.ConvergenceStatus?.ResidualNorm ?? 0.0,
-                CouplingEfficiency = CalculateCouplingEfficiency(),
-                PhysicsIntegrationLevel = "Complete"
-            };
+                _analysisGate.Release();
+            }
         }
 
         public async Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync(string engineId)
@@ -382,11 +394,24 @@ namespace HB_NLP_Research_Lab.Physics
             return updatedResult;
         }
 
-        private double CalculateCouplingEfficiency()
+        private static CouplingStatus CreateReadyStatus()
+        {
+            return new CouplingStatus
+            {
+                IsReady = true,
+                ActiveSolvers = new[] { "CFD", "Thermal", "Structural", "Electromagnetic", "Molecular Dynamics" },
+                CouplingMode = "Real-Time Multi-Physics",
+                FeedbackLoops = "Active",
+                ConvergenceStatus = "Ready"
+            };
+        }
+
+        private static double CalculateCouplingEfficiency(IReadOnlyList<CouplingIteration> couplingHistory)
         {
             // Calculate overall coupling efficiency based on convergence and physics integration
-            var convergenceEfficiency = _couplingHistory.Count > 0 ? 
-                Math.Max(0, 1.0 - _couplingHistory.Last().ConvergenceStatus.ResidualNorm) : 0.95;
+            var convergenceEfficiency = couplingHistory.Count > 0
+                ? Math.Max(0, 1.0 - couplingHistory[^1].ConvergenceStatus.ResidualNorm)
+                : 0.95;
             
             var physicsIntegrationEfficiency = 0.98; // High integration level
             var feedbackEfficiency = 0.97; // Real-time feedback

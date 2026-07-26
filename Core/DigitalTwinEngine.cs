@@ -16,6 +16,8 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class DigitalTwinEngine : IDisposable
     {
+        public const int MaxHistoryEntries = 256;
+
         private readonly AdvancedPhysicsEngine _physicsEngine;
         private readonly ValidationEngine _validationEngine;
         private readonly AutonomousEngineDesigner _aiDesigner;
@@ -290,7 +292,9 @@ namespace HB_NLP_Research_Lab.Core
 
                     var history = _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
                     history.LearningEvents.Add(learningEvent);
+                    TrimBoundedHistory(history.LearningEvents);
                     history.ModelImprovements.Add(modelImprovement);
+                    TrimBoundedHistory(history.ModelImprovements);
                     _predictionAccuracies[engineId] = accuracyUpdate;
                     digitalTwin.LastUpdateTimestamp = DateTime.UtcNow;
                     digitalTwin.PredictionAccuracy = accuracyUpdate.OverallAccuracy;
@@ -343,7 +347,9 @@ namespace HB_NLP_Research_Lab.Core
                     ThrowIfDisposed();
                     lock (GetHistoryLock(engineId))
                     {
-                        _learningHistories.GetOrAdd(engineId, CreateLearningHistory).PredictionHistory.Add(predictionRecord);
+                        var history = _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
+                        history.PredictionHistory.Add(predictionRecord);
+                        TrimBoundedHistory(history.PredictionHistory);
                     }
                 }
 
@@ -524,6 +530,14 @@ namespace HB_NLP_Research_Lab.Core
             PredictionHistory = new List<PredictionRecord>()
         };
 
+        private static void TrimBoundedHistory<T>(List<T> list)
+        {
+            if (list.Count > MaxHistoryEntries)
+            {
+                list.RemoveRange(0, list.Count - MaxHistoryEntries);
+            }
+        }
+
         private object GetHistoryLock(string engineId) =>
             _historyLocks.GetOrAdd(engineId, static _ => new object());
 
@@ -567,6 +581,12 @@ namespace HB_NLP_Research_Lab.Core
                 _digitalTwins.Clear();
                 _learningHistories.Clear();
                 _predictionAccuracies.Clear();
+                _historyLocks.Clear();
+                foreach (var gate in _engineGates.Values)
+                {
+                    gate.Dispose();
+                }
+                _engineGates.Clear();
             }
         }
     }

@@ -232,10 +232,24 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 using (backgroundWorkSlot)
                 {
-                    // Update status and start launch
+                    var launchedAt = DateTime.UtcNow;
+                    var transitioned = await _context.Launches
+                        .Where(l => l.Id == id && l.Status == "Scheduled")
+                        .ExecuteUpdateAsync(setters => setters
+                            .SetProperty(l => l.Status, "InProgress")
+                            .SetProperty(l => l.LaunchedAt, launchedAt));
+
+                    if (transitioned == 0)
+                    {
+                        await _context.Entry(launch).ReloadAsync();
+                        return BadRequest(new
+                        {
+                            message = $"Launch is not in Scheduled status. Current status: {launch.Status}"
+                        });
+                    }
+
                     launch.Status = "InProgress";
-                    launch.LaunchedAt = DateTime.UtcNow;
-                    await _context.SaveChangesAsync();
+                    launch.LaunchedAt = launchedAt;
 
                     // Execute launch asynchronously with a new scope to avoid DbContext disposal issues
                     var launchId = launch.Id;
@@ -273,14 +287,28 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return NotFound(new { message = $"Launch with ID {id} not found" });
                 }
 
-                if (launch.Status != "Scheduled")
+                if (launch.Status != "Scheduled" && launch.Status != "InProgress")
                 {
                     return BadRequest(new { message = $"Cannot cancel launch with status: {launch.Status}" });
                 }
 
+                var completedAt = DateTime.UtcNow;
+                // Atomically claim Scheduled or InProgress so a concurrent worker
+                // completion cannot be overwritten by a stale cancel write.
+                var transitioned = await _context.Launches
+                    .Where(l => l.Id == id && (l.Status == "Scheduled" || l.Status == "InProgress"))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(l => l.Status, "Cancelled")
+                        .SetProperty(l => l.CompletedAt, completedAt));
+
+                if (transitioned == 0)
+                {
+                    await _context.Entry(launch).ReloadAsync();
+                    return BadRequest(new { message = $"Cannot cancel launch with status: {launch.Status}" });
+                }
+
                 launch.Status = "Cancelled";
-                launch.CompletedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                launch.CompletedAt = completedAt;
 
                 return Ok(new { message = "Launch cancelled successfully" });
             }
@@ -356,6 +384,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 if (launch == null) return;
 
+                // Bail out early if cancel won the race before work started.
+                if (launch.Status != "InProgress")
+                {
+                    _logger.LogInformation(
+                        "Launch {LaunchId} is {Status}; skipping execution",
+                        launchId,
+                        launch.Status);
+                    return;
+                }
+
                 var startTime = DateTime.UtcNow;
 
                 // Simulate launch using engine analysis
@@ -376,16 +414,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var missionSuccess = launch.Engine.Efficiency > 0.90 && analysisResult.ValidationReport?.OverallAccuracy > 95;
 
                 var missionDuration = (DateTime.UtcNow - startTime).TotalSeconds;
+                var completedAt = DateTime.UtcNow;
+                var status = missionSuccess ? "Success" : "Failed";
+                var errorMessage = missionSuccess
+                    ? null
+                    : "Mission failed due to engine performance below threshold";
 
-                // Update launch with results
-                launch.Status = missionSuccess ? "Success" : "Failed";
-                launch.CompletedAt = DateTime.UtcNow;
-                launch.MissionDurationSeconds = missionDuration;
-                launch.MaxAltitude = maxAltitude;
-                launch.MaxVelocity = maxVelocity;
-                launch.MissionSuccess = missionSuccess;
-
-                var results = new
+                var resultsJson = JsonSerializer.Serialize(new
                 {
                     totalThrust = totalThrust,
                     specificImpulse = specificImpulse,
@@ -397,32 +432,51 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     missionDuration = missionDuration,
                     engineEfficiency = launch.Engine.Efficiency,
                     validationAccuracy = analysisResult.ValidationReport?.OverallAccuracy
-                };
+                });
 
-                launch.ResultsJson = JsonSerializer.Serialize(results);
+                // Only complete if still InProgress so a concurrent cancel is preserved.
+                // Note: cancel currently only claims Scheduled launches; this guard covers
+                // future cancel-while-running support and any external status changes.
+                var completed = await context.Launches
+                    .Where(l => l.Id == launchId && l.Status == "InProgress")
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(l => l.Status, status)
+                        .SetProperty(l => l.CompletedAt, completedAt)
+                        .SetProperty(l => l.MissionDurationSeconds, missionDuration)
+                        .SetProperty(l => l.MaxAltitude, maxAltitude)
+                        .SetProperty(l => l.MaxVelocity, maxVelocity)
+                        .SetProperty(l => l.MissionSuccess, missionSuccess)
+                        .SetProperty(l => l.ResultsJson, resultsJson)
+                        .SetProperty(l => l.ErrorMessage, errorMessage));
 
-                if (!missionSuccess)
+                if (completed == 0)
                 {
-                    launch.ErrorMessage = "Mission failed due to engine performance below threshold";
+                    var currentStatus = await context.Launches
+                        .AsNoTracking()
+                        .Where(l => l.Id == launchId)
+                        .Select(l => l.Status)
+                        .FirstOrDefaultAsync();
+
+                    _logger.LogInformation(
+                        "Launch {LaunchId} was {Status} before results were persisted; discarding completion",
+                        launchId,
+                        currentStatus ?? "missing");
+                    return;
                 }
 
-                await context.SaveChangesAsync();
-
-                _logger.LogInformation("Launch {LaunchId} completed: {Status}", launchId, launch.Status);
+                _logger.LogInformation("Launch {LaunchId} completed: {Status}", launchId, status);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error executing launch {LaunchId}", launchId);
 
-                var launch = await context.Launches.FindAsync(launchId);
-                if (launch != null)
-                {
-                    launch.Status = "Failed";
-                    launch.CompletedAt = DateTime.UtcNow;
-                    launch.MissionSuccess = false;
-                    launch.ErrorMessage = "Launch failed. See server logs for details.";
-                    await context.SaveChangesAsync();
-                }
+                await context.Launches
+                    .Where(l => l.Id == launchId && l.Status == "InProgress")
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(l => l.Status, "Failed")
+                        .SetProperty(l => l.CompletedAt, DateTime.UtcNow)
+                        .SetProperty(l => l.MissionSuccess, false)
+                        .SetProperty(l => l.ErrorMessage, "Launch failed. See server logs for details."));
             }
         }
 

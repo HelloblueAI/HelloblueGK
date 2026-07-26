@@ -98,6 +98,54 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task CancelledSimulation_IsNotOverwrittenByBackgroundWorkerCompletion()
+    {
+        var databaseName = Guid.NewGuid().ToString();
+        await using var context = CreateContext(databaseName);
+        var engine = new Engine
+        {
+            Name = "Cancel-safe Engine",
+            EngineType = "Test",
+            CreatedBy = null,
+            Thrust = 1,
+            SpecificImpulse = 1,
+            ChamberPressure = 1,
+            Efficiency = 0.95,
+            ExpansionRatio = 1,
+            MassFlowRate = 1
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateController(context, CreatePrincipal("alice"), deferredQueue);
+
+        var createResult = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "MultiPhysics"
+        });
+
+        var created = createResult.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
+        response.Status.Should().Be("Pending");
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        var cancelResult = await controller.CancelSimulation(response.Id);
+        cancelResult.Should().BeOfType<OkObjectResult>();
+
+        await using var workerContext = CreateContext(databaseName);
+        var serviceProvider = new SingleServiceProvider(workerContext);
+        await deferredQueue.PendingWork[0].Work(serviceProvider, CancellationToken.None);
+
+        var simulation = await workerContext.EngineSimulations
+            .AsNoTracking()
+            .SingleAsync(s => s.Id == response.Id);
+        simulation.Status.Should().Be("Cancelled");
+        simulation.ResultsJson.Should().BeNull();
+    }
+
+    [Fact]
     public async Task RunSimulation_ForStandardUserWithoutUsernameClaim_ReturnsForbidWithoutCreatingOrphanRecord()
     {
         await using var context = CreateContext();
@@ -292,13 +340,18 @@ public class SimulationsControllerSecurityTests
         json.Should().NotContain("secret stack trace");
     }
 
-    private static HelloblueGKDbContext CreateContext()
+    private static HelloblueGKDbContext CreateContext(string? databaseName = null)
     {
+        // Use SQLite instead of the EF InMemory provider so ExecuteUpdate-based
+        // conditional status transitions can be exercised in tests.
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseSqlite($"Data Source=file:{(databaseName ?? Guid.NewGuid().ToString("N"))}?mode=memory&cache=shared")
             .Options;
 
-        return new HelloblueGKDbContext(options);
+        var context = new HelloblueGKDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static async Task<EngineSimulation> SeedSimulationAsync(
@@ -374,10 +427,70 @@ public class SimulationsControllerSecurityTests
     {
         public int MaxConcurrency => 0;
 
-        public bool TryAcquire(out BackgroundWorkSlot? slot)
+        public bool TryAcquire(out IBackgroundWorkSlot? slot)
         {
             slot = null;
             return false;
+        }
+    }
+
+    private sealed class DeferredBackgroundWorkQueue : IBackgroundWorkQueue
+    {
+        public int MaxConcurrency => 1;
+        public List<(Func<IServiceProvider, CancellationToken, Task> Work, string Name)> PendingWork { get; } = new();
+
+        public bool TryAcquire(out IBackgroundWorkSlot? slot)
+        {
+            slot = new DeferredBackgroundWorkSlot(this);
+            return true;
+        }
+    }
+
+    private sealed class DeferredBackgroundWorkSlot : IBackgroundWorkSlot
+    {
+        private readonly DeferredBackgroundWorkQueue _owner;
+        private int _state;
+
+        public DeferredBackgroundWorkSlot(DeferredBackgroundWorkQueue owner)
+        {
+            _owner = owner;
+        }
+
+        public void Queue(
+            Func<IServiceProvider, CancellationToken, Task> workItem,
+            string workItemName)
+        {
+            if (Interlocked.CompareExchange(ref _state, 1, 0) != 0)
+            {
+                throw new InvalidOperationException("Background work slot has already been used.");
+            }
+
+            _owner.PendingWork.Add((workItem, workItemName));
+        }
+
+        public void Dispose()
+        {
+            Interlocked.CompareExchange(ref _state, 1, 0);
+        }
+    }
+
+    private sealed class SingleServiceProvider : IServiceProvider
+    {
+        private readonly HelloblueGKDbContext _context;
+
+        public SingleServiceProvider(HelloblueGKDbContext context)
+        {
+            _context = context;
+        }
+
+        public object? GetService(Type serviceType)
+        {
+            if (serviceType == typeof(HelloblueGKDbContext))
+            {
+                return _context;
+            }
+
+            return null;
         }
     }
 }

@@ -16,12 +16,15 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class RealTimeValidationEngine : IValidationEngine, IDisposable
     {
+        public const int MaxCachedValidations = 256;
+
         private readonly HttpClient _httpClient;
         private readonly ValidationDatabase _validationDatabase;
         private readonly RealTimeDataCollector _dataCollector;
         private readonly ValidationAnalytics _analytics;
         
         private readonly Dictionary<string, ValidationResult> _validationCache;
+        private readonly Queue<string> _cacheOrder;
         private readonly Dictionary<string, Task<ValidationResult>> _inFlightValidations;
         private readonly object _cacheLock = new object();
         private readonly HashSet<string> _processingEngines = new HashSet<string>();
@@ -35,6 +38,7 @@ namespace HB_NLP_Research_Lab.Core
             _dataCollector = new RealTimeDataCollector();
             _analytics = new ValidationAnalytics();
             _validationCache = new Dictionary<string, ValidationResult>();
+            _cacheOrder = new Queue<string>();
             _inFlightValidations = new Dictionary<string, Task<ValidationResult>>();
             
             // Set up real-time data collection
@@ -154,7 +158,7 @@ namespace HB_NLP_Research_Lab.Core
                         return cachedResult;
                     }
 
-                    _validationCache[engineModel] = validationResult;
+                    StoreValidationResult_NoLock(engineModel, validationResult);
                     return validationResult;
                 }
             }
@@ -169,6 +173,24 @@ namespace HB_NLP_Research_Lab.Core
                     }
                 }
             }
+        }
+
+        private void StoreValidationResult_NoLock(string engineModel, ValidationResult validationResult)
+        {
+            if (_validationCache.ContainsKey(engineModel))
+            {
+                _validationCache[engineModel] = validationResult;
+                return;
+            }
+
+            while (_validationCache.Count >= MaxCachedValidations && _cacheOrder.Count > 0)
+            {
+                var oldest = _cacheOrder.Dequeue();
+                _validationCache.Remove(oldest);
+            }
+
+            _validationCache[engineModel] = validationResult;
+            _cacheOrder.Enqueue(engineModel);
         }
 
         private async Task<ValidationResult> PerformRealTimeValidationAsync(string engineModel)
@@ -501,7 +523,7 @@ namespace HB_NLP_Research_Lab.Core
                 
                 lock (_cacheLock)
                 {
-                    _validationCache[e.EngineModel] = updatedResult;
+                    StoreValidationResult_NoLock(e.EngineModel, updatedResult);
                 }
             }
             catch (HttpRequestException)
