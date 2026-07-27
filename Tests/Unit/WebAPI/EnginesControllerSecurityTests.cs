@@ -102,7 +102,7 @@ public class EnginesControllerSecurityTests
     }
 
     [Fact]
-    public async Task GetEngineById_ForDifferentStandardUser_ReturnsForbid()
+    public async Task GetEngineById_ForDifferentStandardUser_ReturnsNotFound()
     {
         var options = CreateOptions();
         int engineId;
@@ -120,12 +120,25 @@ public class EnginesControllerSecurityTests
 
             var result = await controller.GetEngineById(engineId);
 
-            result.Should().BeOfType<ForbidResult>();
+            var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+            notFound.Value.Should().BeEquivalentTo(new { message = $"Engine with ID {engineId} not found" });
         }
     }
 
     [Fact]
-    public async Task GetEngineByName_ForDifferentStandardUser_ReturnsForbid()
+    public async Task GetEngineById_ForMissingEngine_ReturnsSameNotFoundAsInaccessible()
+    {
+        await using var context = new HelloblueGKDbContext(CreateOptions());
+        var controller = CreateController(context, CreatePrincipal("bob", isAdmin: false));
+
+        var result = await controller.GetEngineById(999_999);
+
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        notFound.Value.Should().BeEquivalentTo(new { message = "Engine with ID 999999 not found" });
+    }
+
+    [Fact]
+    public async Task GetEngineByName_ForDifferentStandardUser_ReturnsNotFound()
     {
         var options = CreateOptions();
         await using (var seedContext = new HelloblueGKDbContext(options))
@@ -140,7 +153,8 @@ public class EnginesControllerSecurityTests
 
             var result = await controller.GetEngineByName("alice-private");
 
-            result.Should().BeOfType<ForbidResult>();
+            var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+            notFound.Value.Should().BeEquivalentTo(new { message = "Engine with name 'alice-private' not found" });
         }
     }
 

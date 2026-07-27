@@ -119,14 +119,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             try
             {
                 var engine = await _engineRepository.GetByIdAsync(id);
-                if (engine == null)
+                // Return the same 404 for missing and inaccessible engines to avoid ownership oracles.
+                if (engine == null || !CurrentUserCanAccessEngine(engine))
                 {
                     return NotFound(new { message = $"Engine with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessEngine(engine))
-                {
-                    return Forbid();
                 }
 
                 return Ok(engine);
@@ -152,14 +148,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             try
             {
                 var engine = await _engineRepository.GetByNameAsync(name);
-                if (engine == null)
+                // Return the same 404 for missing and inaccessible engines to avoid ownership oracles.
+                if (engine == null || !CurrentUserCanAccessEngine(engine))
                 {
                     return NotFound(new { message = $"Engine with name '{name}' not found" });
-                }
-
-                if (!CurrentUserCanAccessEngine(engine))
-                {
-                    return Forbid();
                 }
 
                 return Ok(engine);

@@ -28,7 +28,8 @@
     "Key": "CHANGE-THIS-TO-A-SECURE-RANDOM-STRING-MINIMUM-32-CHARACTERS-LONG",
     "Issuer": "https://api.helloblue.com",
     "Audience": "https://app.helloblue.com",
-    "TokenExpirationHours": "24"
+    "TokenExpirationHours": "24",
+    "RefreshTokenExpirationDays": "7"
   },
   "AllowedHosts": "*.helloblue.com",
   "Cors": {

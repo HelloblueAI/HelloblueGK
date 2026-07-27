@@ -92,8 +92,14 @@ public class SecurityHardeningTests
             .Setup(service => service.GenerateRefreshToken())
             .Returns("refresh-token");
         jwtService
+            .Setup(service => service.HashRefreshToken("refresh-token"))
+            .Returns("refresh-token-hash");
+        jwtService
             .Setup(service => service.GetTokenExpirationSeconds())
             .Returns(7200);
+        jwtService
+            .Setup(service => service.GetRefreshTokenExpirationSeconds())
+            .Returns(604800);
         var controller = CreateAuthController(context, jwtService.Object, Environments.Development);
 
         var result = await controller.Login(new LoginRequest
@@ -105,13 +111,303 @@ public class SecurityHardeningTests
         var response = result.Should().BeOfType<OkObjectResult>().Subject.Value
             .Should().BeOfType<LoginResponse>().Subject;
         response.ExpiresIn.Should().Be(7200);
+        response.RefreshToken.Should().Be("refresh-token");
         user.PasswordHash.Should().NotBe(legacyHash);
         user.PasswordHash.Split(':').Should().HaveCount(3);
         user.LastLoginAt.Should().NotBeNull();
         user.UpdatedAt.Should().NotBeNull();
+        user.RefreshTokenHash.Should().Be("refresh-token-hash");
+        user.RefreshTokenExpiresAt.Should().NotBeNull();
+        user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
         jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Once);
         jwtService.Verify(service => service.GenerateRefreshToken(), Times.Once);
+        jwtService.Verify(service => service.HashRefreshToken("refresh-token"), Times.Once);
         jwtService.Verify(service => service.GetTokenExpirationSeconds(), Times.Once);
+        jwtService.Verify(service => service.GetRefreshTokenExpirationSeconds(), Times.Once);
+    }
+
+    [Fact]
+    public async Task Refresh_WithPersistedToken_RotatesAccessAndRefreshTokens()
+    {
+        await using var context = CreateContext();
+        var user = new User
+        {
+            Username = "refresher",
+            Email = "refresher@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true,
+            RefreshTokenHash = "stored-refresh-hash",
+            RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(1)
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.HashRefreshToken("presented-refresh-token"))
+            .Returns("stored-refresh-hash");
+        jwtService
+            .Setup(service => service.GenerateToken(It.Is<User>(candidate => candidate.Username == "refresher")))
+            .Returns("new-access-token");
+        jwtService
+            .Setup(service => service.GenerateRefreshToken())
+            .Returns("rotated-refresh-token");
+        jwtService
+            .Setup(service => service.HashRefreshToken("rotated-refresh-token"))
+            .Returns("rotated-refresh-hash");
+        jwtService
+            .Setup(service => service.GetTokenExpirationSeconds())
+            .Returns(3600);
+        jwtService
+            .Setup(service => service.GetRefreshTokenExpirationSeconds())
+            .Returns(604800);
+
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Production);
+
+        var result = await controller.Refresh(new RefreshTokenRequest
+        {
+            RefreshToken = "presented-refresh-token"
+        });
+
+        var response = result.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<LoginResponse>().Subject;
+        response.Token.Should().Be("new-access-token");
+        response.RefreshToken.Should().Be("rotated-refresh-token");
+        user.RefreshTokenHash.Should().Be("rotated-refresh-hash");
+        user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
+    }
+
+    [Fact]
+    public async Task Refresh_WithUnknownToken_ReturnsUnauthorized()
+    {
+        await using var context = CreateContext();
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.HashRefreshToken("unknown-token"))
+            .Returns("missing-hash");
+
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Production);
+
+        var result = await controller.Refresh(new RefreshTokenRequest
+        {
+            RefreshToken = "unknown-token"
+        });
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Never);
+        jwtService.Verify(service => service.GenerateRefreshToken(), Times.Never);
+    }
+
+    [Fact]
+    public async Task Refresh_WithExpiredToken_ClearsStoredHashAndReturnsUnauthorized()
+    {
+        await using var context = CreateContext();
+        var user = new User
+        {
+            Username = "expired-refresh",
+            Email = "expired-refresh@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true,
+            RefreshTokenHash = "expired-refresh-hash",
+            RefreshTokenExpiresAt = DateTime.UtcNow.AddMinutes(-5)
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.HashRefreshToken("expired-refresh-token"))
+            .Returns("expired-refresh-hash");
+
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Production);
+
+        var result = await controller.Refresh(new RefreshTokenRequest
+        {
+            RefreshToken = "expired-refresh-token"
+        });
+
+        result.Should().BeOfType<UnauthorizedObjectResult>();
+        user.RefreshTokenHash.Should().BeNull();
+        user.RefreshTokenExpiresAt.Should().BeNull();
+        jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Never);
+        jwtService.Verify(service => service.GenerateRefreshToken(), Times.Never);
+    }
+
+    [Fact]
+    public async Task DatabaseInitializer_AddsMissingRefreshTokenColumnsOnLegacySqliteSchema()
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                """
+                CREATE TABLE "Users" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_Users" PRIMARY KEY AUTOINCREMENT,
+                    "Username" TEXT NOT NULL,
+                    "Email" TEXT NOT NULL,
+                    "PasswordHash" TEXT NOT NULL,
+                    "FirstName" TEXT NULL,
+                    "LastName" TEXT NULL,
+                    "IsActive" INTEGER NOT NULL,
+                    "IsAdmin" INTEGER NOT NULL,
+                    "CreatedAt" TEXT NOT NULL,
+                    "LastLoginAt" TEXT NULL,
+                    "UpdatedAt" TEXT NULL
+                );
+                CREATE TABLE "Engines" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_Engines" PRIMARY KEY AUTOINCREMENT,
+                    "Name" TEXT NOT NULL,
+                    "EngineType" TEXT NOT NULL,
+                    "Status" TEXT NULL,
+                    "Thrust" REAL NOT NULL,
+                    "Isp" REAL NOT NULL,
+                    "Weight" REAL NOT NULL,
+                    "CreatedAt" TEXT NOT NULL,
+                    "UpdatedAt" TEXT NULL,
+                    "CreatedBy" TEXT NULL,
+                    "IsActive" INTEGER NOT NULL
+                );
+                CREATE TABLE "DigitalTwins" (
+                    "Id" INTEGER NOT NULL CONSTRAINT "PK_DigitalTwins" PRIMARY KEY AUTOINCREMENT,
+                    "EngineId" INTEGER NOT NULL,
+                    "Name" TEXT NULL,
+                    "PredictionAccuracy" REAL NOT NULL,
+                    "RealTimeLearning" INTEGER NOT NULL,
+                    "ModelDataJson" TEXT NULL,
+                    "CreatedAt" TEXT NOT NULL,
+                    "LastUpdated" TEXT NULL,
+                    "IsActive" INTEGER NOT NULL,
+                    "CreatedBy" TEXT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync();
+        }
+
+        var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
+            .UseSqlite(connection)
+            .Options;
+        await using var context = new HelloblueGKDbContext(options);
+
+        await DatabaseInitializer.EnsureSchemaCompatibilityAsync(
+            context,
+            NullLogger.Instance);
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """PRAGMA table_info("Users")""";
+            await using var reader = await command.ExecuteReaderAsync();
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (await reader.ReadAsync())
+            {
+                columns.Add(reader.GetString(1));
+            }
+
+            columns.Should().Contain("RefreshTokenHash");
+            columns.Should().Contain("RefreshTokenExpiresAt");
+        }
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """SELECT name FROM sqlite_master WHERE type = 'index'""";
+            await using var reader = await command.ExecuteReaderAsync();
+            var indexes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            while (await reader.ReadAsync())
+            {
+                indexes.Add(reader.GetString(0));
+            }
+
+            indexes.Should().Contain("IX_Users_RefreshTokenHash");
+            indexes.Should().Contain("IX_DigitalTwins_EngineId_CreatedBy_Active");
+        }
+
+        // Compatibility patch must be idempotent.
+        await DatabaseInitializer.EnsureSchemaCompatibilityAsync(
+            context,
+            NullLogger.Instance);
+    }
+
+    [Fact]
+    public void JwtService_HashRefreshToken_IsDeterministicSha256()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Jwt:Key"] = "01234567890123456789012345678901"
+            })
+            .Build();
+        var service = new JwtService(
+            configuration,
+            NullLogger<JwtService>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production });
+
+        var first = service.HashRefreshToken("same-token");
+        var second = service.HashRefreshToken("same-token");
+        var other = service.HashRefreshToken("other-token");
+
+        first.Should().Be(second);
+        first.Should().NotBe(other);
+        first.Should().Be(Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes("same-token"))));
+    }
+
+    [Fact]
+    public void HelloblueGKDbContext_ConfiguresUniqueActiveDigitalTwinIndex()
+    {
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        using var context = new HelloblueGKDbContext(options);
+        var index = context.Model.FindEntityType(typeof(DigitalTwin))!
+            .GetIndexes()
+            .Single(candidate =>
+                candidate.IsUnique
+                && candidate.Properties.Select(property => property.Name)
+                    .SequenceEqual(new[] { nameof(DigitalTwin.EngineId), nameof(DigitalTwin.CreatedBy) }));
+
+        index.GetFilter().Should().Contain("IsActive");
+        index.GetFilter().Should().Contain("CreatedBy");
+    }
+
+    [Fact]
+    public async Task HelloblueGKDbContext_RejectsSecondActiveDigitalTwinForSameOwner()
+    {
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using var context = new HelloblueGKDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+
+        var engine = CreateEngine("indexed-engine");
+        engine.CreatedBy = null;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        context.DigitalTwins.Add(new DigitalTwin
+        {
+            EngineId = engine.Id,
+            Name = "first",
+            CreatedBy = "alice",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        context.DigitalTwins.Add(new DigitalTwin
+        {
+            EngineId = engine.Id,
+            Name = "second",
+            CreatedBy = "alice",
+            IsActive = true
+        });
+
+        var act = async () => await context.SaveChangesAsync();
+        await act.Should().ThrowAsync<DbUpdateException>();
     }
 
     [Fact]

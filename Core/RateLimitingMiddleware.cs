@@ -167,6 +167,7 @@ namespace HB_NLP_Research_Lab.Core
             // API endpoint policies
             if (endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
                 || endpoint.StartsWith("/api/v1/auth/register", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase)
                 || endpoint.StartsWith("/api/v1/account/login", StringComparison.OrdinalIgnoreCase))
             {
                 return "Auth";
