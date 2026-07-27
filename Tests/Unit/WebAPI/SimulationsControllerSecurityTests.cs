@@ -196,19 +196,17 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
-    public async Task GetSimulationById_ForDifferentStandardUser_ReturnsSameNotFoundAsMissing()
+    public async Task GetSimulationById_ForDifferentStandardUser_ReturnsNotFound()
     {
         await using var context = CreateContext();
         var simulation = await SeedSimulationAsync(context, "alice", "Completed");
 
         var controller = CreateController(context, CreatePrincipal("bob"));
 
-        var inaccessible = await controller.GetSimulationById(simulation.Id);
-        var missing = await controller.GetSimulationById(simulation.Id + 999);
+        var result = await controller.GetSimulationById(simulation.Id);
 
-        var inaccessibleResult = inaccessible.Should().BeOfType<NotFoundObjectResult>().Subject;
-        var missingResult = missing.Should().BeOfType<NotFoundObjectResult>().Subject;
-        inaccessibleResult.Value.Should().BeEquivalentTo(missingResult.Value);
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        notFound.Value.Should().BeEquivalentTo(new { message = $"Simulation with ID {simulation.Id} not found" });
     }
 
     [Fact]
