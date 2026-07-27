@@ -1,3 +1,4 @@
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Storage;
@@ -100,7 +101,17 @@ public static class DatabaseInitializer
                 await EnsureSqlServerCompatibilityAsync(dbContext, logger, cancellationToken);
             }
         }
-        catch (Exception ex)
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (DbException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Schema compatibility patch failed. Manual migration may be required for refresh tokens / twin uniqueness.");
+        }
+        catch (DbUpdateException ex)
         {
             logger.LogWarning(
                 ex,

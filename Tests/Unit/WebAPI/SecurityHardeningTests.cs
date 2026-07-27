@@ -236,7 +236,7 @@ public class SecurityHardeningTests
     [Fact]
     public async Task DatabaseInitializer_AddsMissingRefreshTokenColumnsOnLegacySqliteSchema()
     {
-        var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
 
         await using (var command = connection.CreateCommand())
@@ -354,7 +354,7 @@ public class SecurityHardeningTests
     [Fact]
     public void HelloblueGKDbContext_ConfiguresUniqueActiveDigitalTwinIndex()
     {
-        var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
         connection.Open();
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
             .UseSqlite(connection)
@@ -375,7 +375,7 @@ public class SecurityHardeningTests
     [Fact]
     public async Task HelloblueGKDbContext_RejectsSecondActiveDigitalTwinForSameOwner()
     {
-        var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
+        await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
             .UseSqlite(connection)
