@@ -102,14 +102,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Include(l => l.Engine)
                     .FirstOrDefaultAsync(l => l.Id == id);
 
-                if (launch == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (launch == null || !CurrentUserCanAccessLaunch(launch))
                 {
                     return NotFound(new { message = $"Launch with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessLaunch(launch))
-                {
-                    return Forbid();
                 }
 
                 return Ok(LaunchResponse.FromEntity(launch));

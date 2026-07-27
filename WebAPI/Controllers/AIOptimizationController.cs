@@ -103,14 +103,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Include(o => o.Engine)
                     .FirstOrDefaultAsync(o => o.Id == id);
 
-                if (optimization == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (optimization == null || !CurrentUserCanAccessOptimization(optimization))
                 {
                     return NotFound(new { message = $"Optimization run with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessOptimization(optimization))
-                {
-                    return Forbid();
                 }
 
                 return Ok(AIOptimizationRunResponse.FromEntity(optimization));
@@ -172,9 +168,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
+                // Same 404 as a missing engine so private-engine existence is not leaked.
                 if (!EngineAccessPolicy.CanUseEngine(User, engine, currentUsername))
                 {
-                    return Forbid();
+                    return NotFound(new { message = $"Engine with ID {request.EngineId} not found" });
                 }
 
                 if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot) || backgroundWorkSlot == null)
@@ -247,14 +244,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             try
             {
                 var optimization = await _context.AIOptimizationRuns.FindAsync(id);
-                if (optimization == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (optimization == null || !CurrentUserCanAccessOptimization(optimization))
                 {
                     return NotFound(new { message = $"Optimization run with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessOptimization(optimization))
-                {
-                    return Forbid();
                 }
 
                 return Ok(new

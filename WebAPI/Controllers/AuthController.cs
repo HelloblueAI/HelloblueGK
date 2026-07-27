@@ -150,23 +150,85 @@ public class AuthController : ControllerBase
         {
             if (user != null)
             {
+                // Atomically clear only if the expired hash is still present.
+                await _context.Users
+                    .Where(candidate =>
+                        candidate.Id == user.Id &&
+                        candidate.RefreshTokenHash == refreshTokenHash)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(candidate => candidate.RefreshTokenHash, (string?)null)
+                        .SetProperty(candidate => candidate.RefreshTokenExpiresAt, (DateTime?)null)
+                        .SetProperty(candidate => candidate.UpdatedAt, DateTime.UtcNow));
                 ClearRefreshToken(user);
-                await _context.SaveChangesAsync();
             }
 
             return InvalidRefreshTokenResponse();
         }
 
+        // Mint the replacement first, then claim the old hash atomically so two
+        // concurrent refreshes cannot both succeed with the same presented token.
         var accessToken = _jwtService.GenerateToken(user);
-        var rotatedRefreshToken = IssueRefreshToken(user);
-        user.UpdatedAt = DateTime.UtcNow;
-        await _context.SaveChangesAsync();
+        var rotatedRefreshToken = _jwtService.GenerateRefreshToken();
+        var rotatedRefreshTokenHash = _jwtService.HashRefreshToken(rotatedRefreshToken);
+        var rotatedExpiresAt = DateTime.UtcNow.AddSeconds(_jwtService.GetRefreshTokenExpirationSeconds());
+        var updatedAt = DateTime.UtcNow;
+
+        var claimed = await _context.Users
+            .Where(candidate =>
+                candidate.Id == user.Id &&
+                candidate.IsActive &&
+                candidate.RefreshTokenHash == refreshTokenHash &&
+                candidate.RefreshTokenExpiresAt != null &&
+                candidate.RefreshTokenExpiresAt > DateTime.UtcNow)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.RefreshTokenHash, rotatedRefreshTokenHash)
+                .SetProperty(candidate => candidate.RefreshTokenExpiresAt, rotatedExpiresAt)
+                .SetProperty(candidate => candidate.UpdatedAt, updatedAt));
+
+        if (claimed == 0)
+        {
+            // Lost the race to another rotator, or the token was revoked meanwhile.
+            _logger.LogWarning(
+                "Refresh token race or reuse detected for user {Username}",
+                LogSanitizer.SanitizeIdentifier(user.Username));
+            return InvalidRefreshTokenResponse();
+        }
+
+        user.RefreshTokenHash = rotatedRefreshTokenHash;
+        user.RefreshTokenExpiresAt = rotatedExpiresAt;
+        user.UpdatedAt = updatedAt;
 
         _logger.LogInformation(
             "Refresh token rotated for user {Username}",
             LogSanitizer.SanitizeIdentifier(user.Username));
 
         return Ok(BuildAuthResponse(user, accessToken, rotatedRefreshToken));
+    }
+
+    /// <summary>
+    /// Revoke the caller's current refresh token (JWT logout).
+    /// </summary>
+    [HttpPost("logout")]
+    [Authorize]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<IActionResult> Logout()
+    {
+        var userIdClaim = User.FindFirst("userId")?.Value;
+        if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out var userId))
+        {
+            return Unauthorized();
+        }
+
+        await _context.Users
+            .Where(candidate => candidate.Id == userId)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(candidate => candidate.RefreshTokenHash, (string?)null)
+                .SetProperty(candidate => candidate.RefreshTokenExpiresAt, (DateTime?)null)
+                .SetProperty(candidate => candidate.UpdatedAt, DateTime.UtcNow));
+
+        _logger.LogInformation("Refresh token revoked for user id {UserId}", userId);
+        return Ok(new { message = "Logged out successfully" });
     }
 
     /// <summary>
@@ -217,23 +279,19 @@ public class AuthController : ControllerBase
             });
         }
 
-        if (await _context.Users.AnyAsync(u => u.Username == request.Username))
+        if (await _context.Users.AnyAsync(u => u.Username == request.Username || u.Email == request.Email))
         {
+            // Generic message avoids username/email account enumeration.
+            _logger.LogInformation(
+                "Registration rejected due to existing credentials for username {Username}",
+                LogSanitizer.SanitizeIdentifier(request.Username));
             return BadRequest(new ErrorResponse
             {
                 StatusCode = 400,
-                Message = "Username already exists",
-                Timestamp = DateTime.UtcNow
-            });
-        }
-
-        if (await _context.Users.AnyAsync(u => u.Email == request.Email))
-        {
-            return BadRequest(new ErrorResponse
-            {
-                StatusCode = 400,
-                Message = "Email already exists",
-                Timestamp = DateTime.UtcNow
+                Message = "Unable to register with the provided credentials",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
             });
         }
 
