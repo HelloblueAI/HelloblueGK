@@ -70,7 +70,7 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
-    public async Task CancelSimulation_ForDifferentStandardUser_ReturnsForbid()
+    public async Task CancelSimulation_ForDifferentStandardUser_ReturnsNotFound()
     {
         await using var context = CreateContext();
         var simulation = await SeedSimulationAsync(context, "alice", "Running");
@@ -79,7 +79,7 @@ public class SimulationsControllerSecurityTests
 
         var result = await controller.CancelSimulation(simulation.Id);
 
-        result.Should().BeOfType<ForbidResult>();
+        result.Should().BeOfType<NotFoundObjectResult>();
         simulation.Status.Should().Be("Running");
     }
 
@@ -170,7 +170,7 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
-    public async Task RunSimulation_ForEngineOwnedByDifferentUser_ReturnsForbidWithoutCreatingSimulation()
+    public async Task RunSimulation_ForEngineOwnedByDifferentUser_ReturnsNotFoundWithoutCreatingSimulation()
     {
         await using var context = CreateContext();
         var engine = new Engine
@@ -190,8 +190,25 @@ public class SimulationsControllerSecurityTests
             SimulationType = "CFD"
         });
 
-        result.Should().BeOfType<ForbidResult>();
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        notFound.Value.Should().BeEquivalentTo(new { message = $"Engine with ID {engine.Id} not found" });
         context.EngineSimulations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetSimulationById_ForDifferentStandardUser_ReturnsSameNotFoundAsMissing()
+    {
+        await using var context = CreateContext();
+        var simulation = await SeedSimulationAsync(context, "alice", "Completed");
+
+        var controller = CreateController(context, CreatePrincipal("bob"));
+
+        var inaccessible = await controller.GetSimulationById(simulation.Id);
+        var missing = await controller.GetSimulationById(simulation.Id + 999);
+
+        var inaccessibleResult = inaccessible.Should().BeOfType<NotFoundObjectResult>().Subject;
+        var missingResult = missing.Should().BeOfType<NotFoundObjectResult>().Subject;
+        inaccessibleResult.Value.Should().BeEquivalentTo(missingResult.Value);
     }
 
     [Fact]

@@ -234,6 +234,144 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Refresh_ConcurrentReuseOfSameToken_OnlyOneRotationSucceeds()
+    {
+        await using var context = CreateContext();
+        var user = new User
+        {
+            Username = "race-refresh",
+            Email = "race-refresh@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true,
+            RefreshTokenHash = "shared-refresh-hash",
+            RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(1)
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.HashRefreshToken("shared-refresh-token"))
+            .Returns("shared-refresh-hash");
+        jwtService
+            .Setup(service => service.GenerateToken(It.IsAny<User>()))
+            .Returns("access-token");
+        jwtService
+            .Setup(service => service.GenerateRefreshToken())
+            .Returns("winner-refresh-token");
+        jwtService
+            .Setup(service => service.HashRefreshToken("winner-refresh-token"))
+            .Returns("winner-refresh-hash");
+        jwtService
+            .Setup(service => service.GetTokenExpirationSeconds())
+            .Returns(3600);
+        jwtService
+            .Setup(service => service.GetRefreshTokenExpirationSeconds())
+            .Returns(604800);
+
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Production);
+        var request = new RefreshTokenRequest { RefreshToken = "shared-refresh-token" };
+
+        var first = await controller.Refresh(request);
+        var second = await controller.Refresh(request);
+
+        first.Should().BeOfType<OkObjectResult>();
+        second.Should().BeOfType<UnauthorizedObjectResult>();
+
+        var persisted = await context.Users.AsNoTracking().SingleAsync(candidate => candidate.Id == user.Id);
+        persisted.RefreshTokenHash.Should().Be("winner-refresh-hash");
+    }
+
+    [Fact]
+    public async Task Logout_ClearsPersistedRefreshToken()
+    {
+        await using var context = CreateContext();
+        var user = new User
+        {
+            Username = "logout-user",
+            Email = "logout-user@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true,
+            RefreshTokenHash = "logout-refresh-hash",
+            RefreshTokenExpiresAt = DateTime.UtcNow.AddDays(1)
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+
+        var controller = CreateAuthController(
+            context,
+            Mock.Of<IJwtService>(),
+            Environments.Production);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(
+                    new[]
+                    {
+                        new Claim("userId", user.Id.ToString()),
+                        new Claim(ClaimTypes.Name, user.Username)
+                    },
+                    "Test"))
+            }
+        };
+
+        var result = await controller.Logout();
+
+        result.Should().BeOfType<OkObjectResult>();
+        var persisted = await context.Users.AsNoTracking().SingleAsync(candidate => candidate.Id == user.Id);
+        persisted.RefreshTokenHash.Should().BeNull();
+        persisted.RefreshTokenExpiresAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Register_WithExistingUsername_ReturnsGenericError()
+    {
+        await using var context = CreateContext();
+        context.Users.Add(new User
+        {
+            Username = "taken",
+            Email = "taken@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        var controller = new AuthController(
+            context,
+            Mock.Of<IJwtService>(),
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "taken",
+            Email = "new@example.com",
+            Password = "Password123!"
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var error = badRequest.Value.Should().BeOfType<HB_NLP_Research_Lab.WebAPI.Models.ErrorResponse>().Subject;
+        error.Message.Should().Be("Unable to register with the provided credentials");
+        error.Message.Should().NotContain("Username");
+        error.Message.Should().NotContain("Email");
+    }
+
+    [Fact]
     public async Task DatabaseInitializer_AddsMissingRefreshTokenColumnsOnLegacySqliteSchema()
     {
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");
@@ -1128,11 +1266,15 @@ public class SecurityHardeningTests
 
     private static HelloblueGKDbContext CreateContext()
     {
+        // Use SQLite so ExecuteUpdate-based refresh-token rotation can be exercised.
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .UseSqlite($"Data Source=file:{Guid.NewGuid():N}?mode=memory&cache=shared")
             .Options;
 
-        return new HelloblueGKDbContext(options);
+        var context = new HelloblueGKDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static TestCoverageDbContext CreateTestCoverageContext()
