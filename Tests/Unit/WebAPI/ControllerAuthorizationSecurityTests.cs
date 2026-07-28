@@ -638,6 +638,54 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task StartOptimization_UsesRequestedAlgorithmAndParameterOverrides()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        engine.CreatedBy = null;
+        engine.Thrust = 1_000_000;
+        engine.SpecificImpulse = 300;
+        engine.ChamberPressure = 10_000_000;
+        engine.Efficiency = 0.8;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic",
+            Parameters = new Dictionary<string, object> { ["efficiency"] = 0.88 }
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.AIOptimizationRuns.AsNoTracking()
+            .SingleAsync(o => o.Id == response.Id);
+        persisted.Status.Should().Be("Completed");
+        persisted.ResultsJson.Should().NotBeNullOrWhiteSpace();
+
+        using var document = JsonDocument.Parse(persisted.ResultsJson!);
+        document.RootElement.GetProperty("algorithmType").GetString().Should().Be("Genetic");
+        document.RootElement.GetProperty("originalParameters").GetProperty("efficiency").GetDouble()
+            .Should().BeApproximately(0.88, 0.0001);
+        document.RootElement.GetProperty("stages").EnumerateArray()
+            .Select(element => element.GetString())
+            .Should().Equal("Genetic Algorithm");
+    }
+
+    [Fact]
     public async Task StartOptimization_WhenEngineIsDeletedBeforeWorkerRuns_MarksRunFailed()
     {
         var databaseName = Guid.NewGuid().ToString("N");

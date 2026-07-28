@@ -292,7 +292,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var startTime = DateTime.UtcNow;
 
-                // Create optimization parameters from engine
+                // Start from engine baselines, then apply request parameter overrides.
                 var parameters = new EngineDesignParameters
                 {
                     Thrust = engine.Thrust,
@@ -300,15 +300,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     ChamberPressure = engine.ChamberPressure,
                     Efficiency = engine.Efficiency
                 };
+                HelloblueGKEngine.ApplyDesignParameterOverrides(parameters, request.Parameters);
 
-                // Run AI optimization
-                var result = await _optimizationEngine.OptimizeEngineDesignAsync(parameters);
+                // Run the requested algorithm (defaults to full multi-stage when unset).
+                var result = await _optimizationEngine.OptimizeEngineDesignAsync(
+                    parameters,
+                    request.AlgorithmType);
                 var innovationReport = await _optimizationEngine.AnalyzeInnovationAsync(parameters);
 
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
 
                 // Calculate improvement
-                var originalEfficiency = engine.Efficiency;
+                var originalEfficiency = parameters.Efficiency;
                 var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? originalEfficiency;
                 var improvement = originalEfficiency > 0 
                     ? ((optimizedEfficiency - originalEfficiency) / originalEfficiency) * 100 
@@ -317,6 +320,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var generations = result.OptimizationStages?.Length ?? 100;
                 var resultsJson = JsonSerializer.Serialize(new
                 {
+                    algorithmType = result.AlgorithmType ?? request.AlgorithmType,
+                    appliedParameters = request.Parameters ?? new Dictionary<string, object>(),
                     originalParameters = new
                     {
                         thrust = parameters.Thrust,
@@ -331,6 +336,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         chamberPressure = result.OptimizedParameters?.ChamberPressure,
                         efficiency = result.OptimizedParameters?.Efficiency
                     },
+                    stages = result.OptimizationStages?.Select(stage => stage.StageName).ToArray() ?? Array.Empty<string>(),
                     improvement = improvement,
                     overallImprovement = result.OverallImprovement,
                     innovationScore = innovationReport.InnovationScore,

@@ -210,6 +210,59 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task RunSimulation_UsesRequestedSimulationTypeAndParametersInResults()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = new Engine
+        {
+            Name = "Typed Simulation Engine",
+            EngineType = "Test",
+            CreatedBy = null,
+            Thrust = 1,
+            SpecificImpulse = 1,
+            ChamberPressure = 1,
+            Efficiency = 0.9,
+            ExpansionRatio = 1,
+            MassFlowRate = 1
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateController(context, CreatePrincipal("alice"), deferredQueue);
+
+        var createResult = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "Thermal",
+            Parameters = new Dictionary<string, object> { ["iterations"] = 77 }
+        });
+
+        var created = createResult.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var simulation = await workerContext.EngineSimulations
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == response.Id);
+
+        simulation.Status.Should().Be("Completed");
+        simulation.Iterations.Should().Be(77);
+        simulation.ResultsJson.Should().NotBeNullOrWhiteSpace();
+        using var document = JsonDocument.Parse(simulation.ResultsJson!);
+        document.RootElement.GetProperty("simulationType").GetString().Should().Be("Thermal");
+        document.RootElement.GetProperty("parameters").GetProperty("iterations").GetInt32().Should().Be(77);
+        document.RootElement.GetProperty("thermalAnalysis").GetProperty("maxTemperature").GetDouble()
+            .Should().BeGreaterThan(0);
+        document.RootElement.GetProperty("thrustAnalysis").GetProperty("maxThrust").GetDouble()
+            .Should().Be(0);
+    }
+
+    [Fact]
     public async Task RunSimulation_WhenBackgroundQueueIsFull_ReturnsServiceUnavailableWithoutCreatingSimulation()
     {
         await using var context = CreateContext();

@@ -64,4 +64,45 @@ public class AdvancedAIOptimizationEngineTests
 
         concurrentResults[0].Should().BeSameAs(concurrentResults[1]);
     }
+
+    [Fact]
+    public async Task OptimizeEngineDesignAsync_WithGeneticAlgorithm_RunsOnlyGeneticStage()
+    {
+        var engine = new AdvancedAIOptimizationEngine();
+        var parameters = new EngineDesignParameters
+        {
+            Thrust = 1_000_000,
+            SpecificImpulse = 350,
+            ChamberPressure = 15_000_000,
+            Efficiency = 0.9
+        };
+
+        var result = await engine.OptimizeEngineDesignAsync(parameters, "Genetic");
+
+        result.AlgorithmType.Should().Be("Genetic");
+        result.OptimizationStages.Should().ContainSingle();
+        result.OptimizationStages[0].StageName.Should().Be("Genetic Algorithm");
+    }
+
+    [Fact]
+    public async Task OptimizeEngineDesignAsync_CacheKeysDifferByAlgorithmType()
+    {
+        var engine = new AdvancedAIOptimizationEngine();
+        var parameters = new EngineDesignParameters
+        {
+            Thrust = 1_100_000,
+            SpecificImpulse = 360,
+            ChamberPressure = 16_000_000,
+            Efficiency = 0.91
+        };
+
+        var genetic = await engine.OptimizeEngineDesignAsync(parameters, "Genetic");
+        var neural = await engine.OptimizeEngineDesignAsync(parameters, "NeuralNetwork");
+
+        genetic.Should().NotBeSameAs(neural);
+        genetic.AlgorithmType.Should().Be("Genetic");
+        neural.AlgorithmType.Should().Be("NeuralNetwork");
+        genetic.OptimizationStages.Should().ContainSingle(stage => stage.StageName == "Genetic Algorithm");
+        neural.OptimizationStages.Should().ContainSingle(stage => stage.StageName == "Neural Network");
+    }
 }
