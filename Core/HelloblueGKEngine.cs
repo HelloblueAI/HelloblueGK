@@ -1,8 +1,10 @@
 using System;
-using System.Numerics;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Numerics;
+using System.Text.Json;
 using System.Threading.Tasks;
-using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.Physics;
 
 namespace HB_NLP_Research_Lab.Core
@@ -33,44 +35,146 @@ namespace HB_NLP_Research_Lab.Core
         /// Performs comprehensive multi-physics analysis on aerospace engines
         /// Now with high-performance computing and real-time validation
         /// </summary>
-        public async Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(string engineModel)
+        public Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(string engineModel)
+        {
+            return AnalyzeEngineAsync(engineModel, "MultiPhysics", null);
+        }
+
+        /// <summary>
+        /// Performs analysis for a specific simulation type, optionally applying request parameters.
+        /// </summary>
+        public async Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(
+            string engineModel,
+            string simulationType,
+            IReadOnlyDictionary<string, object>? parameters = null)
         {
             Console.WriteLine("[HelloblueGK] 🔬 Analyzing engine model with high-performance physics...");
             
             // Ensure physics engine is initialized
             await _physicsEngine.InitializeAsync();
-            
-            // Run high-performance multi-physics analysis
-            var multiPhysicsResult = await _physicsEngine.RunMultiPhysicsAnalysisAsync();
-            
+
+            var normalizedType = NormalizeSimulationType(simulationType);
+
+            CfdAnalysisResult? cfdResult = null;
+            ThermalAnalysisResult? thermalResult = null;
+            StructuralAnalysisResult? structuralResult = null;
+            MultiPhysicsResult? multiPhysicsResult = null;
+            int iterations;
+            double solverAccuracy;
+
+            switch (normalizedType)
+            {
+                case "CFD":
+                    cfdResult = await _physicsEngine.RunCfdAnalysisAsync();
+                    iterations = cfdResult.ConvergenceIterations;
+                    solverAccuracy = cfdResult.Accuracy;
+                    break;
+                case "Thermal":
+                    thermalResult = await _physicsEngine.RunThermalAnalysisAsync();
+                    iterations = thermalResult.ConvergenceIterations;
+                    solverAccuracy = thermalResult.Accuracy;
+                    break;
+                case "Structural":
+                    structuralResult = await _physicsEngine.RunStructuralAnalysisAsync();
+                    iterations = structuralResult.ConvergenceIterations;
+                    solverAccuracy = structuralResult.Accuracy;
+                    break;
+                default:
+                    multiPhysicsResult = await _physicsEngine.RunMultiPhysicsAnalysisAsync();
+                    cfdResult = multiPhysicsResult.CfdResult;
+                    thermalResult = multiPhysicsResult.ThermalResult;
+                    structuralResult = multiPhysicsResult.StructuralResult;
+                    iterations = new[]
+                    {
+                        cfdResult?.ConvergenceIterations ?? 0,
+                        thermalResult?.ConvergenceIterations ?? 0,
+                        structuralResult?.ConvergenceIterations ?? 0
+                    }.Max();
+                    solverAccuracy = new[]
+                    {
+                        cfdResult?.Accuracy ?? 0,
+                        thermalResult?.Accuracy ?? 0,
+                        structuralResult?.Accuracy ?? 0
+                    }.Where(value => value > 0).DefaultIfEmpty(95.0).Average();
+                    break;
+            }
+
+            if (TryReadIntParameter(parameters, "iterations", out var requestedIterations) &&
+                requestedIterations > 0)
+            {
+                iterations = requestedIterations;
+            }
+
             // Real-time validation
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
-            
-            // AI optimization
-            var optimizationParameters = new EngineDesignParameters
+
+            // AI optimization remains part of the full MultiPhysics path for backward compatibility.
+            OptimizationResult? optimizationResult = null;
+            InnovationReport? innovationReport = null;
+            if (string.Equals(normalizedType, "MultiPhysics", StringComparison.OrdinalIgnoreCase))
             {
-                Thrust = 1500000,
-                SpecificImpulse = 380,
-                ChamberPressure = 250,
-                Efficiency = 0.85
+                var optimizationParameters = BuildDesignParameters(parameters);
+                optimizationResult = await _aiOptimizationEngine.OptimizeEngineDesignAsync(optimizationParameters);
+                innovationReport = await _aiOptimizationEngine.AnalyzeInnovationAsync(optimizationParameters);
+
+                Console.WriteLine($"[HelloblueGK] 🎯 AI Optimization: {optimizationResult.OverallImprovement:F1}% improvement");
+                Console.WriteLine($"[HelloblueGK] 🔬 Innovation Score: {innovationReport.InnovationScore:F1}%");
+            }
+
+            var thrustAnalysis = cfdResult == null
+                ? new ThrustAnalysis()
+                : new ThrustAnalysis
+                {
+                    MaxThrust = DeriveThrust(cfdResult),
+                    Efficiency = NormalizeRatio(cfdResult.Accuracy)
+                };
+
+            var thermalAnalysis = thermalResult == null
+                ? new ThermalAnalysis()
+                : new ThermalAnalysis
+                {
+                    MaxTemperature = thermalResult.MaxTemperature,
+                    CoolingEfficiency = NormalizeRatio(
+                        thermalResult.HeatTransferEfficiency > 0
+                            ? thermalResult.HeatTransferEfficiency
+                            : thermalResult.Accuracy)
+                };
+
+            var structuralAnalysis = structuralResult == null
+                ? new StructuralAnalysis()
+                : new StructuralAnalysis
+                {
+                    MaxStress = structuralResult.MaxStress,
+                    SafetyFactor = structuralResult.SafetyFactor > 0
+                        ? structuralResult.SafetyFactor
+                        : 1.0
+                };
+
+            var performanceMetrics = new Dictionary<string, double>
+            {
+                ["Overall"] = NormalizeRatio(solverAccuracy),
+                ["Iterations"] = iterations,
+                ["ConvergenceRate"] = NormalizeRatio(solverAccuracy)
             };
-            
-            var optimizationResult = await _aiOptimizationEngine.OptimizeEngineDesignAsync(optimizationParameters);
-            var innovationReport = await _aiOptimizationEngine.AnalyzeInnovationAsync(optimizationParameters);
-            
-            Console.WriteLine($"[HelloblueGK] 🎯 AI Optimization: {optimizationResult.OverallImprovement:F1}% improvement");
-            Console.WriteLine($"[HelloblueGK] 🔬 Innovation Score: {innovationReport.InnovationScore:F1}%");
-            
+
+            if (TryReadDoubleParameter(parameters, "meshQuality", out var meshQuality))
+            {
+                performanceMetrics["MeshQuality"] = meshQuality;
+            }
+
             return new ComprehensiveAnalysisResult
             {
-                ThrustAnalysis = new ThrustAnalysis { MaxThrust = 1500000, Efficiency = 0.95 },
-                ThermalAnalysis = new ThermalAnalysis { MaxTemperature = 2000, CoolingEfficiency = 0.92 },
-                StructuralAnalysis = new StructuralAnalysis { MaxStress = 500e6, SafetyFactor = 2.5 },
-                PerformanceMetrics = new Dictionary<string, double> { ["Overall"] = 0.94 },
-                MultiPhysicsResult = multiPhysicsResult,
+                SimulationType = normalizedType,
+                Iterations = iterations,
+                ConvergenceRate = NormalizeRatio(solverAccuracy),
+                ThrustAnalysis = thrustAnalysis,
+                ThermalAnalysis = thermalAnalysis,
+                StructuralAnalysis = structuralAnalysis,
+                PerformanceMetrics = performanceMetrics,
+                MultiPhysicsResult = multiPhysicsResult ?? new MultiPhysicsResult(),
                 ValidationReport = validationReport,
-                OptimizationResult = optimizationResult,
-                InnovationReport = innovationReport
+                OptimizationResult = optimizationResult ?? new OptimizationResult(),
+                InnovationReport = innovationReport ?? new InnovationReport()
             };
         }
         
@@ -132,6 +236,181 @@ namespace HB_NLP_Research_Lab.Core
         public ThermalAnalysisResult ThermalAnalysis { get; set; }
         public StructuralAnalysisResult StructuralAnalysis { get; set; }
         public ValidationReport ValidationReport { get; set; }
+
+        private static string NormalizeSimulationType(string? simulationType)
+        {
+            if (string.IsNullOrWhiteSpace(simulationType))
+            {
+                return "MultiPhysics";
+            }
+
+            return simulationType.Trim() switch
+            {
+                var value when value.Equals("CFD", StringComparison.OrdinalIgnoreCase) => "CFD",
+                var value when value.Equals("Thermal", StringComparison.OrdinalIgnoreCase) => "Thermal",
+                var value when value.Equals("Structural", StringComparison.OrdinalIgnoreCase) => "Structural",
+                var value when value.Equals("MultiPhysics", StringComparison.OrdinalIgnoreCase) => "MultiPhysics",
+                _ => "MultiPhysics"
+            };
+        }
+
+        private static EngineDesignParameters BuildDesignParameters(
+            IReadOnlyDictionary<string, object>? parameters)
+        {
+            var design = new EngineDesignParameters
+            {
+                Thrust = 1500000,
+                SpecificImpulse = 380,
+                ChamberPressure = 250,
+                Efficiency = 0.85
+            };
+
+            ApplyDesignParameterOverrides(design, parameters);
+            return design;
+        }
+
+        public static void ApplyDesignParameterOverrides(
+            EngineDesignParameters design,
+            IReadOnlyDictionary<string, object>? parameters)
+        {
+            if (parameters == null)
+            {
+                return;
+            }
+
+            if (TryReadDoubleParameter(parameters, "thrust", out var thrust))
+            {
+                design.Thrust = thrust;
+            }
+
+            if (TryReadDoubleParameter(parameters, "specificImpulse", out var specificImpulse))
+            {
+                design.SpecificImpulse = specificImpulse;
+            }
+
+            if (TryReadDoubleParameter(parameters, "chamberPressure", out var chamberPressure))
+            {
+                design.ChamberPressure = chamberPressure;
+            }
+
+            if (TryReadDoubleParameter(parameters, "efficiency", out var efficiency))
+            {
+                design.Efficiency = Math.Clamp(efficiency, 0.0, 1.0);
+            }
+        }
+
+        private static double DeriveThrust(CfdAnalysisResult cfdResult)
+        {
+            if (cfdResult.MaxPressure > 0)
+            {
+                return cfdResult.MaxPressure;
+            }
+
+            if (cfdResult.MaxVelocity > 0)
+            {
+                return cfdResult.MaxVelocity;
+            }
+
+            var velocityMagnitude = cfdResult.FlowVelocity.Length();
+            if (velocityMagnitude > 0)
+            {
+                return velocityMagnitude * 1000.0;
+            }
+
+            return Math.Max(cfdResult.CalculationCount, 1);
+        }
+
+        private static double NormalizeRatio(double value)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+            {
+                return 0.0;
+            }
+
+            return value > 1.0 ? Math.Clamp(value / 100.0, 0.0, 1.0) : Math.Clamp(value, 0.0, 1.0);
+        }
+
+        private static bool TryReadIntParameter(
+            IReadOnlyDictionary<string, object>? parameters,
+            string key,
+            out int value)
+        {
+            value = 0;
+            if (!TryReadDoubleParameter(parameters, key, out var numeric))
+            {
+                return false;
+            }
+
+            value = (int)Math.Round(numeric, MidpointRounding.AwayFromZero);
+            return true;
+        }
+
+        private static bool TryReadDoubleParameter(
+            IReadOnlyDictionary<string, object>? parameters,
+            string key,
+            out double value)
+        {
+            value = 0;
+            if (parameters == null)
+            {
+                return false;
+            }
+
+            var match = parameters.FirstOrDefault(pair =>
+                string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (match.Key == null)
+            {
+                return false;
+            }
+
+            return TryConvertToDouble(match.Value, out value);
+        }
+
+        private static bool TryConvertToDouble(object? raw, out double value)
+        {
+            value = 0;
+            switch (raw)
+            {
+                case null:
+                    return false;
+                case double d:
+                    value = d;
+                    return !double.IsNaN(d) && !double.IsInfinity(d);
+                case float f:
+                    value = f;
+                    return !float.IsNaN(f) && !float.IsInfinity(f);
+                case int i:
+                    value = i;
+                    return true;
+                case long l:
+                    value = l;
+                    return true;
+                case decimal m:
+                    value = (double)m;
+                    return true;
+                case JsonElement element when element.ValueKind == JsonValueKind.Number &&
+                                             element.TryGetDouble(out var jsonNumber):
+                    value = jsonNumber;
+                    return !double.IsNaN(jsonNumber) && !double.IsInfinity(jsonNumber);
+                case JsonElement element when element.ValueKind == JsonValueKind.String &&
+                                             double.TryParse(
+                                                 element.GetString(),
+                                                 NumberStyles.Float,
+                                                 CultureInfo.InvariantCulture,
+                                                 out var jsonStringNumber):
+                    value = jsonStringNumber;
+                    return !double.IsNaN(jsonStringNumber) && !double.IsInfinity(jsonStringNumber);
+                case string text when double.TryParse(
+                    text,
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out var parsed):
+                    value = parsed;
+                    return !double.IsNaN(parsed) && !double.IsInfinity(parsed);
+                default:
+                    return false;
+            }
+        }
     }
     
     public class ThrustAnalysis
@@ -156,6 +435,7 @@ namespace HB_NLP_Research_Lab.Core
     {
         public ComprehensiveAnalysisResult()
         {
+            SimulationType = "MultiPhysics";
             ThrustAnalysis = new ThrustAnalysis();
             ThermalAnalysis = new ThermalAnalysis();
             StructuralAnalysis = new StructuralAnalysis();
@@ -165,6 +445,10 @@ namespace HB_NLP_Research_Lab.Core
             OptimizationResult = new OptimizationResult();
             InnovationReport = new InnovationReport();
         }
+
+        public string SimulationType { get; set; }
+        public int Iterations { get; set; }
+        public double ConvergenceRate { get; set; }
         
         public ThrustAnalysis ThrustAnalysis { get; set; }
         public ThermalAnalysis ThermalAnalysis { get; set; }
@@ -177,4 +461,4 @@ namespace HB_NLP_Research_Lab.Core
     }
 
 
-} 
+}

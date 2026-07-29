@@ -290,6 +290,78 @@ public class DigitalTwinEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task RemoveDigitalTwin_ShouldDropRuntimeState()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "RemovableEngine";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Removable", Parameters = new Dictionary<string, double>() });
+
+        _digitalTwinEngine.RemoveDigitalTwin(engineId).Should().BeTrue();
+        _digitalTwinEngine.RemoveDigitalTwin(engineId).Should().BeFalse();
+
+        var learn = async () => await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double> { ["Thrust"] = 1 }
+            });
+
+        await learn.Should().ThrowAsync<ArgumentException>();
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwinAsync_WhenAtCapacity_EvictsOldestTwin()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineModel = new EngineModel
+        {
+            Name = "Capacity Engine",
+            Parameters = new Dictionary<string, double>()
+        };
+
+        for (var i = 0; i < DigitalTwinEngine.MaxActiveTwins; i++)
+        {
+            await _digitalTwinEngine.CreateDigitalTwinAsync($"CapacityEngine_{i}", engineModel);
+        }
+
+        await _digitalTwinEngine.CreateDigitalTwinAsync("CapacityEngine_overflow", engineModel);
+
+        // Oldest key should have been evicted to keep the active set bounded.
+        _digitalTwinEngine.RemoveDigitalTwin("CapacityEngine_0").Should().BeFalse();
+        _digitalTwinEngine.RemoveDigitalTwin("CapacityEngine_overflow").Should().BeTrue();
+
+        var status = await _digitalTwinEngine.InitializeAsync();
+        status.TwinCount.Should().BeLessThanOrEqualTo(DigitalTwinEngine.MaxActiveTwins);
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwinAsync_WhenAtCapacity_InPlaceUpdateDoesNotEvict()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineModel = new EngineModel
+        {
+            Name = "Capacity Engine",
+            Parameters = new Dictionary<string, double>()
+        };
+
+        for (var i = 0; i < DigitalTwinEngine.MaxActiveTwins; i++)
+        {
+            await _digitalTwinEngine.CreateDigitalTwinAsync($"CapacityEngine_{i}", engineModel);
+        }
+
+        // Updating an existing key must not grow the map or evict another twin.
+        await _digitalTwinEngine.CreateDigitalTwinAsync("CapacityEngine_1", engineModel);
+
+        _digitalTwinEngine.RemoveDigitalTwin("CapacityEngine_0").Should().BeTrue();
+        var status = await _digitalTwinEngine.InitializeAsync();
+        status.TwinCount.Should().Be(DigitalTwinEngine.MaxActiveTwins - 1);
+    }
+
+    [Fact]
     public async Task Dispose_ShouldRejectFurtherOperations()
     {
         // Act

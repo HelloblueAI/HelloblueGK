@@ -102,14 +102,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Include(dt => dt.Engine)
                     .FirstOrDefaultAsync(dt => dt.Id == id);
 
-                if (digitalTwin == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (digitalTwin == null || !CurrentUserCanAccessDigitalTwin(digitalTwin))
                 {
                     return NotFound(new { message = $"Digital twin with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessDigitalTwin(digitalTwin))
-                {
-                    return Forbid();
                 }
 
                 return Ok(DigitalTwinResponse.FromEntity(digitalTwin));
@@ -152,25 +148,27 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
+                // Same 404 as a missing engine so private-engine existence is not leaked.
                 if (!EngineAccessPolicy.CanUseEngine(User, engine, currentUsername))
                 {
-                    return Forbid();
+                    return NotFound(new { message = $"Engine with ID {request.EngineId} not found" });
                 }
 
-                var existingTwinQuery = _context.DigitalTwins
-                    .Where(dt => dt.EngineId == request.EngineId && dt.IsActive);
-
-                if (!User.IsInRole("Admin"))
-                {
-                    existingTwinQuery = existingTwinQuery.Where(dt => dt.CreatedBy == currentUsername);
-                }
-
-                var existingTwins = await existingTwinQuery.ToListAsync();
+                // Always scope to the current owner, including Admins, so ForceCreate
+                // cannot deactivate another tenant's active twin for the same engine.
+                var existingTwins = await _context.DigitalTwins
+                    .Where(dt =>
+                        dt.EngineId == request.EngineId &&
+                        dt.IsActive &&
+                        dt.CreatedBy == currentUsername)
+                    .ToListAsync();
 
                 if (existingTwins.Count > 0 && !request.ForceCreate)
                 {
                     return Conflict(new { message = $"Active digital twin already exists for engine {request.EngineId}. Use forceCreate=true to create a new one." });
                 }
+
+                var engineId = BuildDigitalTwinEngineKey(request.EngineId, currentUsername);
 
                 if (existingTwins.Count > 0 && request.ForceCreate)
                 {
@@ -180,14 +178,27 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         existingTwin.IsActive = false;
                         existingTwin.LastUpdated = deactivatedAt;
                     }
+
+                    // Drop process-local state for the replaced twin key before recreate.
+                    _digitalTwinEngine.RemoveDigitalTwin(engineId);
                 }
 
                 // Create engine model from engine data
                 var engineModel = BuildEngineModel(engine);
 
                 // Create digital twin using DigitalTwinEngine
-                var engineId = BuildDigitalTwinEngineKey(request.EngineId, currentUsername);
-                var digitalTwinResult = await _digitalTwinEngine.CreateDigitalTwinAsync(engineId, engineModel);
+                EngineDigitalTwin digitalTwinResult;
+                try
+                {
+                    digitalTwinResult = await _digitalTwinEngine.CreateDigitalTwinAsync(engineId, engineModel);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("capacity", StringComparison.OrdinalIgnoreCase))
+                {
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                    {
+                        message = "Digital twin runtime capacity reached; try again shortly."
+                    });
+                }
 
                 // Create database record
                 var digitalTwin = new DigitalTwin
@@ -202,8 +213,37 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     CreatedBy = currentUsername
                 };
 
-                _context.DigitalTwins.Add(digitalTwin);
-                await _context.SaveChangesAsync();
+                try
+                {
+                    _context.DigitalTwins.Add(digitalTwin);
+                    await _context.SaveChangesAsync();
+                }
+                catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+                {
+                    // Concurrent create raced past the existence check. The winner's
+                    // active row still needs the shared owner/engine runtime key — only
+                    // drop memory when no matching active twin actually persisted.
+                    _context.Entry(digitalTwin).State = EntityState.Detached;
+
+                    var winnerStillActive = await _context.DigitalTwins
+                        .AsNoTracking()
+                        .AnyAsync(dt =>
+                            dt.EngineId == request.EngineId &&
+                            dt.IsActive &&
+                            dt.CreatedBy == currentUsername);
+
+                    if (!winnerStillActive)
+                    {
+                        _digitalTwinEngine.RemoveDigitalTwin(engineId);
+                    }
+
+                    _logger.LogInformation(
+                        ex,
+                        "Concurrent digital twin create for engine {EngineId} by {Username}",
+                        request.EngineId,
+                        LogSanitizer.SanitizeIdentifier(currentUsername));
+                    return Conflict(new { message = $"Active digital twin already exists for engine {request.EngineId}. Use forceCreate=true to create a new one." });
+                }
 
                 digitalTwin.Engine = engine;
                 return CreatedAtAction(
@@ -347,14 +387,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Include(dt => dt.Engine)
                     .FirstOrDefaultAsync(dt => dt.Id == id);
 
-                if (digitalTwin == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (digitalTwin == null || !CurrentUserCanAccessDigitalTwin(digitalTwin))
                 {
                     return NotFound(new { message = $"Digital twin with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessDigitalTwin(digitalTwin))
-                {
-                    return Forbid();
                 }
 
                 if (!digitalTwin.IsActive)
@@ -415,6 +451,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 digitalTwin.LastUpdated = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
 
+                // Evict process-local twin state so deactivated twins cannot accumulate forever.
+                var runtimeKey = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
+                _digitalTwinEngine.RemoveDigitalTwin(runtimeKey);
+
                 return Ok(new { message = "Digital twin deactivated successfully" });
             }
             catch (Exception ex)
@@ -467,6 +507,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(owner.Trim().ToUpperInvariant())))[..16];
 
             return $"Owner_{ownerKey}_Engine_{engineId}";
+        }
+
+        private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+        {
+            for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
+            {
+                var message = inner.Message;
+                if (message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("IX_DigitalTwins_EngineId_CreatedBy_Active", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static EngineModel BuildEngineModel(Engine engine)

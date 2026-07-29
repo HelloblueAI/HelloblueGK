@@ -39,12 +39,21 @@ namespace HB_NLP_Research_Lab.Core
             _inflightOptimizations = new ConcurrentDictionary<string, Lazy<Task<OptimizationResult>>>();
         }
 
-        public async Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters)
+        public Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters)
+        {
+            return OptimizeEngineDesignAsync(parameters, algorithmType: null);
+        }
+
+        public async Task<OptimizationResult> OptimizeEngineDesignAsync(
+            EngineDesignParameters parameters,
+            string? algorithmType)
         {
             Console.WriteLine($"[Advanced AI] 🧠 Optimizing engine design with AI...");
+
+            var normalizedAlgorithm = NormalizeAlgorithmType(algorithmType);
             
             // Check cache first
-            var cacheKey = GenerateCacheKey(parameters);
+            var cacheKey = GenerateCacheKey(parameters, normalizedAlgorithm);
             if (_optimizationCache.TryGetValue(cacheKey, out var cachedResult))
                 return cachedResult;
 
@@ -53,7 +62,7 @@ namespace HB_NLP_Research_Lab.Core
                 _ => new Lazy<Task<OptimizationResult>>(
                     () => _optimizationCache.TryGetValue(cacheKey, out var completedResult)
                         ? Task.FromResult(completedResult)
-                        : PerformMultiStageOptimizationAsync(parameters),
+                        : PerformMultiStageOptimizationAsync(parameters, normalizedAlgorithm),
                     LazyThreadSafetyMode.ExecutionAndPublication));
 
             try
@@ -84,45 +93,88 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task<OptimizationResult> PerformMultiStageOptimizationAsync(EngineDesignParameters parameters)
+        private async Task<OptimizationResult> PerformMultiStageOptimizationAsync(
+            EngineDesignParameters parameters,
+            string algorithmType)
         {
-            Console.WriteLine($"[Advanced AI] 🚀 Starting multi-stage optimization...");
-            
-            // Stage 1: Genetic Algorithm Optimization
-            var geneticResult = await _geneticOptimizer.OptimizeAsync(parameters);
-            Console.WriteLine($"[Advanced AI] Genetic optimization: {geneticResult.ImprovementPercentage:F1}% improvement");
-            
-            // Stage 2: Neural Network Optimization
-            var neuralResult = await _neuralOptimizer.OptimizeAsync(geneticResult.OptimizedParameters);
-            Console.WriteLine($"[Advanced AI] Neural optimization: {neuralResult.ImprovementPercentage:F1}% improvement");
-            
-            // Stage 3: Multi-Objective Optimization
-            var multiObjectiveResult = await _multiObjectiveOptimizer.OptimizeAsync(neuralResult.OptimizedParameters);
-            Console.WriteLine($"[Advanced AI] Multi-objective optimization: {multiObjectiveResult.ImprovementPercentage:F1}% improvement");
-            
-            // Stage 4: Performance Prediction
-            var predictedPerformance = await _performancePredictor.PredictPerformanceAsync(multiObjectiveResult.OptimizedParameters);
-            
-            // Stage 5: Innovation Analysis
-            var innovationScore = await _innovationAnalyzer.AnalyzeInnovationAsync(multiObjectiveResult.OptimizedParameters);
-            
+            Console.WriteLine($"[Advanced AI] 🚀 Starting {algorithmType} optimization...");
+
+            var stages = new List<StageResult>();
+            var currentParameters = parameters;
+
+            switch (algorithmType)
+            {
+                case "Genetic":
+                {
+                    var geneticResult = await _geneticOptimizer.OptimizeAsync(currentParameters);
+                    stages.Add(geneticResult);
+                    currentParameters = geneticResult.OptimizedParameters;
+                    break;
+                }
+                case "NeuralNetwork":
+                {
+                    var neuralResult = await _neuralOptimizer.OptimizeAsync(currentParameters);
+                    stages.Add(neuralResult);
+                    currentParameters = neuralResult.OptimizedParameters;
+                    break;
+                }
+                case "MultiObjective":
+                {
+                    var multiObjectiveResult = await _multiObjectiveOptimizer.OptimizeAsync(currentParameters);
+                    stages.Add(multiObjectiveResult);
+                    currentParameters = multiObjectiveResult.OptimizedParameters;
+                    break;
+                }
+                case "ReinforcementLearning":
+                {
+                    // No dedicated RL optimizer yet: compose genetic + neural as a stand-in pipeline
+                    // while preserving a distinct stage name for API observability.
+                    var geneticResult = await _geneticOptimizer.OptimizeAsync(currentParameters);
+                    geneticResult.StageName = "ReinforcementLearning";
+                    stages.Add(geneticResult);
+                    currentParameters = geneticResult.OptimizedParameters;
+
+                    var neuralResult = await _neuralOptimizer.OptimizeAsync(currentParameters);
+                    neuralResult.StageName = "ReinforcementLearning-Policy";
+                    stages.Add(neuralResult);
+                    currentParameters = neuralResult.OptimizedParameters;
+                    break;
+                }
+                default:
+                {
+                    var geneticResult = await _geneticOptimizer.OptimizeAsync(currentParameters);
+                    Console.WriteLine($"[Advanced AI] Genetic optimization: {geneticResult.ImprovementPercentage:F1}% improvement");
+                    stages.Add(geneticResult);
+
+                    var neuralResult = await _neuralOptimizer.OptimizeAsync(geneticResult.OptimizedParameters);
+                    Console.WriteLine($"[Advanced AI] Neural optimization: {neuralResult.ImprovementPercentage:F1}% improvement");
+                    stages.Add(neuralResult);
+
+                    var multiObjectiveResult = await _multiObjectiveOptimizer.OptimizeAsync(neuralResult.OptimizedParameters);
+                    Console.WriteLine($"[Advanced AI] Multi-objective optimization: {multiObjectiveResult.ImprovementPercentage:F1}% improvement");
+                    stages.Add(multiObjectiveResult);
+                    currentParameters = multiObjectiveResult.OptimizedParameters;
+                    break;
+                }
+            }
+
+            var predictedPerformance = await _performancePredictor.PredictPerformanceAsync(currentParameters);
+            var innovationScore = await _innovationAnalyzer.AnalyzeInnovationAsync(currentParameters);
+            var stageArray = stages.ToArray();
+
             var finalResult = new OptimizationResult
             {
                 OriginalParameters = parameters,
-                OptimizedParameters = multiObjectiveResult.OptimizedParameters,
-                OverallImprovement = CalculateOverallImprovement(geneticResult, neuralResult, multiObjectiveResult),
+                OptimizedParameters = currentParameters,
+                OverallImprovement = CalculateOverallImprovement(stageArray),
                 PerformancePrediction = predictedPerformance,
                 InnovationScore = innovationScore,
-                OptimizationStages = new[]
-                {
-                    geneticResult,
-                    neuralResult,
-                    multiObjectiveResult
-                },
-                OptimizationDate = DateTime.UtcNow
+                OptimizationStages = stageArray,
+                OptimizationDate = DateTime.UtcNow,
+                AlgorithmType = algorithmType
             };
             
-            Console.WriteLine($"[Advanced AI] ✅ Multi-stage optimization complete: {finalResult.OverallImprovement:F1}% overall improvement");
+            Console.WriteLine($"[Advanced AI] ✅ {algorithmType} optimization complete: {finalResult.OverallImprovement:F1}% overall improvement");
             
             return finalResult;
         }
@@ -133,9 +185,26 @@ namespace HB_NLP_Research_Lab.Core
             return Math.Min(totalImprovement, 100.0); // Cap at 100%
         }
 
-        private string GenerateCacheKey(EngineDesignParameters parameters)
+        private static string NormalizeAlgorithmType(string? algorithmType)
         {
-            return $"{parameters.Thrust}_{parameters.SpecificImpulse}_{parameters.ChamberPressure}_{parameters.Efficiency}";
+            if (string.IsNullOrWhiteSpace(algorithmType))
+            {
+                return "MultiStage";
+            }
+
+            return algorithmType.Trim() switch
+            {
+                var value when value.Equals("Genetic", StringComparison.OrdinalIgnoreCase) => "Genetic",
+                var value when value.Equals("NeuralNetwork", StringComparison.OrdinalIgnoreCase) => "NeuralNetwork",
+                var value when value.Equals("MultiObjective", StringComparison.OrdinalIgnoreCase) => "MultiObjective",
+                var value when value.Equals("ReinforcementLearning", StringComparison.OrdinalIgnoreCase) => "ReinforcementLearning",
+                _ => "MultiStage"
+            };
+        }
+
+        private string GenerateCacheKey(EngineDesignParameters parameters, string algorithmType)
+        {
+            return $"{algorithmType}_{parameters.Thrust}_{parameters.SpecificImpulse}_{parameters.ChamberPressure}_{parameters.Efficiency}";
         }
 
         public async Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters)
@@ -343,6 +412,7 @@ namespace HB_NLP_Research_Lab.Core
             OptimizedParameters = new EngineDesignParameters();
             PerformancePrediction = new PerformancePrediction();
             OptimizationStages = Array.Empty<StageResult>();
+            AlgorithmType = "MultiStage";
         }
         
         public EngineDesignParameters OriginalParameters { get; set; }
@@ -352,6 +422,7 @@ namespace HB_NLP_Research_Lab.Core
         public double InnovationScore { get; set; }
         public StageResult[] OptimizationStages { get; set; }
         public DateTime OptimizationDate { get; set; }
+        public string AlgorithmType { get; set; }
     }
 
     public class StageResult
@@ -394,6 +465,7 @@ namespace HB_NLP_Research_Lab.Core
     public interface IAdvancedAIOptimizationEngine
     {
         Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters);
+        Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters, string? algorithmType);
         Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters);
         Task<PerformancePrediction> PredictPerformanceAsync(EngineDesignParameters parameters);
     }

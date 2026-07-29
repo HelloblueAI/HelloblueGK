@@ -118,6 +118,46 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_WithCfdType_UsesCfdSolverPath()
+    {
+        var result = await _engine.AnalyzeEngineAsync(
+            "TestEngine",
+            "CFD",
+            new Dictionary<string, object> { ["iterations"] = 42 });
+
+        result.SimulationType.Should().Be("CFD");
+        result.Iterations.Should().Be(42);
+        result.ThrustAnalysis.MaxThrust.Should().BeGreaterThan(0);
+        result.ThermalAnalysis.MaxTemperature.Should().Be(0);
+        result.StructuralAnalysis.MaxStress.Should().Be(0);
+        result.MultiPhysicsResult.TotalCalculationCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AnalyzeEngineAsync_WithThermalType_UsesThermalSolverPath()
+    {
+        var result = await _engine.AnalyzeEngineAsync("TestEngine", "Thermal");
+
+        result.SimulationType.Should().Be("Thermal");
+        result.Iterations.Should().Be(120);
+        result.ThermalAnalysis.MaxTemperature.Should().BeGreaterThan(0);
+        result.ThrustAnalysis.MaxThrust.Should().Be(0);
+        result.StructuralAnalysis.MaxStress.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task AnalyzeEngineAsync_WithStructuralType_UsesStructuralSolverPath()
+    {
+        var result = await _engine.AnalyzeEngineAsync("TestEngine", "Structural");
+
+        result.SimulationType.Should().Be("Structural");
+        result.Iterations.Should().Be(100);
+        result.StructuralAnalysis.MaxStress.Should().BeGreaterThan(0);
+        result.ThrustAnalysis.MaxThrust.Should().Be(0);
+        result.ThermalAnalysis.MaxTemperature.Should().Be(0);
+    }
+
+    [Fact]
     public void Dispose_ShouldNotThrow()
     {
         // Act

@@ -49,7 +49,7 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
-    public async Task GetOptimizationStatus_ForDifferentStandardUser_ReturnsForbid()
+    public async Task GetOptimizationStatus_ForDifferentStandardUser_ReturnsNotFound()
     {
         await using var context = CreateContext();
         var optimization = await SeedOptimizationAsync(context, "alice");
@@ -58,11 +58,11 @@ public class ControllerAuthorizationSecurityTests
 
         var result = await controller.GetOptimizationStatus(optimization.Id);
 
-        result.Should().BeOfType<ForbidResult>();
+        result.Should().BeOfType<NotFoundObjectResult>();
     }
 
     [Fact]
-    public async Task StartOptimization_ForEngineOwnedByDifferentUser_ReturnsForbidWithoutCreatingRun()
+    public async Task StartOptimization_ForEngineOwnedByDifferentUser_ReturnsNotFoundWithoutCreatingRun()
     {
         await using var context = CreateContext();
         var engine = CreateEngine("alice");
@@ -77,7 +77,8 @@ public class ControllerAuthorizationSecurityTests
             AlgorithmType = "Genetic"
         });
 
-        result.Should().BeOfType<ForbidResult>();
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        notFound.Value.Should().BeEquivalentTo(new { message = $"Engine with ID {engine.Id} not found" });
         context.AIOptimizationRuns.Should().BeEmpty();
     }
 
@@ -216,7 +217,7 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
-    public async Task GetPredictions_ForDifferentStandardUser_ReturnsForbid()
+    public async Task GetPredictions_ForDifferentStandardUser_ReturnsNotFound()
     {
         await using var context = CreateContext();
         var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
@@ -225,7 +226,7 @@ public class ControllerAuthorizationSecurityTests
 
         var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest());
 
-        result.Should().BeOfType<ForbidResult>();
+        result.Should().BeOfType<NotFoundObjectResult>();
     }
 
     [Fact]
@@ -276,7 +277,7 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
-    public async Task CreateDigitalTwin_ForEngineOwnedByDifferentUser_ReturnsForbidWithoutCreatingTwin()
+    public async Task CreateDigitalTwin_ForEngineOwnedByDifferentUser_ReturnsNotFoundWithoutCreatingTwin()
     {
         await using var context = CreateContext();
         var engine = CreateEngine("alice");
@@ -291,7 +292,8 @@ public class ControllerAuthorizationSecurityTests
             Name = "Unauthorized twin"
         });
 
-        result.Should().BeOfType<ForbidResult>();
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        notFound.Value.Should().BeEquivalentTo(new { message = $"Engine with ID {engine.Id} not found" });
         context.DigitalTwins.Should().BeEmpty();
     }
 
@@ -442,7 +444,7 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
-    public async Task GetLaunchById_ForDifferentStandardUser_ReturnsForbid()
+    public async Task GetLaunchById_ForDifferentStandardUser_ReturnsNotFound()
     {
         await using var context = CreateContext();
         var launch = await SeedLaunchAsync(context, "alice");
@@ -451,7 +453,7 @@ public class ControllerAuthorizationSecurityTests
 
         var result = await controller.GetLaunchById(launch.Id);
 
-        result.Should().BeOfType<ForbidResult>();
+        result.Should().BeOfType<NotFoundObjectResult>();
     }
 
     [Fact]
@@ -636,6 +638,54 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task StartOptimization_UsesRequestedAlgorithmAndParameterOverrides()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        engine.CreatedBy = null;
+        engine.Thrust = 1_000_000;
+        engine.SpecificImpulse = 300;
+        engine.ChamberPressure = 10_000_000;
+        engine.Efficiency = 0.8;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic",
+            Parameters = new Dictionary<string, object> { ["efficiency"] = 0.88 }
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.AIOptimizationRuns.AsNoTracking()
+            .SingleAsync(o => o.Id == response.Id);
+        persisted.Status.Should().Be("Completed");
+        persisted.ResultsJson.Should().NotBeNullOrWhiteSpace();
+
+        using var document = JsonDocument.Parse(persisted.ResultsJson!);
+        document.RootElement.GetProperty("algorithmType").GetString().Should().Be("Genetic");
+        document.RootElement.GetProperty("originalParameters").GetProperty("efficiency").GetDouble()
+            .Should().BeApproximately(0.88, 0.0001);
+        document.RootElement.GetProperty("stages").EnumerateArray()
+            .Select(element => element.GetString())
+            .Should().Equal("Genetic Algorithm");
+    }
+
+    [Fact]
     public async Task StartOptimization_WhenEngineIsDeletedBeforeWorkerRuns_MarksRunFailed()
     {
         var databaseName = Guid.NewGuid().ToString("N");
@@ -708,6 +758,123 @@ public class ControllerAuthorizationSecurityTests
         persistedFirst.IsActive.Should().BeFalse();
         persistedSecond.IsActive.Should().BeTrue();
         context.DigitalTwins.Count(dt => dt.EngineId == engine.Id && dt.IsActive).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwin_UniqueConstraintRace_KeepsWinnerRuntimeState()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var contextA = CreateContext(databaseName);
+        await using var contextB = CreateContext(databaseName);
+
+        var engine = CreateEngine("alice");
+        contextA.Engines.Add(engine);
+        await contextA.SaveChangesAsync();
+
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var controllerA = CreateDigitalTwinController(
+            contextA,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+        var controllerB = CreateDigitalTwinController(
+            contextB,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+
+        var request = new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Raced Twin"
+        };
+
+        var results = await Task.WhenAll(
+            controllerA.CreateDigitalTwin(request),
+            controllerB.CreateDigitalTwin(request));
+
+        results.Should().ContainSingle(result => result is CreatedAtActionResult);
+        results.Should().ContainSingle(result => result is ConflictObjectResult);
+        (await contextA.DigitalTwins.AsNoTracking()
+            .CountAsync(dt => dt.EngineId == engine.Id && dt.IsActive && dt.CreatedBy == "alice"))
+            .Should().Be(1);
+
+        var ownerKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+        var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
+
+        // Loser must not wipe the shared runtime state the winner still needs.
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwin_AdminForceCreate_DoesNotDeactivateOtherUsersTwins()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("shared");
+        engine.CreatedBy = null;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var aliceController = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+        var aliceCreate = await aliceController.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Alice Twin"
+        });
+        var aliceTwin = aliceCreate.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        var adminController = CreateDigitalTwinController(context, CreatePrincipal("admin", isAdmin: true));
+        var adminCreate = await adminController.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Admin Twin",
+            ForceCreate = true
+        });
+        adminCreate.Should().BeOfType<CreatedAtActionResult>();
+
+        var persistedAlice = await context.DigitalTwins.AsNoTracking().SingleAsync(dt => dt.Id == aliceTwin.Id);
+        persistedAlice.IsActive.Should().BeTrue();
+        context.DigitalTwins.Count(dt => dt.EngineId == engine.Id && dt.IsActive).Should().Be(2);
+    }
+
+    [Fact]
+    public async Task DeactivateDigitalTwin_RemovesRuntimeTwinState()
+    {
+        await using var context = CreateContext();
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            digitalTwinEngine);
+
+        var createResult = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Runtime Twin"
+        });
+        var twin = createResult.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        // Confirm runtime state exists, then deactivate and confirm eviction.
+        var ownerKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("ADMIN")))[..16];
+        var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeTrue();
+
+        // Recreate runtime state through the controller path again.
+        await digitalTwinEngine.CreateDigitalTwinAsync(
+            runtimeKey,
+            new EngineModel { Name = engine.Name, Parameters = new Dictionary<string, double>() });
+
+        var deactivate = await controller.DeactivateDigitalTwin(twin.Id);
+        deactivate.Should().BeOfType<OkObjectResult>();
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeFalse();
     }
 
     [Fact]

@@ -17,6 +17,7 @@ namespace HB_NLP_Research_Lab.Core
     public class DigitalTwinEngine : IDisposable
     {
         public const int MaxHistoryEntries = 256;
+        public const int MaxActiveTwins = 256;
 
         private readonly AdvancedPhysicsEngine _physicsEngine;
         private readonly ValidationEngine _validationEngine;
@@ -33,6 +34,7 @@ namespace HB_NLP_Research_Lab.Core
         private readonly ConcurrentDictionary<string, PredictionAccuracy> _predictionAccuracies;
         private readonly ConcurrentDictionary<string, object> _historyLocks;
         private readonly ConcurrentDictionary<string, SemaphoreSlim> _engineGates;
+        private readonly ConcurrentQueue<string> _twinCreationOrder;
         private readonly object _lifecycleLock = new();
         
         private bool _isInitialized = false;
@@ -55,6 +57,7 @@ namespace HB_NLP_Research_Lab.Core
             _predictionAccuracies = new ConcurrentDictionary<string, PredictionAccuracy>();
             _historyLocks = new ConcurrentDictionary<string, object>();
             _engineGates = new ConcurrentDictionary<string, SemaphoreSlim>();
+            _twinCreationOrder = new ConcurrentQueue<string>();
         }
 
         public async Task<DigitalTwinStatus> InitializeAsync()
@@ -138,6 +141,18 @@ namespace HB_NLP_Research_Lab.Core
                 lock (_lifecycleLock)
                 {
                     ThrowIfDisposed();
+                    // In-place updates do not grow the map; only evict when inserting a new key.
+                    var isNewKey = !_digitalTwins.ContainsKey(engineId);
+                    if (isNewKey)
+                    {
+                        EvictOldestTwinsUnlocked(keepEngineId: engineId);
+                        if (_digitalTwins.Count >= MaxActiveTwins)
+                        {
+                            throw new InvalidOperationException(
+                                $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
+                        }
+                    }
+
                     lock (GetHistoryLock(engineId))
                     {
                         // Publish all per-engine state as one atomic generation.
@@ -153,7 +168,12 @@ namespace HB_NLP_Research_Lab.Core
                             StructuralPredictionAccuracy = 0.999,
                             FailurePredictionAccuracy = 0.999
                         };
+                        isNewKey = !_digitalTwins.ContainsKey(engineId);
                         _digitalTwins[engineId] = digitalTwin;
+                        if (isNewKey)
+                        {
+                            _twinCreationOrder.Enqueue(engineId);
+                        }
                     }
                 }
             }
@@ -195,6 +215,16 @@ namespace HB_NLP_Research_Lab.Core
                 lock (_lifecycleLock)
                 {
                     ThrowIfDisposed();
+                    if (_digitalTwins.TryGetValue(engineId, out existingTwin))
+                        return existingTwin;
+
+                    EvictOldestTwinsUnlocked(keepEngineId: engineId);
+                    if (_digitalTwins.Count >= MaxActiveTwins)
+                    {
+                        throw new InvalidOperationException(
+                            $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
+                    }
+
                     lock (GetHistoryLock(engineId))
                     {
                         if (_digitalTwins.TryGetValue(engineId, out existingTwin))
@@ -222,6 +252,7 @@ namespace HB_NLP_Research_Lab.Core
                             TwinVersion = "1.0.0"
                         };
                         _digitalTwins[engineId] = restoredTwin;
+                        _twinCreationOrder.Enqueue(engineId);
                         return restoredTwin;
                     }
                 }
@@ -229,6 +260,24 @@ namespace HB_NLP_Research_Lab.Core
             finally
             {
                 engineGate.Release();
+            }
+        }
+
+        /// <summary>
+        /// Removes process-local state for a twin key (history, accuracy, gates).
+        /// Safe to call when the key is already absent.
+        /// </summary>
+        public bool RemoveDigitalTwin(string engineId)
+        {
+            if (string.IsNullOrWhiteSpace(engineId))
+                return false;
+
+            ThrowIfDisposed();
+
+            lock (_lifecycleLock)
+            {
+                ThrowIfDisposed();
+                return RemoveDigitalTwinUnlocked(engineId);
             }
         }
 
@@ -544,6 +593,104 @@ namespace HB_NLP_Research_Lab.Core
         private SemaphoreSlim GetEngineGate(string engineId) =>
             _engineGates.GetOrAdd(engineId, static _ => new SemaphoreSlim(1, 1));
 
+        private void EvictOldestTwinsUnlocked(string keepEngineId)
+        {
+            // Bound busy-gate retries so a fully contended set cannot spin forever.
+            var busySkips = 0;
+            while (_digitalTwins.Count >= MaxActiveTwins)
+            {
+                if (!_twinCreationOrder.TryDequeue(out var oldestKey))
+                {
+                    // Queue drifted; fall back to arbitrary eviction excluding the key being created.
+                    oldestKey = _digitalTwins.Keys.FirstOrDefault(key =>
+                        !string.Equals(key, keepEngineId, StringComparison.Ordinal));
+                    if (oldestKey == null)
+                        break;
+                }
+
+                if (string.Equals(oldestKey, keepEngineId, StringComparison.Ordinal))
+                {
+                    // Keep newly created/restored key; re-queue and try another.
+                    _twinCreationOrder.Enqueue(oldestKey);
+                    if (_digitalTwins.Count < MaxActiveTwins)
+                        break;
+
+                    var alternate = _digitalTwins.Keys.FirstOrDefault(key =>
+                        !string.Equals(key, keepEngineId, StringComparison.Ordinal));
+                    if (alternate == null)
+                        break;
+
+                    if (!RemoveDigitalTwinUnlocked(alternate))
+                    {
+                        busySkips++;
+                        if (busySkips >= MaxActiveTwins)
+                            break;
+                    }
+                    else
+                    {
+                        busySkips = 0;
+                    }
+
+                    continue;
+                }
+
+                if (!_digitalTwins.ContainsKey(oldestKey))
+                    continue;
+
+                if (!RemoveDigitalTwinUnlocked(oldestKey))
+                {
+                    // Gate was busy: restore LRU order and try another candidate.
+                    _twinCreationOrder.Enqueue(oldestKey);
+                    busySkips++;
+                    if (busySkips >= MaxActiveTwins)
+                        break;
+                    continue;
+                }
+
+                busySkips = 0;
+            }
+        }
+
+        private bool RemoveDigitalTwinUnlocked(string engineId)
+        {
+            // Only evict when the per-engine gate is idle. Keep the SemaphoreSlim in
+            // _engineGates for the process lifetime — callers often cache GetEngineGate()
+            // before WaitAsync, so removing/disposing here races to ObjectDisposedException.
+            // Gates are disposed only in Dispose().
+            if (_engineGates.TryGetValue(engineId, out var gate))
+            {
+                if (!gate.Wait(0))
+                {
+                    return false;
+                }
+
+                try
+                {
+                    return RemoveTwinStateUnlocked(engineId);
+                }
+                finally
+                {
+                    gate.Release();
+                }
+            }
+
+            return RemoveTwinStateUnlocked(engineId);
+        }
+
+        private bool RemoveTwinStateUnlocked(string engineId)
+        {
+            var removed = false;
+            lock (GetHistoryLock(engineId))
+            {
+                removed |= _digitalTwins.TryRemove(engineId, out _);
+                removed |= _learningHistories.TryRemove(engineId, out _);
+                removed |= _predictionAccuracies.TryRemove(engineId, out _);
+            }
+
+            _historyLocks.TryRemove(engineId, out _);
+            return removed;
+        }
+
         private void ThrowIfDisposed()
         {
             if (_isDisposed)
@@ -582,6 +729,10 @@ namespace HB_NLP_Research_Lab.Core
                 _learningHistories.Clear();
                 _predictionAccuracies.Clear();
                 _historyLocks.Clear();
+                while (_twinCreationOrder.TryDequeue(out _))
+                {
+                    // Intentionally drain and discard queued engine IDs during disposal.
+                }
                 foreach (var gate in _engineGates.Values)
                 {
                     gate.Dispose();

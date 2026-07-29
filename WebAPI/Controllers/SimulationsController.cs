@@ -110,14 +110,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Include(s => s.Telemetry)
                     .FirstOrDefaultAsync(s => s.Id == id);
 
-                if (simulation == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (simulation == null || !CurrentUserCanAccessSimulation(simulation))
                 {
                     return NotFound(new { message = $"Simulation with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessSimulation(simulation))
-                {
-                    return Forbid();
                 }
 
                 return Ok(EngineSimulationResponse.FromEntity(simulation, includeTelemetry: true));
@@ -179,9 +175,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return Forbid();
                 }
 
+                // Same 404 as a missing engine so private-engine existence is not leaked.
                 if (!EngineAccessPolicy.CanUseEngine(User, engine, currentUsername))
                 {
-                    return Forbid();
+                    return NotFound(new { message = $"Engine with ID {request.EngineId} not found" });
                 }
 
                 if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot) || backgroundWorkSlot == null)
@@ -259,14 +256,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             try
             {
                 var simulation = await _context.EngineSimulations.FindAsync(id);
-                if (simulation == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (simulation == null || !CurrentUserCanAccessSimulation(simulation))
                 {
                     return NotFound(new { message = $"Simulation with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessSimulation(simulation))
-                {
-                    return Forbid();
                 }
 
                 return Ok(new
@@ -300,14 +293,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             try
             {
                 var simulation = await _context.EngineSimulations.FindAsync(id);
-                if (simulation == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (simulation == null || !CurrentUserCanAccessSimulation(simulation))
                 {
                     return NotFound(new { message = $"Simulation with ID {id} not found" });
-                }
-
-                if (!CurrentUserCanAccessSimulation(simulation))
-                {
-                    return Forbid();
                 }
 
                 if (simulation.Status != "Running" && simulation.Status != "Pending")
@@ -373,15 +362,30 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return;
                 }
 
-                // Run the actual simulation using HelloblueGKEngine
-                var analysisResult = await _engine.AnalyzeEngineAsync(engine.Name);
+                // Run the requested simulation type with optional parameters.
+                var analysisResult = await _engine.AnalyzeEngineAsync(
+                    engine.Name,
+                    request.SimulationType,
+                    request.Parameters);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var executionTime = (DateTime.UtcNow - startedAt).TotalSeconds;
-                var accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0 ?? 0.95;
+                var accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0
+                    ?? analysisResult.ConvergenceRate;
+                if (accuracy <= 0)
+                {
+                    accuracy = 0.95;
+                }
+
                 var completedAt = DateTime.UtcNow;
+                var iterations = analysisResult.Iterations > 0 ? analysisResult.Iterations : 1000;
+                var convergenceRate = analysisResult.ConvergenceRate > 0
+                    ? analysisResult.ConvergenceRate
+                    : 0.99;
                 var resultsJson = JsonSerializer.Serialize(new
                 {
+                    simulationType = analysisResult.SimulationType,
+                    parameters = request.Parameters ?? new Dictionary<string, object>(),
                     thrustAnalysis = new
                     {
                         maxThrust = analysisResult.ThrustAnalysis?.MaxThrust,
@@ -413,8 +417,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             .SetProperty(s => s.CompletedAt, completedAt)
                             .SetProperty(s => s.ExecutionTimeSeconds, executionTime)
                             .SetProperty(s => s.Accuracy, accuracy)
-                            .SetProperty(s => s.Iterations, 1000)
-                            .SetProperty(s => s.ConvergenceRate, 0.99)
+                            .SetProperty(s => s.Iterations, iterations)
+                            .SetProperty(s => s.ConvergenceRate, convergenceRate)
                             .SetProperty(s => s.ResultsJson, resultsJson),
                         cancellationToken);
 
