@@ -613,7 +613,6 @@ namespace HB_NLP_Research_Lab.Core
         {
             // Only evict when the per-engine gate is idle so we never dispose a
             // SemaphoreSlim another caller is about to Release.
-            SemaphoreSlim? gate = null;
             if (_engineGates.TryGetValue(engineId, out var existingGate))
             {
                 if (!existingGate.Wait(0))
@@ -621,32 +620,38 @@ namespace HB_NLP_Research_Lab.Core
                     return false;
                 }
 
-                gate = existingGate;
-            }
-
-            var removed = false;
-            try
-            {
-                lock (GetHistoryLock(engineId))
+                using var gate = existingGate;
+                var removedWithGate = false;
+                try
                 {
-                    removed |= _digitalTwins.TryRemove(engineId, out _);
-                    removed |= _learningHistories.TryRemove(engineId, out _);
-                    removed |= _predictionAccuracies.TryRemove(engineId, out _);
-                }
+                    lock (GetHistoryLock(engineId))
+                    {
+                        removedWithGate |= _digitalTwins.TryRemove(engineId, out _);
+                        removedWithGate |= _learningHistories.TryRemove(engineId, out _);
+                        removedWithGate |= _predictionAccuracies.TryRemove(engineId, out _);
+                    }
 
-                _historyLocks.TryRemove(engineId, out _);
-            }
-            finally
-            {
-                if (gate != null)
+                    _historyLocks.TryRemove(engineId, out _);
+                }
+                finally
                 {
                     _engineGates.TryRemove(engineId, out _);
                     gate.Release();
-                    gate.Dispose();
-                    removed = true;
+                    removedWithGate = true;
                 }
+
+                return removedWithGate;
             }
 
+            var removed = false;
+            lock (GetHistoryLock(engineId))
+            {
+                removed |= _digitalTwins.TryRemove(engineId, out _);
+                removed |= _learningHistories.TryRemove(engineId, out _);
+                removed |= _predictionAccuracies.TryRemove(engineId, out _);
+            }
+
+            _historyLocks.TryRemove(engineId, out _);
             return removed;
         }
 
@@ -690,6 +695,7 @@ namespace HB_NLP_Research_Lab.Core
                 _historyLocks.Clear();
                 while (_twinCreationOrder.TryDequeue(out _))
                 {
+                    // Intentionally drain and discard queued engine IDs during disposal.
                 }
                 foreach (var gate in _engineGates.Values)
                 {
