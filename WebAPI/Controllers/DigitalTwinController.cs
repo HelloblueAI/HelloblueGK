@@ -187,7 +187,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var engineModel = BuildEngineModel(engine);
 
                 // Create digital twin using DigitalTwinEngine
-                var digitalTwinResult = await _digitalTwinEngine.CreateDigitalTwinAsync(engineId, engineModel);
+                EngineDigitalTwin digitalTwinResult;
+                try
+                {
+                    digitalTwinResult = await _digitalTwinEngine.CreateDigitalTwinAsync(engineId, engineModel);
+                }
+                catch (InvalidOperationException ex) when (ex.Message.Contains("capacity", StringComparison.OrdinalIgnoreCase))
+                {
+                    return StatusCode(StatusCodes.Status503ServiceUnavailable, new
+                    {
+                        message = "Digital twin runtime capacity reached; try again shortly."
+                    });
+                }
 
                 // Create database record
                 var digitalTwin = new DigitalTwin
@@ -209,9 +220,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
                 catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
                 {
-                    // Concurrent create raced past the existence check; keep runtime
-                    // state only when a matching active row actually persisted.
-                    _digitalTwinEngine.RemoveDigitalTwin(engineId);
+                    // Concurrent create raced past the existence check. The winner's
+                    // active row still needs the shared owner/engine runtime key — only
+                    // drop memory when no matching active twin actually persisted.
+                    _context.Entry(digitalTwin).State = EntityState.Detached;
+
+                    var winnerStillActive = await _context.DigitalTwins
+                        .AsNoTracking()
+                        .AnyAsync(dt =>
+                            dt.EngineId == request.EngineId &&
+                            dt.IsActive &&
+                            dt.CreatedBy == currentUsername);
+
+                    if (!winnerStillActive)
+                    {
+                        _digitalTwinEngine.RemoveDigitalTwin(engineId);
+                    }
+
                     _logger.LogInformation(
                         ex,
                         "Concurrent digital twin create for engine {EngineId} by {Username}",

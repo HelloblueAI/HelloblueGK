@@ -339,6 +339,29 @@ public class DigitalTwinEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task CreateDigitalTwinAsync_WhenAtCapacity_InPlaceUpdateDoesNotEvict()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineModel = new EngineModel
+        {
+            Name = "Capacity Engine",
+            Parameters = new Dictionary<string, double>()
+        };
+
+        for (var i = 0; i < DigitalTwinEngine.MaxActiveTwins; i++)
+        {
+            await _digitalTwinEngine.CreateDigitalTwinAsync($"CapacityEngine_{i}", engineModel);
+        }
+
+        // Updating an existing key must not grow the map or evict another twin.
+        await _digitalTwinEngine.CreateDigitalTwinAsync("CapacityEngine_1", engineModel);
+
+        _digitalTwinEngine.RemoveDigitalTwin("CapacityEngine_0").Should().BeTrue();
+        var status = await _digitalTwinEngine.InitializeAsync();
+        status.TwinCount.Should().Be(DigitalTwinEngine.MaxActiveTwins - 1);
+    }
+
+    [Fact]
     public async Task Dispose_ShouldRejectFurtherOperations()
     {
         // Act

@@ -141,7 +141,18 @@ namespace HB_NLP_Research_Lab.Core
                 lock (_lifecycleLock)
                 {
                     ThrowIfDisposed();
-                    EvictOldestTwinsUnlocked(keepEngineId: engineId);
+                    // In-place updates do not grow the map; only evict when inserting a new key.
+                    var isNewKey = !_digitalTwins.ContainsKey(engineId);
+                    if (isNewKey)
+                    {
+                        EvictOldestTwinsUnlocked(keepEngineId: engineId);
+                        if (_digitalTwins.Count >= MaxActiveTwins)
+                        {
+                            throw new InvalidOperationException(
+                                $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
+                        }
+                    }
+
                     lock (GetHistoryLock(engineId))
                     {
                         // Publish all per-engine state as one atomic generation.
@@ -157,7 +168,7 @@ namespace HB_NLP_Research_Lab.Core
                             StructuralPredictionAccuracy = 0.999,
                             FailurePredictionAccuracy = 0.999
                         };
-                        var isNewKey = !_digitalTwins.ContainsKey(engineId);
+                        isNewKey = !_digitalTwins.ContainsKey(engineId);
                         _digitalTwins[engineId] = digitalTwin;
                         if (isNewKey)
                         {
@@ -204,7 +215,16 @@ namespace HB_NLP_Research_Lab.Core
                 lock (_lifecycleLock)
                 {
                     ThrowIfDisposed();
+                    if (_digitalTwins.TryGetValue(engineId, out existingTwin))
+                        return existingTwin;
+
                     EvictOldestTwinsUnlocked(keepEngineId: engineId);
+                    if (_digitalTwins.Count >= MaxActiveTwins)
+                    {
+                        throw new InvalidOperationException(
+                            $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
+                    }
+
                     lock (GetHistoryLock(engineId))
                     {
                         if (_digitalTwins.TryGetValue(engineId, out existingTwin))

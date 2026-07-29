@@ -761,6 +761,52 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task CreateDigitalTwin_UniqueConstraintRace_KeepsWinnerRuntimeState()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var contextA = CreateContext(databaseName);
+        await using var contextB = CreateContext(databaseName);
+
+        var engine = CreateEngine("alice");
+        contextA.Engines.Add(engine);
+        await contextA.SaveChangesAsync();
+
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var controllerA = CreateDigitalTwinController(
+            contextA,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+        var controllerB = CreateDigitalTwinController(
+            contextB,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+
+        var request = new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Raced Twin"
+        };
+
+        var results = await Task.WhenAll(
+            controllerA.CreateDigitalTwin(request),
+            controllerB.CreateDigitalTwin(request));
+
+        results.Should().ContainSingle(result => result is CreatedAtActionResult);
+        results.Should().ContainSingle(result => result is ConflictObjectResult);
+        (await contextA.DigitalTwins.AsNoTracking()
+            .CountAsync(dt => dt.EngineId == engine.Id && dt.IsActive && dt.CreatedBy == "alice"))
+            .Should().Be(1);
+
+        var ownerKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+        var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
+
+        // Loser must not wipe the shared runtime state the winner still needs.
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task CreateDigitalTwin_AdminForceCreate_DoesNotDeactivateOtherUsersTwins()
     {
         await using var context = CreateContext();
