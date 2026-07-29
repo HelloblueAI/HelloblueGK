@@ -575,6 +575,8 @@ namespace HB_NLP_Research_Lab.Core
 
         private void EvictOldestTwinsUnlocked(string keepEngineId)
         {
+            // Bound busy-gate retries so a fully contended set cannot spin forever.
+            var busySkips = 0;
             while (_digitalTwins.Count >= MaxActiveTwins)
             {
                 if (!_twinCreationOrder.TryDequeue(out var oldestKey))
@@ -598,14 +600,34 @@ namespace HB_NLP_Research_Lab.Core
                     if (alternate == null)
                         break;
 
-                    RemoveDigitalTwinUnlocked(alternate);
+                    if (!RemoveDigitalTwinUnlocked(alternate))
+                    {
+                        busySkips++;
+                        if (busySkips >= MaxActiveTwins)
+                            break;
+                    }
+                    else
+                    {
+                        busySkips = 0;
+                    }
+
                     continue;
                 }
 
                 if (!_digitalTwins.ContainsKey(oldestKey))
                     continue;
 
-                RemoveDigitalTwinUnlocked(oldestKey);
+                if (!RemoveDigitalTwinUnlocked(oldestKey))
+                {
+                    // Gate was busy: restore LRU order and try another candidate.
+                    _twinCreationOrder.Enqueue(oldestKey);
+                    busySkips++;
+                    if (busySkips >= MaxActiveTwins)
+                        break;
+                    continue;
+                }
+
+                busySkips = 0;
             }
         }
 
@@ -637,7 +659,6 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     _engineGates.TryRemove(engineId, out _);
                     gate.Release();
-                    removedWithGate = true;
                 }
 
                 return removedWithGate;
