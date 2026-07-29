@@ -208,28 +208,55 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     // Run simulation asynchronously with a new scope to avoid DbContext disposal issues
                     var simulationId = simulation.Id;
                     var engineId = engine.Id;
-                    backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
+                    try
                     {
-                        var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
-                        var scopedEngine = await scopedContext.Engines.FindAsync(
-                            [engineId],
-                            cancellationToken);
-                        if (scopedEngine == null)
+                        backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
                         {
-                            await FailSimulationAsync(
-                                scopedContext,
-                                simulationId,
-                                "Simulation failed because the target engine no longer exists.");
-                            return;
-                        }
+                            var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
+                            try
+                            {
+                                var scopedEngine = await scopedContext.Engines.FindAsync(
+                                    [engineId],
+                                    cancellationToken);
+                                if (scopedEngine == null)
+                                {
+                                    await FailSimulationAsync(
+                                        scopedContext,
+                                        simulationId,
+                                        "Simulation failed because the target engine no longer exists.");
+                                    return;
+                                }
 
-                        await ExecuteSimulationAsync(
+                                await ExecuteSimulationAsync(
+                                    simulationId,
+                                    scopedEngine,
+                                    request,
+                                    scopedContext,
+                                    cancellationToken);
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in simulation background work {SimulationId}", simulationId);
+                                await FailSimulationAsync(
+                                    scopedContext,
+                                    simulationId,
+                                    "Simulation failed. See server logs for details.");
+                            }
+                        }, $"simulation:{simulationId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to queue simulation {SimulationId}", simulationId);
+                        await FailSimulationAsync(
+                            _context,
                             simulationId,
-                            scopedEngine,
-                            request,
-                            scopedContext,
-                            cancellationToken);
-                    }, $"simulation:{simulationId}");
+                            "Simulation failed because background work could not be queued.");
+                        return StatusCode(500, "An error occurred while creating the simulation");
+                    }
 
                     return CreatedAtAction(
                         nameof(GetSimulationById),
@@ -362,11 +389,17 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return;
                 }
 
-                // Run the requested simulation type with optional parameters.
+                // Run the requested simulation type with engine baselines + optional overrides.
+                var baselineDesign = HelloblueGKEngine.CreateDesignParametersFromEngine(
+                    engine.Thrust,
+                    engine.SpecificImpulse,
+                    engine.ChamberPressure,
+                    engine.Efficiency);
                 var analysisResult = await _engine.AnalyzeEngineAsync(
                     engine.Name,
                     request.SimulationType,
-                    request.Parameters);
+                    request.Parameters,
+                    baselineDesign);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var executionTime = (DateTime.UtcNow - startedAt).TotalSeconds;

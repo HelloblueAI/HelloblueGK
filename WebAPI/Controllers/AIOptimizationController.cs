@@ -201,23 +201,46 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     // Run optimization asynchronously with a new scope to avoid DbContext disposal issues
                     var optimizationId = optimization.Id;
                     var engineId = engine.Id;
-                    backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
+                    try
                     {
-                        var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
-                        var scopedEngine = await scopedContext.Engines.FindAsync(
-                            [engineId],
-                            cancellationToken);
-                        if (scopedEngine == null)
+                        backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
                         {
-                            await FailOptimizationAsync(
-                                scopedContext,
-                                optimizationId,
-                                "Optimization failed because the engine no longer exists.");
-                            return;
-                        }
+                            var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
+                            try
+                            {
+                                var scopedEngine = await scopedContext.Engines.FindAsync(
+                                    [engineId],
+                                    cancellationToken);
+                                if (scopedEngine == null)
+                                {
+                                    await FailOptimizationAsync(
+                                        scopedContext,
+                                        optimizationId,
+                                        "Optimization failed because the engine no longer exists.");
+                                    return;
+                                }
 
-                        await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
-                    }, $"optimization:{optimizationId}");
+                                await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
+                            }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in optimization background work {OptimizationId}", optimizationId);
+                                await FailOptimizationAsync(
+                                    scopedContext,
+                                    optimizationId,
+                                    "Optimization failed. See server logs for details.");
+                            }
+                        }, $"optimization:{optimizationId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to queue optimization {OptimizationId}", optimizationId);
+                        await FailOptimizationAsync(
+                            _context,
+                            optimizationId,
+                            "Optimization failed because background work could not be queued.");
+                        return StatusCode(500, "An error occurred while starting the optimization");
+                    }
 
                     return CreatedAtAction(
                         nameof(GetOptimizationById),

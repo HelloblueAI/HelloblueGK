@@ -137,6 +137,40 @@ public class DigitalTwinEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task PredictEngineBehaviorAsync_ShouldApplyScenarioParameters()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineId = "TestEngine_ScenarioParams";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Scenario Engine", Parameters = new Dictionary<string, double>() });
+
+        var baseline = await _digitalTwinEngine.PredictEngineBehaviorAsync(
+            engineId,
+            new PredictionScenario
+            {
+                Name = "Baseline",
+                Parameters = new Dictionary<string, object>()
+            });
+        var throttled = await _digitalTwinEngine.PredictEngineBehaviorAsync(
+            engineId,
+            new PredictionScenario
+            {
+                Name = "Throttled",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["throttle"] = 0.8,
+                    ["ambientTemperature"] = 320.0
+                }
+            });
+
+        throttled.PredictedMetrics["Thrust"].Should().BeApproximately(
+            baseline.PredictedMetrics["Thrust"] * 0.8,
+            0.0001);
+        throttled.PredictedMetrics["Efficiency"].Should().BeLessThan(baseline.PredictedMetrics["Efficiency"]);
+    }
+
+    [Fact]
     public async Task GenerateDigitalTwinSummaryAsync_ShouldReturnSummary()
     {
         // Arrange
