@@ -653,37 +653,32 @@ namespace HB_NLP_Research_Lab.Core
 
         private bool RemoveDigitalTwinUnlocked(string engineId)
         {
-            // Only evict when the per-engine gate is idle so we never dispose a
-            // SemaphoreSlim another caller is about to Release.
-            if (_engineGates.TryGetValue(engineId, out var existingGate))
+            // Only evict when the per-engine gate is idle. Keep the SemaphoreSlim in
+            // _engineGates for the process lifetime — callers often cache GetEngineGate()
+            // before WaitAsync, so removing/disposing here races to ObjectDisposedException.
+            // Gates are disposed only in Dispose().
+            if (_engineGates.TryGetValue(engineId, out var gate))
             {
-                if (!existingGate.Wait(0))
+                if (!gate.Wait(0))
                 {
                     return false;
                 }
 
-                using var gate = existingGate;
-                var removedWithGate = false;
                 try
                 {
-                    lock (GetHistoryLock(engineId))
-                    {
-                        removedWithGate |= _digitalTwins.TryRemove(engineId, out _);
-                        removedWithGate |= _learningHistories.TryRemove(engineId, out _);
-                        removedWithGate |= _predictionAccuracies.TryRemove(engineId, out _);
-                    }
-
-                    _historyLocks.TryRemove(engineId, out _);
+                    return RemoveTwinStateUnlocked(engineId);
                 }
                 finally
                 {
-                    _engineGates.TryRemove(engineId, out _);
                     gate.Release();
                 }
-
-                return removedWithGate;
             }
 
+            return RemoveTwinStateUnlocked(engineId);
+        }
+
+        private bool RemoveTwinStateUnlocked(string engineId)
+        {
             var removed = false;
             lock (GetHistoryLock(engineId))
             {
