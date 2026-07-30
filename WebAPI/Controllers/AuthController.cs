@@ -225,9 +225,14 @@ public class AuthController : ControllerBase
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(candidate => candidate.RefreshTokenHash, (string?)null)
                 .SetProperty(candidate => candidate.RefreshTokenExpiresAt, (DateTime?)null)
+                .SetProperty(
+                    candidate => candidate.AccessTokenVersion,
+                    candidate => candidate.AccessTokenVersion + 1)
                 .SetProperty(candidate => candidate.UpdatedAt, DateTime.UtcNow));
 
-        _logger.LogInformation("Refresh token revoked for user id {UserId}", userId);
+        _logger.LogInformation(
+            "Access and refresh tokens revoked for user id {UserId}",
+            userId);
         return Ok(new { message = "Logged out successfully" });
     }
 
@@ -236,7 +241,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("register")]
     [AllowAnonymous]
-    [ProducesResponseType(typeof(RegisterResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> Register([FromBody] RegisterRequest request)
     {
@@ -309,21 +314,15 @@ public class AuthController : ControllerBase
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
+        // Issue the same access + refresh pair as login so clients can refresh/logout consistently.
         var token = _jwtService.GenerateToken(user);
+        var refreshToken = IssueRefreshToken(user);
+        user.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
 
         _logger.LogInformation("New user registered: {Username}", LogSanitizer.SanitizeIdentifier(user.Username));
 
-        return CreatedAtAction(nameof(Login), new RegisterResponse
-        {
-            Token = token,
-            User = new UserInfo
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                IsAdmin = user.IsAdmin
-            }
-        });
+        return CreatedAtAction(nameof(Login), BuildAuthResponse(user, token, refreshToken));
     }
 
     /// <summary>
@@ -569,11 +568,13 @@ public class RegisterRequest
 }
 
 /// <summary>
-/// Register response model
+/// Register response model (kept for compatibility; register now returns <see cref="LoginResponse"/>).
 /// </summary>
 public class RegisterResponse
 {
     public string Token { get; set; } = string.Empty;
+    public string RefreshToken { get; set; } = string.Empty;
+    public int ExpiresIn { get; set; }
     public UserInfo User { get; set; } = null!;
 }
 

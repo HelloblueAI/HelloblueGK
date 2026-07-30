@@ -322,6 +322,79 @@ public class SecurityHardeningTests
         var persisted = await context.Users.AsNoTracking().SingleAsync(candidate => candidate.Id == user.Id);
         persisted.RefreshTokenHash.Should().BeNull();
         persisted.RefreshTokenExpiresAt.Should().BeNull();
+        persisted.AccessTokenVersion.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Register_WhenPublicRegistrationAllowed_IssuesRefreshTokenAndPersistsHash()
+    {
+        await using var context = CreateContext();
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.GenerateToken(It.IsAny<User>()))
+            .Returns("register-access-token");
+        jwtService
+            .Setup(service => service.GenerateRefreshToken())
+            .Returns("register-refresh-token");
+        jwtService
+            .Setup(service => service.HashRefreshToken("register-refresh-token"))
+            .Returns("register-refresh-hash");
+        jwtService
+            .Setup(service => service.GetTokenExpirationSeconds())
+            .Returns(3600);
+        jwtService
+            .Setup(service => service.GetRefreshTokenExpirationSeconds())
+            .Returns(604800);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        var controller = new AuthController(
+            context,
+            jwtService.Object,
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/auth/register"
+                    }
+                }
+            }
+        };
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "new-user",
+            Email = "new-user@example.com",
+            Password = "Password123!",
+            FirstName = "New",
+            LastName = "User"
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<LoginResponse>().Subject;
+        response.Token.Should().Be("register-access-token");
+        response.RefreshToken.Should().Be("register-refresh-token");
+        response.ExpiresIn.Should().Be(3600);
+
+        var persisted = await context.Users.AsNoTracking().SingleAsync(candidate => candidate.Username == "new-user");
+        persisted.RefreshTokenHash.Should().Be("register-refresh-hash");
+        persisted.RefreshTokenExpiresAt.Should().NotBeNull();
+        persisted.AccessTokenVersion.Should().Be(0);
+        jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Once);
+        jwtService.Verify(service => service.GenerateRefreshToken(), Times.Once);
+        jwtService.Verify(service => service.HashRefreshToken("register-refresh-token"), Times.Once);
     }
 
     [Fact]
@@ -444,6 +517,7 @@ public class SecurityHardeningTests
 
             columns.Should().Contain("RefreshTokenHash");
             columns.Should().Contain("RefreshTokenExpiresAt");
+            columns.Should().Contain("AccessTokenVersion");
         }
 
         await using (var command = connection.CreateCommand())
@@ -910,6 +984,42 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task JwtBearer_AfterLogout_RejectsPreviouslyIssuedAccessToken()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production);
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+        var user = await SeedFactoryUserAsync(
+            factory,
+            "logout-revoke-user",
+            isAdmin: true);
+
+        var accessToken = CreateJwtToken(
+            user.Id,
+            user.Username,
+            isAdmin: true,
+            accessTokenVersion: 0);
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var beforeLogout = await client.GetAsync("/metrics");
+        beforeLogout.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var logoutResponse = await client.PostAsync("/api/v1/Auth/logout", content: null);
+        logoutResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var afterLogout = await client.GetAsync("/metrics");
+        afterLogout.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+
+        using var scope = factory.Services.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<HelloblueGKDbContext>();
+        var persisted = await context.Users.AsNoTracking().SingleAsync(candidate => candidate.Id == user.Id);
+        persisted.AccessTokenVersion.Should().Be(1);
+        persisted.RefreshTokenHash.Should().BeNull();
+    }
+
+    [Fact]
     public void BoundedBackgroundWorkQueue_WithSingleSlot_RejectsSecondReservationUntilReleased()
     {
         var configuration = new ConfigurationBuilder()
@@ -1168,7 +1278,11 @@ public class SecurityHardeningTests
         return Convert.ToBase64String(sha256.ComputeHash(Encoding.UTF8.GetBytes(password)));
     }
 
-    private static string CreateJwtToken(int userId, string username, bool isAdmin)
+    private static string CreateJwtToken(
+        int userId,
+        string username,
+        bool isAdmin,
+        int accessTokenVersion = 0)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("01234567890123456789012345678901"));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -1178,6 +1292,7 @@ public class SecurityHardeningTests
             new Claim(ClaimTypes.Name, username),
             new Claim("userId", userId.ToString()),
             new Claim("username", username),
+            new Claim("atv", accessTokenVersion.ToString()),
             new Claim(ClaimTypes.Role, isAdmin ? "Admin" : "User")
         };
 

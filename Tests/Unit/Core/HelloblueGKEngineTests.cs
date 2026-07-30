@@ -158,6 +158,68 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_WithCfdParameters_AppliesThrustAndPressureToResults()
+    {
+        var result = await _engine.AnalyzeEngineAsync(
+            "TestEngine",
+            "CFD",
+            new Dictionary<string, object>
+            {
+                ["chamberPressure"] = 275.5,
+                ["thrust"] = 1234567,
+                ["efficiency"] = 0.91,
+                ["iterations"] = 88
+            });
+
+        result.SimulationType.Should().Be("CFD");
+        result.Iterations.Should().Be(88);
+        result.ThrustAnalysis.MaxThrust.Should().Be(1234567);
+        result.ThrustAnalysis.Efficiency.Should().BeApproximately(0.91, 0.0001);
+        result.PerformanceMetrics["ChamberPressure"].Should().Be(275.5);
+        result.PerformanceMetrics["Iterations"].Should().Be(88);
+    }
+
+    [Fact]
+    public async Task AnalyzeEngineAsync_WithThermalParameters_AppliesTemperatureAndCooling()
+    {
+        var result = await _engine.AnalyzeEngineAsync(
+            "TestEngine",
+            "Thermal",
+            new Dictionary<string, object>
+            {
+                ["maxTemperature"] = 4100,
+                ["coolingEfficiency"] = 0.77,
+                ["iterations"] = 55
+            });
+
+        result.SimulationType.Should().Be("Thermal");
+        result.Iterations.Should().Be(55);
+        result.ThermalAnalysis.MaxTemperature.Should().Be(4100);
+        result.ThermalAnalysis.CoolingEfficiency.Should().BeApproximately(0.77, 0.0001);
+        result.PerformanceMetrics["MaxTemperature"].Should().Be(4100);
+    }
+
+    [Fact]
+    public async Task AnalyzeEngineAsync_WithStructuralParameters_AppliesStressAndSafetyFactor()
+    {
+        var result = await _engine.AnalyzeEngineAsync(
+            "TestEngine",
+            "Structural",
+            new Dictionary<string, object>
+            {
+                ["maxStress"] = 650e6,
+                ["safetyFactor"] = 2.25,
+                ["iterations"] = 66
+            });
+
+        result.SimulationType.Should().Be("Structural");
+        result.Iterations.Should().Be(66);
+        result.StructuralAnalysis.MaxStress.Should().Be(650e6);
+        result.StructuralAnalysis.SafetyFactor.Should().Be(2.25);
+        result.PerformanceMetrics["MaxStress"].Should().Be(650e6);
+    }
+
+    [Fact]
     public void Dispose_ShouldNotThrow()
     {
         // Act

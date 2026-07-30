@@ -105,6 +105,16 @@ namespace HB_NLP_Research_Lab.Core
                 iterations = requestedIterations;
             }
 
+            // Apply typed physics request parameters so CFD/Thermal/Structural results
+            // reflect accepted inputs instead of only echoing them in ResultsJson.
+            ApplyPhysicsParameterOverrides(
+                parameters,
+                cfdResult,
+                thermalResult,
+                structuralResult,
+                ref iterations,
+                ref solverAccuracy);
+
             // Real-time validation
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
 
@@ -128,6 +138,13 @@ namespace HB_NLP_Research_Lab.Core
                     MaxThrust = DeriveThrust(cfdResult),
                     Efficiency = NormalizeRatio(cfdResult.Accuracy)
                 };
+
+            if (cfdResult != null &&
+                (TryReadDoubleParameter(parameters, "thrust", out var requestedThrust) ||
+                 TryReadDoubleParameter(parameters, "maxThrust", out requestedThrust)))
+            {
+                thrustAnalysis.MaxThrust = requestedThrust;
+            }
 
             var thermalAnalysis = thermalResult == null
                 ? new ThermalAnalysis()
@@ -160,6 +177,21 @@ namespace HB_NLP_Research_Lab.Core
             if (TryReadDoubleParameter(parameters, "meshQuality", out var meshQuality))
             {
                 performanceMetrics["MeshQuality"] = meshQuality;
+            }
+
+            if (cfdResult != null && cfdResult.MaxPressure > 0)
+            {
+                performanceMetrics["ChamberPressure"] = cfdResult.MaxPressure;
+            }
+
+            if (thermalResult != null && thermalResult.MaxTemperature > 0)
+            {
+                performanceMetrics["MaxTemperature"] = thermalResult.MaxTemperature;
+            }
+
+            if (structuralResult != null && structuralResult.MaxStress > 0)
+            {
+                performanceMetrics["MaxStress"] = structuralResult.MaxStress;
             }
 
             return new ComprehensiveAnalysisResult
@@ -297,6 +329,135 @@ namespace HB_NLP_Research_Lab.Core
             {
                 design.Efficiency = Math.Clamp(efficiency, 0.0, 1.0);
             }
+        }
+
+        private static void ApplyPhysicsParameterOverrides(
+            IReadOnlyDictionary<string, object>? parameters,
+            CfdAnalysisResult? cfdResult,
+            ThermalAnalysisResult? thermalResult,
+            StructuralAnalysisResult? structuralResult,
+            ref int iterations,
+            ref double solverAccuracy)
+        {
+            if (parameters == null)
+            {
+                return;
+            }
+
+            if (TryReadIntParameter(parameters, "iterations", out var requestedIterations) &&
+                requestedIterations > 0)
+            {
+                iterations = requestedIterations;
+                if (cfdResult != null)
+                {
+                    cfdResult.ConvergenceIterations = requestedIterations;
+                }
+
+                if (thermalResult != null)
+                {
+                    thermalResult.ConvergenceIterations = requestedIterations;
+                }
+
+                if (structuralResult != null)
+                {
+                    structuralResult.ConvergenceIterations = requestedIterations;
+                }
+            }
+
+            if (cfdResult != null)
+            {
+                if (TryReadDoubleParameter(parameters, "chamberPressure", out var chamberPressure) ||
+                    TryReadDoubleParameter(parameters, "maxPressure", out chamberPressure))
+                {
+                    cfdResult.MaxPressure = chamberPressure;
+                    cfdResult.PressureDistribution["chamber"] = chamberPressure;
+                }
+
+                if (TryReadDoubleParameter(parameters, "maxVelocity", out var maxVelocity) ||
+                    TryReadDoubleParameter(parameters, "flowVelocity", out maxVelocity))
+                {
+                    cfdResult.MaxVelocity = maxVelocity;
+                    cfdResult.FlowVelocity = new Vector3((float)maxVelocity, 0, 0);
+                }
+
+                if (TryReadDoubleParameter(parameters, "thrust", out var thrust) ||
+                    TryReadDoubleParameter(parameters, "maxThrust", out thrust))
+                {
+                    // DeriveThrust prefers MaxPressure; use thrust when chamber pressure was not supplied.
+                    if (!parameters.Keys.Any(key =>
+                            string.Equals(key, "chamberPressure", StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(key, "maxPressure", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        cfdResult.MaxPressure = thrust;
+                    }
+                }
+
+                if (TryReadDoubleParameter(parameters, "efficiency", out var cfdEfficiency) ||
+                    TryReadDoubleParameter(parameters, "accuracy", out cfdEfficiency))
+                {
+                    cfdResult.Accuracy = NormalizeEfficiencyPercent(cfdEfficiency);
+                    solverAccuracy = cfdResult.Accuracy;
+                }
+
+                if (TryReadDoubleParameter(parameters, "meshQuality", out var meshQuality))
+                {
+                    cfdResult.MeshQuality = meshQuality;
+                }
+            }
+
+            if (thermalResult != null)
+            {
+                if (TryReadDoubleParameter(parameters, "maxTemperature", out var maxTemperature))
+                {
+                    thermalResult.MaxTemperature = maxTemperature;
+                    thermalResult.TemperatureDistribution["chamber"] = maxTemperature;
+                }
+
+                if (TryReadDoubleParameter(parameters, "coolingEfficiency", out var coolingEfficiency) ||
+                    TryReadDoubleParameter(parameters, "heatTransferEfficiency", out coolingEfficiency))
+                {
+                    thermalResult.HeatTransferEfficiency = NormalizeRatio(coolingEfficiency) * 100.0;
+                    thermalResult.Accuracy = thermalResult.HeatTransferEfficiency;
+                    solverAccuracy = thermalResult.Accuracy;
+                }
+
+                if (TryReadDoubleParameter(parameters, "heatTransferRate", out var heatTransferRate))
+                {
+                    thermalResult.HeatTransferRate = heatTransferRate;
+                }
+            }
+
+            if (structuralResult != null)
+            {
+                if (TryReadDoubleParameter(parameters, "maxStress", out var maxStress))
+                {
+                    structuralResult.MaxStress = maxStress;
+                    structuralResult.StressDistribution["chamber"] = maxStress;
+                }
+
+                if (TryReadDoubleParameter(parameters, "safetyFactor", out var safetyFactor) &&
+                    safetyFactor > 0)
+                {
+                    structuralResult.SafetyFactor = safetyFactor;
+                }
+
+                if (TryReadDoubleParameter(parameters, "maxDisplacement", out var maxDisplacement))
+                {
+                    structuralResult.MaxDisplacement = maxDisplacement;
+                }
+            }
+        }
+
+        private static double NormalizeEfficiencyPercent(double value)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+            {
+                return 0.0;
+            }
+
+            return value <= 1.0
+                ? Math.Clamp(value * 100.0, 0.0, 100.0)
+                : Math.Clamp(value, 0.0, 100.0);
         }
 
         private static double DeriveThrust(CfdAnalysisResult cfdResult)

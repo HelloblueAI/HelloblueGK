@@ -761,6 +761,94 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task CreateDigitalTwin_ForInactiveEngine_ReturnsBadRequestWithoutCreatingRuntime()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("alice");
+        engine.IsActive = false;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var controller = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+
+        var result = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Inactive Twin"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.DigitalTwins.Should().BeEmpty();
+
+        var ownerKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+        var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwin_WhenNonUniqueSaveFails_RemovesRuntimeState()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var seedContext = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        seedContext.Engines.Add(engine);
+        await seedContext.SaveChangesAsync();
+
+        await using var failingContext = CreateFailingDigitalTwinSaveContext(databaseName);
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var controller = CreateDigitalTwinController(
+            failingContext,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+
+        var result = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Orphan Twin"
+        });
+
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
+        (await seedContext.DigitalTwins.AsNoTracking().CountAsync()).Should().Be(0);
+
+        var ownerKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+        var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task StartOptimization_ForInactiveEngine_ReturnsBadRequestWithoutCreatingRun()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("alice");
+        engine.IsActive = false;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            new DeferredBackgroundWorkQueue());
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.AIOptimizationRuns.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CreateDigitalTwin_UniqueConstraintRace_KeepsWinnerRuntimeState()
     {
         var databaseName = Guid.NewGuid().ToString("N");
@@ -922,6 +1010,17 @@ public class ControllerAuthorizationSecurityTests
         var context = new HelloblueGKDbContext(options);
         context.Database.OpenConnection();
         context.Database.EnsureCreated();
+        return context;
+    }
+
+    private static FailingDigitalTwinSaveDbContext CreateFailingDigitalTwinSaveContext(string databaseName)
+    {
+        var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
+            .UseSqlite($"Data Source=file:{databaseName}?mode=memory&cache=shared")
+            .Options;
+
+        var context = new FailingDigitalTwinSaveDbContext(options);
+        context.Database.OpenConnection();
         return context;
     }
 
@@ -1149,6 +1248,24 @@ public class ControllerAuthorizationSecurityTests
             }
 
             return null;
+        }
+    }
+
+    private sealed class FailingDigitalTwinSaveDbContext : HelloblueGKDbContext
+    {
+        public FailingDigitalTwinSaveDbContext(DbContextOptions<HelloblueGKDbContext> options)
+            : base(options)
+        {
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (ChangeTracker.Entries<DigitalTwin>().Any(entry => entry.State == EntityState.Added))
+            {
+                throw new InvalidOperationException("Forced digital twin save failure for orphan cleanup test.");
+            }
+
+            return base.SaveChangesAsync(cancellationToken);
         }
     }
 
