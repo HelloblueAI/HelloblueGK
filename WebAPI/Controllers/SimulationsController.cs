@@ -234,9 +234,15 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                     scopedContext,
                                     cancellationToken);
                             }
-                            catch (OperationCanceledException)
+                            catch (OperationCanceledException ex)
                             {
-                                throw;
+                                // Cover cancellation during pre-execution engine lookup while still Pending.
+                                _logger.LogWarning(ex, "Simulation background work cancelled {SimulationId}", simulationId);
+                                await FailSimulationAsync(
+                                    scopedContext,
+                                    simulationId,
+                                    "Simulation cancelled before completion.",
+                                    markAsCancelled: true);
                             }
                             catch (ObjectDisposedException ex)
                             {
@@ -262,7 +268,15 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                     simulationId,
                                     "Simulation failed. See server logs for details.");
                             }
-                            catch (Exception ex)
+                            catch (Exception ex) when (
+                                ex is not OperationCanceledException &&
+                                ex is not OutOfMemoryException &&
+                                ex is not StackOverflowException &&
+                                ex is not AccessViolationException &&
+                                ex is not AppDomainUnloadedException &&
+                                ex is not BadImageFormatException &&
+                                ex is not CannotUnloadAppDomainException &&
+                                ex is not InvalidProgramException)
                             {
                                 _logger.LogError(ex, "Unhandled error in simulation background work {SimulationId}", simulationId);
                                 await FailSimulationAsync(
