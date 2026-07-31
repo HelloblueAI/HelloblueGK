@@ -208,6 +208,37 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     }
                 }
 
+                async Task CleanupAndRestoreAfterCreateFailureAsync()
+                {
+                    if (runtimeCreated)
+                    {
+                        _digitalTwinEngine.RemoveDigitalTwin(engineId);
+                        runtimeCreated = false;
+                    }
+
+                    if (!forceCreateClearedRuntime)
+                    {
+                        return;
+                    }
+
+                    try
+                    {
+                        // Idempotent when the save-failure path already restored runtime.
+                        await RestoreRuntimeForPersistedActiveTwinAsync();
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
+                    }
+                    catch (InvalidOperationException restoreEx)
+                    {
+                        _logger.LogError(
+                            restoreEx,
+                            "Failed to restore digital twin runtime after create failure for engine {EngineId}",
+                            request.EngineId);
+                    }
+                }
+
                 try
                 {
                     if (existingTwins.Count > 0 && request.ForceCreate)
@@ -270,6 +301,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         // Concurrent create raced past the existence check. The winner's
                         // active row still needs the shared owner/engine runtime key — only
                         // drop memory when no matching active twin actually persisted.
+                        // ForceCreate is different: deactivation never committed, so align
+                        // runtime with the still-active prior row instead of the failed recreate.
                         _context.Entry(digitalTwin).State = EntityState.Detached;
 
                         var winnerStillActive = await _context.DigitalTwins
@@ -279,7 +312,27 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                 dt.IsActive &&
                                 dt.CreatedBy == currentUsername);
 
-                        if (!winnerStillActive)
+                        if (forceCreateClearedRuntime)
+                        {
+                            _digitalTwinEngine.RemoveDigitalTwin(engineId);
+                            runtimeCreated = false;
+                            try
+                            {
+                                await RestoreRuntimeForPersistedActiveTwinAsync();
+                            }
+                            catch (OperationCanceledException)
+                            {
+                                throw;
+                            }
+                            catch (InvalidOperationException restoreEx)
+                            {
+                                _logger.LogError(
+                                    restoreEx,
+                                    "Failed to restore digital twin runtime after force-create conflict for engine {EngineId}",
+                                    request.EngineId);
+                            }
+                        }
+                        else if (!winnerStillActive)
                         {
                             _digitalTwinEngine.RemoveDigitalTwin(engineId);
                             runtimeCreated = false;
@@ -292,10 +345,22 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             LogSanitizer.SanitizeIdentifier(currentUsername));
                         return Conflict(new { message = $"Active digital twin already exists for engine {request.EngineId}. Use forceCreate=true to create a new one." });
                     }
-                    catch (Exception)
+                    catch (DbUpdateException)
                     {
                         // Non-unique save failures must not leave an orphaned runtime twin,
                         // but ForceCreate must restore runtime for the still-active prior row.
+                        _context.Entry(digitalTwin).State = EntityState.Detached;
+                        _digitalTwinEngine.RemoveDigitalTwin(engineId);
+                        runtimeCreated = false;
+                        if (forceCreateClearedRuntime)
+                        {
+                            await RestoreRuntimeForPersistedActiveTwinAsync();
+                        }
+
+                        throw;
+                    }
+                    catch (InvalidOperationException)
+                    {
                         _context.Entry(digitalTwin).State = EntityState.Detached;
                         _digitalTwinEngine.RemoveDigitalTwin(engineId);
                         runtimeCreated = false;
@@ -314,30 +379,15 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         new { id = digitalTwin.Id },
                         DigitalTwinResponse.FromEntity(digitalTwin));
                 }
-                catch (Exception ex)
+                catch (DbUpdateException ex)
                 {
-                    if (runtimeCreated)
-                    {
-                        _digitalTwinEngine.RemoveDigitalTwin(engineId);
-                        runtimeCreated = false;
-                    }
-
-                    if (forceCreateClearedRuntime)
-                    {
-                        try
-                        {
-                            // Idempotent when the save-failure path already restored runtime.
-                            await RestoreRuntimeForPersistedActiveTwinAsync();
-                        }
-                        catch (Exception restoreEx)
-                        {
-                            _logger.LogError(
-                                restoreEx,
-                                "Failed to restore digital twin runtime after create failure for engine {EngineId}",
-                                request.EngineId);
-                        }
-                    }
-
+                    await CleanupAndRestoreAfterCreateFailureAsync();
+                    _logger.LogError(ex, "Error creating digital twin");
+                    return StatusCode(500, "An error occurred while creating the digital twin");
+                }
+                catch (InvalidOperationException ex)
+                {
+                    await CleanupAndRestoreAfterCreateFailureAsync();
                     _logger.LogError(ex, "Error creating digital twin");
                     return StatusCode(500, "An error occurred while creating the digital twin");
                 }
