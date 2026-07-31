@@ -165,9 +165,9 @@ public class AuthController : ControllerBase
             return InvalidRefreshTokenResponse();
         }
 
-        // Mint the replacement first, then claim the old hash atomically so two
-        // concurrent refreshes cannot both succeed with the same presented token.
-        var accessToken = _jwtService.GenerateToken(user);
+        // Claim the old hash atomically so two concurrent refreshes cannot both
+        // succeed with the same presented token. Mint the access JWT only after
+        // reload so a concurrent logout cannot return a stale atv claim.
         var rotatedRefreshToken = _jwtService.GenerateRefreshToken();
         var rotatedRefreshTokenHash = _jwtService.HashRefreshToken(rotatedRefreshToken);
         var rotatedExpiresAt = DateTime.UtcNow.AddSeconds(_jwtService.GetRefreshTokenExpirationSeconds());
@@ -194,9 +194,20 @@ public class AuthController : ControllerBase
             return InvalidRefreshTokenResponse();
         }
 
-        user.RefreshTokenHash = rotatedRefreshTokenHash;
-        user.RefreshTokenExpiresAt = rotatedExpiresAt;
-        user.UpdatedAt = updatedAt;
+        await _context.Entry(user).ReloadAsync();
+        if (!user.IsActive
+            || !string.Equals(user.RefreshTokenHash, rotatedRefreshTokenHash, StringComparison.Ordinal)
+            || user.RefreshTokenExpiresAt == null
+            || user.RefreshTokenExpiresAt <= DateTime.UtcNow)
+        {
+            // Concurrent logout (or other revoke) cleared the rotated refresh after the claim.
+            _logger.LogWarning(
+                "Refresh discarded after concurrent revocation for user {Username}",
+                LogSanitizer.SanitizeIdentifier(user.Username));
+            return InvalidRefreshTokenResponse();
+        }
+
+        var accessToken = _jwtService.GenerateToken(user);
 
         _logger.LogInformation(
             "Refresh token rotated for user {Username}",

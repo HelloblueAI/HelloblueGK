@@ -428,16 +428,14 @@ namespace HB_NLP_Research_Lab.Core
                     cfdResult.FlowVelocity = new Vector3((float)maxVelocity, 0, 0);
                 }
 
-                if (TryReadDoubleParameter(parameters, "thrust", out var thrust) ||
-                    TryReadDoubleParameter(parameters, "maxThrust", out thrust))
+                // DeriveThrust prefers MaxPressure; use thrust when chamber pressure was not supplied.
+                if ((TryReadDoubleParameter(parameters, "thrust", out var thrust) ||
+                     TryReadDoubleParameter(parameters, "maxThrust", out thrust)) &&
+                    !parameters.Keys.Any(key =>
+                        string.Equals(key, "chamberPressure", StringComparison.OrdinalIgnoreCase) ||
+                        string.Equals(key, "maxPressure", StringComparison.OrdinalIgnoreCase)))
                 {
-                    // DeriveThrust prefers MaxPressure; use thrust when chamber pressure was not supplied.
-                    if (!parameters.Keys.Any(key =>
-                            string.Equals(key, "chamberPressure", StringComparison.OrdinalIgnoreCase) ||
-                            string.Equals(key, "maxPressure", StringComparison.OrdinalIgnoreCase)))
-                    {
-                        cfdResult.MaxPressure = thrust;
-                    }
+                    cfdResult.MaxPressure = thrust;
                 }
 
                 if (TryReadDoubleParameter(parameters, "efficiency", out var cfdEfficiency) ||
