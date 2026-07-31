@@ -280,6 +280,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             catch (OperationCanceledException ex)
                             {
                                 _logger.LogWarning(ex, "Launch background work cancelled {LaunchId}", launchId);
+                                await FailLaunchAsync(
+                                    scopedContext,
+                                    launchId,
+                                    "Launch cancelled before completion.");
                             }
                             catch (InvalidOperationException ex)
                             {
@@ -290,6 +294,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                     "Launch failed. See server logs for details.");
                             }
                             catch (DbUpdateException ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in launch background work {LaunchId}", launchId);
+                                await FailLaunchAsync(
+                                    scopedContext,
+                                    launchId,
+                                    "Launch failed. See server logs for details.");
+                            }
+                            catch (Exception ex)
                             {
                                 _logger.LogError(ex, "Unhandled error in launch background work {LaunchId}", launchId);
                                 await FailLaunchAsync(
@@ -475,22 +487,25 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     : 95.0;
                 var simulationType = TryReadLaunchString(launchParameters, "simulationType") ?? "MultiPhysics";
 
-                var baselineDesign = HelloblueGKEngine.CreateDesignParametersFromEngine(
+                var design = HelloblueGKEngine.CreateDesignParametersFromEngine(
                     launch.Engine.Thrust,
                     launch.Engine.SpecificImpulse,
                     launch.Engine.ChamberPressure,
                     launch.Engine.Efficiency);
+                // Apply the same design overrides AnalyzeEngineAsync uses so mission
+                // pass/fail matches the efficiency/thrust/ISP scenario actually simulated.
+                HelloblueGKEngine.ApplyDesignParameterOverrides(design, launchParameters);
 
                 // Simulate launch using engine analysis with stored mission parameters.
                 var analysisResult = await _engine.AnalyzeEngineAsync(
                     launch.Engine.Name,
                     simulationType,
                     launchParameters,
-                    baselineDesign);
+                    design);
 
                 // Calculate launch results based on engine performance + mission parameters.
-                var totalThrust = launch.Engine.Thrust * launch.EngineCount; // Newtons
-                var specificImpulse = launch.Engine.SpecificImpulse; // seconds
+                var totalThrust = design.Thrust * launch.EngineCount; // Newtons
+                var specificImpulse = design.SpecificImpulse; // seconds
                 var massFlowRate = launch.Engine.MassFlowRate * launch.EngineCount; // kg/s
                 if (TryReadLaunchDouble(launchParameters, "thrust", out var thrustOverride) && thrustOverride > 0)
                 {
@@ -510,8 +525,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     maxAltitude = (maxVelocity * maxVelocity) / (2 * gravity);
                 }
 
-                // Mission success based on engine efficiency / validation thresholds (parameterizable).
-                var missionSuccess = launch.Engine.Efficiency > efficiencyThreshold &&
+                // Mission success based on effective (override-aware) efficiency / validation thresholds.
+                var missionSuccess = design.Efficiency > efficiencyThreshold &&
                     (analysisResult.ValidationReport?.OverallAccuracy ?? 0) > accuracyThreshold;
 
                 var missionDuration = (DateTime.UtcNow - startTime).TotalSeconds;
@@ -532,7 +547,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     maxVelocity = maxVelocity,
                     maxAltitude = maxAltitude,
                     missionDuration = missionDuration,
-                    engineEfficiency = launch.Engine.Efficiency,
+                    engineEfficiency = design.Efficiency,
                     validationAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
                     simulationType = analysisResult.SimulationType,
                     appliedLaunchParameters = launchParameters

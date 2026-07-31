@@ -262,6 +262,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                     simulationId,
                                     "Simulation failed. See server logs for details.");
                             }
+                            catch (Exception ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in simulation background work {SimulationId}", simulationId);
+                                await FailSimulationAsync(
+                                    scopedContext,
+                                    simulationId,
+                                    "Simulation failed. See server logs for details.");
+                            }
                         }, $"simulation:{simulationId}");
                     }
                     catch (InvalidOperationException ex)
