@@ -240,16 +240,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             }
                         }, $"optimization:{optimizationId}");
                     }
+                    // Also covers ObjectDisposedException (subclass of InvalidOperationException).
                     catch (InvalidOperationException ex)
-                    {
-                        _logger.LogError(ex, "Failed to queue optimization {OptimizationId}", optimizationId);
-                        await FailOptimizationAsync(
-                            _context,
-                            optimizationId,
-                            "Optimization failed because background work could not be queued.");
-                        return StatusCode(500, "An error occurred while starting the optimization");
-                    }
-                    catch (ObjectDisposedException ex)
                     {
                         _logger.LogError(ex, "Failed to queue optimization {OptimizationId}", optimizationId);
                         await FailOptimizationAsync(
