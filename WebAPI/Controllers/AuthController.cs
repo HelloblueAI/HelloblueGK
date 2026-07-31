@@ -243,9 +243,37 @@ public class AuthController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest? request)
     {
-        if (request == null)
+        // Gate on server-side configuration only — never on client-supplied flags.
+        var allowPublicRegistration = _environment.IsDevelopment() ||
+            _configuration.GetValue("Auth:AllowPublicRegistration", false);
+        if (!allowPublicRegistration)
+        {
+            _logger.LogWarning(
+                "Public registration attempt rejected for username: {Username}",
+                LogSanitizer.SanitizeIdentifier(request?.Username));
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+                Message = "Public registration is disabled",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        // Mirror Login: copy fields first so a request-null check is not a
+        // user-controlled condition guarding token issuance (cs/user-controlled-bypass).
+        var username = request?.Username;
+        var email = request?.Email;
+        var password = request?.Password;
+        var firstName = request?.FirstName;
+        var lastName = request?.LastName;
+
+        if (string.IsNullOrWhiteSpace(username)
+            || string.IsNullOrWhiteSpace(email)
+            || string.IsNullOrWhiteSpace(password))
         {
             return BadRequest(new ErrorResponse
             {
@@ -257,7 +285,7 @@ public class AuthController : ControllerBase
             });
         }
 
-        if (request.Password.Length > MaxPasswordLength)
+        if (password.Length > MaxPasswordLength)
         {
             return BadRequest(new ErrorResponse
             {
@@ -269,27 +297,12 @@ public class AuthController : ControllerBase
             });
         }
 
-        var allowPublicRegistration = _environment.IsDevelopment() ||
-            _configuration.GetValue("Auth:AllowPublicRegistration", false);
-        if (!allowPublicRegistration)
-        {
-            _logger.LogWarning("Public registration attempt rejected for username: {Username}", LogSanitizer.SanitizeIdentifier(request.Username));
-            return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse
-            {
-                StatusCode = StatusCodes.Status403Forbidden,
-                Message = "Public registration is disabled",
-                Timestamp = DateTime.UtcNow,
-                Path = Request.Path,
-                Method = Request.Method
-            });
-        }
-
-        if (await _context.Users.AnyAsync(u => u.Username == request.Username || u.Email == request.Email))
+        if (await _context.Users.AnyAsync(u => u.Username == username || u.Email == email))
         {
             // Generic message avoids username/email account enumeration.
             _logger.LogInformation(
                 "Registration rejected due to existing credentials for username {Username}",
-                LogSanitizer.SanitizeIdentifier(request.Username));
+                LogSanitizer.SanitizeIdentifier(username));
             return BadRequest(new ErrorResponse
             {
                 StatusCode = 400,
@@ -302,11 +315,11 @@ public class AuthController : ControllerBase
 
         var user = new User
         {
-            Username = request.Username,
-            Email = request.Email,
-            PasswordHash = HashPassword(request.Password),
-            FirstName = request.FirstName,
-            LastName = request.LastName,
+            Username = username,
+            Email = email,
+            PasswordHash = HashPassword(password),
+            FirstName = firstName,
+            LastName = lastName,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
