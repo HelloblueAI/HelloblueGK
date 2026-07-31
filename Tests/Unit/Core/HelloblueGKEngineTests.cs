@@ -220,6 +220,31 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_WithBaselineDesign_UsesEngineCharacteristicsForMultiPhysics()
+    {
+        var baseline = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 2_500_000,
+            specificImpulse: 420,
+            chamberPressure: 300,
+            efficiency: 0.93);
+
+        var withBaseline = await _engine.AnalyzeEngineAsync(
+            "BaselineEngine",
+            "MultiPhysics",
+            parameters: null,
+            baseline);
+        var withDefaults = await _engine.AnalyzeEngineAsync(
+            "DefaultEngine",
+            "MultiPhysics",
+            parameters: null);
+
+        withBaseline.SimulationType.Should().Be("MultiPhysics");
+        withBaseline.OptimizationResult.OriginalParameters.Thrust.Should().Be(2_500_000);
+        withBaseline.OptimizationResult.OriginalParameters.SpecificImpulse.Should().Be(420);
+        withDefaults.OptimizationResult.OriginalParameters.Thrust.Should().Be(1_500_000);
+    }
+
+    [Fact]
     public void Dispose_ShouldNotThrow()
     {
         // Act

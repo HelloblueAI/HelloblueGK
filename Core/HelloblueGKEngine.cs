@@ -43,10 +43,23 @@ namespace HB_NLP_Research_Lab.Core
         /// <summary>
         /// Performs analysis for a specific simulation type, optionally applying request parameters.
         /// </summary>
-        public async Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(
+        public Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(
             string engineModel,
             string simulationType,
             IReadOnlyDictionary<string, object>? parameters = null)
+        {
+            return AnalyzeEngineAsync(engineModel, simulationType, parameters, baselineDesign: null);
+        }
+
+        /// <summary>
+        /// Performs analysis using persisted engine characteristics as the MultiPhysics baseline,
+        /// then applying optional request parameter overrides.
+        /// </summary>
+        public async Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(
+            string engineModel,
+            string simulationType,
+            IReadOnlyDictionary<string, object>? parameters,
+            EngineDesignParameters? baselineDesign)
         {
             Console.WriteLine("[HelloblueGK] 🔬 Analyzing engine model with high-performance physics...");
             
@@ -123,7 +136,7 @@ namespace HB_NLP_Research_Lab.Core
             InnovationReport? innovationReport = null;
             if (string.Equals(normalizedType, "MultiPhysics", StringComparison.OrdinalIgnoreCase))
             {
-                var optimizationParameters = BuildDesignParameters(parameters);
+                var optimizationParameters = BuildDesignParameters(parameters, baselineDesign);
                 optimizationResult = await _aiOptimizationEngine.OptimizeEngineDesignAsync(optimizationParameters);
                 innovationReport = await _aiOptimizationEngine.AnalyzeInnovationAsync(optimizationParameters);
 
@@ -287,9 +300,10 @@ namespace HB_NLP_Research_Lab.Core
         }
 
         private static EngineDesignParameters BuildDesignParameters(
-            IReadOnlyDictionary<string, object>? parameters)
+            IReadOnlyDictionary<string, object>? parameters,
+            EngineDesignParameters? baseline = null)
         {
-            var design = new EngineDesignParameters
+            var design = CloneDesignParameters(baseline) ?? new EngineDesignParameters
             {
                 Thrust = 1500000,
                 SpecificImpulse = 380,
@@ -299,6 +313,40 @@ namespace HB_NLP_Research_Lab.Core
 
             ApplyDesignParameterOverrides(design, parameters);
             return design;
+        }
+
+        /// <summary>
+        /// Builds design parameters from persisted engine characteristics.
+        /// </summary>
+        public static EngineDesignParameters CreateDesignParametersFromEngine(
+            double thrust,
+            double specificImpulse,
+            double chamberPressure,
+            double efficiency)
+        {
+            return new EngineDesignParameters
+            {
+                Thrust = thrust,
+                SpecificImpulse = specificImpulse,
+                ChamberPressure = chamberPressure,
+                Efficiency = efficiency
+            };
+        }
+
+        private static EngineDesignParameters? CloneDesignParameters(EngineDesignParameters? baseline)
+        {
+            if (baseline == null)
+            {
+                return null;
+            }
+
+            return new EngineDesignParameters
+            {
+                Thrust = baseline.Thrust,
+                SpecificImpulse = baseline.SpecificImpulse,
+                ChamberPressure = baseline.ChamberPressure,
+                Efficiency = baseline.Efficiency
+            };
         }
 
         public static void ApplyDesignParameterOverrides(

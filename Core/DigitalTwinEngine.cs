@@ -883,21 +883,105 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<EnginePrediction> PredictEngineBehaviorAsync(string engineId, PredictionScenario scenario)
         {
             await Task.Delay(100);
+
+            var thrust = 1500000.0;
+            var efficiency = 0.92;
+            var reliability = 0.999;
+            var parameters = scenario.Parameters ?? new Dictionary<string, object>();
+
+            if (TryReadScenarioDouble(parameters, "thrust", out var requestedThrust) && requestedThrust > 0)
+            {
+                thrust = requestedThrust;
+            }
+            else if (TryReadScenarioDouble(parameters, "thrustScale", out var thrustScale) && thrustScale > 0)
+            {
+                thrust *= thrustScale;
+            }
+
+            if (TryReadScenarioDouble(parameters, "efficiency", out var requestedEfficiency) && requestedEfficiency > 0)
+            {
+                efficiency = Math.Clamp(requestedEfficiency, 0.0, 1.0);
+            }
+            else if (TryReadScenarioDouble(parameters, "throttle", out var throttle) && throttle > 0)
+            {
+                // Throttle below 1.0 reduces delivered thrust and efficiency; above 1.0 trades reliability.
+                thrust *= throttle;
+                efficiency = Math.Clamp(efficiency * Math.Min(throttle, 1.05), 0.0, 0.99);
+                if (throttle > 1.0)
+                {
+                    reliability = Math.Clamp(reliability - ((throttle - 1.0) * 0.05), 0.9, 0.999);
+                }
+            }
+
+            if (TryReadScenarioDouble(parameters, "reliability", out var requestedReliability) && requestedReliability > 0)
+            {
+                reliability = Math.Clamp(requestedReliability, 0.0, 1.0);
+            }
+
+            if (TryReadScenarioDouble(parameters, "ambientTemperature", out var ambientTemperature))
+            {
+                // Hot-day derate: every 10C above 288K costs ~0.5% efficiency.
+                var delta = Math.Max(0.0, ambientTemperature - 288.15);
+                efficiency = Math.Clamp(efficiency - (delta / 10.0) * 0.005, 0.0, 0.99);
+            }
+
             return new EnginePrediction
             {
                 EngineId = engineId,
                 Scenario = scenario,
                 PredictedMetrics = new Dictionary<string, double>
                 {
-                    ["Thrust"] = 1500000.0,
-                    ["Efficiency"] = 0.92,
-                    ["Reliability"] = 0.999
+                    ["Thrust"] = thrust,
+                    ["Efficiency"] = efficiency,
+                    ["Reliability"] = reliability
                 },
                 ConfidenceLevel = 0.999,
                 PredictionTimestamp = DateTime.UtcNow,
                 PredictedIssues = new List<string>(),
                 RecommendedActions = new List<string>()
             };
+        }
+
+        private static bool TryReadScenarioDouble(
+            IReadOnlyDictionary<string, object> parameters,
+            string key,
+            out double value)
+        {
+            value = 0;
+            var match = parameters.FirstOrDefault(pair =>
+                string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (match.Key == null || match.Value == null)
+            {
+                return false;
+            }
+
+            switch (match.Value)
+            {
+                case double d when !double.IsNaN(d) && !double.IsInfinity(d):
+                    value = d;
+                    return true;
+                case float f when !float.IsNaN(f) && !float.IsInfinity(f):
+                    value = f;
+                    return true;
+                case int i:
+                    value = i;
+                    return true;
+                case long l:
+                    value = l;
+                    return true;
+                case decimal m:
+                    value = (double)m;
+                    return true;
+                case string text when double.TryParse(
+                    text,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsed):
+                    value = parsed;
+                    return !double.IsNaN(parsed) && !double.IsInfinity(parsed);
+                default:
+                    return false;
+            }
         }
         
         public async Task<PredictionAccuracy> UpdatePredictionAccuracyAsync(string engineId, TestFlightData flightData)
