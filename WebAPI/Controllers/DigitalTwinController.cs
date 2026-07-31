@@ -286,7 +286,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     .Include(dt => dt.Engine)
                     .FirstOrDefaultAsync(dt => dt.Id == id);
 
-                if (digitalTwin == null)
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (digitalTwin == null || !CurrentUserCanAccessDigitalTwin(digitalTwin))
                 {
                     return NotFound(new { message = $"Digital twin with ID {id} not found" });
                 }
@@ -294,6 +295,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (!digitalTwin.IsActive)
                 {
                     return BadRequest(new { message = "Cannot update learning for an inactive digital twin" });
+                }
+
+                if (digitalTwin.Engine == null || !digitalTwin.Engine.IsActive)
+                {
+                    return BadRequest(new { message = "Cannot update learning for a digital twin whose engine is inactive" });
                 }
 
                 if (!digitalTwin.RealTimeLearning)
@@ -396,6 +402,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 if (!digitalTwin.IsActive)
                 {
                     return BadRequest(new { message = "Cannot generate predictions for an inactive digital twin" });
+                }
+
+                if (digitalTwin.Engine == null || !digitalTwin.Engine.IsActive)
+                {
+                    return BadRequest(new { message = "Cannot generate predictions for a digital twin whose engine is inactive" });
                 }
 
                 var engineId = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
