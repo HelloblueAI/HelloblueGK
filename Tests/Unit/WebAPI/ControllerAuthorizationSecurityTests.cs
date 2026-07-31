@@ -1081,6 +1081,42 @@ public class ControllerAuthorizationSecurityTests
         result.Should().BeOfType<BadRequestObjectResult>();
     }
 
+    [Fact]
+    public async Task GetPredictions_ForInactiveEngine_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
+        digitalTwin.Engine!.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+        var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest
+        {
+            ScenarioName = "Inactive engine prediction"
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("engine is inactive");
+    }
+
+    [Fact]
+    public async Task UpdateDigitalTwinLearning_ForInactiveEngine_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "admin");
+        digitalTwin.Engine!.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("admin", isAdmin: true));
+        var result = await controller.UpdateDigitalTwinLearning(digitalTwin.Id, new LearningDataRequest
+        {
+            TelemetryData = new Dictionary<string, double> { ["Thrust"] = 1.0 }
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("engine is inactive");
+    }
+
     private static HelloblueGKDbContext CreateContext(string? databaseName = null)
     {
         // Use SQLite instead of the EF InMemory provider so ExecuteUpdate-based
@@ -1140,7 +1176,8 @@ public class ControllerAuthorizationSecurityTests
             PredictionAccuracy = 0.99,
             CreatedBy = createdBy,
             CreatedAt = DateTime.UtcNow,
-            IsActive = true
+            IsActive = true,
+            RealTimeLearning = true
         };
 
         context.DigitalTwins.Add(digitalTwin);
