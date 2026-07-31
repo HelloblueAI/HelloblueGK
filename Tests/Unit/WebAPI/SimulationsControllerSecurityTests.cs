@@ -386,8 +386,13 @@ public class SimulationsControllerSecurityTests
         var response = okResult.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
         response.Telemetry.Should().NotBeNull();
         var telemetry = response.Telemetry!.ToList();
-        telemetry.Should().HaveCount(100);
+        telemetry.Should().HaveCount(EngineSimulationResponse.MaxTelemetrySamples);
         telemetry.Should().OnlyContain(sample => sample.Thrust >= 5);
+
+        // Query-side Take means the response cannot exceed the bound even if the
+        // DTO mapper were to stop trimming — assert against the persisted overflow.
+        (await context.EngineTelemetry.CountAsync(t => t.SimulationId == simulation.Id))
+            .Should().Be(105);
     }
 
     [Fact]

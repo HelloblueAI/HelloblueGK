@@ -105,9 +105,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             try
             {
+                // Authorize against metadata first — never materialize unbounded telemetry
+                // for missing/inaccessible simulations (memory DoS / oracle side-channel).
                 var simulation = await _context.EngineSimulations
+                    .AsNoTracking()
                     .Include(s => s.Engine)
-                    .Include(s => s.Telemetry)
                     .FirstOrDefaultAsync(s => s.Id == id);
 
                 // Same 404 for missing and inaccessible to avoid ownership oracles.
@@ -115,6 +117,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     return NotFound(new { message = $"Simulation with ID {id} not found" });
                 }
+
+                simulation.Telemetry = await _context.EngineTelemetry
+                    .AsNoTracking()
+                    .Where(telemetry => telemetry.SimulationId == id)
+                    .OrderByDescending(telemetry => telemetry.Timestamp)
+                    .Take(EngineSimulationResponse.MaxTelemetrySamples)
+                    .ToListAsync();
 
                 return Ok(EngineSimulationResponse.FromEntity(simulation, includeTelemetry: true));
             }
@@ -605,7 +614,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     /// </summary>
     public class EngineSimulationResponse
     {
-        private const int MaxTelemetrySamples = 100;
+        public const int MaxTelemetrySamples = 100;
 
         public int Id { get; set; }
         public int EngineId { get; set; }
