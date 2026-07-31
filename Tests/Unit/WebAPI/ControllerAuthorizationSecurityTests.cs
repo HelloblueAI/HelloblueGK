@@ -907,6 +907,53 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task CreateDigitalTwin_ForceCreate_WhenSaveFails_RestoresPriorRuntime()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+        var firstCreate = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin A"
+        });
+        firstCreate.Should().BeOfType<CreatedAtActionResult>();
+
+        await using var failingContext = CreateFailingDigitalTwinSaveContext(databaseName);
+        var failingController = CreateDigitalTwinController(
+            failingContext,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+
+        var result = await failingController.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin B",
+            ForceCreate = true
+        });
+
+        result.Should().BeOfType<ObjectResult>()
+            .Which.StatusCode.Should().Be(StatusCodes.Status500InternalServerError);
+        (await context.DigitalTwins.AsNoTracking().CountAsync(dt => dt.IsActive)).Should().Be(1);
+
+        var ownerKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+        var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
+
+        // Prior active twin remains persisted; runtime must be restored for it.
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task StartOptimization_ForInactiveEngine_ReturnsBadRequestWithoutCreatingRun()
     {
         await using var context = CreateContext();
