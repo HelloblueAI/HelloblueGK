@@ -264,6 +264,69 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_WithBaselineDesign_DifferentiatesCfdThermalStructuralPhysics()
+    {
+        var raptor = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 2_200_000,
+            specificImpulse: 350,
+            chamberPressure: 300,
+            efficiency: 0.95);
+        var merlin = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 845_000,
+            specificImpulse: 282,
+            chamberPressure: 97,
+            efficiency: 0.88);
+
+        var raptorCfd = await _engine.AnalyzeEngineAsync("Raptor", "CFD", null, raptor);
+        var merlinCfd = await _engine.AnalyzeEngineAsync("Merlin", "CFD", null, merlin);
+        var raptorThermal = await _engine.AnalyzeEngineAsync("Raptor", "Thermal", null, raptor);
+        var merlinThermal = await _engine.AnalyzeEngineAsync("Merlin", "Thermal", null, merlin);
+        var raptorStructural = await _engine.AnalyzeEngineAsync("Raptor", "Structural", null, raptor);
+        var merlinStructural = await _engine.AnalyzeEngineAsync("Merlin", "Structural", null, merlin);
+
+        raptorCfd.ThrustAnalysis.MaxThrust.Should().Be(2_200_000);
+        merlinCfd.ThrustAnalysis.MaxThrust.Should().Be(845_000);
+        raptorCfd.ThrustAnalysis.Efficiency.Should().BeApproximately(0.95, 0.0001);
+        merlinCfd.ThrustAnalysis.Efficiency.Should().BeApproximately(0.88, 0.0001);
+        raptorCfd.PerformanceMetrics["ChamberPressure"].Should().Be(300);
+        merlinCfd.PerformanceMetrics["ChamberPressure"].Should().Be(97);
+
+        raptorThermal.ThermalAnalysis.MaxTemperature
+            .Should().BeGreaterThan(merlinThermal.ThermalAnalysis.MaxTemperature);
+        raptorStructural.StructuralAnalysis.MaxStress
+            .Should().BeGreaterThan(merlinStructural.StructuralAnalysis.MaxStress);
+    }
+
+    [Fact]
+    public async Task AnalyzeEngineAsync_WithClientAccuracyParameter_DoesNotOverwriteSolverTrustMetrics()
+    {
+        var baseline = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 1_500_000,
+            specificImpulse: 350,
+            chamberPressure: 250,
+            efficiency: 0.9);
+
+        var forged = await _engine.AnalyzeEngineAsync(
+            "TrustEngine",
+            "CFD",
+            new Dictionary<string, object>
+            {
+                ["accuracy"] = 0.01,
+                ["efficiency"] = 0.5
+            },
+            baseline);
+        var honest = await _engine.AnalyzeEngineAsync(
+            "TrustEngine",
+            "CFD",
+            parameters: null,
+            baseline);
+
+        forged.ThrustAnalysis.Efficiency.Should().BeApproximately(0.5, 0.0001);
+        forged.ConvergenceRate.Should().BeApproximately(honest.ConvergenceRate, 0.0001);
+        forged.ConvergenceRate.Should().BeGreaterThan(0.9);
+    }
+
+    [Fact]
     public void Dispose_ShouldNotThrow()
     {
         // Act

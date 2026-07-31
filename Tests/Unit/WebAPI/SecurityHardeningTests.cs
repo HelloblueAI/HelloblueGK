@@ -445,6 +445,101 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task BackgroundJobReconciliation_FailsInterruptedPendingAndRunningJobs_LeavesScheduledLaunches()
+    {
+        await using var context = CreateContext();
+        var engine = new Engine
+        {
+            Name = "Reconciliation Engine",
+            EngineType = "Custom",
+            Thrust = 1_000_000,
+            SpecificImpulse = 350,
+            ChamberPressure = 200,
+            Efficiency = 0.9,
+            IsActive = true,
+            CreatedBy = "tester"
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        context.EngineSimulations.AddRange(
+            new EngineSimulation
+            {
+                EngineId = engine.Id,
+                SimulationType = "CFD",
+                Status = "Pending",
+                CreatedBy = "tester"
+            },
+            new EngineSimulation
+            {
+                EngineId = engine.Id,
+                SimulationType = "Thermal",
+                Status = "Running",
+                StartedAt = DateTime.UtcNow.AddMinutes(-5),
+                CreatedBy = "tester"
+            },
+            new EngineSimulation
+            {
+                EngineId = engine.Id,
+                SimulationType = "Structural",
+                Status = "Completed",
+                CompletedAt = DateTime.UtcNow.AddMinutes(-10),
+                CreatedBy = "tester"
+            });
+        context.AIOptimizationRuns.Add(new AIOptimizationRun
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic",
+            Status = "Running",
+            StartedAt = DateTime.UtcNow.AddMinutes(-3),
+            CreatedBy = "tester"
+        });
+        context.Launches.AddRange(
+            new Launch
+            {
+                MissionName = "In flight",
+                EngineId = engine.Id,
+                Status = "InProgress",
+                ScheduledAt = DateTime.UtcNow.AddMinutes(-20),
+                LaunchedAt = DateTime.UtcNow.AddMinutes(-2),
+                CreatedBy = "tester"
+            },
+            new Launch
+            {
+                MissionName = "Still scheduled",
+                EngineId = engine.Id,
+                Status = "Scheduled",
+                ScheduledAt = DateTime.UtcNow.AddHours(1),
+                CreatedBy = "tester"
+            });
+        await context.SaveChangesAsync();
+
+        var result = await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
+            context,
+            NullLogger.Instance);
+
+        result.Simulations.Should().Be(2);
+        result.Optimizations.Should().Be(1);
+        result.Launches.Should().Be(1);
+        result.Total.Should().Be(4);
+
+        var simulations = await context.EngineSimulations.AsNoTracking().ToListAsync();
+        simulations.Single(s => s.SimulationType == "CFD").Status.Should().Be("Failed");
+        simulations.Single(s => s.SimulationType == "Thermal").Status.Should().Be("Failed");
+        simulations.Single(s => s.SimulationType == "Structural").Status.Should().Be("Completed");
+        simulations.Where(s => s.Status == "Failed")
+            .Should().OnlyContain(s => s.ErrorMessage == BackgroundJobReconciliation.InterruptedMessage);
+
+        var optimization = await context.AIOptimizationRuns.AsNoTracking().SingleAsync();
+        optimization.Status.Should().Be("Failed");
+        optimization.ErrorMessage.Should().Be(BackgroundJobReconciliation.InterruptedMessage);
+
+        var launches = await context.Launches.AsNoTracking().ToListAsync();
+        launches.Single(l => l.MissionName == "In flight").Status.Should().Be("Failed");
+        launches.Single(l => l.MissionName == "Still scheduled").Status.Should().Be("Scheduled");
+    }
+
+    [Fact]
     public async Task DatabaseInitializer_AddsMissingRefreshTokenColumnsOnLegacySqliteSchema()
     {
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");

@@ -359,6 +359,16 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogError(ex, "Failed to seed engines: {Error}", ex.Message);
         }
+
+        try
+        {
+            // In-process background workers do not survive restarts; fail-close stranded jobs.
+            await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(dbContext, logger);
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Failed to reconcile interrupted background jobs: {Error}", ex.Message);
+        }
     }
     catch (Exception ex)
     {
