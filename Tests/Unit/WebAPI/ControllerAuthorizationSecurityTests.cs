@@ -638,6 +638,88 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task ExecuteLaunch_AppliesStoredLaunchParametersToMissionResults()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+        launch.LaunchParametersJson = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["burnTimeSeconds"] = 90.0,
+            ["massRatio"] = 3.0,
+            ["successEfficiencyThreshold"] = 0.5,
+            ["successAccuracyThreshold"] = 1.0
+        });
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var executeResult = await controller.ExecuteLaunch(launch.Id);
+        executeResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().BeOneOf("Success", "Failed");
+        persisted.ResultsJson.Should().NotBeNullOrWhiteSpace();
+
+        using var document = JsonDocument.Parse(persisted.ResultsJson!);
+        document.RootElement.GetProperty("burnTime").GetDouble().Should().BeApproximately(90.0, 0.0001);
+        document.RootElement.GetProperty("massRatio").GetDouble().Should().BeApproximately(3.0, 0.0001);
+        document.RootElement.GetProperty("appliedLaunchParameters").ValueKind.Should().Be(JsonValueKind.Object);
+        document.RootElement.GetProperty("deltaV").GetDouble().Should().BeGreaterThan(
+            launch.Engine.SpecificImpulse * 9.81 * Math.Log(2.0));
+    }
+
+    [Fact]
+    public async Task ExecuteLaunch_WhenEngineDeactivated_ReturnsBadRequestWithoutStarting()
+    {
+        await using var context = CreateContext();
+        var launch = await SeedLaunchAsync(context, "admin");
+        launch.Engine.IsActive = false;
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var result = await controller.ExecuteLaunch(launch.Id);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        deferredQueue.PendingWork.Should().BeEmpty();
+        var persisted = await context.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Scheduled");
+        persisted.LaunchedAt.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteLaunch_WhenQueueThrowsAfterClaim_MarksLaunchFailed()
+    {
+        await using var context = CreateContext();
+        var launch = await SeedLaunchAsync(context, "admin");
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            new ThrowingBackgroundWorkQueue());
+
+        var result = await controller.ExecuteLaunch(launch.Id);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(500);
+        var persisted = await context.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Failed");
+        persisted.MissionSuccess.Should().BeFalse();
+        persisted.ErrorMessage.Should().Contain("could not be queued");
+    }
+
+    [Fact]
     public async Task StartOptimization_UsesRequestedAlgorithmAndParameterOverrides()
     {
         var databaseName = Guid.NewGuid().ToString("N");
@@ -1089,6 +1171,31 @@ public class ControllerAuthorizationSecurityTests
         {
             slot = null;
             return false;
+        }
+    }
+
+    private sealed class ThrowingBackgroundWorkQueue : IBackgroundWorkQueue
+    {
+        public int MaxConcurrency => 1;
+
+        public bool TryAcquire(out IBackgroundWorkSlot? slot)
+        {
+            slot = new ThrowingBackgroundWorkSlot();
+            return true;
+        }
+    }
+
+    private sealed class ThrowingBackgroundWorkSlot : IBackgroundWorkSlot
+    {
+        public void Queue(
+            Func<IServiceProvider, CancellationToken, Task> workItem,
+            string workItemName)
+        {
+            throw new InvalidOperationException("Simulated queue failure");
+        }
+
+        public void Dispose()
+        {
         }
     }
 

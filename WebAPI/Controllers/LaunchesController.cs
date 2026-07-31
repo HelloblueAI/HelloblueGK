@@ -218,6 +218,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Launch is not in Scheduled status. Current status: {launch.Status}" });
                 }
 
+                if (launch.Engine == null || !launch.Engine.IsActive)
+                {
+                    return BadRequest(new { message = "Cannot execute launch with an inactive or missing engine" });
+                }
+
                 if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot) || backgroundWorkSlot == null)
                 {
                     return StatusCode(StatusCodes.Status503ServiceUnavailable, new
@@ -229,8 +234,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 using (backgroundWorkSlot)
                 {
                     var launchedAt = DateTime.UtcNow;
+                    // Claim only when still Scheduled and the engine remains active.
                     var transitioned = await _context.Launches
-                        .Where(l => l.Id == id && l.Status == "Scheduled")
+                        .Where(l => l.Id == id &&
+                                    l.Status == "Scheduled" &&
+                                    l.Engine != null &&
+                                    l.Engine.IsActive)
                         .ExecuteUpdateAsync(setters => setters
                             .SetProperty(l => l.Status, "InProgress")
                             .SetProperty(l => l.LaunchedAt, launchedAt));
@@ -238,6 +247,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     if (transitioned == 0)
                     {
                         await _context.Entry(launch).ReloadAsync();
+                        if (launch.Engine != null)
+                        {
+                            await _context.Entry(launch.Engine).ReloadAsync();
+                        }
+
+                        if (launch.Engine == null || !launch.Engine.IsActive)
+                        {
+                            return BadRequest(new { message = "Cannot execute launch with an inactive or missing engine" });
+                        }
+
                         return BadRequest(new
                         {
                             message = $"Launch is not in Scheduled status. Current status: {launch.Status}"
@@ -249,11 +268,66 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                     // Execute launch asynchronously with a new scope to avoid DbContext disposal issues
                     var launchId = launch.Id;
-                    backgroundWorkSlot.Queue(async (serviceProvider, _) =>
+                    try
                     {
-                        var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
-                        await ExecuteLaunchAsync(launchId, scopedContext);
-                    }, $"launch:{launchId}");
+                        backgroundWorkSlot.Queue(async (serviceProvider, _) =>
+                        {
+                            var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
+                            try
+                            {
+                                await ExecuteLaunchAsync(launchId, scopedContext);
+                            }
+                            catch (OperationCanceledException ex)
+                            {
+                                _logger.LogWarning(ex, "Launch background work cancelled {LaunchId}", launchId);
+                                await FailLaunchAsync(
+                                    scopedContext,
+                                    launchId,
+                                    "Launch cancelled before completion.");
+                            }
+                            catch (InvalidOperationException ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in launch background work {LaunchId}", launchId);
+                                await FailLaunchAsync(
+                                    scopedContext,
+                                    launchId,
+                                    "Launch failed. See server logs for details.");
+                            }
+                            catch (DbUpdateException ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in launch background work {LaunchId}", launchId);
+                                await FailLaunchAsync(
+                                    scopedContext,
+                                    launchId,
+                                    "Launch failed. See server logs for details.");
+                            }
+                            catch (Exception ex) when (
+                                ex is not OperationCanceledException &&
+                                ex is not OutOfMemoryException &&
+                                ex is not StackOverflowException &&
+                                ex is not AccessViolationException &&
+                                ex is not AppDomainUnloadedException &&
+                                ex is not BadImageFormatException &&
+                                ex is not CannotUnloadAppDomainException &&
+                                ex is not InvalidProgramException)
+                            {
+                                _logger.LogError(ex, "Unhandled error in launch background work {LaunchId}", launchId);
+                                await FailLaunchAsync(
+                                    scopedContext,
+                                    launchId,
+                                    "Launch failed. See server logs for details.");
+                            }
+                        }, $"launch:{launchId}");
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        _logger.LogError(ex, "Failed to queue launch {LaunchId}; reverting claim", launchId);
+                        await FailLaunchAsync(
+                            _context,
+                            launchId,
+                            "Launch failed because background work could not be queued.");
+                        return StatusCode(500, "An error occurred while executing the launch");
+                    }
 
                     return Ok(LaunchResponse.FromEntity(launch));
                 }
@@ -390,24 +464,78 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return;
                 }
 
+                if (launch.Engine == null || !launch.Engine.IsActive)
+                {
+                    await FailLaunchAsync(
+                        context,
+                        launchId,
+                        "Launch failed because the engine is inactive or missing.");
+                    return;
+                }
+
                 var startTime = DateTime.UtcNow;
+                var launchParameters = DeserializeLaunchParameters(launch.LaunchParametersJson);
+                var burnTime = TryReadLaunchDouble(launchParameters, "burnTimeSeconds", out var burnTimeSeconds) &&
+                               burnTimeSeconds > 0
+                    ? burnTimeSeconds
+                    : TryReadLaunchDouble(launchParameters, "burnTime", out var burnTimeAlias) && burnTimeAlias > 0
+                        ? burnTimeAlias
+                        : 180.0;
+                var massRatio = TryReadLaunchDouble(launchParameters, "massRatio", out var requestedMassRatio) &&
+                                requestedMassRatio > 1.0
+                    ? requestedMassRatio
+                    : 2.0;
+                var efficiencyThreshold = TryReadLaunchDouble(launchParameters, "successEfficiencyThreshold", out var effThreshold) &&
+                                         effThreshold > 0
+                    ? Math.Clamp(effThreshold, 0.0, 1.0)
+                    : 0.90;
+                var accuracyThreshold = TryReadLaunchDouble(launchParameters, "successAccuracyThreshold", out var accThreshold) &&
+                                        accThreshold > 0
+                    ? accThreshold
+                    : 95.0;
+                var simulationType = TryReadLaunchString(launchParameters, "simulationType") ?? "MultiPhysics";
 
-                // Simulate launch using engine analysis
-                var analysisResult = await _engine.AnalyzeEngineAsync(launch.Engine.Name);
+                var design = HelloblueGKEngine.CreateDesignParametersFromEngine(
+                    launch.Engine.Thrust,
+                    launch.Engine.SpecificImpulse,
+                    launch.Engine.ChamberPressure,
+                    launch.Engine.Efficiency);
+                // Apply the same design overrides AnalyzeEngineAsync uses so mission
+                // pass/fail matches the efficiency/thrust/ISP scenario actually simulated.
+                HelloblueGKEngine.ApplyDesignParameterOverrides(design, launchParameters);
 
-                // Calculate launch results based on engine performance
-                var totalThrust = launch.Engine.Thrust * launch.EngineCount; // Newtons
-                var specificImpulse = launch.Engine.SpecificImpulse; // seconds
+                // Simulate launch using engine analysis with stored mission parameters.
+                var analysisResult = await _engine.AnalyzeEngineAsync(
+                    launch.Engine.Name,
+                    simulationType,
+                    launchParameters,
+                    design);
+
+                // Calculate launch results based on engine performance + mission parameters.
+                var totalThrust = design.Thrust * launch.EngineCount; // Newtons
+                var specificImpulse = design.SpecificImpulse; // seconds
                 var massFlowRate = launch.Engine.MassFlowRate * launch.EngineCount; // kg/s
+                if (TryReadLaunchDouble(launchParameters, "thrust", out var thrustOverride) && thrustOverride > 0)
+                {
+                    totalThrust = thrustOverride * launch.EngineCount;
+                }
 
-                // Simulate mission parameters (simplified rocket physics)
-                var burnTime = 180.0; // seconds (3 minutes)
-                var deltaV = specificImpulse * 9.81 * Math.Log(2.0); // Simplified Tsiolkovsky
+                if (TryReadLaunchDouble(launchParameters, "specificImpulse", out var ispOverride) && ispOverride > 0)
+                {
+                    specificImpulse = ispOverride;
+                }
+
+                var deltaV = specificImpulse * 9.81 * Math.Log(massRatio); // Tsiolkovsky with mission mass ratio
                 var maxVelocity = deltaV; // m/s
                 var maxAltitude = (maxVelocity * maxVelocity) / (2 * 9.81); // meters (simplified)
+                if (TryReadLaunchDouble(launchParameters, "gravity", out var gravity) && gravity > 0)
+                {
+                    maxAltitude = (maxVelocity * maxVelocity) / (2 * gravity);
+                }
 
-                // Mission success based on engine efficiency
-                var missionSuccess = launch.Engine.Efficiency > 0.90 && analysisResult.ValidationReport?.OverallAccuracy > 95;
+                // Mission success based on effective (override-aware) efficiency / validation thresholds.
+                var missionSuccess = design.Efficiency > efficiencyThreshold &&
+                    (analysisResult.ValidationReport?.OverallAccuracy ?? 0) > accuracyThreshold;
 
                 var missionDuration = (DateTime.UtcNow - startTime).TotalSeconds;
                 var completedAt = DateTime.UtcNow;
@@ -422,17 +550,18 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     specificImpulse = specificImpulse,
                     massFlowRate = massFlowRate,
                     burnTime = burnTime,
+                    massRatio = massRatio,
                     deltaV = deltaV,
                     maxVelocity = maxVelocity,
                     maxAltitude = maxAltitude,
                     missionDuration = missionDuration,
-                    engineEfficiency = launch.Engine.Efficiency,
-                    validationAccuracy = analysisResult.ValidationReport?.OverallAccuracy
+                    engineEfficiency = design.Efficiency,
+                    validationAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
+                    simulationType = analysisResult.SimulationType,
+                    appliedLaunchParameters = launchParameters
                 });
 
                 // Only complete if still InProgress so a concurrent cancel is preserved.
-                // Note: cancel currently only claims Scheduled launches; this guard covers
-                // future cancel-while-running support and any external status changes.
                 var completed = await context.Launches
                     .Where(l => l.Id == launchId && l.Status == "InProgress")
                     .ExecuteUpdateAsync(setters => setters
@@ -465,15 +594,121 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error executing launch {LaunchId}", launchId);
-
-                await context.Launches
-                    .Where(l => l.Id == launchId && l.Status == "InProgress")
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(l => l.Status, "Failed")
-                        .SetProperty(l => l.CompletedAt, DateTime.UtcNow)
-                        .SetProperty(l => l.MissionSuccess, false)
-                        .SetProperty(l => l.ErrorMessage, "Launch failed. See server logs for details."));
+                await FailLaunchAsync(
+                    context,
+                    launchId,
+                    "Launch failed. See server logs for details.");
             }
+        }
+
+        private static async Task FailLaunchAsync(
+            HelloblueGKDbContext context,
+            int launchId,
+            string errorMessage)
+        {
+            await context.Launches
+                .Where(l => l.Id == launchId && l.Status == "InProgress")
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(l => l.Status, "Failed")
+                    .SetProperty(l => l.CompletedAt, DateTime.UtcNow)
+                    .SetProperty(l => l.MissionSuccess, false)
+                    .SetProperty(l => l.ErrorMessage, errorMessage));
+        }
+
+        private static Dictionary<string, object> DeserializeLaunchParameters(string? launchParametersJson)
+        {
+            if (string.IsNullOrWhiteSpace(launchParametersJson))
+            {
+                return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            }
+
+            try
+            {
+                var parsed = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(launchParametersJson);
+                if (parsed == null)
+                {
+                    return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                }
+
+                return parsed.ToDictionary(
+                    pair => pair.Key,
+                    pair => (object)pair.Value,
+                    StringComparer.OrdinalIgnoreCase);
+            }
+            catch (JsonException)
+            {
+                return new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            }
+        }
+
+        private static bool TryReadLaunchDouble(
+            IReadOnlyDictionary<string, object> parameters,
+            string key,
+            out double value)
+        {
+            value = 0;
+            if (!parameters.TryGetValue(key, out var raw) || raw == null)
+            {
+                return false;
+            }
+
+            switch (raw)
+            {
+                case double d when !double.IsNaN(d) && !double.IsInfinity(d):
+                    value = d;
+                    return true;
+                case float f when !float.IsNaN(f) && !float.IsInfinity(f):
+                    value = f;
+                    return true;
+                case int i:
+                    value = i;
+                    return true;
+                case long l:
+                    value = l;
+                    return true;
+                case decimal m:
+                    value = (double)m;
+                    return true;
+                case JsonElement element when element.ValueKind == JsonValueKind.Number &&
+                                             element.TryGetDouble(out var jsonNumber):
+                    value = jsonNumber;
+                    return !double.IsNaN(jsonNumber) && !double.IsInfinity(jsonNumber);
+                case JsonElement element when element.ValueKind == JsonValueKind.String &&
+                                             double.TryParse(
+                                                 element.GetString(),
+                                                 System.Globalization.NumberStyles.Float,
+                                                 System.Globalization.CultureInfo.InvariantCulture,
+                                                 out var jsonStringNumber):
+                    value = jsonStringNumber;
+                    return !double.IsNaN(jsonStringNumber) && !double.IsInfinity(jsonStringNumber);
+                case string text when double.TryParse(
+                    text,
+                    System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsed):
+                    value = parsed;
+                    return !double.IsNaN(parsed) && !double.IsInfinity(parsed);
+                default:
+                    return false;
+            }
+        }
+
+        private static string? TryReadLaunchString(
+            IReadOnlyDictionary<string, object> parameters,
+            string key)
+        {
+            if (!parameters.TryGetValue(key, out var raw) || raw == null)
+            {
+                return null;
+            }
+
+            return raw switch
+            {
+                string text when !string.IsNullOrWhiteSpace(text) => text.Trim(),
+                JsonElement element when element.ValueKind == JsonValueKind.String =>
+                    element.GetString()?.Trim(),
+                _ => null
+            };
         }
 
         private bool ApplyCurrentUserFilter(ref IQueryable<Launch> query)
