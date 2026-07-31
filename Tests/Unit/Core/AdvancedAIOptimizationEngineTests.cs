@@ -105,4 +105,25 @@ public class AdvancedAIOptimizationEngineTests
         genetic.OptimizationStages.Should().ContainSingle(stage => stage.StageName == "Genetic Algorithm");
         neural.OptimizationStages.Should().ContainSingle(stage => stage.StageName == "Neural Network");
     }
+
+    [Fact]
+    public async Task OptimizeEngineDesignAsync_WithReinforcementLearning_UsesDedicatedRlStage()
+    {
+        var engine = new AdvancedAIOptimizationEngine();
+        var parameters = new EngineDesignParameters
+        {
+            Thrust = 1_200_000,
+            SpecificImpulse = 370,
+            ChamberPressure = 18_000_000,
+            Efficiency = 0.9
+        };
+
+        var result = await engine.OptimizeEngineDesignAsync(parameters, "ReinforcementLearning");
+
+        result.AlgorithmType.Should().Be("ReinforcementLearning");
+        result.OptimizationStages.Should().ContainSingle();
+        result.OptimizationStages[0].StageName.Should().Be("Reinforcement Learning");
+        result.OptimizedParameters.Thrust.Should().BeGreaterThanOrEqualTo(parameters.Thrust);
+        result.OptimizedParameters.Efficiency.Should().BeGreaterThanOrEqualTo(parameters.Efficiency);
+    }
 }
