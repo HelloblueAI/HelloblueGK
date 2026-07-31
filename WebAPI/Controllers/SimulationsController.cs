@@ -190,6 +190,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return NotFound(new { message = $"Engine with ID {request.EngineId} not found" });
                 }
 
+                if (!engine.IsActive)
+                {
+                    return BadRequest(new { message = "Cannot run a simulation on an inactive engine" });
+                }
+
                 if (!_backgroundWorkQueue.TryAcquire(out var backgroundWorkSlot) || backgroundWorkSlot == null)
                 {
                     return StatusCode(StatusCodes.Status503ServiceUnavailable, new

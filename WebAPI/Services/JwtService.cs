@@ -65,6 +65,7 @@ public class JwtService : IJwtService
             new Claim(ClaimTypes.Email, user.Email),
             new Claim("userId", user.Id.ToString()),
             new Claim("username", user.Username),
+            new Claim("atv", user.AccessTokenVersion.ToString()),
         };
 
         if (user.IsAdmin)

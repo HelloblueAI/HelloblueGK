@@ -236,7 +236,12 @@ public class SimulationsControllerSecurityTests
         {
             EngineId = engine.Id,
             SimulationType = "Thermal",
-            Parameters = new Dictionary<string, object> { ["iterations"] = 77 }
+            Parameters = new Dictionary<string, object>
+            {
+                ["iterations"] = 77,
+                ["maxTemperature"] = 3900,
+                ["coolingEfficiency"] = 0.82
+            }
         });
 
         var created = createResult.Should().BeOfType<CreatedAtActionResult>().Subject;
@@ -257,9 +262,37 @@ public class SimulationsControllerSecurityTests
         document.RootElement.GetProperty("simulationType").GetString().Should().Be("Thermal");
         document.RootElement.GetProperty("parameters").GetProperty("iterations").GetInt32().Should().Be(77);
         document.RootElement.GetProperty("thermalAnalysis").GetProperty("maxTemperature").GetDouble()
-            .Should().BeGreaterThan(0);
+            .Should().Be(3900);
+        document.RootElement.GetProperty("thermalAnalysis").GetProperty("coolingEfficiency").GetDouble()
+            .Should().BeApproximately(0.82, 0.0001);
         document.RootElement.GetProperty("thrustAnalysis").GetProperty("maxThrust").GetDouble()
             .Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunSimulation_ForInactiveEngine_ReturnsBadRequestWithoutCreatingSimulation()
+    {
+        await using var context = CreateContext();
+        var engine = new Engine
+        {
+            Name = "Inactive Engine",
+            EngineType = "Test",
+            CreatedBy = null,
+            IsActive = false
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateController(context, CreatePrincipal("alice"), new DeferredBackgroundWorkQueue());
+
+        var result = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "CFD"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.EngineSimulations.Should().BeEmpty();
     }
 
     [Fact]

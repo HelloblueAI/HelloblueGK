@@ -113,7 +113,8 @@ public static class AuthenticationExtensions
                             {
                                 candidate.Username,
                                 candidate.IsActive,
-                                candidate.IsAdmin
+                                candidate.IsAdmin,
+                                candidate.AccessTokenVersion
                             })
                             .SingleOrDefaultAsync(context.HttpContext.RequestAborted);
 
@@ -142,6 +143,22 @@ public static class AuthenticationExtensions
                         if (!user.IsAdmin && !principal.IsInRole("User"))
                         {
                             context.Fail("JWT token role claims no longer match the account.");
+                            return;
+                        }
+
+                        // Missing atv is treated as version 0 for tokens minted before revocation support.
+                        var tokenVersionClaim = principal.FindFirstValue("atv");
+                        var tokenVersion = 0;
+                        if (!string.IsNullOrWhiteSpace(tokenVersionClaim)
+                            && !int.TryParse(tokenVersionClaim, out tokenVersion))
+                        {
+                            context.Fail("JWT token access-token version claim is invalid.");
+                            return;
+                        }
+
+                        if (tokenVersion != user.AccessTokenVersion)
+                        {
+                            context.Fail("JWT access token has been revoked.");
                         }
                     }
                 };

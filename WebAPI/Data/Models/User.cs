@@ -41,6 +41,12 @@ public class User
     /// </summary>
     public DateTime? RefreshTokenExpiresAt { get; set; }
 
+    /// <summary>
+    /// Monotonic version embedded in issued access tokens. Incremented on logout
+    /// (and other full-session revocations) so previously issued JWTs fail validation.
+    /// </summary>
+    public int AccessTokenVersion { get; set; }
+
     // Metadata
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLoginAt { get; set; }

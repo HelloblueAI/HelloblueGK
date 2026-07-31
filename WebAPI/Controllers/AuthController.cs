@@ -165,9 +165,9 @@ public class AuthController : ControllerBase
             return InvalidRefreshTokenResponse();
         }
 
-        // Mint the replacement first, then claim the old hash atomically so two
-        // concurrent refreshes cannot both succeed with the same presented token.
-        var accessToken = _jwtService.GenerateToken(user);
+        // Claim the old hash atomically so two concurrent refreshes cannot both
+        // succeed with the same presented token. Mint the access JWT only after
+        // reload so a concurrent logout cannot return a stale atv claim.
         var rotatedRefreshToken = _jwtService.GenerateRefreshToken();
         var rotatedRefreshTokenHash = _jwtService.HashRefreshToken(rotatedRefreshToken);
         var rotatedExpiresAt = DateTime.UtcNow.AddSeconds(_jwtService.GetRefreshTokenExpirationSeconds());
@@ -194,9 +194,20 @@ public class AuthController : ControllerBase
             return InvalidRefreshTokenResponse();
         }
 
-        user.RefreshTokenHash = rotatedRefreshTokenHash;
-        user.RefreshTokenExpiresAt = rotatedExpiresAt;
-        user.UpdatedAt = updatedAt;
+        await _context.Entry(user).ReloadAsync();
+        if (!user.IsActive
+            || !string.Equals(user.RefreshTokenHash, rotatedRefreshTokenHash, StringComparison.Ordinal)
+            || user.RefreshTokenExpiresAt == null
+            || user.RefreshTokenExpiresAt <= DateTime.UtcNow)
+        {
+            // Concurrent logout (or other revoke) cleared the rotated refresh after the claim.
+            _logger.LogWarning(
+                "Refresh discarded after concurrent revocation for user {Username}",
+                LogSanitizer.SanitizeIdentifier(user.Username));
+            return InvalidRefreshTokenResponse();
+        }
+
+        var accessToken = _jwtService.GenerateToken(user);
 
         _logger.LogInformation(
             "Refresh token rotated for user {Username}",
@@ -225,9 +236,14 @@ public class AuthController : ControllerBase
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(candidate => candidate.RefreshTokenHash, (string?)null)
                 .SetProperty(candidate => candidate.RefreshTokenExpiresAt, (DateTime?)null)
+                .SetProperty(
+                    candidate => candidate.AccessTokenVersion,
+                    candidate => candidate.AccessTokenVersion + 1)
                 .SetProperty(candidate => candidate.UpdatedAt, DateTime.UtcNow));
 
-        _logger.LogInformation("Refresh token revoked for user id {UserId}", userId);
+        _logger.LogInformation(
+            "Access and refresh tokens revoked for user id {UserId}",
+            userId);
         return Ok(new { message = "Logged out successfully" });
     }
 
@@ -236,11 +252,39 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("register")]
     [AllowAnonymous]
-    [ProducesResponseType(typeof(RegisterResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ErrorResponse), StatusCodes.Status400BadRequest)]
-    public async Task<IActionResult> Register([FromBody] RegisterRequest request)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest? request)
     {
-        if (request == null)
+        // Gate on server-side configuration only — never on client-supplied flags.
+        var allowPublicRegistration = _environment.IsDevelopment() ||
+            _configuration.GetValue("Auth:AllowPublicRegistration", false);
+        if (!allowPublicRegistration)
+        {
+            _logger.LogWarning(
+                "Public registration attempt rejected for username: {Username}",
+                LogSanitizer.SanitizeIdentifier(request?.Username));
+            return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+                Message = "Public registration is disabled",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        // Mirror Login: copy fields first so a request-null check is not a
+        // user-controlled condition guarding token issuance (cs/user-controlled-bypass).
+        var username = request?.Username;
+        var email = request?.Email;
+        var password = request?.Password;
+        var firstName = request?.FirstName;
+        var lastName = request?.LastName;
+
+        if (string.IsNullOrWhiteSpace(username)
+            || string.IsNullOrWhiteSpace(email)
+            || string.IsNullOrWhiteSpace(password))
         {
             return BadRequest(new ErrorResponse
             {
@@ -252,7 +296,7 @@ public class AuthController : ControllerBase
             });
         }
 
-        if (request.Password.Length > MaxPasswordLength)
+        if (password.Length > MaxPasswordLength)
         {
             return BadRequest(new ErrorResponse
             {
@@ -264,27 +308,12 @@ public class AuthController : ControllerBase
             });
         }
 
-        var allowPublicRegistration = _environment.IsDevelopment() ||
-            _configuration.GetValue("Auth:AllowPublicRegistration", false);
-        if (!allowPublicRegistration)
-        {
-            _logger.LogWarning("Public registration attempt rejected for username: {Username}", LogSanitizer.SanitizeIdentifier(request.Username));
-            return StatusCode(StatusCodes.Status403Forbidden, new ErrorResponse
-            {
-                StatusCode = StatusCodes.Status403Forbidden,
-                Message = "Public registration is disabled",
-                Timestamp = DateTime.UtcNow,
-                Path = Request.Path,
-                Method = Request.Method
-            });
-        }
-
-        if (await _context.Users.AnyAsync(u => u.Username == request.Username || u.Email == request.Email))
+        if (await _context.Users.AnyAsync(u => u.Username == username || u.Email == email))
         {
             // Generic message avoids username/email account enumeration.
             _logger.LogInformation(
                 "Registration rejected due to existing credentials for username {Username}",
-                LogSanitizer.SanitizeIdentifier(request.Username));
+                LogSanitizer.SanitizeIdentifier(username));
             return BadRequest(new ErrorResponse
             {
                 StatusCode = 400,
@@ -297,11 +326,11 @@ public class AuthController : ControllerBase
 
         var user = new User
         {
-            Username = request.Username,
-            Email = request.Email,
-            PasswordHash = HashPassword(request.Password),
-            FirstName = request.FirstName,
-            LastName = request.LastName,
+            Username = username,
+            Email = email,
+            PasswordHash = HashPassword(password),
+            FirstName = firstName,
+            LastName = lastName,
             IsActive = true,
             CreatedAt = DateTime.UtcNow
         };
@@ -309,21 +338,15 @@ public class AuthController : ControllerBase
         _context.Users.Add(user);
         await _context.SaveChangesAsync();
 
+        // Issue the same access + refresh pair as login so clients can refresh/logout consistently.
         var token = _jwtService.GenerateToken(user);
+        var refreshToken = IssueRefreshToken(user);
+        user.UpdatedAt = DateTime.UtcNow;
+        await _context.SaveChangesAsync();
 
         _logger.LogInformation("New user registered: {Username}", LogSanitizer.SanitizeIdentifier(user.Username));
 
-        return CreatedAtAction(nameof(Login), new RegisterResponse
-        {
-            Token = token,
-            User = new UserInfo
-            {
-                Id = user.Id,
-                Username = user.Username,
-                Email = user.Email,
-                IsAdmin = user.IsAdmin
-            }
-        });
+        return CreatedAtAction(nameof(Login), BuildAuthResponse(user, token, refreshToken));
     }
 
     /// <summary>
@@ -569,11 +592,13 @@ public class RegisterRequest
 }
 
 /// <summary>
-/// Register response model
+/// Register response model (kept for compatibility; register now returns <see cref="LoginResponse"/>).
 /// </summary>
 public class RegisterResponse
 {
     public string Token { get; set; } = string.Empty;
+    public string RefreshToken { get; set; } = string.Empty;
+    public int ExpiresIn { get; set; }
     public UserInfo User { get; set; } = null!;
 }
 

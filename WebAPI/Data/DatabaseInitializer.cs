@@ -140,6 +140,14 @@ public static class DatabaseInitializer
             logger.LogInformation("Added Users.RefreshTokenExpiresAt column.");
         }
 
+        if (!await SqliteColumnExistsAsync(dbContext, "Users", "AccessTokenVersion", cancellationToken))
+        {
+            await dbContext.Database.ExecuteSqlRawAsync(
+                """ALTER TABLE "Users" ADD COLUMN "AccessTokenVersion" INTEGER NOT NULL DEFAULT 0""",
+                cancellationToken);
+            logger.LogInformation("Added Users.AccessTokenVersion column.");
+        }
+
         await dbContext.Database.ExecuteSqlRawAsync(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_Users_RefreshTokenHash"
@@ -166,9 +174,10 @@ public static class DatabaseInitializer
             """
             ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenHash" character varying(128) NULL;
             ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "RefreshTokenExpiresAt" timestamp with time zone NULL;
+            ALTER TABLE "Users" ADD COLUMN IF NOT EXISTS "AccessTokenVersion" integer NOT NULL DEFAULT 0;
             """,
             cancellationToken);
-        logger.LogInformation("Ensured Users refresh-token columns exist (PostgreSQL).");
+        logger.LogInformation("Ensured Users refresh/access-token columns exist (PostgreSQL).");
 
         await dbContext.Database.ExecuteSqlRawAsync(
             """
@@ -193,9 +202,11 @@ public static class DatabaseInitializer
                 ALTER TABLE [Users] ADD [RefreshTokenHash] nvarchar(128) NULL;
             IF COL_LENGTH('Users', 'RefreshTokenExpiresAt') IS NULL
                 ALTER TABLE [Users] ADD [RefreshTokenExpiresAt] datetime2 NULL;
+            IF COL_LENGTH('Users', 'AccessTokenVersion') IS NULL
+                ALTER TABLE [Users] ADD [AccessTokenVersion] int NOT NULL CONSTRAINT [DF_Users_AccessTokenVersion] DEFAULT (0);
             """,
             cancellationToken);
-        logger.LogInformation("Ensured Users refresh-token columns exist (SQL Server).");
+        logger.LogInformation("Ensured Users refresh/access-token columns exist (SQL Server).");
 
         await dbContext.Database.ExecuteSqlRawAsync(
             """
