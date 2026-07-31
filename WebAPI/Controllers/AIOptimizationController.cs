@@ -222,6 +222,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                                 await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
                             }
+                            catch (OperationCanceledException ex)
+                            {
+                                _logger.LogWarning(ex, "Optimization background work cancelled {OptimizationId}", optimizationId);
+                                await FailOptimizationAsync(
+                                    scopedContext,
+                                    optimizationId,
+                                    "Optimization cancelled before completion.");
+                            }
                             catch (Exception ex)
                             {
                                 _logger.LogError(ex, "Unhandled error in optimization background work {OptimizationId}", optimizationId);
@@ -232,7 +240,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             }
                         }, $"optimization:{optimizationId}");
                     }
-                    catch (Exception ex)
+                    catch (InvalidOperationException ex)
+                    {
+                        _logger.LogError(ex, "Failed to queue optimization {OptimizationId}", optimizationId);
+                        await FailOptimizationAsync(
+                            _context,
+                            optimizationId,
+                            "Optimization failed because background work could not be queued.");
+                        return StatusCode(500, "An error occurred while starting the optimization");
+                    }
+                    catch (ObjectDisposedException ex)
                     {
                         _logger.LogError(ex, "Failed to queue optimization {OptimizationId}", optimizationId);
                         await FailOptimizationAsync(

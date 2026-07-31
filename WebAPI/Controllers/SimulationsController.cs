@@ -238,7 +238,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             {
                                 throw;
                             }
-                            catch (Exception ex)
+                            catch (ObjectDisposedException ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in simulation background work {SimulationId}", simulationId);
+                                await FailSimulationAsync(
+                                    scopedContext,
+                                    simulationId,
+                                    "Simulation failed. See server logs for details.");
+                            }
+                            catch (InvalidOperationException ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in simulation background work {SimulationId}", simulationId);
+                                await FailSimulationAsync(
+                                    scopedContext,
+                                    simulationId,
+                                    "Simulation failed. See server logs for details.");
+                            }
+                            catch (DbUpdateException ex)
                             {
                                 _logger.LogError(ex, "Unhandled error in simulation background work {SimulationId}", simulationId);
                                 await FailSimulationAsync(
@@ -248,7 +264,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             }
                         }, $"simulation:{simulationId}");
                     }
-                    catch (Exception ex)
+                    catch (InvalidOperationException ex)
                     {
                         _logger.LogError(ex, "Failed to queue simulation {SimulationId}", simulationId);
                         await FailSimulationAsync(

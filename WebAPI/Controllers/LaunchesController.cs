@@ -277,7 +277,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             {
                                 await ExecuteLaunchAsync(launchId, scopedContext);
                             }
-                            catch (Exception ex)
+                            catch (OperationCanceledException ex)
+                            {
+                                _logger.LogWarning(ex, "Launch background work cancelled {LaunchId}", launchId);
+                            }
+                            catch (InvalidOperationException ex)
+                            {
+                                _logger.LogError(ex, "Unhandled error in launch background work {LaunchId}", launchId);
+                                await FailLaunchAsync(
+                                    scopedContext,
+                                    launchId,
+                                    "Launch failed. See server logs for details.");
+                            }
+                            catch (DbUpdateException ex)
                             {
                                 _logger.LogError(ex, "Unhandled error in launch background work {LaunchId}", launchId);
                                 await FailLaunchAsync(
@@ -287,7 +299,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             }
                         }, $"launch:{launchId}");
                     }
-                    catch (Exception ex)
+                    catch (InvalidOperationException ex)
                     {
                         _logger.LogError(ex, "Failed to queue launch {LaunchId}; reverting claim", launchId);
                         await FailLaunchAsync(
