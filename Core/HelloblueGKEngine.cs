@@ -428,15 +428,8 @@ namespace HB_NLP_Research_Lab.Core
                     cfdResult.FlowVelocity = new Vector3((float)maxVelocity, 0, 0);
                 }
 
-                // DeriveThrust prefers MaxPressure; use thrust when chamber pressure was not supplied.
-                if ((TryReadDoubleParameter(parameters, "thrust", out var thrust) ||
-                     TryReadDoubleParameter(parameters, "maxThrust", out thrust)) &&
-                    !parameters.Keys.Any(key =>
-                        string.Equals(key, "chamberPressure", StringComparison.OrdinalIgnoreCase) ||
-                        string.Equals(key, "maxPressure", StringComparison.OrdinalIgnoreCase)))
-                {
-                    cfdResult.MaxPressure = thrust;
-                }
+                // Do not copy thrust into MaxPressure — that misreports ChamberPressure in
+                // PerformanceMetrics. Requested thrust is applied to ThrustAnalysis.MaxThrust.
 
                 if (TryReadDoubleParameter(parameters, "efficiency", out var cfdEfficiency) ||
                     TryReadDoubleParameter(parameters, "accuracy", out cfdEfficiency))

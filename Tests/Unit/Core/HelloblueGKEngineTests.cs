@@ -180,6 +180,25 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_WithThrustOnly_DoesNotReportThrustAsChamberPressure()
+    {
+        var result = await _engine.AnalyzeEngineAsync(
+            "TestEngine",
+            "CFD",
+            new Dictionary<string, object>
+            {
+                ["thrust"] = 1234567,
+                ["iterations"] = 40
+            });
+
+        result.ThrustAnalysis.MaxThrust.Should().Be(1234567);
+        if (result.PerformanceMetrics.TryGetValue("ChamberPressure", out var chamberPressure))
+        {
+            chamberPressure.Should().NotBe(1234567);
+        }
+    }
+
+    [Fact]
     public async Task AnalyzeEngineAsync_WithThermalParameters_AppliesTemperatureAndCooling()
     {
         var result = await _engine.AnalyzeEngineAsync(
