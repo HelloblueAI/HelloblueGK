@@ -18,7 +18,9 @@ public static class EngineAccessPolicy
         }
 
         // Seeded catalog engines are shared. User-created engines remain owner-scoped.
+        // Use ordinal comparison so case-variant usernames (allowed by the unique index)
+        // cannot access another account's private engines (IDOR).
         return string.IsNullOrWhiteSpace(engine.CreatedBy) ||
-            string.Equals(engine.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+            string.Equals(engine.CreatedBy, currentUsername, StringComparison.Ordinal);
     }
 }

@@ -33,12 +33,18 @@ namespace HB_NLP_Research_Lab.Core
         private readonly ConcurrentDictionary<string, LearningHistory> _learningHistories;
         private readonly ConcurrentDictionary<string, PredictionAccuracy> _predictionAccuracies;
         private readonly ConcurrentDictionary<string, object> _historyLocks;
-        private readonly ConcurrentDictionary<string, SemaphoreSlim> _engineGates;
+        private readonly ConcurrentDictionary<string, EngineGateLease> _engineGates;
         private readonly ConcurrentQueue<string> _twinCreationOrder;
         private readonly object _lifecycleLock = new();
         
         private bool _isInitialized = false;
         private volatile bool _isDisposed;
+
+        private sealed class EngineGateLease
+        {
+            public readonly SemaphoreSlim Semaphore = new(1, 1);
+            public int RefCount;
+        }
 
         public DigitalTwinEngine()
         {
@@ -56,7 +62,7 @@ namespace HB_NLP_Research_Lab.Core
             _learningHistories = new ConcurrentDictionary<string, LearningHistory>();
             _predictionAccuracies = new ConcurrentDictionary<string, PredictionAccuracy>();
             _historyLocks = new ConcurrentDictionary<string, object>();
-            _engineGates = new ConcurrentDictionary<string, SemaphoreSlim>();
+            _engineGates = new ConcurrentDictionary<string, EngineGateLease>();
             _twinCreationOrder = new ConcurrentQueue<string>();
         }
 
@@ -88,7 +94,8 @@ namespace HB_NLP_Research_Lab.Core
                     ActiveSystems = new[] { "Live Learning", "Predictive Twin", "Autonomous Testing", "Real-Time Learning" },
                     LearningMode = "Continuous",
                     PredictionAccuracy = "99.9%",
-                    TwinCount = _digitalTwins.Count
+                    TwinCount = _digitalTwins.Count,
+                    GateCount = _engineGates.Count
                 };
             }
         }
@@ -134,52 +141,59 @@ namespace HB_NLP_Research_Lab.Core
                 TwinVersion = "1.0.0"
             };
             
-            var engineGate = GetEngineGate(engineId);
-            await engineGate.WaitAsync();
+            var engineGate = AcquireEngineGate(engineId);
             try
             {
-                lock (_lifecycleLock)
+                await engineGate.Semaphore.WaitAsync();
+                try
                 {
-                    ThrowIfDisposed();
-                    // In-place updates do not grow the map; only evict when inserting a new key.
-                    var isNewKey = !_digitalTwins.ContainsKey(engineId);
-                    if (isNewKey)
+                    lock (_lifecycleLock)
                     {
-                        EvictOldestTwinsUnlocked(keepEngineId: engineId);
-                        if (_digitalTwins.Count >= MaxActiveTwins)
-                        {
-                            throw new InvalidOperationException(
-                                $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
-                        }
-                    }
-
-                    lock (GetHistoryLock(engineId))
-                    {
-                        // Publish all per-engine state as one atomic generation.
-                        // The twin is written last so readers never observe it
-                        // without corresponding history and accuracy state.
-                        _learningHistories[engineId] = CreateLearningHistory(engineId);
-                        _predictionAccuracies[engineId] = new PredictionAccuracy
-                        {
-                            EngineId = engineId,
-                            OverallAccuracy = 0.999,
-                            ThrustPredictionAccuracy = 0.998,
-                            ThermalPredictionAccuracy = 0.997,
-                            StructuralPredictionAccuracy = 0.999,
-                            FailurePredictionAccuracy = 0.999
-                        };
-                        isNewKey = !_digitalTwins.ContainsKey(engineId);
-                        _digitalTwins[engineId] = digitalTwin;
+                        ThrowIfDisposed();
+                        // In-place updates do not grow the map; only evict when inserting a new key.
+                        var isNewKey = !_digitalTwins.ContainsKey(engineId);
                         if (isNewKey)
                         {
-                            _twinCreationOrder.Enqueue(engineId);
+                            EvictOldestTwinsUnlocked(keepEngineId: engineId);
+                            if (_digitalTwins.Count >= MaxActiveTwins)
+                            {
+                                throw new InvalidOperationException(
+                                    $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
+                            }
+                        }
+
+                        lock (GetHistoryLock(engineId))
+                        {
+                            // Publish all per-engine state as one atomic generation.
+                            // The twin is written last so readers never observe it
+                            // without corresponding history and accuracy state.
+                            _learningHistories[engineId] = CreateLearningHistory(engineId);
+                            _predictionAccuracies[engineId] = new PredictionAccuracy
+                            {
+                                EngineId = engineId,
+                                OverallAccuracy = 0.999,
+                                ThrustPredictionAccuracy = 0.998,
+                                ThermalPredictionAccuracy = 0.997,
+                                StructuralPredictionAccuracy = 0.999,
+                                FailurePredictionAccuracy = 0.999
+                            };
+                            isNewKey = !_digitalTwins.ContainsKey(engineId);
+                            _digitalTwins[engineId] = digitalTwin;
+                            if (isNewKey)
+                            {
+                                _twinCreationOrder.Enqueue(engineId);
+                            }
                         }
                     }
+                }
+                finally
+                {
+                    engineGate.Semaphore.Release();
                 }
             }
             finally
             {
-                engineGate.Release();
+                ReleaseEngineGate(engineId, engineGate);
             }
             
             Console.WriteLine($"[Digital Twin] Digital Twin created successfully for {engineId}");
@@ -208,58 +222,65 @@ namespace HB_NLP_Research_Lab.Core
             if (!_isInitialized)
                 await InitializeAsync();
 
-            var engineGate = GetEngineGate(engineId);
-            await engineGate.WaitAsync();
+            var engineGate = AcquireEngineGate(engineId);
             try
             {
-                lock (_lifecycleLock)
+                await engineGate.Semaphore.WaitAsync();
+                try
                 {
-                    ThrowIfDisposed();
-                    if (_digitalTwins.TryGetValue(engineId, out existingTwin))
-                        return existingTwin;
-
-                    EvictOldestTwinsUnlocked(keepEngineId: engineId);
-                    if (_digitalTwins.Count >= MaxActiveTwins)
+                    lock (_lifecycleLock)
                     {
-                        throw new InvalidOperationException(
-                            $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
-                    }
-
-                    lock (GetHistoryLock(engineId))
-                    {
+                        ThrowIfDisposed();
                         if (_digitalTwins.TryGetValue(engineId, out existingTwin))
                             return existingTwin;
 
-                        _learningHistories[engineId] = CreateLearningHistory(engineId);
-                        _predictionAccuracies[engineId] = new PredictionAccuracy
+                        EvictOldestTwinsUnlocked(keepEngineId: engineId);
+                        if (_digitalTwins.Count >= MaxActiveTwins)
                         {
-                            EngineId = engineId,
-                            OverallAccuracy = predictionAccuracy,
-                            ThrustPredictionAccuracy = predictionAccuracy,
-                            ThermalPredictionAccuracy = predictionAccuracy,
-                            StructuralPredictionAccuracy = predictionAccuracy,
-                            FailurePredictionAccuracy = predictionAccuracy
-                        };
+                            throw new InvalidOperationException(
+                                $"Digital twin capacity of {MaxActiveTwins} reached; try again shortly.");
+                        }
 
-                        var restoredTwin = new EngineDigitalTwin
+                        lock (GetHistoryLock(engineId))
                         {
-                            EngineId = engineId,
-                            EngineModel = engineModel,
-                            CreationTimestamp = DateTime.UtcNow,
-                            LastUpdateTimestamp = DateTime.UtcNow,
-                            LearningStatus = "Active",
-                            PredictionAccuracy = predictionAccuracy,
-                            TwinVersion = "1.0.0"
-                        };
-                        _digitalTwins[engineId] = restoredTwin;
-                        _twinCreationOrder.Enqueue(engineId);
-                        return restoredTwin;
+                            if (_digitalTwins.TryGetValue(engineId, out existingTwin))
+                                return existingTwin;
+
+                            _learningHistories[engineId] = CreateLearningHistory(engineId);
+                            _predictionAccuracies[engineId] = new PredictionAccuracy
+                            {
+                                EngineId = engineId,
+                                OverallAccuracy = predictionAccuracy,
+                                ThrustPredictionAccuracy = predictionAccuracy,
+                                ThermalPredictionAccuracy = predictionAccuracy,
+                                StructuralPredictionAccuracy = predictionAccuracy,
+                                FailurePredictionAccuracy = predictionAccuracy
+                            };
+
+                            var restoredTwin = new EngineDigitalTwin
+                            {
+                                EngineId = engineId,
+                                EngineModel = engineModel,
+                                CreationTimestamp = DateTime.UtcNow,
+                                LastUpdateTimestamp = DateTime.UtcNow,
+                                LearningStatus = "Active",
+                                PredictionAccuracy = predictionAccuracy,
+                                TwinVersion = "1.0.0"
+                            };
+                            _digitalTwins[engineId] = restoredTwin;
+                            _twinCreationOrder.Enqueue(engineId);
+                            return restoredTwin;
+                        }
                     }
+                }
+                finally
+                {
+                    engineGate.Semaphore.Release();
                 }
             }
             finally
             {
-                engineGate.Release();
+                ReleaseEngineGate(engineId, engineGate);
             }
         }
 
@@ -293,15 +314,22 @@ namespace HB_NLP_Research_Lab.Core
                 throw new ArgumentNullException(nameof(flightData));
             }
 
-            var engineGate = GetEngineGate(engineId);
-            await engineGate.WaitAsync();
+            var engineGate = AcquireEngineGate(engineId);
             try
             {
-                return await LearnFromTestFlightWithGateAsync(engineId, flightData);
+                await engineGate.Semaphore.WaitAsync();
+                try
+                {
+                    return await LearnFromTestFlightWithGateAsync(engineId, flightData);
+                }
+                finally
+                {
+                    engineGate.Semaphore.Release();
+                }
             }
             finally
             {
-                engineGate.Release();
+                ReleaseEngineGate(engineId, engineGate);
             }
         }
 
@@ -368,93 +396,107 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<EnginePrediction> PredictEngineBehaviorAsync(string engineId, PredictionScenario scenario)
         {
             ThrowIfDisposed();
-            var engineGate = GetEngineGate(engineId);
-            await engineGate.WaitAsync();
+            var engineGate = AcquireEngineGate(engineId);
             try
             {
-                if (!_digitalTwins.ContainsKey(engineId))
-                    throw new ArgumentException($"Digital twin not found for engine: {engineId}");
-
-                Console.WriteLine($"[Digital Twin] 🔮 Predicting Engine Behavior for {engineId}...");
-                Console.WriteLine($"[Digital Twin] Scenario: {scenario.Name}");
-
-                if (!_predictionAccuracies.TryGetValue(engineId, out var predictionAccuracy))
-                    predictionAccuracy = new PredictionAccuracy { OverallAccuracy = 0.0 };
-
-                var prediction = await _predictiveTwin.PredictEngineBehaviorAsync(engineId, scenario);
-                var predictionRecord = new PredictionRecord
+                await engineGate.Semaphore.WaitAsync();
+                try
                 {
-                    Timestamp = DateTime.UtcNow,
-                    Scenario = scenario,
-                    Prediction = prediction,
-                    ConfidenceLevel = prediction.ConfidenceLevel,
-                    ExpectedAccuracy = predictionAccuracy.OverallAccuracy
-                };
+                    if (!_digitalTwins.ContainsKey(engineId))
+                        throw new ArgumentException($"Digital twin not found for engine: {engineId}");
 
-                lock (_lifecycleLock)
-                {
-                    ThrowIfDisposed();
-                    lock (GetHistoryLock(engineId))
+                    Console.WriteLine($"[Digital Twin] 🔮 Predicting Engine Behavior for {engineId}...");
+                    Console.WriteLine($"[Digital Twin] Scenario: {scenario.Name}");
+
+                    if (!_predictionAccuracies.TryGetValue(engineId, out var predictionAccuracy))
+                        predictionAccuracy = new PredictionAccuracy { OverallAccuracy = 0.0 };
+
+                    var prediction = await _predictiveTwin.PredictEngineBehaviorAsync(engineId, scenario);
+                    var predictionRecord = new PredictionRecord
                     {
-                        var history = _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
-                        history.PredictionHistory.Add(predictionRecord);
-                        TrimBoundedHistory(history.PredictionHistory);
+                        Timestamp = DateTime.UtcNow,
+                        Scenario = scenario,
+                        Prediction = prediction,
+                        ConfidenceLevel = prediction.ConfidenceLevel,
+                        ExpectedAccuracy = predictionAccuracy.OverallAccuracy
+                    };
+
+                    lock (_lifecycleLock)
+                    {
+                        ThrowIfDisposed();
+                        lock (GetHistoryLock(engineId))
+                        {
+                            var history = _learningHistories.GetOrAdd(engineId, CreateLearningHistory);
+                            history.PredictionHistory.Add(predictionRecord);
+                            TrimBoundedHistory(history.PredictionHistory);
+                        }
                     }
+
+                    Console.WriteLine($"[Digital Twin] Prediction complete for {engineId}");
+                    Console.WriteLine($"[Digital Twin] Confidence level: {prediction.ConfidenceLevel:P2}");
+                    Console.WriteLine($"[Digital Twin] Expected accuracy: {predictionAccuracy.OverallAccuracy:P3}");
+
+                    return prediction;
                 }
-
-                Console.WriteLine($"[Digital Twin] Prediction complete for {engineId}");
-                Console.WriteLine($"[Digital Twin] Confidence level: {prediction.ConfidenceLevel:P2}");
-                Console.WriteLine($"[Digital Twin] Expected accuracy: {predictionAccuracy.OverallAccuracy:P3}");
-
-                return prediction;
+                finally
+                {
+                    engineGate.Semaphore.Release();
+                }
             }
             finally
             {
-                engineGate.Release();
+                ReleaseEngineGate(engineId, engineGate);
             }
         }
 
         public async Task<AutonomousTestingResult> RunAutonomousTestsAsync(string engineId, TestingRequirements requirements)
         {
             ThrowIfDisposed();
-            var engineGate = GetEngineGate(engineId);
-            await engineGate.WaitAsync();
+            var engineGate = AcquireEngineGate(engineId);
             try
             {
-                if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
-                    throw new ArgumentException($"Digital twin not found for engine: {engineId}");
-
-                Console.WriteLine($"[Digital Twin] 🧪 Running Autonomous Tests for {engineId}...");
-                var engineArchitecture = new EngineArchitecture
+                await engineGate.Semaphore.WaitAsync();
+                try
                 {
-                    Id = engineId,
-                    Name = digitalTwin.EngineModel.Name
-                };
+                    if (!_digitalTwins.TryGetValue(engineId, out var digitalTwin))
+                        throw new ArgumentException($"Digital twin not found for engine: {engineId}");
 
-                var testResult = await _autonomousTesting.DesignAndRunTestsAsync(engineArchitecture, requirements);
-                var testFlightData = new TestFlightData
-                {
-                    EngineId = engineId,
-                    FlightDate = DateTime.UtcNow,
-                    FlightMetrics = new Dictionary<string, double>
+                    Console.WriteLine($"[Digital Twin] 🧪 Running Autonomous Tests for {engineId}...");
+                    var engineArchitecture = new EngineArchitecture
                     {
-                        ["Thrust"] = testResult.Analysis.AveragePerformance * 1500000,
-                        ["Efficiency"] = testResult.Analysis.AveragePerformance,
-                        ["Reliability"] = testResult.Analysis.ReliabilityScore
-                    }
-                };
+                        Id = engineId,
+                        Name = digitalTwin.EngineModel.Name
+                    };
 
-                await LearnFromTestFlightWithGateAsync(engineId, testFlightData);
+                    var testResult = await _autonomousTesting.DesignAndRunTestsAsync(engineArchitecture, requirements);
+                    var testFlightData = new TestFlightData
+                    {
+                        EngineId = engineId,
+                        FlightDate = DateTime.UtcNow,
+                        FlightMetrics = new Dictionary<string, double>
+                        {
+                            ["Thrust"] = testResult.Analysis.AveragePerformance * 1500000,
+                            ["Efficiency"] = testResult.Analysis.AveragePerformance,
+                            ["Reliability"] = testResult.Analysis.ReliabilityScore
+                        }
+                    };
 
-                Console.WriteLine($"[Digital Twin] Autonomous testing complete for {engineId}");
-                Console.WriteLine($"[Digital Twin] Test coverage: {testResult.TestCoverage:P2}");
-                Console.WriteLine($"[Digital Twin] Test accuracy: {testResult.TestAccuracy:P2}");
+                    await LearnFromTestFlightWithGateAsync(engineId, testFlightData);
 
-                return testResult;
+                    Console.WriteLine($"[Digital Twin] Autonomous testing complete for {engineId}");
+                    Console.WriteLine($"[Digital Twin] Test coverage: {testResult.TestCoverage:P2}");
+                    Console.WriteLine($"[Digital Twin] Test accuracy: {testResult.TestAccuracy:P2}");
+
+                    return testResult;
+                }
+                finally
+                {
+                    engineGate.Semaphore.Release();
+                }
             }
             finally
             {
-                engineGate.Release();
+                ReleaseEngineGate(engineId, engineGate);
             }
         }
 
@@ -590,8 +632,59 @@ namespace HB_NLP_Research_Lab.Core
         private object GetHistoryLock(string engineId) =>
             _historyLocks.GetOrAdd(engineId, static _ => new object());
 
-        private SemaphoreSlim GetEngineGate(string engineId) =>
-            _engineGates.GetOrAdd(engineId, static _ => new SemaphoreSlim(1, 1));
+        private EngineGateLease AcquireEngineGate(string engineId)
+        {
+            while (true)
+            {
+                var gate = _engineGates.GetOrAdd(engineId, static _ => new EngineGateLease());
+                var count = Interlocked.Increment(ref gate.RefCount);
+                if (count <= 0)
+                {
+                    // Lease was tombstoned for disposal; discard and retry with a fresh one.
+                    _engineGates.TryRemove(new KeyValuePair<string, EngineGateLease>(engineId, gate));
+                    continue;
+                }
+
+                if (_engineGates.TryGetValue(engineId, out var live) && ReferenceEquals(live, gate))
+                {
+                    return gate;
+                }
+
+                // Lost a race with prune/removal; drop the stale ref and retry.
+                if (Interlocked.Decrement(ref gate.RefCount) == 0)
+                {
+                    TryForgetIdleEngineGate(engineId, gate);
+                }
+            }
+        }
+
+        private void ReleaseEngineGate(string engineId, EngineGateLease gate)
+        {
+            if (Interlocked.Decrement(ref gate.RefCount) != 0)
+            {
+                return;
+            }
+
+            TryForgetIdleEngineGate(engineId, gate);
+        }
+
+        private void TryForgetIdleEngineGate(string engineId, EngineGateLease gate)
+        {
+            // Keep gates that still back an active twin.
+            if (_digitalTwins.ContainsKey(engineId))
+            {
+                return;
+            }
+
+            // CAS RefCount 0 → tombstone so Acquire cannot revive a disposed lease.
+            if (Interlocked.CompareExchange(ref gate.RefCount, int.MinValue, 0) != 0)
+            {
+                return;
+            }
+
+            _engineGates.TryRemove(new KeyValuePair<string, EngineGateLease>(engineId, gate));
+            gate.Semaphore.Dispose();
+        }
 
         private void EvictOldestTwinsUnlocked(string keepEngineId)
         {
@@ -653,13 +746,11 @@ namespace HB_NLP_Research_Lab.Core
 
         private bool RemoveDigitalTwinUnlocked(string engineId)
         {
-            // Only evict when the per-engine gate is idle. Keep the SemaphoreSlim in
-            // _engineGates for the process lifetime — callers often cache GetEngineGate()
-            // before WaitAsync, so removing/disposing here races to ObjectDisposedException.
-            // Gates are disposed only in Dispose().
+            // Only evict when the per-engine gate is idle. Reference-counted leases
+            // allow safe removal/disposal once no caller holds AcquireEngineGate.
             if (_engineGates.TryGetValue(engineId, out var gate))
             {
-                if (!gate.Wait(0))
+                if (!gate.Semaphore.Wait(0))
                 {
                     return false;
                 }
@@ -670,7 +761,9 @@ namespace HB_NLP_Research_Lab.Core
                 }
                 finally
                 {
-                    gate.Release();
+                    gate.Semaphore.Release();
+                    // Eviction never acquired a ref-count lease; forget only when idle.
+                    TryForgetIdleEngineGate(engineId, gate);
                 }
             }
 
@@ -735,7 +828,7 @@ namespace HB_NLP_Research_Lab.Core
                 }
                 foreach (var gate in _engineGates.Values)
                 {
-                    gate.Dispose();
+                    gate.Semaphore.Dispose();
                 }
                 _engineGates.Clear();
             }
@@ -769,6 +862,7 @@ namespace HB_NLP_Research_Lab.Core
         public string LearningMode { get; set; } = string.Empty;
         public string PredictionAccuracy { get; set; } = string.Empty;
         public int TwinCount { get; set; }
+        public int GateCount { get; set; }
     }
 
     public class LiveLearningResult

@@ -370,6 +370,22 @@ public class DigitalTwinEngineTests : IDisposable
 
         var status = await _digitalTwinEngine.InitializeAsync();
         status.TwinCount.Should().BeLessThanOrEqualTo(DigitalTwinEngine.MaxActiveTwins);
+        // Evicted twin gates must be forgettable so create→evict churn cannot unbounded-grow.
+        status.GateCount.Should().BeLessThanOrEqualTo(DigitalTwinEngine.MaxActiveTwins);
+    }
+
+    [Fact]
+    public async Task RemoveDigitalTwin_ShouldDropIdleEngineGate()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "GateCleanupEngine";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "GateCleanup", Parameters = new Dictionary<string, double>() });
+
+        (await _digitalTwinEngine.InitializeAsync()).GateCount.Should().Be(1);
+        _digitalTwinEngine.RemoveDigitalTwin(engineId).Should().BeTrue();
+        (await _digitalTwinEngine.InitializeAsync()).GateCount.Should().Be(0);
     }
 
     [Fact]

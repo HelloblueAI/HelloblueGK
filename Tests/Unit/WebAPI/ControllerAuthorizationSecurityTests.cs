@@ -946,11 +946,177 @@ public class ControllerAuthorizationSecurityTests
 
         var ownerKey = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+                System.Text.Encoding.UTF8.GetBytes("alice")))[..16];
         var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
 
         // Prior active twin remains persisted; runtime must be restored for it.
         digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetOptimizationById_ForCaseVariantUsername_ReturnsNotFound()
+    {
+        await using var context = CreateContext();
+        var optimization = await SeedOptimizationAsync(context, "alice");
+
+        // Case-variant account must not inherit ordinal ownership via IgnoreCase compares.
+        var controller = CreateOptimizationController(context, CreatePrincipal("Alice"));
+
+        var result = await controller.GetOptimizationById(optimization.Id);
+
+        result.Should().BeOfType<NotFoundObjectResult>();
+    }
+
+    [Fact]
+    public async Task StartOptimization_WhenEngineDeactivatedBeforeWorkerRuns_MarksRunFailed()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic"
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        engine.IsActive = false;
+        await context.SaveChangesAsync();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(
+            new SingleServiceProvider(workerContext),
+            CancellationToken.None);
+
+        var persisted = await context.AIOptimizationRuns.AsNoTracking()
+            .SingleAsync(o => o.Id == response.Id);
+        persisted.Status.Should().Be("Failed");
+        persisted.ErrorMessage.Should().Contain("inactive");
+    }
+
+    [Fact]
+    public async Task CancelOptimization_ForPendingRun_MarksCancelledAndPreventsCompletion()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var startController = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+
+        var startResult = await startController.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic"
+        });
+
+        var created = startResult.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
+
+        var cancelController = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+        var cancelResult = await cancelController.CancelOptimization(response.Id);
+        cancelResult.Should().BeOfType<OkObjectResult>();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(
+            new SingleServiceProvider(workerContext),
+            CancellationToken.None);
+
+        var persisted = await context.AIOptimizationRuns.AsNoTracking()
+            .SingleAsync(o => o.Id == response.Id);
+        persisted.Status.Should().Be("Cancelled");
+        persisted.ResultsJson.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateDigitalTwin_CaseVariantOwners_UseDistinctRuntimeKeys()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("catalog");
+        engine.CreatedBy = null; // shared catalog engine
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        // Seed two case-variant owners each with an active twin row for the shared engine.
+        context.DigitalTwins.Add(new DigitalTwin
+        {
+            EngineId = engine.Id,
+            Name = "alice-twin",
+            CreatedBy = "alice",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            ModelDataJson = "{}"
+        });
+        context.DigitalTwins.Add(new DigitalTwin
+        {
+            EngineId = engine.Id,
+            Name = "Alice-twin",
+            CreatedBy = "Alice",
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            ModelDataJson = "{}"
+        });
+        await context.SaveChangesAsync();
+
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var aliceController = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("alice"),
+            digitalTwinEngine);
+        var aliceCaseController = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("Alice"),
+            digitalTwinEngine);
+
+        var aliceTwinId = await context.DigitalTwins
+            .Where(dt => dt.CreatedBy == "alice")
+            .Select(dt => dt.Id)
+            .SingleAsync();
+        var aliceCaseTwinId = await context.DigitalTwins
+            .Where(dt => dt.CreatedBy == "Alice")
+            .Select(dt => dt.Id)
+            .SingleAsync();
+
+        var alicePredict = await aliceController.GetPredictions(
+            aliceTwinId,
+            new PredictionRequest { ScenarioName = "baseline" });
+        var aliceCasePredict = await aliceCaseController.GetPredictions(
+            aliceCaseTwinId,
+            new PredictionRequest { ScenarioName = "baseline" });
+
+        alicePredict.Should().BeOfType<OkObjectResult>();
+        aliceCasePredict.Should().BeOfType<OkObjectResult>();
+
+        var aliceKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("alice")))[..16];
+        var aliceCaseKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("Alice")))[..16];
+        aliceKey.Should().NotBe(aliceCaseKey);
+
+        digitalTwinEngine.RemoveDigitalTwin($"Owner_{aliceKey}_Engine_{engine.Id}").Should().BeTrue();
+        digitalTwinEngine.RemoveDigitalTwin($"Owner_{aliceCaseKey}_Engine_{engine.Id}").Should().BeTrue();
     }
 
     [Fact]

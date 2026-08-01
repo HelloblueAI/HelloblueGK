@@ -642,7 +642,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
             var currentUsername = GetCurrentUsername();
             return !string.IsNullOrWhiteSpace(currentUsername) &&
-                string.Equals(digitalTwin.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+                string.Equals(digitalTwin.CreatedBy, currentUsername, StringComparison.Ordinal);
         }
 
         private string? GetCurrentUsername()
@@ -654,9 +654,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
         private static string BuildDigitalTwinEngineKey(int engineId, string? owner)
         {
+            // Hash the exact owner string (trim only) so case-variant accounts do not
+            // collide onto the same in-memory twin runtime key.
             var ownerKey = string.IsNullOrWhiteSpace(owner)
                 ? "unowned"
-                : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(owner.Trim().ToUpperInvariant())))[..16];
+                : Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(owner.Trim())))[..16];
 
             return $"Owner_{ownerKey}_Engine_{engineId}";
         }

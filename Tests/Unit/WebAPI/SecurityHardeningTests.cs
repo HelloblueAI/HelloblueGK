@@ -445,6 +445,93 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Register_WithCaseVariantUsername_ReturnsGenericErrorAndDoesNotCreateUser()
+    {
+        await using var context = CreateContext();
+        context.Users.Add(new User
+        {
+            Username = "taken",
+            Email = "taken@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        var controller = new AuthController(
+            context,
+            Mock.Of<IJwtService>(),
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "TAKEN",
+            Email = "other@example.com",
+            Password = "Password123!"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Count(u => u.Username.ToLower() == "taken").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Register_NormalizesUsernameAndEmailToLowercase()
+    {
+        await using var context = CreateContext();
+        var jwtService = new Mock<IJwtService>();
+        jwtService.Setup(service => service.GenerateToken(It.IsAny<User>())).Returns("token");
+        jwtService.Setup(service => service.GenerateRefreshToken()).Returns("refresh-token");
+        jwtService.Setup(service => service.HashRefreshToken(It.IsAny<string>())).Returns("refresh-hash");
+        jwtService.Setup(service => service.GetRefreshTokenLifetime()).Returns(TimeSpan.FromDays(7));
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        var controller = new AuthController(
+            context,
+            jwtService.Object,
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "Alice",
+            Email = "Alice@Example.COM",
+            Password = "Password123!"
+        });
+
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var stored = context.Users.Single();
+        stored.Username.Should().Be("alice");
+        stored.Email.Should().Be("alice@example.com");
+    }
+
+    [Fact]
     public async Task DatabaseInitializer_AddsMissingRefreshTokenColumnsOnLegacySqliteSchema()
     {
         await using var connection = new Microsoft.Data.Sqlite.SqliteConnection("Data Source=:memory:");

@@ -737,7 +737,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
             var currentUsername = GetCurrentUsername();
             return !string.IsNullOrWhiteSpace(currentUsername) &&
-                string.Equals(launch.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+                string.Equals(launch.CreatedBy, currentUsername, StringComparison.Ordinal);
         }
 
         private string? GetCurrentUsername()

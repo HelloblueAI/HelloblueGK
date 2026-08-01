@@ -296,6 +296,48 @@ public class SimulationsControllerSecurityTests
     }
 
     [Fact]
+    public async Task RunSimulation_WhenEngineDeactivatedBeforeWorkerRuns_MarksSimulationFailed()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = new Engine
+        {
+            Name = "Shared Engine",
+            EngineType = "Test",
+            CreatedBy = null,
+            IsActive = true
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateController(context, CreatePrincipal("alice"), deferredQueue);
+
+        var result = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "CFD"
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        engine.IsActive = false;
+        await context.SaveChangesAsync();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(
+            new SingleServiceProvider(workerContext),
+            CancellationToken.None);
+
+        var simulation = await context.EngineSimulations.AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == response.Id);
+        simulation.Status.Should().Be("Failed");
+        simulation.ErrorMessage.Should().Contain("inactive");
+    }
+
+    [Fact]
     public async Task RunSimulation_WhenBackgroundQueueIsFull_ReturnsServiceUnavailableWithoutCreatingSimulation()
     {
         await using var context = CreateContext();

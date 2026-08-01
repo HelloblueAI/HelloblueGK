@@ -66,8 +66,11 @@ public class AuthController : ControllerBase
                 return InvalidCredentialsResponse();
             }
 
+            // Case-insensitive match so normalized registrations and legacy
+            // mixed-case usernames remain reachable without ownership IDOR.
+            var normalizedUsername = username.Trim().ToLowerInvariant();
             var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
+                .FirstOrDefaultAsync(u => u.Username.ToLower() == normalizedUsername && u.IsActive);
 
             if (user == null)
             {
@@ -308,7 +311,16 @@ public class AuthController : ControllerBase
             });
         }
 
-        if (await _context.Users.AnyAsync(u => u.Username == username || u.Email == email))
+        // Normalize before persistence so case-variant usernames/emails cannot be
+        // registered beside an existing account (closes ownership IDOR via casing).
+        username = username.Trim();
+        email = email.Trim();
+        var normalizedUsername = username.ToLowerInvariant();
+        var normalizedEmail = email.ToLowerInvariant();
+
+        if (await _context.Users.AnyAsync(u =>
+                u.Username.ToLower() == normalizedUsername ||
+                u.Email.ToLower() == normalizedEmail))
         {
             // Generic message avoids username/email account enumeration.
             _logger.LogInformation(
@@ -326,8 +338,8 @@ public class AuthController : ControllerBase
 
         var user = new User
         {
-            Username = username,
-            Email = email,
+            Username = normalizedUsername,
+            Email = normalizedEmail,
             PasswordHash = HashPassword(password),
             FirstName = firstName,
             LastName = lastName,
