@@ -868,7 +868,7 @@ public class ControllerAuthorizationSecurityTests
 
         var ownerKey = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+                System.Text.Encoding.UTF8.GetBytes("alice")))[..16];
         var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
         digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeFalse();
     }
@@ -901,7 +901,7 @@ public class ControllerAuthorizationSecurityTests
 
         var ownerKey = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+                System.Text.Encoding.UTF8.GetBytes("alice")))[..16];
         var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
         digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeFalse();
     }
@@ -1182,7 +1182,7 @@ public class ControllerAuthorizationSecurityTests
 
         var ownerKey = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes("ALICE")))[..16];
+                System.Text.Encoding.UTF8.GetBytes("alice")))[..16];
         var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
 
         // Loser must not wipe the shared runtime state the winner still needs.
@@ -1246,7 +1246,7 @@ public class ControllerAuthorizationSecurityTests
         // Confirm runtime state exists, then deactivate and confirm eviction.
         var ownerKey = Convert.ToHexString(
             System.Security.Cryptography.SHA256.HashData(
-                System.Text.Encoding.UTF8.GetBytes("ADMIN")))[..16];
+                System.Text.Encoding.UTF8.GetBytes("admin")))[..16];
         var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
         digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeTrue();
 

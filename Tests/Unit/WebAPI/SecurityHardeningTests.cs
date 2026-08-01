@@ -496,7 +496,8 @@ public class SecurityHardeningTests
         jwtService.Setup(service => service.GenerateToken(It.IsAny<User>())).Returns("token");
         jwtService.Setup(service => service.GenerateRefreshToken()).Returns("refresh-token");
         jwtService.Setup(service => service.HashRefreshToken(It.IsAny<string>())).Returns("refresh-hash");
-        jwtService.Setup(service => service.GetRefreshTokenLifetime()).Returns(TimeSpan.FromDays(7));
+        jwtService.Setup(service => service.GetTokenExpirationSeconds()).Returns(3600);
+        jwtService.Setup(service => service.GetRefreshTokenExpirationSeconds()).Returns(604800);
 
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -514,7 +515,14 @@ public class SecurityHardeningTests
         {
             ControllerContext = new ControllerContext
             {
-                HttpContext = new DefaultHttpContext()
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/auth/register"
+                    }
+                }
             }
         };
 
