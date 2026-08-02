@@ -367,7 +367,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 return Ok(new { message = "Optimization cancelled successfully" });
             }
-            catch (Exception ex)
+            catch (DbUpdateException ex)
             {
                 _logger.LogError(ex, "Error cancelling optimization {OptimizationId}", id);
                 return StatusCode(500, "An error occurred while cancelling the optimization");
