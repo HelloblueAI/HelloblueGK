@@ -1443,7 +1443,7 @@ public class SecurityHardeningTests
     }
 
     [Fact]
-    public async Task BoundedBackgroundWorkQueue_TryCancel_SignalsRegisteredWorkItemToken()
+    public void BoundedBackgroundWorkQueue_TryCancel_SignalsRegisteredWorkItemToken()
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -1489,8 +1489,20 @@ public class SecurityHardeningTests
         finished.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
         observed.Should().NotBeNull();
 
-        // Slot should be released after cancellation so new work can be acquired.
-        queue.TryAcquire(out var nextSlot).Should().BeTrue();
+        // Slot release happens in the queue runner finally after the work item ends.
+        IBackgroundWorkSlot? nextSlot = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (queue.TryAcquire(out nextSlot) && nextSlot != null)
+            {
+                break;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        nextSlot.Should().NotBeNull("cancelled work should release its concurrency slot");
         nextSlot!.Dispose();
     }
 
