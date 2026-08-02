@@ -171,6 +171,49 @@ public class DigitalTwinEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task PredictEngineBehaviorAsync_ShouldSeedDefaultsFromEngineModel()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            "RaptorTwin",
+            new EngineModel
+            {
+                Name = "Raptor",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 2_200_000,
+                    ["Efficiency"] = 0.95
+                }
+            });
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            "MerlinTwin",
+            new EngineModel
+            {
+                Name = "Merlin",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 845_000,
+                    ["Efficiency"] = 0.88
+                }
+            });
+
+        var emptyScenario = new PredictionScenario
+        {
+            Name = "Nominal",
+            Parameters = new Dictionary<string, object>()
+        };
+
+        var raptor = await _digitalTwinEngine.PredictEngineBehaviorAsync("RaptorTwin", emptyScenario);
+        var merlin = await _digitalTwinEngine.PredictEngineBehaviorAsync("MerlinTwin", emptyScenario);
+
+        raptor.PredictedMetrics["Thrust"].Should().Be(2_200_000);
+        merlin.PredictedMetrics["Thrust"].Should().Be(845_000);
+        raptor.PredictedMetrics["Efficiency"].Should().BeApproximately(0.95, 0.0001);
+        merlin.PredictedMetrics["Efficiency"].Should().BeApproximately(0.88, 0.0001);
+    }
+
+    [Fact]
     public async Task GenerateDigitalTwinSummaryAsync_ShouldReturnSummary()
     {
         // Arrange

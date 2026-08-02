@@ -402,7 +402,7 @@ namespace HB_NLP_Research_Lab.Core
                 await engineGate.Semaphore.WaitAsync();
                 try
                 {
-                    if (!_digitalTwins.ContainsKey(engineId))
+                    if (!_digitalTwins.TryGetValue(engineId, out var twinForPrediction))
                         throw new ArgumentException($"Digital twin not found for engine: {engineId}");
 
                     Console.WriteLine($"[Digital Twin] 🔮 Predicting Engine Behavior for {engineId}...");
@@ -411,7 +411,10 @@ namespace HB_NLP_Research_Lab.Core
                     if (!_predictionAccuracies.TryGetValue(engineId, out var predictionAccuracy))
                         predictionAccuracy = new PredictionAccuracy { OverallAccuracy = 0.0 };
 
-                    var prediction = await _predictiveTwin.PredictEngineBehaviorAsync(engineId, scenario);
+                    var prediction = await _predictiveTwin.PredictEngineBehaviorAsync(
+                        engineId,
+                        scenario,
+                        twinForPrediction.EngineModel);
                     var predictionRecord = new PredictionRecord
                     {
                         Timestamp = DateTime.UtcNow,
@@ -510,6 +513,13 @@ namespace HB_NLP_Research_Lab.Core
             
             // Run predictive multi-physics analysis
             var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(physicsEngineModel);
+
+            var thrust = TryReadEngineParameter(engineModel, "Thrust", out var engineThrust) && engineThrust > 0
+                ? engineThrust
+                : 1500000.0;
+            var efficiency = TryReadEngineParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
+                ? Math.Clamp(engineEfficiency, 0.0, 1.0)
+                : 0.92;
             
             // Create predictive result
             var prediction = new MultiPhysicsPrediction
@@ -520,10 +530,10 @@ namespace HB_NLP_Research_Lab.Core
                 PredictionConfidence = 0.999,
                 PredictedPerformance = new PredictedPerformance
                 {
-                    Thrust = 1500000.0, // N
-                    Efficiency = 0.92,
+                    Thrust = thrust,
+                    Efficiency = efficiency,
                     Reliability = 0.999,
-                    ThermalEfficiency = 0.85,
+                    ThermalEfficiency = Math.Clamp(efficiency * 0.92, 0.0, 1.0),
                     StructuralSafety = 0.998
                 },
                 PredictedFailures = new List<PredictedFailure>
@@ -790,6 +800,28 @@ namespace HB_NLP_Research_Lab.Core
                 throw new ObjectDisposedException(nameof(DigitalTwinEngine));
         }
 
+        private static bool TryReadEngineParameter(
+            EngineModel? engineModel,
+            string key,
+            out double value)
+        {
+            value = 0;
+            if (engineModel?.Parameters == null)
+            {
+                return false;
+            }
+
+            var match = engineModel.Parameters.FirstOrDefault(pair =>
+                string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (match.Key == null)
+            {
+                return false;
+            }
+
+            value = match.Value;
+            return !double.IsNaN(value) && !double.IsInfinity(value);
+        }
+
         private (int LearningEvents, int ModelImprovements, int Predictions, double AverageModelImprovement)
             GetHistoryCounts(string engineId)
         {
@@ -974,12 +1006,24 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(100);
         }
         
-        public async Task<EnginePrediction> PredictEngineBehaviorAsync(string engineId, PredictionScenario scenario)
+        public Task<EnginePrediction> PredictEngineBehaviorAsync(string engineId, PredictionScenario scenario)
+        {
+            return PredictEngineBehaviorAsync(engineId, scenario, engineModel: null);
+        }
+
+        public async Task<EnginePrediction> PredictEngineBehaviorAsync(
+            string engineId,
+            PredictionScenario scenario,
+            EngineModel? engineModel)
         {
             await Task.Delay(100);
 
-            var thrust = 1500000.0;
-            var efficiency = 0.92;
+            var thrust = TryReadEngineModelParameter(engineModel, "Thrust", out var engineThrust) && engineThrust > 0
+                ? engineThrust
+                : 1500000.0;
+            var efficiency = TryReadEngineModelParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
+                ? Math.Clamp(engineEfficiency, 0.0, 1.0)
+                : 0.92;
             var reliability = 0.999;
             var parameters = scenario.Parameters ?? new Dictionary<string, object>();
 
@@ -1034,6 +1078,28 @@ namespace HB_NLP_Research_Lab.Core
                 PredictedIssues = new List<string>(),
                 RecommendedActions = new List<string>()
             };
+        }
+
+        private static bool TryReadEngineModelParameter(
+            EngineModel? engineModel,
+            string key,
+            out double value)
+        {
+            value = 0;
+            if (engineModel?.Parameters == null)
+            {
+                return false;
+            }
+
+            var match = engineModel.Parameters.FirstOrDefault(pair =>
+                string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase));
+            if (match.Key == null)
+            {
+                return false;
+            }
+
+            value = match.Value;
+            return !double.IsNaN(value) && !double.IsInfinity(value);
         }
 
         private static bool TryReadScenarioDouble(
