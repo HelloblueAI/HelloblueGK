@@ -67,15 +67,39 @@ public class AuthController : ControllerBase
             }
 
             // Case-insensitive match so normalized registrations and legacy
-            // mixed-case usernames remain reachable without ownership IDOR.
-            var normalizedUsername = username.Trim().ToLowerInvariant();
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username.ToLower() == normalizedUsername && u.IsActive);
+            // mixed-case usernames remain reachable. Prefer an ordinal exact match
+            // when legacy case-variants coexist; otherwise fail closed rather than
+            // issuing a token for an arbitrary FirstOrDefault row.
+            var trimmedUsername = username.Trim();
+            var normalizedUsername = trimmedUsername.ToLowerInvariant();
+            var candidates = await _context.Users
+                .Where(u => u.IsActive && u.Username.ToLower() == normalizedUsername)
+                .ToListAsync();
+
+            var user = candidates.Count switch
+            {
+                0 => null,
+                1 => candidates[0],
+                _ => candidates.FirstOrDefault(u =>
+                    string.Equals(u.Username, trimmedUsername, StringComparison.Ordinal))
+            };
 
             if (user == null)
             {
                 VerifyPassword(password, DummyPasswordHash);
-                _logger.LogWarning("Failed login attempt for username: {Username}", LogSanitizer.SanitizeIdentifier(username));
+                if (candidates.Count > 1)
+                {
+                    _logger.LogWarning(
+                        "Ambiguous case-variant username collision during login for: {Username}",
+                        LogSanitizer.SanitizeIdentifier(username));
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Failed login attempt for username: {Username}",
+                        LogSanitizer.SanitizeIdentifier(username));
+                }
+
                 return InvalidCredentialsResponse();
             }
 
