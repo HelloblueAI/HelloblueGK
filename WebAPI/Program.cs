@@ -362,11 +362,13 @@ using (var scope = app.Services.CreateScope())
 
         try
         {
-            // In-process workers do not survive restarts. Age-gate so a rolling deploy
-            // cannot fail-close jobs still executing on peer replicas that share the DB.
+            // In-process workers do not survive restarts. Default age is Zero (immediate
+            // fail-close). Multi-replica shared-DB deploys must set
+            // BackgroundWork:InterruptedJobMinimumAge (e.g. 00:30:00) so rolling deploys
+            // do not kill jobs still executing on peer replicas.
             var interruptedJobMinimumAge = app.Configuration.GetValue(
                 "BackgroundWork:InterruptedJobMinimumAge",
-                BackgroundJobReconciliation.DefaultInterruptedJobMinimumAge);
+                TimeSpan.Zero);
             await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
                 dbContext,
                 logger,

@@ -514,11 +514,10 @@ public class SecurityHardeningTests
             });
         await context.SaveChangesAsync();
 
-        // TimeSpan.Zero models single-instance immediate fail-close; production uses an age gate.
+        // Default / Zero: single-instance immediate fail-close (in-process work cannot resume).
         var result = await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
             context,
-            NullLogger.Instance,
-            TimeSpan.Zero);
+            NullLogger.Instance);
 
         result.Simulations.Should().Be(2);
         result.Optimizations.Should().Be(1);
@@ -617,10 +616,11 @@ public class SecurityHardeningTests
             });
         await context.SaveChangesAsync();
 
+        // Explicit shared-DB age gate (multi-replica); default Zero would fail the fresh peer rows.
         var result = await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
             context,
             NullLogger.Instance,
-            TimeSpan.FromMinutes(30));
+            BackgroundJobReconciliation.SharedDatabaseInterruptedJobMinimumAge);
 
         result.Simulations.Should().Be(1);
         result.Optimizations.Should().Be(1);

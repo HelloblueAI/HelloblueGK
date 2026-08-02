@@ -9,20 +9,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Services;
 /// crash or restart would otherwise leave Pending/Running/InProgress rows stranded forever.
 /// </summary>
 /// <remarks>
-/// Jobs are not process-scoped in the shared database. To avoid a rolling deploy killing work
-/// still executing on peer replicas, reconciliation only touches rows older than
-/// <c>minimumAge</c> (see <c>BackgroundWork:InterruptedJobMinimumAge</c>). Use
-/// <see cref="TimeSpan.Zero"/> for single-instance immediate fail-close on restart.
+/// Default <paramref name="minimumAge"/> is <see cref="TimeSpan.Zero"/> so a single-instance
+/// restart immediately fail-closes work that can never resume. Multi-replica deployments that
+/// share a database must set <c>BackgroundWork:InterruptedJobMinimumAge</c> (e.g. 30 minutes)
+/// so a rolling deploy cannot kill jobs still executing on peer replicas.
 /// </remarks>
 public static class BackgroundJobReconciliation
 {
     public const string InterruptedMessage = "Interrupted by process restart";
 
     /// <summary>
-    /// Default age gate for shared-database / multi-instance deployments.
-    /// Younger in-flight rows are assumed to belong to a live peer worker.
+    /// Recommended age gate when multiple WebAPI instances share one database.
     /// </summary>
-    public static readonly TimeSpan DefaultInterruptedJobMinimumAge = TimeSpan.FromMinutes(30);
+    public static readonly TimeSpan SharedDatabaseInterruptedJobMinimumAge = TimeSpan.FromMinutes(30);
 
     public static async Task<BackgroundJobReconciliationResult> ReconcileInterruptedJobsAsync(
         HelloblueGKDbContext context,
@@ -38,7 +37,9 @@ public static class BackgroundJobReconciliation
             throw new ArgumentOutOfRangeException(nameof(minimumAge), minimumAge, "minimumAge cannot be negative.");
         }
 
-        var ageGate = minimumAge ?? DefaultInterruptedJobMinimumAge;
+        // Zero: single-instance immediate fail-close (in-process work never resumes).
+        // Non-zero: protect peer replicas during rolling deploys / shared DB.
+        var ageGate = minimumAge ?? TimeSpan.Zero;
         var cutoff = DateTime.UtcNow - ageGate;
         var completedAt = DateTime.UtcNow;
 
