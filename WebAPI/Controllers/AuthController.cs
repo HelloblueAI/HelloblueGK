@@ -66,13 +66,40 @@ public class AuthController : ControllerBase
                 return InvalidCredentialsResponse();
             }
 
-            var user = await _context.Users
-                .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
+            // Case-insensitive match so normalized registrations and legacy
+            // mixed-case usernames remain reachable. Prefer an ordinal exact match
+            // when legacy case-variants coexist; otherwise fail closed rather than
+            // issuing a token for an arbitrary FirstOrDefault row.
+            var trimmedUsername = username.Trim();
+            var normalizedUsername = trimmedUsername.ToLowerInvariant();
+            var candidates = await _context.Users
+                .Where(u => u.IsActive && u.Username.ToLower() == normalizedUsername)
+                .ToListAsync();
+
+            var user = candidates.Count switch
+            {
+                0 => null,
+                1 => candidates[0],
+                _ => candidates.FirstOrDefault(u =>
+                    string.Equals(u.Username, trimmedUsername, StringComparison.Ordinal))
+            };
 
             if (user == null)
             {
                 VerifyPassword(password, DummyPasswordHash);
-                _logger.LogWarning("Failed login attempt for username: {Username}", LogSanitizer.SanitizeIdentifier(username));
+                if (candidates.Count > 1)
+                {
+                    _logger.LogWarning(
+                        "Ambiguous case-variant username collision during login for: {Username}",
+                        LogSanitizer.SanitizeIdentifier(username));
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Failed login attempt for username: {Username}",
+                        LogSanitizer.SanitizeIdentifier(username));
+                }
+
                 return InvalidCredentialsResponse();
             }
 
@@ -308,7 +335,16 @@ public class AuthController : ControllerBase
             });
         }
 
-        if (await _context.Users.AnyAsync(u => u.Username == username || u.Email == email))
+        // Normalize before persistence so case-variant usernames/emails cannot be
+        // registered beside an existing account (closes ownership IDOR via casing).
+        username = username.Trim();
+        email = email.Trim();
+        var normalizedUsername = username.ToLowerInvariant();
+        var normalizedEmail = email.ToLowerInvariant();
+
+        if (await _context.Users.AnyAsync(u =>
+                u.Username.ToLower() == normalizedUsername ||
+                u.Email.ToLower() == normalizedEmail))
         {
             // Generic message avoids username/email account enumeration.
             _logger.LogInformation(
@@ -326,8 +362,8 @@ public class AuthController : ControllerBase
 
         var user = new User
         {
-            Username = username,
-            Email = email,
+            Username = normalizedUsername,
+            Email = normalizedEmail,
             PasswordHash = HashPassword(password),
             FirstName = firstName,
             LastName = lastName,

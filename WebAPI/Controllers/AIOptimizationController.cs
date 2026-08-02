@@ -225,12 +225,28 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                     return;
                                 }
 
-                                await ExecuteOptimizationAsync(optimizationId, scopedEngine, request, scopedContext);
+                                // Re-check activeness in the worker — the HTTP path gate can race
+                                // with an admin deactivating the engine after queueing.
+                                if (!scopedEngine.IsActive)
+                                {
+                                    await FailOptimizationAsync(
+                                        scopedContext,
+                                        optimizationId,
+                                        "Optimization failed because the engine is inactive.");
+                                    return;
+                                }
+
+                                await ExecuteOptimizationAsync(
+                                    optimizationId,
+                                    scopedEngine,
+                                    request,
+                                    scopedContext,
+                                    cancellationToken);
                             }
                             catch (OperationCanceledException ex)
                             {
                                 _logger.LogWarning(ex, "Optimization background work cancelled {OptimizationId}", optimizationId);
-                                await FailOptimizationAsync(
+                                await CancelOrFailOptimizationAsync(
                                     scopedContext,
                                     optimizationId,
                                     "Optimization cancelled before completion.");
@@ -308,16 +324,73 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
         }
 
-        private async Task ExecuteOptimizationAsync(int optimizationId, Engine engine, StartOptimizationRequest request, HelloblueGKDbContext context)
+        /// <summary>
+        /// Cancel a pending or running optimization
+        /// </summary>
+        [HttpPost("{id}/cancel")]
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        public async Task<IActionResult> CancelOptimization(int id)
+        {
+            try
+            {
+                var optimization = await _context.AIOptimizationRuns.FindAsync(id);
+                // Same 404 for missing and inaccessible to avoid ownership oracles.
+                if (optimization == null || !CurrentUserCanAccessOptimization(optimization))
+                {
+                    return NotFound(new { message = $"Optimization run with ID {id} not found" });
+                }
+
+                if (optimization.Status != "Running" && optimization.Status != "Pending")
+                {
+                    return BadRequest(new { message = $"Cannot cancel optimization with status: {optimization.Status}" });
+                }
+
+                var completedAt = DateTime.UtcNow;
+                var cancelled = await _context.AIOptimizationRuns
+                    .Where(o => o.Id == id && (o.Status == "Running" || o.Status == "Pending"))
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(o => o.Status, "Cancelled")
+                        .SetProperty(o => o.CompletedAt, completedAt)
+                        .SetProperty(o => o.ErrorMessage, (string?)null));
+
+                if (cancelled == 0)
+                {
+                    await _context.Entry(optimization).ReloadAsync();
+                    return BadRequest(new { message = $"Cannot cancel optimization with status: {optimization.Status}" });
+                }
+
+                optimization.Status = "Cancelled";
+                optimization.CompletedAt = completedAt;
+
+                return Ok(new { message = "Optimization cancelled successfully" });
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogError(ex, "Error cancelling optimization {OptimizationId}", id);
+                return StatusCode(500, "An error occurred while cancelling the optimization");
+            }
+        }
+
+        private async Task ExecuteOptimizationAsync(
+            int optimizationId,
+            Engine engine,
+            StartOptimizationRequest request,
+            HelloblueGKDbContext context,
+            CancellationToken cancellationToken)
         {
             try
             {
                 var startedAt = DateTime.UtcNow;
                 var claimed = await context.AIOptimizationRuns
                     .Where(o => o.Id == optimizationId && o.Status == "Pending")
-                    .ExecuteUpdateAsync(setters => setters
-                        .SetProperty(o => o.Status, "Running")
-                        .SetProperty(o => o.StartedAt, startedAt));
+                    .ExecuteUpdateAsync(
+                        setters => setters
+                            .SetProperty(o => o.Status, "Running")
+                            .SetProperty(o => o.StartedAt, startedAt),
+                        cancellationToken);
 
                 if (claimed == 0)
                 {
@@ -342,7 +415,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Run the requested algorithm (defaults to full multi-stage when unset).
                 var result = await _optimizationEngine.OptimizeEngineDesignAsync(
                     parameters,
-                    request.AlgorithmType);
+                    request.AlgorithmType,
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 var innovationReport = await _optimizationEngine.AnalyzeInnovationAsync(parameters);
 
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
@@ -402,6 +477,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 _logger.LogInformation("Optimization {OptimizationId} completed: {Improvement}% improvement", 
                     optimizationId, improvement);
             }
+            catch (OperationCanceledException)
+            {
+                await CancelOrFailOptimizationAsync(
+                    context,
+                    optimizationId,
+                    "Optimization cancelled before completion.");
+                throw;
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error executing optimization {OptimizationId}", optimizationId);
@@ -422,6 +505,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                             (o.Status == "Pending" || o.Status == "Running"))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(o => o.Status, "Failed")
+                    .SetProperty(o => o.CompletedAt, DateTime.UtcNow)
+                    .SetProperty(o => o.ErrorMessage, errorMessage));
+        }
+
+        /// <summary>
+        /// Mark Pending/Running as Cancelled. No-ops when a cancel endpoint already won.
+        /// </summary>
+        private static async Task CancelOrFailOptimizationAsync(
+            HelloblueGKDbContext context,
+            int optimizationId,
+            string errorMessage)
+        {
+            await context.AIOptimizationRuns
+                .Where(o => o.Id == optimizationId &&
+                            (o.Status == "Pending" || o.Status == "Running"))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(o => o.Status, "Cancelled")
                     .SetProperty(o => o.CompletedAt, DateTime.UtcNow)
                     .SetProperty(o => o.ErrorMessage, errorMessage));
         }
@@ -452,7 +552,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
             var currentUsername = GetCurrentUsername();
             return !string.IsNullOrWhiteSpace(currentUsername) &&
-                string.Equals(optimization.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+                string.Equals(optimization.CreatedBy, currentUsername, StringComparison.Ordinal);
         }
 
         private string? GetCurrentUsername()

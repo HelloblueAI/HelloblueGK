@@ -43,61 +43,86 @@ namespace HB_NLP_Research_Lab.Core
 
         public Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters)
         {
-            return OptimizeEngineDesignAsync(parameters, algorithmType: null);
+            return OptimizeEngineDesignAsync(parameters, algorithmType: null, CancellationToken.None);
+        }
+
+        public Task<OptimizationResult> OptimizeEngineDesignAsync(
+            EngineDesignParameters parameters,
+            string? algorithmType)
+        {
+            return OptimizeEngineDesignAsync(parameters, algorithmType, CancellationToken.None);
         }
 
         public async Task<OptimizationResult> OptimizeEngineDesignAsync(
             EngineDesignParameters parameters,
-            string? algorithmType)
+            string? algorithmType,
+            CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Advanced AI] 🧠 Optimizing engine design with AI...");
 
             var normalizedAlgorithm = NormalizeAlgorithmType(algorithmType);
+            cancellationToken.ThrowIfCancellationRequested();
             
             // Check cache first
             var cacheKey = GenerateCacheKey(parameters, normalizedAlgorithm);
             if (_optimizationCache.TryGetValue(cacheKey, out var cachedResult))
                 return cachedResult;
 
+            // Always share in-flight work for identical cache keys (including background
+            // jobs that pass ApplicationStopping, which is cancellable). Shared work uses
+            // CancellationToken.None; callers WaitAsync with their own token so one cancel
+            // abandons only that waiter and cannot abort siblings on the same key.
             var optimization = _inflightOptimizations.GetOrAdd(
                 cacheKey,
                 _ => new Lazy<Task<OptimizationResult>>(
                     () => _optimizationCache.TryGetValue(cacheKey, out var completedResult)
                         ? Task.FromResult(completedResult)
-                        : PerformMultiStageOptimizationAsync(parameters, normalizedAlgorithm),
+                        : PerformMultiStageOptimizationAsync(
+                            parameters,
+                            normalizedAlgorithm,
+                            CancellationToken.None),
                     LazyThreadSafetyMode.ExecutionAndPublication));
 
             try
             {
-                var result = await optimization.Value;
-
-                lock (_cacheLock)
-                {
-                    if (!_optimizationCache.ContainsKey(cacheKey))
-                    {
-                        while (_optimizationCache.Count >= MaximumCachedOptimizations
-                            && _cacheOrder.TryDequeue(out var oldestKey))
-                        {
-                            _optimizationCache.TryRemove(oldestKey, out _);
-                        }
-
-                        _optimizationCache[cacheKey] = result;
-                        _cacheOrder.Enqueue(cacheKey);
-                    }
-                }
-
+                var result = await optimization.Value.WaitAsync(cancellationToken);
+                CacheOptimizationResult(cacheKey, result);
                 return result;
             }
             finally
             {
-                ((ICollection<KeyValuePair<string, Lazy<Task<OptimizationResult>>>>)_inflightOptimizations)
-                    .Remove(new KeyValuePair<string, Lazy<Task<OptimizationResult>>>(cacheKey, optimization));
+                // Do not drop the shared entry if this waiter was cancelled mid-flight;
+                // siblings may still be awaiting the same Lazy task.
+                if (optimization.IsValueCreated && optimization.Value.IsCompleted)
+                {
+                    ((ICollection<KeyValuePair<string, Lazy<Task<OptimizationResult>>>>)_inflightOptimizations)
+                        .Remove(new KeyValuePair<string, Lazy<Task<OptimizationResult>>>(cacheKey, optimization));
+                }
+            }
+        }
+
+        private void CacheOptimizationResult(string cacheKey, OptimizationResult result)
+        {
+            lock (_cacheLock)
+            {
+                if (!_optimizationCache.ContainsKey(cacheKey))
+                {
+                    while (_optimizationCache.Count >= MaximumCachedOptimizations
+                        && _cacheOrder.TryDequeue(out var oldestKey))
+                    {
+                        _optimizationCache.TryRemove(oldestKey, out _);
+                    }
+
+                    _optimizationCache[cacheKey] = result;
+                    _cacheOrder.Enqueue(cacheKey);
+                }
             }
         }
 
         private async Task<OptimizationResult> PerformMultiStageOptimizationAsync(
             EngineDesignParameters parameters,
-            string algorithmType)
+            string algorithmType,
+            CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Advanced AI] 🚀 Starting {algorithmType} optimization...");
 
@@ -108,43 +133,43 @@ namespace HB_NLP_Research_Lab.Core
             {
                 case "Genetic":
                 {
-                    var geneticResult = await _geneticOptimizer.OptimizeAsync(currentParameters);
+                    var geneticResult = await _geneticOptimizer.OptimizeAsync(currentParameters, cancellationToken);
                     stages.Add(geneticResult);
                     currentParameters = geneticResult.OptimizedParameters;
                     break;
                 }
                 case "NeuralNetwork":
                 {
-                    var neuralResult = await _neuralOptimizer.OptimizeAsync(currentParameters);
+                    var neuralResult = await _neuralOptimizer.OptimizeAsync(currentParameters, cancellationToken);
                     stages.Add(neuralResult);
                     currentParameters = neuralResult.OptimizedParameters;
                     break;
                 }
                 case "MultiObjective":
                 {
-                    var multiObjectiveResult = await _multiObjectiveOptimizer.OptimizeAsync(currentParameters);
+                    var multiObjectiveResult = await _multiObjectiveOptimizer.OptimizeAsync(currentParameters, cancellationToken);
                     stages.Add(multiObjectiveResult);
                     currentParameters = multiObjectiveResult.OptimizedParameters;
                     break;
                 }
                 case "ReinforcementLearning":
                 {
-                    var rlResult = await _reinforcementLearningOptimizer.OptimizeAsync(currentParameters);
+                    var rlResult = await _reinforcementLearningOptimizer.OptimizeAsync(currentParameters, cancellationToken);
                     stages.Add(rlResult);
                     currentParameters = rlResult.OptimizedParameters;
                     break;
                 }
                 default:
                 {
-                    var geneticResult = await _geneticOptimizer.OptimizeAsync(currentParameters);
+                    var geneticResult = await _geneticOptimizer.OptimizeAsync(currentParameters, cancellationToken);
                     Console.WriteLine($"[Advanced AI] Genetic optimization: {geneticResult.ImprovementPercentage:F1}% improvement");
                     stages.Add(geneticResult);
 
-                    var neuralResult = await _neuralOptimizer.OptimizeAsync(geneticResult.OptimizedParameters);
+                    var neuralResult = await _neuralOptimizer.OptimizeAsync(geneticResult.OptimizedParameters, cancellationToken);
                     Console.WriteLine($"[Advanced AI] Neural optimization: {neuralResult.ImprovementPercentage:F1}% improvement");
                     stages.Add(neuralResult);
 
-                    var multiObjectiveResult = await _multiObjectiveOptimizer.OptimizeAsync(neuralResult.OptimizedParameters);
+                    var multiObjectiveResult = await _multiObjectiveOptimizer.OptimizeAsync(neuralResult.OptimizedParameters, cancellationToken);
                     Console.WriteLine($"[Advanced AI] Multi-objective optimization: {multiObjectiveResult.ImprovementPercentage:F1}% improvement");
                     stages.Add(multiObjectiveResult);
                     currentParameters = multiObjectiveResult.OptimizedParameters;
@@ -152,8 +177,9 @@ namespace HB_NLP_Research_Lab.Core
                 }
             }
 
-            var predictedPerformance = await _performancePredictor.PredictPerformanceAsync(currentParameters);
-            var innovationScore = await _innovationAnalyzer.AnalyzeInnovationAsync(currentParameters);
+            cancellationToken.ThrowIfCancellationRequested();
+            var predictedPerformance = await _performancePredictor.PredictPerformanceAsync(currentParameters, cancellationToken);
+            var innovationScore = await _innovationAnalyzer.AnalyzeInnovationAsync(currentParameters, cancellationToken);
             var stageArray = stages.ToArray();
 
             var finalResult = new OptimizationResult
@@ -238,11 +264,16 @@ namespace HB_NLP_Research_Lab.Core
     // Genetic Algorithm Optimizer
     public class GeneticAlgorithmOptimizer
     {
-        public async Task<StageResult> OptimizeAsync(EngineDesignParameters parameters)
+        public Task<StageResult> OptimizeAsync(EngineDesignParameters parameters) =>
+            OptimizeAsync(parameters, CancellationToken.None);
+
+        public async Task<StageResult> OptimizeAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Genetic Algorithm] 🧬 Running genetic algorithm optimization...");
             
-            await Task.Delay(200); // Simulate optimization time
+            await Task.Delay(200, cancellationToken); // Simulate optimization time
             
             // Simulate genetic algorithm optimization
             var random = new Random();
@@ -269,11 +300,16 @@ namespace HB_NLP_Research_Lab.Core
     // Neural Network Optimizer
     public class NeuralNetworkOptimizer
     {
-        public async Task<StageResult> OptimizeAsync(EngineDesignParameters parameters)
+        public Task<StageResult> OptimizeAsync(EngineDesignParameters parameters) =>
+            OptimizeAsync(parameters, CancellationToken.None);
+
+        public async Task<StageResult> OptimizeAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Neural Network] 🧠 Running neural network optimization...");
             
-            await Task.Delay(150); // Simulate optimization time
+            await Task.Delay(150, cancellationToken); // Simulate optimization time
             
             var random = new Random();
             var improvement = 8.0 + random.NextDouble() * 15.0; // 8-23% improvement
@@ -299,11 +335,16 @@ namespace HB_NLP_Research_Lab.Core
     // Multi-Objective Optimizer
     public class MultiObjectiveOptimizer
     {
-        public async Task<StageResult> OptimizeAsync(EngineDesignParameters parameters)
+        public Task<StageResult> OptimizeAsync(EngineDesignParameters parameters) =>
+            OptimizeAsync(parameters, CancellationToken.None);
+
+        public async Task<StageResult> OptimizeAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Multi-Objective] 🎯 Running multi-objective optimization...");
             
-            await Task.Delay(180); // Simulate optimization time
+            await Task.Delay(180, cancellationToken); // Simulate optimization time
             
             var random = new Random();
             var improvement = 12.0 + random.NextDouble() * 18.0; // 12-30% improvement
@@ -337,10 +378,15 @@ namespace HB_NLP_Research_Lab.Core
         private const double LearningRate = 0.3;
         private const double DiscountFactor = 0.9;
 
-        public async Task<StageResult> OptimizeAsync(EngineDesignParameters parameters)
+        public Task<StageResult> OptimizeAsync(EngineDesignParameters parameters) =>
+            OptimizeAsync(parameters, CancellationToken.None);
+
+        public async Task<StageResult> OptimizeAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Reinforcement Learning] 🎯 Running policy-iteration optimization...");
-            await Task.Delay(120);
+            await Task.Delay(120, cancellationToken);
 
             var random = new Random(HashCode.Combine(
                 parameters.Thrust.GetHashCode(),
@@ -447,9 +493,14 @@ namespace HB_NLP_Research_Lab.Core
     // Performance Predictor
     public class PerformancePredictor
     {
-        public async Task<PerformancePrediction> PredictPerformanceAsync(EngineDesignParameters parameters)
+        public Task<PerformancePrediction> PredictPerformanceAsync(EngineDesignParameters parameters) =>
+            PredictPerformanceAsync(parameters, CancellationToken.None);
+
+        public async Task<PerformancePrediction> PredictPerformanceAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
-            await Task.Delay(100);
+            await Task.Delay(100, cancellationToken);
             
             var random = new Random();
             var confidenceLevel = 85.0 + random.NextDouble() * 15.0; // 85-100% confidence
@@ -468,9 +519,14 @@ namespace HB_NLP_Research_Lab.Core
     // Innovation Analyzer
     public class InnovationAnalyzer
     {
-        public async Task<double> AnalyzeInnovationAsync(EngineDesignParameters parameters)
+        public Task<double> AnalyzeInnovationAsync(EngineDesignParameters parameters) =>
+            AnalyzeInnovationAsync(parameters, CancellationToken.None);
+
+        public async Task<double> AnalyzeInnovationAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
-            await Task.Delay(50);
+            await Task.Delay(50, cancellationToken);
             
             var random = new Random();
             return 75.0 + random.NextDouble() * 25.0; // 75-100% innovation score
@@ -578,6 +634,10 @@ namespace HB_NLP_Research_Lab.Core
     {
         Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters);
         Task<OptimizationResult> OptimizeEngineDesignAsync(EngineDesignParameters parameters, string? algorithmType);
+        Task<OptimizationResult> OptimizeEngineDesignAsync(
+            EngineDesignParameters parameters,
+            string? algorithmType,
+            CancellationToken cancellationToken);
         Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters);
         Task<PerformancePrediction> PredictPerformanceAsync(EngineDesignParameters parameters);
     }

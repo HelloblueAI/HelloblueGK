@@ -40,6 +40,110 @@ namespace HelloblueGK.Tests.Unit.WebAPI;
 public class SecurityHardeningTests
 {
     [Fact]
+    public async Task Login_WithAmbiguousCaseVariantUsernames_RequiresExactMatch()
+    {
+        await using var context = CreateContext();
+        context.Users.AddRange(
+            new User
+            {
+                Username = "alice",
+                Email = "alice@example.com",
+                PasswordHash = CreateLegacySha256Hash("alice-password"),
+                IsActive = true
+            },
+            new User
+            {
+                Username = "Alice",
+                Email = "alice.admin@example.com",
+                PasswordHash = CreateLegacySha256Hash("Alice-password"),
+                IsActive = true
+            });
+        await context.SaveChangesAsync();
+
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.GenerateToken(It.IsAny<User>()))
+            .Returns("jwt-token");
+        jwtService
+            .Setup(service => service.GenerateRefreshToken())
+            .Returns("refresh-token");
+        jwtService
+            .Setup(service => service.HashRefreshToken("refresh-token"))
+            .Returns("refresh-token-hash");
+        jwtService
+            .Setup(service => service.GetTokenExpirationSeconds())
+            .Returns(7200);
+        jwtService
+            .Setup(service => service.GetRefreshTokenExpirationSeconds())
+            .Returns(604800);
+
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Development);
+
+        var exactResult = await controller.Login(new LoginRequest
+        {
+            Username = "alice",
+            Password = "alice-password"
+        });
+        var exactResponse = exactResult.Should().BeOfType<OkObjectResult>().Subject.Value
+            .Should().BeOfType<LoginResponse>().Subject;
+        exactResponse.Token.Should().Be("jwt-token");
+        jwtService.Verify(
+            service => service.GenerateToken(It.Is<User>(candidate => candidate.Username == "alice")),
+            Times.Once);
+
+        var ambiguousResult = await controller.Login(new LoginRequest
+        {
+            Username = "ALICE",
+            Password = "alice-password"
+        });
+        ambiguousResult.Should().BeOfType<UnauthorizedObjectResult>();
+        jwtService.Verify(
+            service => service.GenerateToken(It.IsAny<User>()),
+            Times.Once);
+    }
+
+    [Fact]
+    public async Task Login_WithSingleLegacyMixedCaseUsername_AllowsCaseInsensitiveMatch()
+    {
+        await using var context = CreateContext();
+        context.Users.Add(new User
+        {
+            Username = "LegacyUser",
+            Email = "legacyuser@example.com",
+            PasswordHash = CreateLegacySha256Hash("correct-password"),
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var jwtService = new Mock<IJwtService>(MockBehavior.Strict);
+        jwtService
+            .Setup(service => service.GenerateToken(It.Is<User>(candidate => candidate.Username == "LegacyUser")))
+            .Returns("jwt-token");
+        jwtService
+            .Setup(service => service.GenerateRefreshToken())
+            .Returns("refresh-token");
+        jwtService
+            .Setup(service => service.HashRefreshToken("refresh-token"))
+            .Returns("refresh-token-hash");
+        jwtService
+            .Setup(service => service.GetTokenExpirationSeconds())
+            .Returns(7200);
+        jwtService
+            .Setup(service => service.GetRefreshTokenExpirationSeconds())
+            .Returns(604800);
+
+        var controller = CreateAuthController(context, jwtService.Object, Environments.Development);
+        var result = await controller.Login(new LoginRequest
+        {
+            Username = "legacyuser",
+            Password = "correct-password"
+        });
+
+        result.Should().BeOfType<OkObjectResult>();
+        jwtService.Verify(service => service.GenerateToken(It.IsAny<User>()), Times.Once);
+    }
+
+    [Fact]
     public async Task Login_WithLegacySha256HashOutsideDevelopment_ReturnsUnauthorizedAndDoesNotUpgrade()
     {
         await using var context = CreateContext();
@@ -442,6 +546,101 @@ public class SecurityHardeningTests
         error.Message.Should().Be("Unable to register with the provided credentials");
         error.Message.Should().NotContain("Username");
         error.Message.Should().NotContain("Email");
+    }
+
+    [Fact]
+    public async Task Register_WithCaseVariantUsername_ReturnsGenericErrorAndDoesNotCreateUser()
+    {
+        await using var context = CreateContext();
+        context.Users.Add(new User
+        {
+            Username = "taken",
+            Email = "taken@example.com",
+            PasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        var controller = new AuthController(
+            context,
+            Mock.Of<IJwtService>(),
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "TAKEN",
+            Email = "other@example.com",
+            Password = "Password123!"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Count(u => u.Username.ToLower() == "taken").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Register_NormalizesUsernameAndEmailToLowercase()
+    {
+        await using var context = CreateContext();
+        var jwtService = new Mock<IJwtService>();
+        jwtService.Setup(service => service.GenerateToken(It.IsAny<User>())).Returns("token");
+        jwtService.Setup(service => service.GenerateRefreshToken()).Returns("refresh-token");
+        jwtService.Setup(service => service.HashRefreshToken(It.IsAny<string>())).Returns("refresh-hash");
+        jwtService.Setup(service => service.GetTokenExpirationSeconds()).Returns(3600);
+        jwtService.Setup(service => service.GetRefreshTokenExpirationSeconds()).Returns(604800);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        var controller = new AuthController(
+            context,
+            jwtService.Object,
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/auth/register"
+                    }
+                }
+            }
+        };
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "Alice",
+            Email = "Alice@Example.COM",
+            Password = "Password123!"
+        });
+
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var stored = context.Users.Single();
+        stored.Username.Should().Be("alice");
+        stored.Email.Should().Be("alice@example.com");
     }
 
     [Fact]

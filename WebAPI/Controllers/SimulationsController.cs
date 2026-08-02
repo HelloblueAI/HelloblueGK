@@ -241,6 +241,17 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                     return;
                                 }
 
+                                // Re-check activeness in the worker — the HTTP path gate can race
+                                // with an admin deactivating the engine after queueing.
+                                if (!scopedEngine.IsActive)
+                                {
+                                    await FailSimulationAsync(
+                                        scopedContext,
+                                        simulationId,
+                                        "Simulation failed because the engine is inactive.");
+                                    return;
+                                }
+
                                 await ExecuteSimulationAsync(
                                     simulationId,
                                     scopedEngine,
@@ -579,7 +590,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
             var currentUsername = GetCurrentUsername();
             return !string.IsNullOrWhiteSpace(currentUsername) &&
-                string.Equals(simulation.CreatedBy, currentUsername, StringComparison.OrdinalIgnoreCase);
+                string.Equals(simulation.CreatedBy, currentUsername, StringComparison.Ordinal);
         }
 
         private static string? GetSafeErrorMessage(string status, string? errorMessage)
