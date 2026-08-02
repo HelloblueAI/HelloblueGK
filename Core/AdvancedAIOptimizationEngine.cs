@@ -68,18 +68,10 @@ namespace HB_NLP_Research_Lab.Core
             if (_optimizationCache.TryGetValue(cacheKey, out var cachedResult))
                 return cachedResult;
 
-            // Cancellable callers bypass shared in-flight dedup so one cancel cannot
-            // abort an unrelated waiter on the same cache key.
-            if (cancellationToken.CanBeCanceled)
-            {
-                var cancellableResult = await PerformMultiStageOptimizationAsync(
-                    parameters,
-                    normalizedAlgorithm,
-                    cancellationToken);
-                CacheOptimizationResult(cacheKey, cancellableResult);
-                return cancellableResult;
-            }
-
+            // Always share in-flight work for identical cache keys (including background
+            // jobs that pass ApplicationStopping, which is cancellable). Shared work uses
+            // CancellationToken.None; callers WaitAsync with their own token so one cancel
+            // abandons only that waiter and cannot abort siblings on the same key.
             var optimization = _inflightOptimizations.GetOrAdd(
                 cacheKey,
                 _ => new Lazy<Task<OptimizationResult>>(
@@ -93,14 +85,19 @@ namespace HB_NLP_Research_Lab.Core
 
             try
             {
-                var result = await optimization.Value;
+                var result = await optimization.Value.WaitAsync(cancellationToken);
                 CacheOptimizationResult(cacheKey, result);
                 return result;
             }
             finally
             {
-                ((ICollection<KeyValuePair<string, Lazy<Task<OptimizationResult>>>>)_inflightOptimizations)
-                    .Remove(new KeyValuePair<string, Lazy<Task<OptimizationResult>>>(cacheKey, optimization));
+                // Do not drop the shared entry if this waiter was cancelled mid-flight;
+                // siblings may still be awaiting the same Lazy task.
+                if (optimization.IsValueCreated && optimization.Value.IsCompleted)
+                {
+                    ((ICollection<KeyValuePair<string, Lazy<Task<OptimizationResult>>>>)_inflightOptimizations)
+                        .Remove(new KeyValuePair<string, Lazy<Task<OptimizationResult>>>(cacheKey, optimization));
+                }
             }
         }
 
