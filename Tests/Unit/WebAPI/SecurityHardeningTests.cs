@@ -1503,7 +1503,12 @@ public class SecurityHardeningTests
         }
 
         nextSlot.Should().NotBeNull("cancelled work should release its concurrency slot");
-        nextSlot!.Dispose();
+        if (nextSlot is null)
+        {
+            return;
+        }
+
+        nextSlot.Dispose();
     }
 
     [Fact]

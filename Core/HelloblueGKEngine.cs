@@ -176,7 +176,9 @@ namespace HB_NLP_Research_Lab.Core
                     algorithmType: null,
                     cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                innovationReport = await _aiOptimizationEngine.AnalyzeInnovationAsync(optimizationParameters);
+                innovationReport = await _aiOptimizationEngine.AnalyzeInnovationAsync(
+                    optimizationParameters,
+                    cancellationToken);
 
                 Console.WriteLine($"[HelloblueGK] 🎯 AI Optimization: {optimizationResult.OverallImprovement:F1}% improvement");
                 Console.WriteLine($"[HelloblueGK] 🔬 Innovation Score: {innovationReport.InnovationScore:F1}%");
@@ -288,9 +290,14 @@ namespace HB_NLP_Research_Lab.Core
         /// <summary>
         /// Analyzes innovation potential using advanced AI
         /// </summary>
-        public async Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters)
+        public Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters) =>
+            AnalyzeInnovationAsync(parameters, CancellationToken.None);
+
+        public Task<InnovationReport> AnalyzeInnovationAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
-            return await _aiOptimizationEngine.AnalyzeInnovationAsync(parameters);
+            return _aiOptimizationEngine.AnalyzeInnovationAsync(parameters, cancellationToken);
         }
 
         /// <summary>

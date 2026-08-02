@@ -131,6 +131,7 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
         ArgumentException.ThrowIfNullOrWhiteSpace(workItemName);
 
         // Link ApplicationStopping so deploy/shutdown and explicit cancel share one token.
+        // Ownership transfers into the Task.Run using-block (not disposed on this method's return).
         var workCts = CancellationTokenSource.CreateLinkedTokenSource(
             _applicationLifetime.ApplicationStopping);
 
@@ -145,35 +146,29 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
 
         _ = Task.Run(async () =>
         {
-            try
+            using (workCts)
             {
-                using var scope = _scopeFactory.CreateScope();
-                await workItem(scope.ServiceProvider, workCts.Token);
-            }
-            catch (OperationCanceledException) when (
-                workCts.IsCancellationRequested ||
-                _applicationLifetime.ApplicationStopping.IsCancellationRequested)
-            {
-                _logger.LogInformation(
-                    "Background work item {WorkItemName} cancelled",
-                    workItemName);
-            }
-            catch (Exception ex) when (LogBackgroundWorkFailure(ex, workItemName))
-            {
-            }
-            finally
-            {
-                if (_workCancellation.TryRemove(workItemName, out var registered) &&
-                    ReferenceEquals(registered, workCts))
+                try
                 {
-                    registered.Dispose();
+                    using var scope = _scopeFactory.CreateScope();
+                    await workItem(scope.ServiceProvider, workCts.Token);
                 }
-                else
+                catch (OperationCanceledException) when (
+                    workCts.IsCancellationRequested ||
+                    _applicationLifetime.ApplicationStopping.IsCancellationRequested)
                 {
-                    workCts.Dispose();
+                    _logger.LogInformation(
+                        "Background work item {WorkItemName} cancelled",
+                        workItemName);
                 }
-
-                ReleaseSlot();
+                catch (Exception ex) when (LogBackgroundWorkFailure(ex, workItemName))
+                {
+                }
+                finally
+                {
+                    _workCancellation.TryRemove(workItemName, out _);
+                    ReleaseSlot();
+                }
             }
         }, CancellationToken.None);
     }
@@ -191,20 +186,26 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
 
     public void Dispose()
     {
-        foreach (var pair in _workCancellation)
+        foreach (var key in _workCancellation.Keys.ToArray())
         {
-            if (_workCancellation.TryRemove(pair.Key, out var cts))
+            if (!_workCancellation.TryRemove(key, out var cts))
             {
-                try
-                {
-                    cts.Cancel();
-                }
-                catch (ObjectDisposedException)
-                {
-                }
-
-                cts.Dispose();
+                continue;
             }
+
+            try
+            {
+                cts.Cancel();
+            }
+            catch (ObjectDisposedException exception)
+            {
+                _logger.LogDebug(
+                    exception,
+                    "Cancellation token source for work item {WorkItemName} was already disposed during queue disposal.",
+                    key);
+            }
+
+            cts.Dispose();
         }
 
         _slots.Dispose();

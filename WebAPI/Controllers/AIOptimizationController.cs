@@ -421,7 +421,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     request.AlgorithmType,
                     cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                var innovationReport = await _optimizationEngine.AnalyzeInnovationAsync(parameters);
+                var innovationReport = await _optimizationEngine.AnalyzeInnovationAsync(
+                    parameters,
+                    cancellationToken);
 
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
 
