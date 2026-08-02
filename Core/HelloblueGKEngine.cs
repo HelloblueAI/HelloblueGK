@@ -112,6 +112,14 @@ namespace HB_NLP_Research_Lab.Core
                     break;
             }
 
+            // Seed physics results from persisted engine characteristics before request overrides
+            // so different engines do not collapse to identical constant-solver outputs.
+            ApplyDesignBaselineToPhysicsResults(
+                baselineDesign,
+                cfdResult,
+                thermalResult,
+                structuralResult);
+
             if (TryReadIntParameter(parameters, "iterations", out var requestedIterations) &&
                 requestedIterations > 0)
             {
@@ -120,13 +128,13 @@ namespace HB_NLP_Research_Lab.Core
 
             // Apply typed physics request parameters so CFD/Thermal/Structural results
             // reflect accepted inputs instead of only echoing them in ResultsJson.
+            // Solver Accuracy / ConvergenceRate remain solver-owned trust signals.
             ApplyPhysicsParameterOverrides(
                 parameters,
                 cfdResult,
                 thermalResult,
                 structuralResult,
-                ref iterations,
-                ref solverAccuracy);
+                ref iterations);
 
             // Real-time validation
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
@@ -148,16 +156,9 @@ namespace HB_NLP_Research_Lab.Core
                 ? new ThrustAnalysis()
                 : new ThrustAnalysis
                 {
-                    MaxThrust = DeriveThrust(cfdResult),
-                    Efficiency = NormalizeRatio(cfdResult.Accuracy)
+                    MaxThrust = ResolveThrust(cfdResult, baselineDesign, parameters),
+                    Efficiency = ResolveEfficiency(cfdResult.Accuracy, baselineDesign, parameters)
                 };
-
-            if (cfdResult != null &&
-                (TryReadDoubleParameter(parameters, "thrust", out var requestedThrust) ||
-                 TryReadDoubleParameter(parameters, "maxThrust", out requestedThrust)))
-            {
-                thrustAnalysis.MaxThrust = requestedThrust;
-            }
 
             var thermalAnalysis = thermalResult == null
                 ? new ThermalAnalysis()
@@ -379,13 +380,82 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
+        /// <summary>
+        /// Maps persisted engine characteristics onto solver outputs so CFD/Thermal/Structural
+        /// analysis varies by engine instead of collapsing to constant HighPerformance baselines.
+        /// Does not mutate solver Accuracy (kept as a trust/validation signal).
+        /// </summary>
+        private static void ApplyDesignBaselineToPhysicsResults(
+            EngineDesignParameters? baseline,
+            CfdAnalysisResult? cfdResult,
+            ThermalAnalysisResult? thermalResult,
+            StructuralAnalysisResult? structuralResult)
+        {
+            if (baseline == null)
+            {
+                return;
+            }
+
+            if (cfdResult != null)
+            {
+                if (baseline.ChamberPressure > 0)
+                {
+                    cfdResult.MaxPressure = baseline.ChamberPressure;
+                    cfdResult.PressureDistribution["chamber"] = baseline.ChamberPressure;
+                    cfdResult.PressureDistribution["nozzle"] = baseline.ChamberPressure / 3.0;
+                }
+
+                if (baseline.Thrust > 0)
+                {
+                    // Differentiate flow fields across engines without treating thrust as pressure.
+                    var velocity = Math.Max(Math.Sqrt(baseline.Thrust / 1000.0), 1.0);
+                    cfdResult.MaxVelocity = velocity;
+                    cfdResult.FlowVelocity = new Vector3((float)velocity, 0, 0);
+                }
+            }
+
+            if (thermalResult != null)
+            {
+                var efficiency = baseline.Efficiency > 0
+                    ? Math.Clamp(baseline.Efficiency, 0.0, 1.0)
+                    : 0.85;
+                thermalResult.HeatTransferEfficiency = efficiency * 100.0;
+
+                var temperature = 2500.0 + (efficiency * 1500.0);
+                if (baseline.ChamberPressure > 0)
+                {
+                    temperature *= Math.Clamp(baseline.ChamberPressure / 250.0, 0.5, 1.5);
+                }
+
+                thermalResult.MaxTemperature = temperature;
+                thermalResult.TemperatureDistribution["chamber"] = temperature;
+                thermalResult.TemperatureDistribution["nozzle"] = temperature * 0.8;
+                if (baseline.Thrust > 0)
+                {
+                    thermalResult.HeatTransferRate = baseline.Thrust * 2.5;
+                }
+            }
+
+            if (structuralResult != null && baseline.ChamberPressure > 0)
+            {
+                // ~2.67e6 Pa per bar ≈ 800e6 Pa at 300 bar (legacy constant structural baseline).
+                var maxStress = baseline.ChamberPressure * 2.67e6;
+                structuralResult.MaxStress = maxStress;
+                structuralResult.StressDistribution["chamber"] = maxStress;
+                structuralResult.StressDistribution["nozzle"] = maxStress * 0.75;
+                if (baseline.Efficiency > 0)
+                {
+                    structuralResult.SafetyFactor = Math.Clamp(1.2 + (baseline.Efficiency * 0.5), 1.2, 2.0);
+                }
+            }
+        }
+
         private static void ApplyPhysicsParameterOverrides(
             IReadOnlyDictionary<string, object>? parameters,
             CfdAnalysisResult? cfdResult,
             ThermalAnalysisResult? thermalResult,
             StructuralAnalysisResult? structuralResult,
-            ref int iterations,
-            ref double solverAccuracy)
+            ref int iterations)
         {
             if (parameters == null)
             {
@@ -430,13 +500,7 @@ namespace HB_NLP_Research_Lab.Core
 
                 // Do not copy thrust into MaxPressure — that misreports ChamberPressure in
                 // PerformanceMetrics. Requested thrust is applied to ThrustAnalysis.MaxThrust.
-
-                if (TryReadDoubleParameter(parameters, "efficiency", out var cfdEfficiency) ||
-                    TryReadDoubleParameter(parameters, "accuracy", out cfdEfficiency))
-                {
-                    cfdResult.Accuracy = NormalizeEfficiencyPercent(cfdEfficiency);
-                    solverAccuracy = cfdResult.Accuracy;
-                }
+                // Do not let clients overwrite Accuracy / ConvergenceRate trust signals.
 
                 if (TryReadDoubleParameter(parameters, "meshQuality", out var meshQuality))
                 {
@@ -456,8 +520,6 @@ namespace HB_NLP_Research_Lab.Core
                     TryReadDoubleParameter(parameters, "heatTransferEfficiency", out coolingEfficiency))
                 {
                     thermalResult.HeatTransferEfficiency = NormalizeRatio(coolingEfficiency) * 100.0;
-                    thermalResult.Accuracy = thermalResult.HeatTransferEfficiency;
-                    solverAccuracy = thermalResult.Accuracy;
                 }
 
                 if (TryReadDoubleParameter(parameters, "heatTransferRate", out var heatTransferRate))
@@ -487,28 +549,48 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private static double NormalizeEfficiencyPercent(double value)
+        private static double ResolveThrust(
+            CfdAnalysisResult cfdResult,
+            EngineDesignParameters? baselineDesign,
+            IReadOnlyDictionary<string, object>? parameters)
         {
-            if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+            if (TryReadDoubleParameter(parameters, "thrust", out var requestedThrust) ||
+                TryReadDoubleParameter(parameters, "maxThrust", out requestedThrust))
             {
-                return 0.0;
+                return requestedThrust;
             }
 
-            return value <= 1.0
-                ? Math.Clamp(value * 100.0, 0.0, 100.0)
-                : Math.Clamp(value, 0.0, 100.0);
+            if (baselineDesign != null && baselineDesign.Thrust > 0)
+            {
+                return baselineDesign.Thrust;
+            }
+
+            return DeriveThrust(cfdResult);
+        }
+
+        private static double ResolveEfficiency(
+            double solverAccuracy,
+            EngineDesignParameters? baselineDesign,
+            IReadOnlyDictionary<string, object>? parameters)
+        {
+            if (TryReadDoubleParameter(parameters, "efficiency", out var requestedEfficiency))
+            {
+                return NormalizeRatio(requestedEfficiency);
+            }
+
+            if (baselineDesign != null && baselineDesign.Efficiency > 0)
+            {
+                return Math.Clamp(baselineDesign.Efficiency, 0.0, 1.0);
+            }
+
+            return NormalizeRatio(solverAccuracy);
         }
 
         private static double DeriveThrust(CfdAnalysisResult cfdResult)
         {
-            if (cfdResult.MaxPressure > 0)
-            {
-                return cfdResult.MaxPressure;
-            }
-
             if (cfdResult.MaxVelocity > 0)
             {
-                return cfdResult.MaxVelocity;
+                return cfdResult.MaxVelocity * 1000.0;
             }
 
             var velocityMagnitude = cfdResult.FlowVelocity.Length();
@@ -517,6 +599,7 @@ namespace HB_NLP_Research_Lab.Core
                 return velocityMagnitude * 1000.0;
             }
 
+            // MaxPressure is chamber pressure (bar), not thrust — never treat it as Newtons.
             return Math.Max(cfdResult.CalculationCount, 1);
         }
 

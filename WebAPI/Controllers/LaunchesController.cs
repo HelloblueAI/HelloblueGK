@@ -270,12 +270,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     var launchId = launch.Id;
                     try
                     {
-                        backgroundWorkSlot.Queue(async (serviceProvider, _) =>
+                        backgroundWorkSlot.Queue(async (serviceProvider, cancellationToken) =>
                         {
                             var scopedContext = serviceProvider.GetRequiredService<HelloblueGKDbContext>();
                             try
                             {
-                                await ExecuteLaunchAsync(launchId, scopedContext);
+                                await ExecuteLaunchAsync(launchId, scopedContext, cancellationToken);
                             }
                             catch (OperationCanceledException ex)
                             {
@@ -444,13 +444,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             }
         }
 
-        private async Task ExecuteLaunchAsync(int launchId, HelloblueGKDbContext context)
+        private async Task ExecuteLaunchAsync(
+            int launchId,
+            HelloblueGKDbContext context,
+            CancellationToken cancellationToken = default)
         {
             try
             {
                 var launch = await context.Launches
                     .Include(l => l.Engine)
-                    .FirstOrDefaultAsync(l => l.Id == launchId);
+                    .FirstOrDefaultAsync(l => l.Id == launchId, cancellationToken);
 
                 if (launch == null) return;
 
@@ -510,6 +513,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     simulationType,
                     launchParameters,
                     design);
+                cancellationToken.ThrowIfCancellationRequested();
 
                 // Calculate launch results based on engine performance + mission parameters.
                 var totalThrust = design.Thrust * launch.EngineCount; // Newtons
@@ -572,7 +576,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         .SetProperty(l => l.MaxVelocity, maxVelocity)
                         .SetProperty(l => l.MissionSuccess, missionSuccess)
                         .SetProperty(l => l.ResultsJson, resultsJson)
-                        .SetProperty(l => l.ErrorMessage, errorMessage));
+                        .SetProperty(l => l.ErrorMessage, errorMessage),
+                        cancellationToken);
 
                 if (completed == 0)
                 {
@@ -580,7 +585,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         .AsNoTracking()
                         .Where(l => l.Id == launchId)
                         .Select(l => l.Status)
-                        .FirstOrDefaultAsync();
+                        .FirstOrDefaultAsync(cancellationToken);
 
                     _logger.LogInformation(
                         "Launch {LaunchId} was {Status} before results were persisted; discarding completion",
@@ -590,6 +595,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 }
 
                 _logger.LogInformation("Launch {LaunchId} completed: {Status}", launchId, status);
+            }
+            catch (OperationCanceledException)
+            {
+                await FailLaunchAsync(
+                    context,
+                    launchId,
+                    "Launch cancelled during execution.");
+                throw;
             }
             catch (Exception ex)
             {
