@@ -362,8 +362,15 @@ using (var scope = app.Services.CreateScope())
 
         try
         {
-            // In-process background workers do not survive restarts; fail-close stranded jobs.
-            await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(dbContext, logger);
+            // In-process workers do not survive restarts. Age-gate so a rolling deploy
+            // cannot fail-close jobs still executing on peer replicas that share the DB.
+            var interruptedJobMinimumAge = app.Configuration.GetValue(
+                "BackgroundWork:InterruptedJobMinimumAge",
+                BackgroundJobReconciliation.DefaultInterruptedJobMinimumAge);
+            await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
+                dbContext,
+                logger,
+                interruptedJobMinimumAge);
         }
         catch (Exception ex)
         {

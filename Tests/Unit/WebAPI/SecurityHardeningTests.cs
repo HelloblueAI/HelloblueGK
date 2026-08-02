@@ -514,9 +514,11 @@ public class SecurityHardeningTests
             });
         await context.SaveChangesAsync();
 
+        // TimeSpan.Zero models single-instance immediate fail-close; production uses an age gate.
         var result = await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
             context,
-            NullLogger.Instance);
+            NullLogger.Instance,
+            TimeSpan.Zero);
 
         result.Simulations.Should().Be(2);
         result.Optimizations.Should().Be(1);
@@ -537,6 +539,105 @@ public class SecurityHardeningTests
         var launches = await context.Launches.AsNoTracking().ToListAsync();
         launches.Single(l => l.MissionName == "In flight").Status.Should().Be("Failed");
         launches.Single(l => l.MissionName == "Still scheduled").Status.Should().Be("Scheduled");
+    }
+
+    [Fact]
+    public async Task BackgroundJobReconciliation_SkipsJobsYoungerThanMinimumAge_PreservesPeerReplicaWork()
+    {
+        await using var context = CreateContext();
+        var engine = new Engine
+        {
+            Name = "Age Gate Engine",
+            EngineType = "Custom",
+            Thrust = 1_000_000,
+            SpecificImpulse = 350,
+            ChamberPressure = 200,
+            Efficiency = 0.9,
+            IsActive = true,
+            CreatedBy = "tester"
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var staleStartedAt = DateTime.UtcNow.AddHours(-2);
+        var freshStartedAt = DateTime.UtcNow.AddMinutes(-2);
+
+        context.EngineSimulations.AddRange(
+            new EngineSimulation
+            {
+                EngineId = engine.Id,
+                SimulationType = "CFD",
+                Status = "Running",
+                StartedAt = staleStartedAt,
+                CreatedBy = "tester"
+            },
+            new EngineSimulation
+            {
+                EngineId = engine.Id,
+                SimulationType = "Thermal",
+                Status = "Running",
+                StartedAt = freshStartedAt,
+                CreatedBy = "tester"
+            });
+        context.AIOptimizationRuns.AddRange(
+            new AIOptimizationRun
+            {
+                EngineId = engine.Id,
+                AlgorithmType = "Genetic",
+                Status = "Pending",
+                CreatedAt = staleStartedAt,
+                CreatedBy = "tester"
+            },
+            new AIOptimizationRun
+            {
+                EngineId = engine.Id,
+                AlgorithmType = "PSO",
+                Status = "Running",
+                StartedAt = freshStartedAt,
+                CreatedBy = "tester"
+            });
+        context.Launches.AddRange(
+            new Launch
+            {
+                MissionName = "Stale in flight",
+                EngineId = engine.Id,
+                Status = "InProgress",
+                ScheduledAt = staleStartedAt.AddMinutes(-5),
+                LaunchedAt = staleStartedAt,
+                CreatedBy = "tester"
+            },
+            new Launch
+            {
+                MissionName = "Peer in flight",
+                EngineId = engine.Id,
+                Status = "InProgress",
+                ScheduledAt = freshStartedAt.AddMinutes(-5),
+                LaunchedAt = freshStartedAt,
+                CreatedBy = "tester"
+            });
+        await context.SaveChangesAsync();
+
+        var result = await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
+            context,
+            NullLogger.Instance,
+            TimeSpan.FromMinutes(30));
+
+        result.Simulations.Should().Be(1);
+        result.Optimizations.Should().Be(1);
+        result.Launches.Should().Be(1);
+        result.Total.Should().Be(3);
+
+        var simulations = await context.EngineSimulations.AsNoTracking().ToListAsync();
+        simulations.Single(s => s.SimulationType == "CFD").Status.Should().Be("Failed");
+        simulations.Single(s => s.SimulationType == "Thermal").Status.Should().Be("Running");
+
+        var optimizations = await context.AIOptimizationRuns.AsNoTracking().ToListAsync();
+        optimizations.Single(o => o.AlgorithmType == "Genetic").Status.Should().Be("Failed");
+        optimizations.Single(o => o.AlgorithmType == "PSO").Status.Should().Be("Running");
+
+        var launches = await context.Launches.AsNoTracking().ToListAsync();
+        launches.Single(l => l.MissionName == "Stale in flight").Status.Should().Be("Failed");
+        launches.Single(l => l.MissionName == "Peer in flight").Status.Should().Be("InProgress");
     }
 
     [Fact]
