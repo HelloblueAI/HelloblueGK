@@ -283,7 +283,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                 await FailLaunchAsync(
                                     scopedContext,
                                     launchId,
-                                    "Launch cancelled before completion.");
+                                    "Launch cancelled before completion.",
+                                    markAsCancelled: true);
                             }
                             catch (InvalidOperationException ex)
                             {
@@ -376,6 +377,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     await _context.Entry(launch).ReloadAsync();
                     return BadRequest(new { message = $"Cannot cancel launch with status: {launch.Status}" });
                 }
+
+                // Signal the in-flight worker so analysis stops holding a background slot.
+                _backgroundWorkQueue.TryCancel($"launch:{id}");
 
                 launch.Status = "Cancelled";
                 launch.CompletedAt = completedAt;
@@ -512,7 +516,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     launch.Engine.Name,
                     simulationType,
                     launchParameters,
-                    design);
+                    design,
+                    cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 // Calculate launch results based on engine performance + mission parameters.
@@ -601,7 +606,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 await FailLaunchAsync(
                     context,
                     launchId,
-                    "Launch cancelled during execution.");
+                    "Launch cancelled during execution.",
+                    markAsCancelled: true);
                 throw;
             }
             catch (Exception ex)
@@ -617,12 +623,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         private static async Task FailLaunchAsync(
             HelloblueGKDbContext context,
             int launchId,
-            string errorMessage)
+            string errorMessage,
+            bool markAsCancelled = false)
         {
+            var status = markAsCancelled ? "Cancelled" : "Failed";
             await context.Launches
                 .Where(l => l.Id == launchId && l.Status == "InProgress")
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(l => l.Status, "Failed")
+                    .SetProperty(l => l.Status, status)
                     .SetProperty(l => l.CompletedAt, DateTime.UtcNow)
                     .SetProperty(l => l.MissionSuccess, false)
                     .SetProperty(l => l.ErrorMessage, errorMessage));

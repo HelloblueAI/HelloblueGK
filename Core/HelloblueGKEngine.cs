@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using HB_NLP_Research_Lab.Physics;
 
@@ -55,16 +56,38 @@ namespace HB_NLP_Research_Lab.Core
         /// Performs analysis using persisted engine characteristics as the MultiPhysics baseline,
         /// then applying optional request parameter overrides.
         /// </summary>
-        public async Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(
+        public Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(
             string engineModel,
             string simulationType,
             IReadOnlyDictionary<string, object>? parameters,
             EngineDesignParameters? baselineDesign)
         {
+            return AnalyzeEngineAsync(
+                engineModel,
+                simulationType,
+                parameters,
+                baselineDesign,
+                CancellationToken.None);
+        }
+
+        /// <summary>
+        /// Performs analysis using persisted engine characteristics as the MultiPhysics baseline,
+        /// then applying optional request parameter overrides. Honors <paramref name="cancellationToken"/>
+        /// between solver stages and during MultiPhysics AI optimization.
+        /// </summary>
+        public async Task<ComprehensiveAnalysisResult> AnalyzeEngineAsync(
+            string engineModel,
+            string simulationType,
+            IReadOnlyDictionary<string, object>? parameters,
+            EngineDesignParameters? baselineDesign,
+            CancellationToken cancellationToken)
+        {
             Console.WriteLine("[HelloblueGK] 🔬 Analyzing engine model with high-performance physics...");
+            cancellationToken.ThrowIfCancellationRequested();
             
             // Ensure physics engine is initialized
-            await _physicsEngine.InitializeAsync();
+            await _physicsEngine.InitializeAsync(cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
 
             var normalizedType = NormalizeSimulationType(simulationType);
 
@@ -78,22 +101,22 @@ namespace HB_NLP_Research_Lab.Core
             switch (normalizedType)
             {
                 case "CFD":
-                    cfdResult = await _physicsEngine.RunCfdAnalysisAsync();
+                    cfdResult = await _physicsEngine.RunCfdAnalysisAsync(cancellationToken);
                     iterations = cfdResult.ConvergenceIterations;
                     solverAccuracy = cfdResult.Accuracy;
                     break;
                 case "Thermal":
-                    thermalResult = await _physicsEngine.RunThermalAnalysisAsync();
+                    thermalResult = await _physicsEngine.RunThermalAnalysisAsync(cancellationToken);
                     iterations = thermalResult.ConvergenceIterations;
                     solverAccuracy = thermalResult.Accuracy;
                     break;
                 case "Structural":
-                    structuralResult = await _physicsEngine.RunStructuralAnalysisAsync();
+                    structuralResult = await _physicsEngine.RunStructuralAnalysisAsync(cancellationToken);
                     iterations = structuralResult.ConvergenceIterations;
                     solverAccuracy = structuralResult.Accuracy;
                     break;
                 default:
-                    multiPhysicsResult = await _physicsEngine.RunMultiPhysicsAnalysisAsync();
+                    multiPhysicsResult = await _physicsEngine.RunMultiPhysicsAnalysisAsync(cancellationToken);
                     cfdResult = multiPhysicsResult.CfdResult;
                     thermalResult = multiPhysicsResult.ThermalResult;
                     structuralResult = multiPhysicsResult.StructuralResult;
@@ -111,6 +134,8 @@ namespace HB_NLP_Research_Lab.Core
                     }.Where(value => value > 0).DefaultIfEmpty(95.0).Average();
                     break;
             }
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Seed physics results from persisted engine characteristics before request overrides
             // so different engines do not collapse to identical constant-solver outputs.
@@ -138,6 +163,7 @@ namespace HB_NLP_Research_Lab.Core
 
             // Real-time validation
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
+            cancellationToken.ThrowIfCancellationRequested();
 
             // AI optimization remains part of the full MultiPhysics path for backward compatibility.
             OptimizationResult? optimizationResult = null;
@@ -145,7 +171,11 @@ namespace HB_NLP_Research_Lab.Core
             if (string.Equals(normalizedType, "MultiPhysics", StringComparison.OrdinalIgnoreCase))
             {
                 var optimizationParameters = BuildDesignParameters(parameters, baselineDesign);
-                optimizationResult = await _aiOptimizationEngine.OptimizeEngineDesignAsync(optimizationParameters);
+                optimizationResult = await _aiOptimizationEngine.OptimizeEngineDesignAsync(
+                    optimizationParameters,
+                    algorithmType: null,
+                    cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 innovationReport = await _aiOptimizationEngine.AnalyzeInnovationAsync(optimizationParameters);
 
                 Console.WriteLine($"[HelloblueGK] 🎯 AI Optimization: {optimizationResult.OverallImprovement:F1}% improvement");

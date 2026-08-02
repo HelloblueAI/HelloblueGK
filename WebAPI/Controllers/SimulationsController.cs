@@ -407,6 +407,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Cannot cancel simulation with status: {simulation.Status}" });
                 }
 
+                // Signal the in-flight worker so it stops holding a background slot.
+                _backgroundWorkQueue.TryCancel($"simulation:{id}");
+
                 simulation.Status = "Cancelled";
                 simulation.CompletedAt = completedAt;
 
@@ -462,7 +465,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     engine.Name,
                     request.SimulationType,
                     request.Parameters,
-                    baselineDesign);
+                    baselineDesign,
+                    cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var executionTime = (DateTime.UtcNow - startedAt).TotalSeconds;

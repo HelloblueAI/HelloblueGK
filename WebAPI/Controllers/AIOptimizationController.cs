@@ -362,6 +362,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Cannot cancel optimization with status: {optimization.Status}" });
                 }
 
+                // Signal the in-flight worker so optimizer delays stop and the slot frees.
+                _backgroundWorkQueue.TryCancel($"optimization:{id}");
+
                 optimization.Status = "Cancelled";
                 optimization.CompletedAt = completedAt;
 

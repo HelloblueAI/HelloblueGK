@@ -68,10 +68,21 @@ namespace HB_NLP_Research_Lab.Core
             if (_optimizationCache.TryGetValue(cacheKey, out var cachedResult))
                 return cachedResult;
 
-            // Always share in-flight work for identical cache keys (including background
-            // jobs that pass ApplicationStopping, which is cancellable). Shared work uses
-            // CancellationToken.None; callers WaitAsync with their own token so one cancel
-            // abandons only that waiter and cannot abort siblings on the same key.
+            // Cancellable callers (WebAPI jobs / shutdown) run exclusive work so cancel
+            // actually stops optimizer delays instead of only abandoning a WaitAsync.
+            // Non-cancellable callers still share in-flight work for identical keys.
+            if (cancellationToken.CanBeCanceled)
+            {
+                var exclusiveResult = await PerformMultiStageOptimizationAsync(
+                    parameters,
+                    normalizedAlgorithm,
+                    cancellationToken);
+                CacheOptimizationResult(cacheKey, exclusiveResult);
+                return exclusiveResult;
+            }
+
+            // Shared work uses CancellationToken.None; callers WaitAsync with their own
+            // token so one cancel abandons only that waiter and cannot abort siblings.
             var optimization = _inflightOptimizations.GetOrAdd(
                 cacheKey,
                 _ => new Lazy<Task<OptimizationResult>>(
