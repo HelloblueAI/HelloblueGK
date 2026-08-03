@@ -1502,9 +1502,9 @@ public class SecurityHardeningTests
             Thread.Sleep(10);
         }
 
-        nextSlot.Should().NotBeNull("cancelled work should release its concurrency slot");
         if (nextSlot is null)
         {
+            false.Should().BeTrue("cancelled work should release its concurrency slot");
             return;
         }
 

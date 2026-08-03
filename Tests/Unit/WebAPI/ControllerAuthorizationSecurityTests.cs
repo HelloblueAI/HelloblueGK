@@ -641,6 +641,34 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task ExecuteLaunch_WhenWorkerTokenCancelled_PersistsCancelledWithoutMissionFailure()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var executeResult = await controller.ExecuteLaunch(launch.Id);
+        executeResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), cts.Token);
+
+        var persisted = await workerContext.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Cancelled");
+        persisted.MissionSuccess.Should().BeNull();
+        persisted.ErrorMessage.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
     public async Task ExecuteLaunch_AppliesStoredLaunchParametersToMissionResults()
     {
         var databaseName = Guid.NewGuid().ToString("N");

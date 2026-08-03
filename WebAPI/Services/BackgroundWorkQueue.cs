@@ -161,8 +161,9 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
                         "Background work item {WorkItemName} cancelled",
                         workItemName);
                 }
-                catch (Exception ex) when (LogBackgroundWorkFailure(ex, workItemName))
+                catch (Exception ex)
                 {
+                    _logger.LogError(ex, "Background work item {WorkItemName} failed", workItemName);
                 }
                 finally
                 {
@@ -171,12 +172,6 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
                 }
             }
         }, CancellationToken.None);
-    }
-
-    private bool LogBackgroundWorkFailure(Exception exception, string workItemName)
-    {
-        _logger.LogError(exception, "Background work item {WorkItemName} failed", workItemName);
-        return true;
     }
 
     internal void ReleaseSlot()

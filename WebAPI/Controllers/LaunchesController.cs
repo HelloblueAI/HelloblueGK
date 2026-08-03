@@ -626,11 +626,24 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             string errorMessage,
             bool markAsCancelled = false)
         {
-            var status = markAsCancelled ? "Cancelled" : "Failed";
+            // Cancelled aborts leave MissionSuccess null (same as CancelLaunch) so
+            // statistics do not count shutdown/worker teardown as failed missions.
+            if (markAsCancelled)
+            {
+                await context.Launches
+                    .Where(l => l.Id == launchId && l.Status == "InProgress")
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(l => l.Status, "Cancelled")
+                        .SetProperty(l => l.CompletedAt, DateTime.UtcNow)
+                        .SetProperty(l => l.MissionSuccess, (bool?)null)
+                        .SetProperty(l => l.ErrorMessage, errorMessage));
+                return;
+            }
+
             await context.Launches
                 .Where(l => l.Id == launchId && l.Status == "InProgress")
                 .ExecuteUpdateAsync(setters => setters
-                    .SetProperty(l => l.Status, status)
+                    .SetProperty(l => l.Status, "Failed")
                     .SetProperty(l => l.CompletedAt, DateTime.UtcNow)
                     .SetProperty(l => l.MissionSuccess, false)
                     .SetProperty(l => l.ErrorMessage, errorMessage));
