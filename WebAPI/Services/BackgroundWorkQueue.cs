@@ -161,7 +161,7 @@ public sealed class BoundedBackgroundWorkQueue : IBackgroundWorkQueue, IDisposab
                         "Background work item {WorkItemName} cancelled",
                         workItemName);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     _logger.LogError(ex, "Background work item {WorkItemName} failed", workItemName);
                 }
