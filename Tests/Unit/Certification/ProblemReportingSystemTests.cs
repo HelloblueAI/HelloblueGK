@@ -24,17 +24,17 @@ public class ProblemReportingSystemTests
 
         await system.UpdateStatusAsync(
             created.ReportNumber,
-            ProblemReportStatus.InProgress,
+            ProblemReportStatus.UnderInvestigation,
             resolution: null,
             changedBy: "bob-admin");
 
         var change = await context.ProblemReportStatusChanges.SingleAsync();
         change.OldStatus.Should().Be(ProblemReportStatus.Open);
-        change.NewStatus.Should().Be(ProblemReportStatus.InProgress);
+        change.NewStatus.Should().Be(ProblemReportStatus.UnderInvestigation);
         change.ChangedBy.Should().Be("bob-admin");
 
         var updated = await context.ProblemReports.SingleAsync();
-        updated.Status.Should().Be(ProblemReportStatus.InProgress);
+        updated.Status.Should().Be(ProblemReportStatus.UnderInvestigation);
     }
 
     private static ProblemReportDbContext CreateContext()
