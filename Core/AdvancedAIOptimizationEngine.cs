@@ -68,10 +68,21 @@ namespace HB_NLP_Research_Lab.Core
             if (_optimizationCache.TryGetValue(cacheKey, out var cachedResult))
                 return cachedResult;
 
-            // Always share in-flight work for identical cache keys (including background
-            // jobs that pass ApplicationStopping, which is cancellable). Shared work uses
-            // CancellationToken.None; callers WaitAsync with their own token so one cancel
-            // abandons only that waiter and cannot abort siblings on the same key.
+            // Cancellable callers (WebAPI jobs / shutdown) run exclusive work so cancel
+            // actually stops optimizer delays instead of only abandoning a WaitAsync.
+            // Non-cancellable callers still share in-flight work for identical keys.
+            if (cancellationToken.CanBeCanceled)
+            {
+                var exclusiveResult = await PerformMultiStageOptimizationAsync(
+                    parameters,
+                    normalizedAlgorithm,
+                    cancellationToken);
+                CacheOptimizationResult(cacheKey, exclusiveResult);
+                return exclusiveResult;
+            }
+
+            // Shared work uses CancellationToken.None; callers WaitAsync with their own
+            // token so one cancel abandons only that waiter and cannot abort siblings.
             var optimization = _inflightOptimizations.GetOrAdd(
                 cacheKey,
                 _ => new Lazy<Task<OptimizationResult>>(
@@ -227,25 +238,30 @@ namespace HB_NLP_Research_Lab.Core
             return $"{algorithmType}_{parameters.Thrust}_{parameters.SpecificImpulse}_{parameters.ChamberPressure}_{parameters.Efficiency}";
         }
 
-        public async Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters)
+        public Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters) =>
+            AnalyzeInnovationAsync(parameters, CancellationToken.None);
+
+        public async Task<InnovationReport> AnalyzeInnovationAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Advanced AI] 🔬 Analyzing innovation potential...");
-            
-            var innovationScore = await _innovationAnalyzer.AnalyzeInnovationAsync(parameters);
-            var noveltyScore = await _innovationAnalyzer.CalculateNoveltyScoreAsync(parameters);
-            var feasibilityScore = await _innovationAnalyzer.CalculateFeasibilityScoreAsync(parameters);
-            
+
+            var innovationScore = await _innovationAnalyzer.AnalyzeInnovationAsync(parameters, cancellationToken);
+            var noveltyScore = await _innovationAnalyzer.CalculateNoveltyScoreAsync(parameters, cancellationToken);
+            var feasibilityScore = await _innovationAnalyzer.CalculateFeasibilityScoreAsync(parameters, cancellationToken);
+
             var report = new InnovationReport
             {
                 InnovationScore = innovationScore,
                 NoveltyScore = noveltyScore,
                 FeasibilityScore = feasibilityScore,
-                InnovationFactors = await _innovationAnalyzer.GetInnovationFactorsAsync(parameters),
+                InnovationFactors = await _innovationAnalyzer.GetInnovationFactorsAsync(parameters, cancellationToken),
                 AnalysisDate = DateTime.UtcNow
             };
-            
+
             Console.WriteLine($"[Advanced AI] Innovation analysis complete: {innovationScore:F1}% innovation score");
-            
+
             return report;
         }
 
@@ -532,26 +548,41 @@ namespace HB_NLP_Research_Lab.Core
             return 75.0 + random.NextDouble() * 25.0; // 75-100% innovation score
         }
         
-        public async Task<double> CalculateNoveltyScoreAsync(EngineDesignParameters parameters)
+        public Task<double> CalculateNoveltyScoreAsync(EngineDesignParameters parameters) =>
+            CalculateNoveltyScoreAsync(parameters, CancellationToken.None);
+
+        public async Task<double> CalculateNoveltyScoreAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
-            await Task.Delay(30);
-            
+            await Task.Delay(30, cancellationToken);
+
             var random = new Random();
             return 70.0 + random.NextDouble() * 30.0; // 70-100% novelty score
         }
-        
-        public async Task<double> CalculateFeasibilityScoreAsync(EngineDesignParameters parameters)
+
+        public Task<double> CalculateFeasibilityScoreAsync(EngineDesignParameters parameters) =>
+            CalculateFeasibilityScoreAsync(parameters, CancellationToken.None);
+
+        public async Task<double> CalculateFeasibilityScoreAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
-            await Task.Delay(30);
-            
+            await Task.Delay(30, cancellationToken);
+
             var random = new Random();
             return 80.0 + random.NextDouble() * 20.0; // 80-100% feasibility score
         }
-        
-        public async Task<string[]> GetInnovationFactorsAsync(EngineDesignParameters parameters)
+
+        public Task<string[]> GetInnovationFactorsAsync(EngineDesignParameters parameters) =>
+            GetInnovationFactorsAsync(parameters, CancellationToken.None);
+
+        public async Task<string[]> GetInnovationFactorsAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken)
         {
-            await Task.Delay(20);
-            
+            await Task.Delay(20, cancellationToken);
+
             return new[]
             {
                 "Advanced Material Integration",
@@ -639,6 +670,9 @@ namespace HB_NLP_Research_Lab.Core
             string? algorithmType,
             CancellationToken cancellationToken);
         Task<InnovationReport> AnalyzeInnovationAsync(EngineDesignParameters parameters);
+        Task<InnovationReport> AnalyzeInnovationAsync(
+            EngineDesignParameters parameters,
+            CancellationToken cancellationToken);
         Task<PerformancePrediction> PredictPerformanceAsync(EngineDesignParameters parameters);
     }
 }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace HB_NLP_Research_Lab.WebAPI.Validation;
 
@@ -9,6 +10,11 @@ public static class RequestPayloadLimits
     public const int MaxSerializedJsonBytes = 16 * 1024;
     public const int MaxShortTextLength = 200;
     public const int MaxLongTextLength = 1000;
+
+    // Reject keys that look like secrets so they are not persisted/echoed in API responses.
+    private static readonly Regex SensitiveKeyPattern = new(
+        @"(password|passwd|pwd|secret|token|api[_-]?key|access[_-]?key|private[_-]?key|authorization|auth[_-]?header|bearer|credential|connectionstring)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public static bool TryValidateDictionary<TValue>(
         IReadOnlyDictionary<string, TValue>? values,
@@ -33,6 +39,13 @@ public static class RequestPayloadLimits
             return false;
         }
 
+        var sensitiveKey = values.Keys.FirstOrDefault(IsSensitiveKey);
+        if (sensitiveKey != null)
+        {
+            validationMessage = $"{fieldName} cannot include sensitive key '{sensitiveKey}'.";
+            return false;
+        }
+
         try
         {
             var serializedSize = JsonSerializer.SerializeToUtf8Bytes(values).Length;
@@ -49,6 +62,11 @@ public static class RequestPayloadLimits
         }
 
         return true;
+    }
+
+    public static bool IsSensitiveKey(string? key)
+    {
+        return !string.IsNullOrWhiteSpace(key) && SensitiveKeyPattern.IsMatch(key);
     }
 
     public static bool TryValidateOptionalText(

@@ -16,6 +16,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Extensions;
 using HB_NLP_Research_Lab.WebAPI.Middleware;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using HB_NLP_Research_Lab.WebAPI.Validation;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
@@ -1439,6 +1440,93 @@ public class SecurityHardeningTests
 
         queue.TryAcquire(out var secondSlot).Should().BeTrue();
         secondSlot!.Dispose();
+    }
+
+    [Fact]
+    public void BoundedBackgroundWorkQueue_TryCancel_SignalsRegisteredWorkItemToken()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["BackgroundWork:MaxConcurrentWorkItems"] = "1"
+            })
+            .Build();
+        using var services = new ServiceCollection().BuildServiceProvider();
+        using var queue = new BoundedBackgroundWorkQueue(
+            configuration,
+            services.GetRequiredService<IServiceScopeFactory>(),
+            new TestHostApplicationLifetime(),
+            NullLogger<BoundedBackgroundWorkQueue>.Instance);
+
+        using var started = new ManualResetEventSlim(false);
+        using var finished = new ManualResetEventSlim(false);
+        OperationCanceledException? observed = null;
+
+        queue.TryAcquire(out var slot).Should().BeTrue();
+        using (slot)
+        {
+            slot!.Queue(async (_, cancellationToken) =>
+            {
+                started.Set();
+                try
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                }
+                catch (OperationCanceledException ex)
+                {
+                    observed = ex;
+                    throw;
+                }
+                finally
+                {
+                    finished.Set();
+                }
+            }, "simulation:42");
+        }
+
+        started.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+        queue.TryCancel("simulation:42").Should().BeTrue();
+        finished.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue();
+        observed.Should().NotBeNull();
+
+        // Slot release happens in the queue runner finally after the work item ends.
+        IBackgroundWorkSlot? nextSlot = null;
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (queue.TryAcquire(out nextSlot) && nextSlot != null)
+            {
+                break;
+            }
+
+            Thread.Sleep(10);
+        }
+
+        if (nextSlot is null)
+        {
+            false.Should().BeTrue("cancelled work should release its concurrency slot");
+            return;
+        }
+
+        nextSlot.Dispose();
+    }
+
+    [Fact]
+    public void RequestPayloadLimits_RejectsSensitiveParameterKeys()
+    {
+        var values = new Dictionary<string, object>
+        {
+            ["thrust"] = 1_000_000,
+            ["apiKey"] = "should-not-be-stored"
+        };
+
+        var ok = RequestPayloadLimits.TryValidateDictionary(
+            values,
+            "Parameters",
+            out var message);
+
+        ok.Should().BeFalse();
+        message.Should().Contain("apiKey");
     }
 
     [Fact]

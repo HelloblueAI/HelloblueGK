@@ -44,9 +44,14 @@ namespace HB_NLP_Research_Lab.Core
             _parallelProcessor = new ParallelProcessor();
         }
 
-        public async Task<PhysicsStatus> InitializeAsync()
+        public Task<PhysicsStatus> InitializeAsync()
         {
-            await _initializationGate.WaitAsync();
+            return InitializeAsync(CancellationToken.None);
+        }
+
+        public async Task<PhysicsStatus> InitializeAsync(CancellationToken cancellationToken)
+        {
+            await _initializationGate.WaitAsync(cancellationToken);
             try
             {
                 if (_isInitialized)
@@ -60,17 +65,18 @@ namespace HB_NLP_Research_Lab.Core
                 // Initialize all solvers in parallel
                 var initTasks = new[]
                 {
-                    _cfdSolver.InitializeAsync(),
-                    _thermalSolver.InitializeAsync(),
-                    _structuralSolver.InitializeAsync(),
-                    _performanceOptimizer.InitializeAsync(),
-                    _parallelProcessor.InitializeAsync()
+                    _cfdSolver.InitializeAsync(cancellationToken),
+                    _thermalSolver.InitializeAsync(cancellationToken),
+                    _structuralSolver.InitializeAsync(cancellationToken),
+                    _performanceOptimizer.InitializeAsync(cancellationToken),
+                    _parallelProcessor.InitializeAsync(cancellationToken)
                 };
 
                 await Task.WhenAll(initTasks);
+                cancellationToken.ThrowIfCancellationRequested();
 
                 // Performance optimization
-                await _performanceOptimizer.OptimizeSolversAsync();
+                await _performanceOptimizer.OptimizeSolversAsync(cancellationToken);
 
                 _isInitialized = true;
                 _uptimeTimer.Start();
@@ -85,9 +91,15 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        public async Task<CfdAnalysisResult> RunCfdAnalysisAsync()
+        public Task<CfdAnalysisResult> RunCfdAnalysisAsync()
+        {
+            return RunCfdAnalysisAsync(CancellationToken.None);
+        }
+
+        public async Task<CfdAnalysisResult> RunCfdAnalysisAsync(CancellationToken cancellationToken)
         {
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
+            cancellationToken.ThrowIfCancellationRequested();
 
             var performanceTimer = Stopwatch.StartNew();
             Console.WriteLine("[High Performance Physics] 🌊 Running high-performance CFD analysis...");
@@ -95,7 +107,7 @@ namespace HB_NLP_Research_Lab.Core
             // Parallel processing for high performance
             var result = await _parallelProcessor.ExecuteParallelAsync(async () =>
             {
-                var cfdResult = await _cfdSolver.RunHighPerformanceAnalysisAsync();
+                var cfdResult = await _cfdSolver.RunHighPerformanceAnalysisAsync(cancellationToken);
                 
                 // Real-time performance monitoring
                 Interlocked.Add(ref _totalCalculations, cfdResult.CalculationCount);
@@ -119,16 +131,22 @@ namespace HB_NLP_Research_Lab.Core
             return result;
         }
 
-        public async Task<ThermalAnalysisResult> RunThermalAnalysisAsync()
+        public Task<ThermalAnalysisResult> RunThermalAnalysisAsync()
+        {
+            return RunThermalAnalysisAsync(CancellationToken.None);
+        }
+
+        public async Task<ThermalAnalysisResult> RunThermalAnalysisAsync(CancellationToken cancellationToken)
         {
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
+            cancellationToken.ThrowIfCancellationRequested();
 
             var performanceTimer = Stopwatch.StartNew();
             Console.WriteLine("[High Performance Physics] 🔥 Running high-performance thermal analysis...");
             
             var result = await _parallelProcessor.ExecuteParallelAsync(async () =>
             {
-                var thermalResult = await _thermalSolver.RunHighPerformanceAnalysisAsync();
+                var thermalResult = await _thermalSolver.RunHighPerformanceAnalysisAsync(cancellationToken);
                 Interlocked.Add(ref _totalCalculations, thermalResult.CalculationCount);
                 return thermalResult;
             });
@@ -148,16 +166,22 @@ namespace HB_NLP_Research_Lab.Core
             return result;
         }
 
-        public async Task<StructuralAnalysisResult> RunStructuralAnalysisAsync()
+        public Task<StructuralAnalysisResult> RunStructuralAnalysisAsync()
+        {
+            return RunStructuralAnalysisAsync(CancellationToken.None);
+        }
+
+        public async Task<StructuralAnalysisResult> RunStructuralAnalysisAsync(CancellationToken cancellationToken)
         {
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
+            cancellationToken.ThrowIfCancellationRequested();
 
             var performanceTimer = Stopwatch.StartNew();
             Console.WriteLine("[High Performance Physics] 🏗️ Running high-performance structural analysis...");
             
             var result = await _parallelProcessor.ExecuteParallelAsync(async () =>
             {
-                var structuralResult = await _structuralSolver.RunHighPerformanceAnalysisAsync();
+                var structuralResult = await _structuralSolver.RunHighPerformanceAnalysisAsync(cancellationToken);
                 Interlocked.Add(ref _totalCalculations, structuralResult.CalculationCount);
                 return structuralResult;
             });
@@ -258,18 +282,24 @@ namespace HB_NLP_Research_Lab.Core
             return new Random().NextDouble() * 100;
         }
 
-        public async Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync()
+        public Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync()
+        {
+            return RunMultiPhysicsAnalysisAsync(CancellationToken.None);
+        }
+
+        public async Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync(CancellationToken cancellationToken)
         {
             if (!_isInitialized) throw new InvalidOperationException("Engine not initialized");
+            cancellationToken.ThrowIfCancellationRequested();
             
             Console.WriteLine("[High Performance Physics] 🚀 Running high-performance multi-physics analysis...");
 
             var performanceTimer = Stopwatch.StartNew();
             
             // Parallel execution of all physics solvers
-            var cfdTask = RunCfdAnalysisAsync();
-            var thermalTask = RunThermalAnalysisAsync();
-            var structuralTask = RunStructuralAnalysisAsync();
+            var cfdTask = RunCfdAnalysisAsync(cancellationToken);
+            var thermalTask = RunThermalAnalysisAsync(cancellationToken);
+            var structuralTask = RunStructuralAnalysisAsync(cancellationToken);
             
             await Task.WhenAll(cfdTask, thermalTask, structuralTask);
             
@@ -306,14 +336,19 @@ namespace HB_NLP_Research_Lab.Core
     // High-performance CFD solver
     public class HighPerformanceCFDSolver
     {
-        public async Task InitializeAsync()
+        public Task InitializeAsync() => InitializeAsync(CancellationToken.None);
+
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(10);
+            await Task.Delay(10, cancellationToken);
         }
 
-        public async Task<CfdAnalysisResult> RunHighPerformanceAnalysisAsync()
+        public Task<CfdAnalysisResult> RunHighPerformanceAnalysisAsync()
+            => RunHighPerformanceAnalysisAsync(CancellationToken.None);
+
+        public async Task<CfdAnalysisResult> RunHighPerformanceAnalysisAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(50);
+            await Task.Delay(50, cancellationToken);
             return new CfdAnalysisResult
             {
                 FlowVelocity = new Vector3(1000, 0, 0),
@@ -335,14 +370,19 @@ namespace HB_NLP_Research_Lab.Core
     // High-performance thermal solver
     public class HighPerformanceThermalSolver
     {
-        public async Task InitializeAsync()
+        public Task InitializeAsync() => InitializeAsync(CancellationToken.None);
+
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(10);
+            await Task.Delay(10, cancellationToken);
         }
 
-        public async Task<ThermalAnalysisResult> RunHighPerformanceAnalysisAsync()
+        public Task<ThermalAnalysisResult> RunHighPerformanceAnalysisAsync()
+            => RunHighPerformanceAnalysisAsync(CancellationToken.None);
+
+        public async Task<ThermalAnalysisResult> RunHighPerformanceAnalysisAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(40);
+            await Task.Delay(40, cancellationToken);
             return new ThermalAnalysisResult
             {
                 MaxTemperature = 3500,
@@ -364,14 +404,19 @@ namespace HB_NLP_Research_Lab.Core
     // High-performance structural solver
     public class HighPerformanceStructuralSolver
     {
-        public async Task InitializeAsync()
+        public Task InitializeAsync() => InitializeAsync(CancellationToken.None);
+
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(10);
+            await Task.Delay(10, cancellationToken);
         }
 
-        public async Task<StructuralAnalysisResult> RunHighPerformanceAnalysisAsync()
+        public Task<StructuralAnalysisResult> RunHighPerformanceAnalysisAsync()
+            => RunHighPerformanceAnalysisAsync(CancellationToken.None);
+
+        public async Task<StructuralAnalysisResult> RunHighPerformanceAnalysisAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(30);
+            await Task.Delay(30, cancellationToken);
             return new StructuralAnalysisResult
             {
                 MaxStress = 800e6,
@@ -393,14 +438,18 @@ namespace HB_NLP_Research_Lab.Core
     // Performance optimizer
     public class PerformanceOptimizer
     {
-        public async Task InitializeAsync()
+        public Task InitializeAsync() => InitializeAsync(CancellationToken.None);
+
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(10);
+            await Task.Delay(10, cancellationToken);
         }
 
-        public async Task OptimizeSolversAsync()
+        public Task OptimizeSolversAsync() => OptimizeSolversAsync(CancellationToken.None);
+
+        public async Task OptimizeSolversAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(20);
+            await Task.Delay(20, cancellationToken);
         }
 
         public async Task<int> GetOptimizationLevelAsync()
@@ -413,9 +462,11 @@ namespace HB_NLP_Research_Lab.Core
     // Parallel processor
     public class ParallelProcessor
     {
-        public async Task InitializeAsync()
+        public Task InitializeAsync() => InitializeAsync(CancellationToken.None);
+
+        public async Task InitializeAsync(CancellationToken cancellationToken)
         {
-            await Task.Delay(10);
+            await Task.Delay(10, cancellationToken);
         }
 
         public async Task<T> ExecuteParallelAsync<T>(Func<Task<T>> operation)

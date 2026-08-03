@@ -362,6 +362,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = $"Cannot cancel optimization with status: {optimization.Status}" });
                 }
 
+                // Signal the in-flight worker so optimizer delays stop and the slot frees.
+                _backgroundWorkQueue.TryCancel($"optimization:{id}");
+
                 optimization.Status = "Cancelled";
                 optimization.CompletedAt = completedAt;
 
@@ -418,7 +421,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     request.AlgorithmType,
                     cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
-                var innovationReport = await _optimizationEngine.AnalyzeInnovationAsync(parameters);
+                var innovationReport = await _optimizationEngine.AnalyzeInnovationAsync(
+                    parameters,
+                    cancellationToken);
 
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
 

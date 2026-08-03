@@ -327,6 +327,22 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_WithCancelledToken_ThrowsOperationCanceled()
+    {
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+
+        var act = async () => await _engine.AnalyzeEngineAsync(
+            "CancelEngine",
+            "CFD",
+            parameters: null,
+            baselineDesign: null,
+            cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
     public void Dispose_ShouldNotThrow()
     {
         // Act

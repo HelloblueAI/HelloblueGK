@@ -133,6 +133,8 @@ public class SimulationsControllerSecurityTests
 
         var cancelResult = await controller.CancelSimulation(response.Id);
         cancelResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.CancelledWorkItems.Should().ContainSingle()
+            .Which.Should().Be($"simulation:{response.Id}");
 
         await using var workerContext = CreateContext(databaseName);
         var serviceProvider = new SingleServiceProvider(workerContext);
@@ -580,16 +582,25 @@ public class SimulationsControllerSecurityTests
             slot = null;
             return false;
         }
+
+        public bool TryCancel(string workItemName) => false;
     }
 
     private sealed class DeferredBackgroundWorkQueue : IBackgroundWorkQueue
     {
         public int MaxConcurrency => 1;
         public List<(Func<IServiceProvider, CancellationToken, Task> Work, string Name)> PendingWork { get; } = new();
+        public List<string> CancelledWorkItems { get; } = new();
 
         public bool TryAcquire(out IBackgroundWorkSlot? slot)
         {
             slot = new DeferredBackgroundWorkSlot(this);
+            return true;
+        }
+
+        public bool TryCancel(string workItemName)
+        {
+            CancelledWorkItems.Add(workItemName);
             return true;
         }
     }

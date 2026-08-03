@@ -623,9 +623,12 @@ public class ControllerAuthorizationSecurityTests
         await using var cancelContext = CreateContext(databaseName);
         var cancelController = CreateLaunchesController(
             cancelContext,
-            CreatePrincipal("admin", isAdmin: true));
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
         var cancelResult = await cancelController.CancelLaunch(launch.Id);
         cancelResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.CancelledWorkItems.Should().ContainSingle()
+            .Which.Should().Be($"launch:{launch.Id}");
 
         await using var workerContext = CreateContext(databaseName);
         var serviceProvider = new SingleServiceProvider(workerContext);
@@ -635,6 +638,34 @@ public class ControllerAuthorizationSecurityTests
         persisted.Status.Should().Be("Cancelled");
         persisted.CompletedAt.Should().NotBeNull();
         persisted.MissionSuccess.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ExecuteLaunch_WhenWorkerTokenCancelled_PersistsCancelledWithoutMissionFailure()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var executeResult = await controller.ExecuteLaunch(launch.Id);
+        executeResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        using var cts = new CancellationTokenSource();
+        await cts.CancelAsync();
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), cts.Token);
+
+        var persisted = await workerContext.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Cancelled");
+        persisted.MissionSuccess.Should().BeNull();
+        persisted.ErrorMessage.Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -1036,6 +1067,8 @@ public class ControllerAuthorizationSecurityTests
             deferredQueue);
         var cancelResult = await cancelController.CancelOptimization(response.Id);
         cancelResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.CancelledWorkItems.Should().ContainSingle()
+            .Which.Should().Be($"optimization:{response.Id}");
 
         await using var workerContext = CreateContext(databaseName);
         await deferredQueue.PendingWork[0].Work(
@@ -1521,6 +1554,8 @@ public class ControllerAuthorizationSecurityTests
             slot = null;
             return false;
         }
+
+        public bool TryCancel(string workItemName) => false;
     }
 
     private sealed class ThrowingBackgroundWorkQueue : IBackgroundWorkQueue
@@ -1532,6 +1567,8 @@ public class ControllerAuthorizationSecurityTests
             slot = new ThrowingBackgroundWorkSlot();
             return true;
         }
+
+        public bool TryCancel(string workItemName) => false;
     }
 
     private sealed class ThrowingBackgroundWorkSlot : IBackgroundWorkSlot
@@ -1552,10 +1589,17 @@ public class ControllerAuthorizationSecurityTests
     {
         public int MaxConcurrency => 1;
         public List<(Func<IServiceProvider, CancellationToken, Task> Work, string Name)> PendingWork { get; } = new();
+        public List<string> CancelledWorkItems { get; } = new();
 
         public bool TryAcquire(out IBackgroundWorkSlot? slot)
         {
             slot = new DeferredBackgroundWorkSlot(this);
+            return true;
+        }
+
+        public bool TryCancel(string workItemName)
+        {
+            CancelledWorkItems.Add(workItemName);
             return true;
         }
     }

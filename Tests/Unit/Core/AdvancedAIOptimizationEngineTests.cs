@@ -126,7 +126,7 @@ public class AdvancedAIOptimizationEngineTests
     }
 
     [Fact]
-    public async Task ConcurrentIdenticalOptimizations_WithCancellableTokens_ShouldStillShareInflightWork()
+    public async Task ConcurrentIdenticalOptimizations_WithNonCancellableTokens_ShouldShareInflightWork()
     {
         var engine = new AdvancedAIOptimizationEngine();
         var parameters = new EngineDesignParameters
@@ -137,14 +137,31 @@ public class AdvancedAIOptimizationEngineTests
             Efficiency = 0.92
         };
 
-        // Mimics ApplicationStopping: CanBeCanceled is true, but not cancelled yet.
-        using var cts = new CancellationTokenSource();
-
         var results = await Task.WhenAll(
             Enumerable.Range(0, 16)
-                .Select(_ => engine.OptimizeEngineDesignAsync(parameters, algorithmType: null, cts.Token)));
+                .Select(_ => engine.OptimizeEngineDesignAsync(
+                    parameters,
+                    algorithmType: null,
+                    CancellationToken.None)));
 
         results.Should().OnlyContain(result => ReferenceEquals(result, results[0]));
+    }
+
+    [Fact]
+    public async Task OptimizeEngineDesignAsync_WithLiveCancellableToken_StopsExclusiveWork()
+    {
+        var engine = new AdvancedAIOptimizationEngine();
+        var parameters = new EngineDesignParameters
+        {
+            Thrust = 1_500_000,
+            SpecificImpulse = 380,
+            ChamberPressure = 20_000_000,
+            Efficiency = 0.92
+        };
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(20));
+        var act = async () => await engine.OptimizeEngineDesignAsync(parameters, "Genetic", cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
     [Fact]
