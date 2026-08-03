@@ -1612,6 +1612,63 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public void DatabaseConfiguration_Resolve_RejectsShippedLocalhostConnectionOutsideDevelopment()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] =
+                    "Server=localhost;Database=HelloblueGK;Trusted_Connection=true;MultipleActiveResultSets=true"
+            })
+            .Build();
+
+        var act = () => DatabaseConfiguration.Resolve(
+            configuration,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            _ => null);
+
+        act.Should().Throw<InvalidOperationException>()
+            .WithMessage("*non-localhost*");
+    }
+
+    [Fact]
+    public void DatabaseConfiguration_Resolve_PrefersDatabaseUrlWhenDefaultConnectionIsLocalhost()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["ConnectionStrings:DefaultConnection"] =
+                    "Server=localhost;Database=HelloblueGK;Trusted_Connection=true;MultipleActiveResultSets=true"
+            })
+            .Build();
+
+        var settings = DatabaseConfiguration.Resolve(
+            configuration,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            key => key == "DATABASE_URL"
+                ? "postgresql://app:secret@db.example.com:5432/hellobluegk"
+                : null);
+
+        settings.Provider.Should().Be(DatabaseProvider.PostgreSql);
+        var builder = new NpgsqlConnectionStringBuilder(settings.ConnectionString);
+        builder.Host.Should().Be("db.example.com");
+        builder.Database.Should().Be("hellobluegk");
+    }
+
+    [Theory]
+    [InlineData("Server=localhost;Database=HelloblueGK;Trusted_Connection=true", true)]
+    [InlineData("Host=127.0.0.1;Database=hellobluegk;Username=app;Password=x", true)]
+    [InlineData("Data Source=hellobluegk.db", true)]
+    [InlineData("Server=db.example.com;Database=HelloblueGK;User Id=app;Password=x", false)]
+    [InlineData("Host=db.example.com;Database=hellobluegk;Username=app;Password=x", false)]
+    public void DatabaseConfiguration_IsLocalDevelopmentConnectionString_DetectsLoopbackHosts(
+        string connectionString,
+        bool expected)
+    {
+        DatabaseConfiguration.IsLocalDevelopmentConnectionString(connectionString).Should().Be(expected);
+    }
+
+    [Fact]
     public void DatabaseConfiguration_DetectProvider_TreatsHostConnectionStringAsPostgreSql()
     {
         var postgres = new NpgsqlConnectionStringBuilder

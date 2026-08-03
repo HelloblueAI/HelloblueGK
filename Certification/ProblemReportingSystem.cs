@@ -49,7 +49,11 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Update problem report status
         /// </summary>
-        public async Task UpdateStatusAsync(string reportNumber, ProblemReportStatus newStatus, string? resolution = null)
+        public async Task UpdateStatusAsync(
+            string reportNumber,
+            ProblemReportStatus newStatus,
+            string? resolution = null,
+            string? changedBy = null)
         {
             var report = await _context.ProblemReports
                 .FirstOrDefaultAsync(pr => pr.ReportNumber == reportNumber);
@@ -57,6 +61,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (report == null)
                 throw new ArgumentException($"Problem report {reportNumber} not found");
 
+            var oldStatus = report.Status;
             report.Status = newStatus;
             report.UpdatedAt = DateTime.UtcNow;
 
@@ -66,15 +71,15 @@ namespace HB_NLP_Research_Lab.Certification
                 report.ClosedAt = DateTime.UtcNow;
             }
 
-            // Track status changes
+            // Track status changes — capture OldStatus before mutation for an accurate audit trail.
             var statusChange = new ProblemReportStatusChange
             {
                 Id = Guid.NewGuid(),
                 ProblemReportId = report.Id,
-                OldStatus = report.Status,
+                OldStatus = oldStatus,
                 NewStatus = newStatus,
                 ChangedAt = DateTime.UtcNow,
-                ChangedBy = "System", // Should be actual user
+                ChangedBy = string.IsNullOrWhiteSpace(changedBy) ? "System" : changedBy.Trim(),
                 Reason = resolution
             };
 

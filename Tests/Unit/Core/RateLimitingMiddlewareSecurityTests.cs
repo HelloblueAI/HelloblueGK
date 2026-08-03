@@ -47,8 +47,11 @@ public class RateLimitingMiddlewareSecurityTests
 
     [Theory]
     [InlineData("/api/v1/auth/login")]
+    [InlineData("/api/v1.0/auth/login")]
     [InlineData("/api/v1/auth/register")]
+    [InlineData("/api/v1.0/auth/register")]
     [InlineData("/api/v1/auth/refresh")]
+    [InlineData("/api/v1.0/auth/refresh")]
     [InlineData("/api/v1/account/login")]
     public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldUseAuthPolicy(string path)
     {
@@ -231,6 +234,55 @@ public class RateLimitingMiddlewareSecurityTests
         // Assert
         context.Response.StatusCode.Should().Be(StatusCodes.Status503ServiceUnavailable);
         context.Response.ContentType.Should().Be("application/json");
+    }
+
+    [Theory]
+    [InlineData("/api/v1.0/auth/login", "/api/v1/auth/login")]
+    [InlineData("/api/v1.0/certification/problem-reports", "/api/v1/certification/problem-reports")]
+    [InlineData("/api/v2.1.3/metrics", "/api/v2/metrics")]
+    [InlineData("/api/v1/auth/login", "/api/v1/auth/login")]
+    public void NormalizeEndpointPath_CollapsesDottedApiVersions(string input, string expected)
+    {
+        RateLimitingMiddleware.NormalizeEndpointPath(input).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_ForVersionedAuthSpelling_ShouldApplyAuthPolicyAndBodyCap()
+    {
+        // Arrange — AuthController routes as api/v{version} → /api/v1.0/Auth/...
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var requestBody = $$"""{"username":"victim","password":"{{new string('x', 64 * 1024)}}"}""";
+
+        // Act
+        var oversized = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1.0/auth/login",
+            HttpMethods.Post,
+            requestBody: requestBody);
+
+        var allowed = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1.0/auth/login",
+            HttpMethods.Post);
+        for (var i = 1; i < 10; i++)
+        {
+            allowed = await InvokeMiddlewareAsync(
+                rateLimitingService,
+                "/api/v1.0/auth/login",
+                HttpMethods.Post);
+        }
+
+        var blocked = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1.0/auth/login",
+            HttpMethods.Post);
+
+        // Assert
+        oversized.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        oversized.NextCalled.Should().BeFalse();
+        allowed.Headers["X-RateLimit-Limit"].Should().Be("10");
+        blocked.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        blocked.NextCalled.Should().BeFalse();
     }
 
     [Fact]
