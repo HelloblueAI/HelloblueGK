@@ -173,7 +173,7 @@ namespace HB_NLP_Research_Lab.Core
         /// Collapse ASP.NET API-version URL segments like <c>/api/v1.0/</c> to <c>/api/v1/</c>
         /// so rate-limit policies match both version spellings.
         /// </summary>
-        internal static string NormalizeEndpointPath(string endpoint)
+        public static string NormalizeEndpointPath(string endpoint)
         {
             if (string.IsNullOrEmpty(endpoint))
             {
