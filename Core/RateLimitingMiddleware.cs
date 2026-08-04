@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace HB_NLP_Research_Lab.Core
 {
@@ -13,6 +14,12 @@ namespace HB_NLP_Research_Lab.Core
     public class RateLimitingMiddleware
     {
         private const int MaxAuthUsernameBodyBytes = 64 * 1024;
+
+        // AuthController / Metrics / Certification use api/v{version:apiVersion} which substitutes "1.0".
+        // Normalize /api/v1.0/... (and similar) to /api/v1/... before policy selection.
+        private static readonly Regex ApiVersionPathRegex = new(
+            @"^/api/v(\d+)(?:\.\d+)*(?=/|$)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
         private readonly RequestDelegate _next;
         private readonly ILogger<RateLimitingMiddleware> _logger;
@@ -29,7 +36,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task InvokeAsync(HttpContext context)
         {
-            var endpoint = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+            var endpoint = NormalizeEndpointPath(context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty);
             var clientIdentifier = GetClientIdentifier(context);
 
             // Skip rate limiting for health checks and metrics endpoints
@@ -160,6 +167,20 @@ namespace HB_NLP_Research_Lab.Core
             };
 
             return skipEndpoints.Any(skip => endpoint.StartsWith(skip, StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Collapse ASP.NET API-version URL segments like <c>/api/v1.0/</c> to <c>/api/v1/</c>
+        /// so rate-limit policies match both version spellings.
+        /// </summary>
+        public static string NormalizeEndpointPath(string endpoint)
+        {
+            if (string.IsNullOrEmpty(endpoint))
+            {
+                return endpoint;
+            }
+
+            return ApiVersionPathRegex.Replace(endpoint, "/api/v$1", 1);
         }
 
         private string GetPolicyNameForEndpoint(string endpoint, string method)

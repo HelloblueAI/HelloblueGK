@@ -27,29 +27,130 @@ public static class DatabaseConfiguration
         getEnvironmentVariable ??= Environment.GetEnvironmentVariable;
 
         var connectionString = configuration.GetConnectionString("DefaultConnection");
-        if (string.IsNullOrWhiteSpace(connectionString))
+        var databaseUrl = getEnvironmentVariable("DATABASE_URL");
+
+        if (environment.IsDevelopment())
         {
-            if (environment.IsDevelopment())
+            if (string.IsNullOrWhiteSpace(connectionString))
             {
                 connectionString = "Data Source=hellobluegk.db";
             }
-            else
+        }
+        else
+        {
+            // Base appsettings.json ships a localhost SQL Server string for local samples.
+            // Outside Development that must never silently win over a real deployment config.
+            var hasLocalDevConnection =
+                !string.IsNullOrWhiteSpace(connectionString) &&
+                IsLocalDevelopmentConnectionString(connectionString);
+
+            if (string.IsNullOrWhiteSpace(connectionString) || hasLocalDevConnection)
             {
-                var databaseUrl = getEnvironmentVariable("DATABASE_URL");
-                if (string.IsNullOrWhiteSpace(databaseUrl))
+                if (!string.IsNullOrWhiteSpace(databaseUrl))
+                {
+                    connectionString = ConvertDatabaseUrlToConnectionString(databaseUrl);
+                }
+                else
                 {
                     throw new InvalidOperationException(
-                        "DefaultConnection string must be configured in production. " +
-                        "Please set ConnectionStrings:DefaultConnection or DATABASE_URL in your configuration. " +
-                        "For SQL Server, use: Server=your-server;Database=HelloblueGK;...");
+                        "SECURITY ERROR: DefaultConnection must be an explicit non-localhost database " +
+                        "outside Development. The shipped localhost/sample connection string is not valid " +
+                        "for deployed environments. Set ConnectionStrings:DefaultConnection or DATABASE_URL.");
                 }
-
-                connectionString = ConvertDatabaseUrlToConnectionString(databaseUrl);
             }
         }
 
         var configuredProvider = configuration["Database:Provider"];
         return new DatabaseConnectionSettings(connectionString, DetectProvider(connectionString, configuredProvider));
+    }
+
+    /// <summary>
+    /// Detects connection strings that only make sense for local developer machines
+    /// (localhost / loopback SQL Server or Postgres, or the default SQLite file).
+    /// </summary>
+    public static bool IsLocalDevelopmentConnectionString(string connectionString)
+    {
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            return false;
+        }
+
+        Dictionary<string, string?> keywords;
+        try
+        {
+            keywords = ParseConnectionStringKeywords(connectionString);
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+
+        if (IsSqliteConnectionString(connectionString, keywords))
+        {
+            if (keywords.TryGetValue("Data Source", out var dataSource) ||
+                keywords.TryGetValue("Filename", out dataSource))
+            {
+                var fileName = Path.GetFileName(dataSource);
+                return string.Equals(fileName, "hellobluegk.db", StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
+        }
+
+        var host = new[] { "Host", "Server", "Data Source", "Address", "Addr", "Network Address" }
+            .Select(key => keywords.TryGetValue(key, out var value) ? value : null)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+        if (host == null)
+        {
+            return false;
+        }
+
+        return IsLocalSqlHost(host);
+    }
+
+    /// <summary>
+    /// True for loopback / LocalDB / local named-pipe SQL Server hosts, including forms like
+    /// <c>tcp:localhost,1433</c> and <c>(localdb)\MSSQLLocalDB</c>.
+    /// </summary>
+    private static bool IsLocalSqlHost(string host)
+    {
+        // SQL Server: Server=localhost,1433 or Server=tcp:localhost,1433
+        var hostOnly = host.Split(',', 2)[0].Trim();
+
+        // Strip protocol prefixes (tcp:, np:, lpc:, admin:).
+        var protocolSeparator = hostOnly.IndexOf(':');
+        if (protocolSeparator > 0)
+        {
+            var protocol = hostOnly[..protocolSeparator];
+            if (protocol.Equals("tcp", StringComparison.OrdinalIgnoreCase)
+                || protocol.Equals("np", StringComparison.OrdinalIgnoreCase)
+                || protocol.Equals("lpc", StringComparison.OrdinalIgnoreCase)
+                || protocol.Equals("admin", StringComparison.OrdinalIgnoreCase))
+            {
+                hostOnly = hostOnly[(protocolSeparator + 1)..].Trim();
+            }
+        }
+
+        // Named pipes to the local machine: np:\\.\pipe\...
+        if (hostOnly.StartsWith(@"\\.\", StringComparison.Ordinal)
+            || hostOnly.StartsWith(@".\", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var instanceSeparator = hostOnly.IndexOf('\\');
+        if (instanceSeparator >= 0)
+        {
+            hostOnly = hostOnly[..instanceSeparator];
+        }
+
+        return hostOnly.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || hostOnly.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || hostOnly.Equals("::1", StringComparison.OrdinalIgnoreCase)
+            || hostOnly.Equals("(local)", StringComparison.OrdinalIgnoreCase)
+            || hostOnly.Equals("(localdb)", StringComparison.OrdinalIgnoreCase)
+            || hostOnly == ".";
     }
 
     public static DatabaseProvider DetectProvider(string connectionString, string? configuredProvider = null)

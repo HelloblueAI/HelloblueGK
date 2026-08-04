@@ -103,7 +103,8 @@ public class ProblemReportsController : ControllerBase
         try
         {
             var status = Enum.Parse<ProblemReportStatus>(request.Status);
-            await _prs.UpdateStatusAsync(reportNumber, status, request.Resolution);
+            var changedBy = User.Identity?.Name ?? "System";
+            await _prs.UpdateStatusAsync(reportNumber, status, request.Resolution, changedBy);
             return Ok(new { message = "Problem report status updated successfully" });
         }
         catch (ArgumentException)
