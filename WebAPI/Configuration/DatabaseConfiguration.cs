@@ -97,15 +97,9 @@ public static class DatabaseConfiguration
             return false;
         }
 
-        string? host = null;
-        foreach (var key in new[] { "Host", "Server", "Data Source", "Address", "Addr", "Network Address" })
-        {
-            if (keywords.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
-            {
-                host = value;
-                break;
-            }
-        }
+        var host = new[] { "Host", "Server", "Data Source", "Address", "Addr", "Network Address" }
+            .Select(key => keywords.TryGetValue(key, out var value) ? value : null)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
 
         if (host == null)
         {
