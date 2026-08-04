@@ -17,7 +17,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.4" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.5" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.18" />
     <!-- Entity Framework Core -->
@@ -33,7 +33,7 @@
     <!-- Authentication -->
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.18" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="9.0.18" />
-    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.21.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.22.0" />
     <!-- API Versioning -->
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Versioning" Version="5.1.0" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Versioning.ApiExplorer" Version="5.1.0" />
