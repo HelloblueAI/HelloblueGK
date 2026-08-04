@@ -204,19 +204,36 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReviewComplianceCheck> VerifyComplianceAsync(List<string> requiredFiles)
         {
-            var reviewedFiles = await _context.CodeReviews
+            requiredFiles ??= new List<string>();
+            var normalizedRequired = requiredFiles
+                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .Select(f => f.Trim().Replace('\\', '/'))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var approvedFiles = (await _context.CodeReviews
                 .Where(r => r.Status == CodeReviewStatus.Approved)
                 .Select(r => r.FilePath)
                 .Distinct()
-                .ToListAsync();
+                .ToListAsync())
+                .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
-                TotalRequiredFiles = requiredFiles.Count,
-                ReviewedFiles = reviewedFiles.Count,
-                UnreviewedFiles = requiredFiles.Except(reviewedFiles).ToList()
+                TotalRequiredFiles = normalizedRequired.Count,
+                // Count only required files that have an approved review — not all approved rows.
+                ReviewedFiles = normalizedRequired.Count(approvedFiles.Contains),
+                UnreviewedFiles = normalizedRequired.Where(f => !approvedFiles.Contains(f)).ToList()
             };
+
+            // Fail closed: an empty required set must never imply Level A compliance.
+            if (normalizedRequired.Count == 0)
+            {
+                check.IsCompliant = false;
+                check.Issues.Add("Required file list is empty; code-review compliance cannot be asserted");
+                return check;
+            }
 
             check.IsCompliant = check.UnreviewedFiles.Count == 0;
 

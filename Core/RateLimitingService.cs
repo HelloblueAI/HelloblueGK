@@ -10,12 +10,17 @@ namespace HB_NLP_Research_Lab.Core
     public class RateLimitingService : IDisposable
     {
         private const int DefaultMaxTrackedIdentifiers = 10000;
+        private const int DefaultMaxTestIdentifiers = 64;
+        private const string TestBucketPrefix = "test:";
 
         private readonly ILogger<RateLimitingService> _logger;
         private readonly ConcurrentDictionary<string, RateLimitBucket> _buckets;
+        private readonly ConcurrentDictionary<string, RateLimitBucket> _testBuckets;
         private readonly Timer _cleanupTimer;
         private readonly object _bucketCreationLock = new();
+        private readonly object _testBucketCreationLock = new();
         private readonly int _maxTrackedIdentifiers;
+        private readonly int _maxTestIdentifiers;
 
         public RateLimitingService(ILogger<RateLimitingService> logger)
             : this(logger, DefaultMaxTrackedIdentifiers)
@@ -23,12 +28,21 @@ namespace HB_NLP_Research_Lab.Core
         }
 
         public RateLimitingService(ILogger<RateLimitingService> logger, int maxTrackedIdentifiers)
+            : this(logger, maxTrackedIdentifiers, DefaultMaxTestIdentifiers)
+        {
+        }
+
+        public RateLimitingService(ILogger<RateLimitingService> logger, int maxTrackedIdentifiers, int maxTestIdentifiers)
         {
             _logger = logger;
             _maxTrackedIdentifiers = maxTrackedIdentifiers > 0
                 ? maxTrackedIdentifiers
                 : throw new ArgumentOutOfRangeException(nameof(maxTrackedIdentifiers), "Maximum tracked identifiers must be greater than zero.");
+            _maxTestIdentifiers = maxTestIdentifiers > 0
+                ? maxTestIdentifiers
+                : throw new ArgumentOutOfRangeException(nameof(maxTestIdentifiers), "Maximum test identifiers must be greater than zero.");
             _buckets = new ConcurrentDictionary<string, RateLimitBucket>();
+            _testBuckets = new ConcurrentDictionary<string, RateLimitBucket>();
             
             // Clean up expired buckets every minute
             _cleanupTimer = new Timer(CleanupExpiredBuckets, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
@@ -81,6 +95,42 @@ namespace HB_NLP_Research_Lab.Core
             };
 
             return await CheckRateLimitAsync(identifier, policy);
+        }
+
+        /// <summary>
+        /// Admin/test-only rate-limit check that uses an isolated bucket store.
+        /// Never creates or mutates production auth/API buckets, so /RateLimit/test
+        /// cannot exhaust the global identifier capacity or pollute live client state.
+        /// </summary>
+        public virtual Task<RateLimitResult> CheckTestRateLimitAsync(string identifier, RateLimitPolicy policy)
+        {
+            ArgumentNullException.ThrowIfNull(policy);
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                throw new ArgumentException("Identifier is required.", nameof(identifier));
+            }
+
+            var now = DateTime.UtcNow;
+            var testKey = TestBucketPrefix + identifier.Trim();
+            var bucket = GetOrCreateTestBucket(testKey, policy, now);
+            if (bucket == null)
+            {
+                _logger.LogWarning(
+                    "Test rate limit bucket capacity reached. Blocking test identifier {Identifier}. Capacity: {Capacity}",
+                    LogSanitizer.SanitizeIdentifier(identifier),
+                    _maxTestIdentifiers);
+
+                return Task.FromResult(new RateLimitResult
+                {
+                    IsAllowed = false,
+                    RemainingRequests = 0,
+                    ResetTime = now.Add(policy.WindowSize),
+                    TotalRequests = policy.RequestsPerWindow,
+                    Message = "Test rate limit capacity reached"
+                });
+            }
+
+            return Task.FromResult(bucket.CheckLimit(now));
         }
 
         public Task<RateLimitStatus> GetRateLimitStatusAsync(string identifier)
@@ -152,6 +202,7 @@ namespace HB_NLP_Research_Lab.Core
         public async Task ResetAllRateLimitsAsync()
         {
             _buckets.Clear();
+            _testBuckets.Clear();
             _logger.LogInformation("All rate limits have been reset");
             await Task.CompletedTask;
         }
@@ -184,6 +235,34 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
+        private RateLimitBucket? GetOrCreateTestBucket(string identifier, RateLimitPolicy policy, DateTime now)
+        {
+            if (_testBuckets.TryGetValue(identifier, out var existingBucket))
+            {
+                return existingBucket;
+            }
+
+            lock (_testBucketCreationLock)
+            {
+                if (_testBuckets.TryGetValue(identifier, out existingBucket))
+                {
+                    return existingBucket;
+                }
+
+                if (_testBuckets.Count >= _maxTestIdentifiers)
+                {
+                    CleanupExpiredTestBuckets(now);
+                    if (_testBuckets.Count >= _maxTestIdentifiers)
+                    {
+                        return null;
+                    }
+                }
+
+                var bucket = new RateLimitBucket(identifier, policy);
+                return _testBuckets.TryAdd(identifier, bucket) ? bucket : _testBuckets[identifier];
+            }
+        }
+
         private void CleanupExpiredBuckets(object? state)
         {
             var now = state is DateTime cleanupTime ? cleanupTime : DateTime.UtcNow;
@@ -197,9 +276,24 @@ namespace HB_NLP_Research_Lab.Core
                 _buckets.TryRemove(key, out _);
             }
 
+            CleanupExpiredTestBuckets(now);
+
             if (expiredKeys.Count > 0)
             {
                 _logger.LogDebug("Cleaned up {Count} expired rate limit buckets", expiredKeys.Count);
+            }
+        }
+
+        private void CleanupExpiredTestBuckets(DateTime now)
+        {
+            var expiredKeys = _testBuckets
+                .Where(kvp => !kvp.Value.IsActive(now))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
+            {
+                _testBuckets.TryRemove(key, out _);
             }
         }
 

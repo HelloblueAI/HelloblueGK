@@ -80,6 +80,58 @@ public class FormalCodeReviewSystemTests
             .WithMessage("*not found*");
     }
 
+    [Fact]
+    public async Task VerifyComplianceAsync_WithEmptyRequiredFiles_IsNotCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var check = await system.VerifyComplianceAsync(new List<string>());
+
+        check.IsCompliant.Should().BeFalse();
+        check.TotalRequiredFiles.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("empty", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_CountsOnlyRequiredApprovedIntersection()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob", isCertified: true);
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync(new List<string>
+        {
+            "Core/HelloblueGKEngine.cs",
+            "WebAPI/Program.cs"
+        });
+
+        check.TotalRequiredFiles.Should().Be(2);
+        check.ReviewedFiles.Should().Be(1);
+        check.IsCompliant.Should().BeFalse();
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("WebAPI/Program.cs");
+    }
+
     private static CodeReviewDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<CodeReviewDbContext>()
