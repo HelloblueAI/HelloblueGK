@@ -1659,7 +1659,11 @@ public class SecurityHardeningTests
     [InlineData("Server=localhost;Database=HelloblueGK;Trusted_Connection=true", true)]
     [InlineData("Host=127.0.0.1;Database=hellobluegk;Username=app;Password=x", true)]
     [InlineData("Data Source=hellobluegk.db", true)]
+    [InlineData("Server=tcp:localhost,1433;Database=HelloblueGK;User Id=app;Password=x", true)]
+    [InlineData("Data Source=(localdb)\\MSSQLLocalDB;Initial Catalog=HelloblueGK;Integrated Security=True", true)]
+    [InlineData("Server=(local)\\SQLEXPRESS;Database=HelloblueGK;Trusted_Connection=true", true)]
     [InlineData("Server=db.example.com;Database=HelloblueGK;User Id=app;Password=x", false)]
+    [InlineData("Server=tcp:db.example.com,1433;Database=HelloblueGK;User Id=app;Password=x", false)]
     [InlineData("Host=db.example.com;Database=hellobluegk;Username=app;Password=x", false)]
     public void DatabaseConfiguration_IsLocalDevelopmentConnectionString_DetectsLoopbackHosts(
         string connectionString,

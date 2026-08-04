@@ -106,8 +106,39 @@ public static class DatabaseConfiguration
             return false;
         }
 
-        // SQL Server: Server=localhost,1433 or Server=localhost\SQLEXPRESS
+        return IsLocalSqlHost(host);
+    }
+
+    /// <summary>
+    /// True for loopback / LocalDB / local named-pipe SQL Server hosts, including forms like
+    /// <c>tcp:localhost,1433</c> and <c>(localdb)\MSSQLLocalDB</c>.
+    /// </summary>
+    private static bool IsLocalSqlHost(string host)
+    {
+        // SQL Server: Server=localhost,1433 or Server=tcp:localhost,1433
         var hostOnly = host.Split(',', 2)[0].Trim();
+
+        // Strip protocol prefixes (tcp:, np:, lpc:, admin:).
+        var protocolSeparator = hostOnly.IndexOf(':');
+        if (protocolSeparator > 0)
+        {
+            var protocol = hostOnly[..protocolSeparator];
+            if (protocol.Equals("tcp", StringComparison.OrdinalIgnoreCase)
+                || protocol.Equals("np", StringComparison.OrdinalIgnoreCase)
+                || protocol.Equals("lpc", StringComparison.OrdinalIgnoreCase)
+                || protocol.Equals("admin", StringComparison.OrdinalIgnoreCase))
+            {
+                hostOnly = hostOnly[(protocolSeparator + 1)..].Trim();
+            }
+        }
+
+        // Named pipes to the local machine: np:\\.\pipe\...
+        if (hostOnly.StartsWith(@"\\.\", StringComparison.Ordinal)
+            || hostOnly.StartsWith(@".\", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
         var instanceSeparator = hostOnly.IndexOf('\\');
         if (instanceSeparator >= 0)
         {
@@ -118,6 +149,7 @@ public static class DatabaseConfiguration
             || hostOnly.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
             || hostOnly.Equals("::1", StringComparison.OrdinalIgnoreCase)
             || hostOnly.Equals("(local)", StringComparison.OrdinalIgnoreCase)
+            || hostOnly.Equals("(localdb)", StringComparison.OrdinalIgnoreCase)
             || hostOnly == ".";
     }
 
