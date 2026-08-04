@@ -53,17 +53,30 @@ namespace HB_NLP_Research_Lab.Certification
             if (!isCertified)
                 throw new InvalidOperationException("Reviewer must be certified for Level A reviews");
 
+            if (string.IsNullOrWhiteSpace(reviewerName))
+                throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
+
+            var review = await _context.CodeReviews
+                .FirstOrDefaultAsync(r => r.Id == reviewId);
+            if (review == null)
+                throw new ArgumentException($"Review {reviewId} not found");
+
             var assignment = new CodeReviewAssignment
             {
                 Id = Guid.NewGuid(),
                 ReviewId = reviewId,
-                ReviewerName = reviewerName,
+                ReviewerName = reviewerName.Trim(),
                 IsCertified = isCertified,
                 AssignedAt = DateTime.UtcNow,
                 Status = ReviewAssignmentStatus.Assigned
             };
 
             _context.CodeReviewAssignments.Add(assignment);
+            if (review.Status == CodeReviewStatus.Pending)
+            {
+                review.Status = CodeReviewStatus.InProgress;
+            }
+
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Assigned certified reviewer {ReviewerName} to review {ReviewId}", LogSanitizer.SanitizeIdentifier(reviewerName), reviewId);
@@ -115,10 +128,35 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var review = await _context.CodeReviews
                 .Include(r => r.Findings)
+                .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
 
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
+
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot approve review with status {review.Status}");
+            }
+
+            // Level A reviews require at least one completed certified reviewer assignment.
+            // Without this gate, create+approve forges compliance while bypassing assign/findings.
+            var hasCompletedCertifiedReviewer = review.Assignments.Any(a =>
+                a.IsCertified && a.Status == ReviewAssignmentStatus.Completed);
+            if (!hasCompletedCertifiedReviewer)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve review without at least one completed certified reviewer assignment");
+            }
+
+            var allAssignmentsCompleted = review.Assignments.Count > 0 &&
+                review.Assignments.All(a => a.Status == ReviewAssignmentStatus.Completed);
+            if (!allAssignmentsCompleted)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve review until all assigned reviewers have completed their findings");
+            }
 
             // Check for critical findings
             var criticalFindings = review.Findings.Where(f => f.Severity == FindingSeverity.Critical).ToList();

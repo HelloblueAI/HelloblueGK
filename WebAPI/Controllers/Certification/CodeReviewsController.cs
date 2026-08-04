@@ -108,6 +108,10 @@ public class CodeReviewsController : ControllerBase
             await _crs.AssignReviewerAsync(id, request.ReviewerName, request.IsCertified);
             return Ok(new { message = "Reviewer assigned successfully" });
         }
+        catch (ArgumentException)
+        {
+            return NotFound();
+        }
         catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
