@@ -96,6 +96,10 @@ public class ConfigurationManagementController : ControllerBase
         {
             return NotFound();
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -167,6 +171,10 @@ public class ConfigurationManagementController : ControllerBase
         catch (ArgumentException)
         {
             return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

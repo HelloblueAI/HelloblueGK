@@ -257,6 +257,24 @@ namespace HB_NLP_Research_Lab.Certification
             report.TotalRequirements = requirements.Count;
             report.IssuesFound = report.Issues.Count;
             report.CriticalIssues = report.Issues.Count(i => i.Severity == IssueSeverity.Critical);
+
+            // Empty RTM must fail closed — 0 critical/major issues with 0 requirements is not Level A evidence.
+            if (report.TotalRequirements == 0)
+            {
+                report.IsCompliant = false;
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = Guid.Empty,
+                    RequirementNumber = "(none)",
+                    IssueType = TraceabilityIssueType.MissingDesignLink,
+                    Severity = IssueSeverity.Critical,
+                    Description = "No requirements recorded; DO-178C Level A traceability compliance cannot be asserted"
+                });
+                report.IssuesFound = report.Issues.Count;
+                report.CriticalIssues = report.Issues.Count(i => i.Severity == IssueSeverity.Critical);
+                return report;
+            }
+
             report.IsCompliant = report.CriticalIssues == 0 && report.Issues.Count(i => i.Severity == IssueSeverity.Major) == 0;
 
             return report;

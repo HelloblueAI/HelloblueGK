@@ -359,25 +359,6 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogError(ex, "Failed to seed engines: {Error}", ex.Message);
         }
-
-        try
-        {
-            // In-process workers do not survive restarts. Default age is Zero (immediate
-            // fail-close). Multi-replica shared-DB deploys must set
-            // BackgroundWork:InterruptedJobMinimumAge (e.g. 00:30:00) so rolling deploys
-            // do not kill jobs still executing on peer replicas.
-            var interruptedJobMinimumAge = app.Configuration.GetValue(
-                "BackgroundWork:InterruptedJobMinimumAge",
-                TimeSpan.Zero);
-            await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
-                dbContext,
-                logger,
-                interruptedJobMinimumAge);
-        }
-        catch (Exception ex)
-        {
-            logger.LogError(ex, "Failed to reconcile interrupted background jobs: {Error}", ex.Message);
-        }
     }
     catch (Exception ex)
     {
@@ -386,6 +367,19 @@ using (var scope = app.Services.CreateScope())
             "Failed to initialize database: {Error}. The application will continue, but database operations may fail.",
             ex.Message);
     }
+
+    // In-process workers do not survive restarts. Default age is Zero (immediate
+    // fail-close). Multi-replica shared-DB deploys must set
+    // BackgroundWork:InterruptedJobMinimumAge (e.g. 00:30:00) so rolling deploys
+    // do not kill jobs still executing on peer replicas.
+    // Reconciliation failure is readiness-fatal: do not serve with unknown in-flight jobs.
+    var interruptedJobMinimumAge = app.Configuration.GetValue(
+        "BackgroundWork:InterruptedJobMinimumAge",
+        TimeSpan.Zero);
+    await BackgroundJobReconciliation.ReconcileInterruptedJobsAsync(
+        dbContext,
+        logger,
+        interruptedJobMinimumAge);
 }
 
 // Configure the HTTP request pipeline

@@ -55,12 +55,19 @@ namespace HB_NLP_Research_Lab.Certification
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
 
+            if (baseline.Status is not (BaselineStatus.Draft or BaselineStatus.UnderReview))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved from status {baseline.Status}; " +
+                    "only Draft or UnderReview baselines may be approved");
+            }
+
             baseline.Status = BaselineStatus.Approved;
             baseline.ApprovedBy = approvedBy;
             baseline.ApprovedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-            _logger.LogInformation("Approved baseline {BaselineName}", baseline.BaselineName);
+            _logger.LogInformation("Approved baseline {BaselineName}", LogSanitizer.Sanitize(baseline.BaselineName));
         }
 
         /// <summary>
@@ -131,6 +138,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (request == null)
                 throw new ArgumentException($"Change request {requestNumber} not found");
+
+            if (request.Status is not (ChangeRequestStatus.Submitted or ChangeRequestStatus.UnderReview))
+            {
+                throw new InvalidOperationException(
+                    $"Change request {requestNumber} cannot be approved from status {request.Status}; " +
+                    "only Submitted or UnderReview change requests may be approved");
+            }
 
             request.Status = ChangeRequestStatus.Approved;
             request.ApprovedBy = approvedBy;
@@ -268,6 +282,22 @@ namespace HB_NLP_Research_Lab.Certification
 
             report.TotalItems = items.Count;
             report.IssuesFound = report.Issues.Count;
+
+            // Empty baselines must fail closed — 0 issues on 0 items is not DO-178C evidence.
+            if (report.TotalItems == 0)
+            {
+                report.IsCompliant = false;
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.MissingBaseline,
+                    Severity = IssueSeverity.Critical,
+                    Description = $"Baseline {baseline.BaselineName} has no configuration items; compliance cannot be asserted"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
             report.IsCompliant = report.Issues.Count == 0;
 
             return report;

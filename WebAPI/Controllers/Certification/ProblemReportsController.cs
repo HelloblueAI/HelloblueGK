@@ -102,7 +102,11 @@ public class ProblemReportsController : ControllerBase
     {
         try
         {
-            var status = Enum.Parse<ProblemReportStatus>(request.Status);
+            if (!Enum.TryParse<ProblemReportStatus>(request.Status, ignoreCase: true, out var status))
+            {
+                return BadRequest(new { message = $"Invalid problem report status: {request.Status}" });
+            }
+
             var changedBy = User.Identity?.Name ?? "System";
             await _prs.UpdateStatusAsync(reportNumber, status, request.Resolution, changedBy);
             return Ok(new { message = "Problem report status updated successfully" });
@@ -110,6 +114,10 @@ public class ProblemReportsController : ControllerBase
         catch (ArgumentException)
         {
             return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

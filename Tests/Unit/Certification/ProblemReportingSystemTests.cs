@@ -37,6 +37,92 @@ public class ProblemReportingSystemTests
         updated.Status.Should().Be(ProblemReportStatus.UnderInvestigation);
     }
 
+    [Fact]
+    public async Task UpdateStatusAsync_RejectsOpenToClosedForge()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Safety-critical leak",
+            Description = "Leak near turbine",
+            Impact = "safety critical failure mode",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "closed without investigation",
+            changedBy: "eve");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot transition from Open to Closed*");
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_RequiresResolutionWhenClosing()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Major mixture shift",
+            Description = "Observed O/F drift",
+            Impact = "major performance impact",
+            ReportedBy = "alice"
+        });
+
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "retuned", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "   ",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*requires a non-empty resolution*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_EmptyStore_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("No problem reports recorded", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_ProperlyClosedCritical_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Closed, resolution: "verified on stand", changedBy: "bob");
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeTrue();
+        check.UnresolvedCriticalProblems.Should().Be(0);
+    }
+
     private static ProblemReportDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ProblemReportDbContext>()
