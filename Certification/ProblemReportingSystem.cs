@@ -309,7 +309,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// Unclassified impact defaults to Critical so Level A compliance cannot be forged by omitting
         /// "critical/safety/major" keywords. Explicit severity may not under-classify below the floor.
         /// </summary>
-        internal static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
+        public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
         {
             var keywordFloor = ClassifyImpactKeywords(impact);
             var resolved = explicitSeverity ?? keywordFloor ?? ProblemSeverity.Critical;
