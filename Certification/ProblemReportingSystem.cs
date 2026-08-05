@@ -26,24 +26,42 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Create a new problem report (PR)
         /// </summary>
-        public async Task<ProblemReport> CreateProblemReportAsync(ProblemReport report)
+        /// <param name="report">Problem report payload</param>
+        /// <param name="explicitSeverity">
+        /// Optional admin-asserted severity. Keyword classification from Impact is applied as a floor
+        /// so free-text wording cannot under-classify safety/critical impact as Minor.
+        /// </param>
+        public async Task<ProblemReport> CreateProblemReportAsync(
+            ProblemReport report,
+            ProblemSeverity? explicitSeverity = null)
         {
-            // Generate PR number (format: PR-YYYY-NNNN)
-            var year = DateTime.UtcNow.Year;
-            var existingCount = await _context.ProblemReports
-                .CountAsync(pr => pr.ReportNumber.StartsWith($"PR-{year}-"));
-            
-            report.ReportNumber = $"PR-{year}-{(existingCount + 1):D4}";
             report.Id = Guid.NewGuid();
             report.CreatedAt = DateTime.UtcNow;
             report.Status = ProblemReportStatus.Open;
-            report.Severity = DetermineSeverity(report);
+            report.Severity = ResolveSeverity(report.Impact, explicitSeverity);
 
-            _context.ProblemReports.Add(report);
-            await _context.SaveChangesAsync();
+            const int maxAttempts = 8;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                report.ReportNumber = await AllocateNextReportNumberAsync();
+                _context.ProblemReports.Add(report);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogWarning(
+                        "Created problem report {ReportNumber}: {Title}",
+                        report.ReportNumber,
+                        LogSanitizer.Sanitize(report.Title));
+                    return report;
+                }
+                catch (DbUpdateException) when (attempt < maxAttempts - 1)
+                {
+                    // Unique ReportNumber race — detach and retry with a fresh sequence value.
+                    _context.Entry(report).State = EntityState.Detached;
+                }
+            }
 
-            _logger.LogWarning("Created problem report {ReportNumber}: {Title}", report.ReportNumber, LogSanitizer.Sanitize(report.Title));
-            return report;
+            throw new InvalidOperationException("Unable to allocate a unique problem report number");
         }
 
         /// <summary>
@@ -264,11 +282,52 @@ namespace HB_NLP_Research_Lab.Certification
             };
         }
 
-        private ProblemSeverity DetermineSeverity(ProblemReport report)
+        private async Task<string> AllocateNextReportNumberAsync()
         {
-            var impact = report.Impact ?? string.Empty;
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"PR-{year}-";
+            var lastNumber = await _context.ProblemReports
+                .Where(pr => pr.ReportNumber.StartsWith(prefix))
+                .OrderByDescending(pr => pr.ReportNumber)
+                .Select(pr => pr.ReportNumber)
+                .FirstOrDefaultAsync();
 
-            // Determine severity based on impact
+            var next = 1;
+            if (!string.IsNullOrEmpty(lastNumber)
+                && lastNumber.Length > prefix.Length
+                && int.TryParse(lastNumber.AsSpan(prefix.Length), out var parsed)
+                && parsed >= 0)
+            {
+                next = parsed + 1;
+            }
+
+            return $"{prefix}{next:D4}";
+        }
+
+        /// <summary>
+        /// Resolve severity with fail-closed defaults and a keyword floor.
+        /// Unclassified impact defaults to Critical so Level A compliance cannot be forged by omitting
+        /// "critical/safety/major" keywords. Explicit severity may not under-classify below the floor.
+        /// </summary>
+        internal static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
+        {
+            var keywordFloor = ClassifyImpactKeywords(impact);
+            var resolved = explicitSeverity ?? keywordFloor ?? ProblemSeverity.Critical;
+
+            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            {
+                // Enum order is Critical(0) < Major(1) < Minor(2); higher int = lower severity.
+                resolved = keywordFloor.Value;
+            }
+
+            return resolved;
+        }
+
+        private static ProblemSeverity? ClassifyImpactKeywords(string? impact)
+        {
+            if (string.IsNullOrWhiteSpace(impact))
+                return null;
+
             if (impact.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
                 impact.Contains("critical", StringComparison.OrdinalIgnoreCase))
                 return ProblemSeverity.Critical;
@@ -277,7 +336,7 @@ namespace HB_NLP_Research_Lab.Certification
                 impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
                 return ProblemSeverity.Major;
 
-            return ProblemSeverity.Minor;
+            return null;
         }
 
         private double CalculateAverageResolutionTime(List<ProblemReport> reports)

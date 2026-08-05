@@ -39,6 +39,17 @@ public class ProblemReportsController : ControllerBase
     [ProducesResponseType(typeof(ProblemReportResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateProblemReport([FromBody] CreateProblemReportRequest request)
     {
+        ProblemSeverity? explicitSeverity = null;
+        if (!string.IsNullOrWhiteSpace(request.Severity))
+        {
+            if (!Enum.TryParse<ProblemSeverity>(request.Severity, ignoreCase: true, out var parsedSeverity))
+            {
+                return BadRequest(new { message = $"Invalid problem report severity: {request.Severity}" });
+            }
+
+            explicitSeverity = parsedSeverity;
+        }
+
         var report = new ProblemReport
         {
             Title = request.Title,
@@ -47,7 +58,7 @@ public class ProblemReportsController : ControllerBase
             ReportedBy = User.Identity?.Name ?? "System"
         };
 
-        var created = await _prs.CreateProblemReportAsync(report);
+        var created = await _prs.CreateProblemReportAsync(report, explicitSeverity);
 
         return CreatedAtAction(nameof(GetProblemReport), new { reportNumber = created.ReportNumber },
             new ProblemReportResponse
@@ -171,6 +182,10 @@ public class CreateProblemReportRequest
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string Impact { get; set; } = string.Empty;
+    /// <summary>
+    /// Optional explicit severity (Critical/Major/Minor). Keyword floor from Impact still applies.
+    /// </summary>
+    public string? Severity { get; set; }
 }
 
 public class UpdateProblemReportStatusRequest

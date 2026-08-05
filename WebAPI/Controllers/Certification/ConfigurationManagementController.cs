@@ -183,6 +183,7 @@ public class ConfigurationManagementController : ControllerBase
     /// </summary>
     [HttpGet("baselines/{id}/sci")]
     [ProducesResponseType(typeof(SoftwareConfigurationIndexResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> GenerateSCI(Guid id)
     {
         try
@@ -207,6 +208,10 @@ public class ConfigurationManagementController : ControllerBase
         catch (ArgumentException)
         {
             return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

@@ -123,6 +123,82 @@ public class ProblemReportingSystemTests
         check.UnresolvedCriticalProblems.Should().Be(0);
     }
 
+    [Fact]
+    public async Task CreateProblemReportAsync_UnclassifiedImpact_DefaultsToCritical()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Vague anomaly",
+            Description = "Something odd on the stand",
+            Impact = "Observed unexpected telemetry drift during soak-back",
+            ReportedBy = "alice"
+        });
+
+        created.Severity.Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public async Task CreateProblemReportAsync_KeywordFloor_BlocksUnderClassification()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(
+            new ProblemReport
+            {
+                Title = "Safety leak",
+                Description = "Leak near turbine",
+                Impact = "safety-critical failure mode",
+                ReportedBy = "alice"
+            },
+            explicitSeverity: ProblemSeverity.Minor);
+
+        created.Severity.Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public async Task CreateProblemReportAsync_AllocatesMonotonicReportNumbers()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var first = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "PR A",
+            Description = "a",
+            Impact = "major impact",
+            ReportedBy = "alice"
+        });
+        var second = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "PR B",
+            Description = "b",
+            Impact = "major impact",
+            ReportedBy = "alice"
+        });
+
+        first.ReportNumber.Should().EndWith("-0001");
+        second.ReportNumber.Should().EndWith("-0002");
+        first.Severity.Should().Be(ProblemSeverity.Major);
+    }
+
+    [Theory]
+    [InlineData(null, null, ProblemSeverity.Critical)]
+    [InlineData("routine observation", null, ProblemSeverity.Critical)]
+    [InlineData("major performance impact", null, ProblemSeverity.Major)]
+    [InlineData("critical safety fault", ProblemSeverity.Minor, ProblemSeverity.Critical)]
+    [InlineData("routine observation", ProblemSeverity.Minor, ProblemSeverity.Minor)]
+    public void ResolveSeverity_FailClosedAndKeywordFloor(
+        string? impact,
+        ProblemSeverity? explicitSeverity,
+        ProblemSeverity expected)
+    {
+        ProblemReportingSystem.ResolveSeverity(impact, explicitSeverity).Should().Be(expected);
+    }
+
     private static ProblemReportDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ProblemReportDbContext>()

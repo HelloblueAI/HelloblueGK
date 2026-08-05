@@ -91,6 +91,17 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task AddItemToBaselineAsync(Guid baselineId, Guid itemId, string version)
         {
+            var baseline = await _context.SoftwareBaselines.FindAsync(baselineId);
+            if (baseline == null)
+                throw new ArgumentException($"Baseline {baselineId} not found");
+
+            // Approved/Released/Obsolete baselines are frozen; mutations require a change request path.
+            if (baseline.Status is BaselineStatus.Approved or BaselineStatus.Released or BaselineStatus.Obsolete)
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} is {baseline.Status} and cannot accept new configuration items");
+            }
+
             var baselineItem = new BaselineConfigurationItem
             {
                 Id = Guid.NewGuid(),
@@ -111,21 +122,29 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ChangeRequest> CreateChangeRequestAsync(ChangeRequest request)
         {
-            // Generate CR number
-            var year = DateTime.UtcNow.Year;
-            var existingCount = await _context.ChangeRequests
-                .CountAsync(cr => cr.RequestNumber.StartsWith($"CR-{year}-"));
-            
-            request.RequestNumber = $"CR-{year}-{(existingCount + 1):D4}";
             request.Id = Guid.NewGuid();
             request.CreatedAt = DateTime.UtcNow;
             request.Status = ChangeRequestStatus.Submitted;
 
-            _context.ChangeRequests.Add(request);
-            await _context.SaveChangesAsync();
+            const int maxAttempts = 8;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                request.RequestNumber = await AllocateNextRequestNumberAsync();
+                _context.ChangeRequests.Add(request);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Created change request {RequestNumber}", request.RequestNumber);
+                    return request;
+                }
+                catch (DbUpdateException) when (attempt < maxAttempts - 1)
+                {
+                    // Unique RequestNumber race — detach and retry with a fresh sequence value.
+                    _context.Entry(request).State = EntityState.Detached;
+                }
+            }
 
-            _logger.LogInformation("Created change request {RequestNumber}", request.RequestNumber);
-            return request;
+            throw new InvalidOperationException("Unable to allocate a unique change request number");
         }
 
         /// <summary>
@@ -211,6 +230,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
+
+            // SCI is certification evidence — only official baselines may produce an index.
+            if (baseline.Status is not (BaselineStatus.Approved or BaselineStatus.Released))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} is {baseline.Status}; SCI may only be generated for Approved or Released baselines");
+            }
 
             var sci = new SoftwareConfigurationIndex
             {
@@ -298,9 +324,47 @@ namespace HB_NLP_Research_Lab.Certification
                 return report;
             }
 
+            // Draft/UnderReview/Obsolete baselines must not report compliance even when items look clean.
+            if (baseline.Status is not (BaselineStatus.Approved or BaselineStatus.Released))
+            {
+                report.IsCompliant = false;
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.BaselineNotApproved,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Baseline {baseline.BaselineName} is {baseline.Status}; configuration compliance requires an Approved or Released baseline"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
             report.IsCompliant = report.Issues.Count == 0;
 
             return report;
+        }
+
+        private async Task<string> AllocateNextRequestNumberAsync()
+        {
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"CR-{year}-";
+            var lastNumber = await _context.ChangeRequests
+                .Where(cr => cr.RequestNumber.StartsWith(prefix))
+                .OrderByDescending(cr => cr.RequestNumber)
+                .Select(cr => cr.RequestNumber)
+                .FirstOrDefaultAsync();
+
+            var next = 1;
+            if (!string.IsNullOrEmpty(lastNumber)
+                && lastNumber.Length > prefix.Length
+                && int.TryParse(lastNumber.AsSpan(prefix.Length), out var parsed)
+                && parsed >= 0)
+            {
+                next = parsed + 1;
+            }
+
+            return $"{prefix}{next:D4}";
         }
     }
 
@@ -467,7 +531,8 @@ namespace HB_NLP_Research_Lab.Certification
         ItemNotReleased,
         MissingVersion,
         InvalidChecksum,
-        MissingBaseline
+        MissingBaseline,
+        BaselineNotApproved
     }
 
     // DbContext

@@ -56,6 +56,105 @@ public class ConfigurationManagementSystemTests
         audit.Issues.Should().ContainSingle(i => i.IssueType == AuditIssueType.MissingBaseline);
     }
 
+    [Fact]
+    public async Task GenerateSCIAsync_RejectsUnapprovedBaseline()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-SCI", "0.1.0", "draft only", "alice");
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*SCI may only be generated for Approved or Released baselines*");
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_SucceedsForApprovedBaseline()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Approved-SCI", "1.0.0", "official", "alice");
+        await system.ApproveBaselineAsync(baseline.Id, "bob");
+
+        var sci = await system.GenerateSCIAsync(baseline.Id);
+        sci.BaselineName.Should().Be("Approved-SCI");
+        sci.Version.Should().Be("1.0.0");
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_DraftBaselineWithCleanItems_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Audit", "0.2.0", "not approved", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/core.c",
+            Checksum = "abc123",
+            Size = 128,
+            Status = ConfigurationItemStatus.Released
+        });
+        // CreateConfigurationItemAsync forces UnderDevelopment — release it for a clean-item forge attempt.
+        item.Status = ConfigurationItemStatus.Released;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.BaselineNotApproved);
+    }
+
+    [Fact]
+    public async Task AddItemToBaselineAsync_RejectsApprovedBaseline()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Frozen", "1.0.0", "approved", "alice");
+        await system.ApproveBaselineAsync(baseline.Id, "bob");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "late.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/late.c"
+        });
+
+        var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.1");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot accept new configuration items*");
+    }
+
+    [Fact]
+    public async Task CreateChangeRequestAsync_AllocatesMonotonicRequestNumbers()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var first = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "CR A",
+            Description = "a",
+            Justification = "j",
+            RequestedBy = "alice"
+        });
+        var second = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "CR B",
+            Description = "b",
+            Justification = "j",
+            RequestedBy = "alice"
+        });
+
+        first.RequestNumber.Should().EndWith("-0001");
+        second.RequestNumber.Should().EndWith("-0002");
+    }
+
     private static ConfigurationDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<ConfigurationDbContext>()
