@@ -51,7 +51,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task ApproveBaselineAsync(Guid baselineId, string approvedBy)
         {
-            var baseline = await _context.SoftwareBaselines.FindAsync(baselineId);
+            var baseline = await _context.SoftwareBaselines
+                .Include(b => b.ConfigurationItems)
+                .FirstOrDefaultAsync(b => b.Id == baselineId);
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
 
@@ -60,6 +62,13 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new InvalidOperationException(
                     $"Baseline {baseline.BaselineName} cannot be approved from status {baseline.Status}; " +
                     "only Draft or UnderReview baselines may be approved");
+            }
+
+            // Empty baselines must not become official — Approve freezes the set and SCI would be vacuous.
+            if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -236,6 +245,13 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new InvalidOperationException(
                     $"Baseline {baseline.BaselineName} is {baseline.Status}; SCI may only be generated for Approved or Released baselines");
+            }
+
+            // Empty SCI is not DO-178C evidence — reject zero-item Approved/Released baselines.
+            if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} has no configuration items; SCI cannot be generated without configuration evidence");
             }
 
             var sci = new SoftwareConfigurationIndex

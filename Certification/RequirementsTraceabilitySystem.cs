@@ -45,6 +45,11 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkToDesignAsync(Guid requirementId, string designElementId, string designDocument)
         {
+            if (string.IsNullOrWhiteSpace(designElementId))
+                throw new ArgumentException("Design element id is required", nameof(designElementId));
+            if (string.IsNullOrWhiteSpace(designDocument))
+                throw new ArgumentException("Design document is required", nameof(designDocument));
+
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
                 throw new ArgumentException($"Requirement {requirementId} not found");
@@ -53,8 +58,8 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 RequirementId = requirementId,
-                DesignElementId = designElementId,
-                DesignDocument = designDocument,
+                DesignElementId = designElementId.Trim(),
+                DesignDocument = designDocument.Trim(),
                 CreatedAt = DateTime.UtcNow,
                 Verified = false
             };
@@ -71,6 +76,13 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkToCodeAsync(Guid requirementId, string codeFile, int lineStart, int lineEnd, string functionName)
         {
+            if (string.IsNullOrWhiteSpace(codeFile))
+                throw new ArgumentException("Code file is required", nameof(codeFile));
+            if (string.IsNullOrWhiteSpace(functionName))
+                throw new ArgumentException("Function name is required", nameof(functionName));
+            if (lineStart <= 0 || lineEnd < lineStart)
+                throw new ArgumentException("Code line range must be a positive, ordered span");
+
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
                 throw new ArgumentException($"Requirement {requirementId} not found");
@@ -79,10 +91,10 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 RequirementId = requirementId,
-                CodeFile = codeFile,
+                CodeFile = codeFile.Trim(),
                 LineStart = lineStart,
                 LineEnd = lineEnd,
-                FunctionName = functionName,
+                FunctionName = functionName.Trim(),
                 CreatedAt = DateTime.UtcNow,
                 Verified = false
             };
@@ -100,6 +112,11 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkToTestAsync(Guid requirementId, string testCaseId, string testFile, TestCoverageType coverageType)
         {
+            if (string.IsNullOrWhiteSpace(testCaseId))
+                throw new ArgumentException("Test case id is required", nameof(testCaseId));
+            if (string.IsNullOrWhiteSpace(testFile))
+                throw new ArgumentException("Test file is required", nameof(testFile));
+
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
                 throw new ArgumentException($"Requirement {requirementId} not found");
@@ -108,8 +125,8 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 RequirementId = requirementId,
-                TestCaseId = testCaseId,
-                TestFile = testFile,
+                TestCaseId = testCaseId.Trim(),
+                TestFile = testFile.Trim(),
                 CoverageType = coverageType,
                 CreatedAt = DateTime.UtcNow,
                 Verified = false,
@@ -200,8 +217,12 @@ namespace HB_NLP_Research_Lab.Certification
 
             foreach (var req in requirements)
             {
+                var hasDesign = HasMeaningfulDesignLinks(req);
+                var hasCode = HasMeaningfulCodeLinks(req);
+                var hasTest = HasMeaningfulTestLinks(req);
+
                 // Check if requirement has design link
-                if (!req.DesignLinks.Any())
+                if (!hasDesign)
                 {
                     report.Issues.Add(new TraceabilityIssue
                     {
@@ -214,7 +235,7 @@ namespace HB_NLP_Research_Lab.Certification
                 }
 
                 // Check if requirement has code implementation
-                if (!req.CodeLinks.Any())
+                if (!hasCode)
                 {
                     report.Issues.Add(new TraceabilityIssue
                     {
@@ -227,7 +248,7 @@ namespace HB_NLP_Research_Lab.Certification
                 }
 
                 // Check if requirement has test coverage
-                if (!req.TestLinks.Any())
+                if (!hasTest)
                 {
                     report.Issues.Add(new TraceabilityIssue
                     {
@@ -240,8 +261,11 @@ namespace HB_NLP_Research_Lab.Certification
                 }
 
                 // Check for MC/DC coverage for safety-critical requirements
-                if (req.Priority == RequirementPriority.Critical && 
-                    !req.TestLinks.Any(t => t.CoverageType == TestCoverageType.MCDC))
+                if (req.Priority == RequirementPriority.Critical &&
+                    !req.TestLinks.Any(t =>
+                        t.CoverageType == TestCoverageType.MCDC &&
+                        !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+                        !string.IsNullOrWhiteSpace(t.TestFile)))
                 {
                     report.Issues.Add(new TraceabilityIssue
                     {
@@ -290,9 +314,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (requirement == null) return;
 
-            bool hasDesign = requirement.DesignLinks.Any();
-            bool hasCode = requirement.CodeLinks.Any();
-            bool hasTest = requirement.TestLinks.Any();
+            bool hasDesign = HasMeaningfulDesignLinks(requirement);
+            bool hasCode = HasMeaningfulCodeLinks(requirement);
+            bool hasTest = HasMeaningfulTestLinks(requirement);
 
             if (hasDesign && hasCode && hasTest)
             {
@@ -309,6 +333,23 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
         }
+
+        private static bool HasMeaningfulDesignLinks(Requirement requirement) =>
+            requirement.DesignLinks.Any(d =>
+                !string.IsNullOrWhiteSpace(d.DesignElementId) &&
+                !string.IsNullOrWhiteSpace(d.DesignDocument));
+
+        private static bool HasMeaningfulCodeLinks(Requirement requirement) =>
+            requirement.CodeLinks.Any(c =>
+                !string.IsNullOrWhiteSpace(c.CodeFile) &&
+                !string.IsNullOrWhiteSpace(c.FunctionName) &&
+                c.LineStart > 0 &&
+                c.LineEnd >= c.LineStart);
+
+        private static bool HasMeaningfulTestLinks(Requirement requirement) =>
+            requirement.TestLinks.Any(t =>
+                !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+                !string.IsNullOrWhiteSpace(t.TestFile));
     }
 
     // Data Models

@@ -13,11 +13,25 @@ public class ConfigurationManagementSystemTests
         var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
 
         var baseline = await system.CreateBaselineAsync("SCI-1", "1.0.0", "initial", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
         await system.ApproveBaselineAsync(baseline.Id, "bob");
 
         var act = async () => await system.ApproveBaselineAsync(baseline.Id, "carol");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be approved from status Approved*");
+    }
+
+    [Fact]
+    public async Task ApproveBaselineAsync_RejectsEmptyBaseline()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Empty-Approve", "0.0.1", "no items", "alice");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*has no configuration items and cannot be approved*");
     }
 
     [Fact]
@@ -76,11 +90,31 @@ public class ConfigurationManagementSystemTests
         var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
 
         var baseline = await system.CreateBaselineAsync("Approved-SCI", "1.0.0", "official", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "sci.c");
         await system.ApproveBaselineAsync(baseline.Id, "bob");
 
         var sci = await system.GenerateSCIAsync(baseline.Id);
         sci.BaselineName.Should().Be("Approved-SCI");
         sci.Version.Should().Be("1.0.0");
+        sci.ConfigurationItems.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_RejectsApprovedBaselineWithZeroItems()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Simulate a legacy Approved empty baseline (pre-gate) still present in the store.
+        var baseline = await system.CreateBaselineAsync("Legacy-Empty-SCI", "1.0.0", "legacy empty", "alice");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*SCI cannot be generated without configuration evidence*");
     }
 
     [Fact]
@@ -117,6 +151,7 @@ public class ConfigurationManagementSystemTests
         var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
 
         var baseline = await system.CreateBaselineAsync("Frozen", "1.0.0", "approved", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "seed.c");
         await system.ApproveBaselineAsync(baseline.Id, "bob");
         var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
         {
@@ -153,6 +188,25 @@ public class ConfigurationManagementSystemTests
 
         first.RequestNumber.Should().EndWith("-0001");
         second.RequestNumber.Should().EndWith("-0002");
+    }
+
+    private static async Task AddReleasedItemAsync(
+        ConfigurationManagementSystem system,
+        ConfigurationDbContext context,
+        Guid baselineId,
+        string itemName)
+    {
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = itemName,
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = $"src/{itemName}",
+            Checksum = "abc123",
+            Size = 64
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baselineId, item.Id, "1.0.0");
     }
 
     private static ConfigurationDbContext CreateContext()
