@@ -219,23 +219,42 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task AnalyzeEngineAsync_WithStructuralParameters_AppliesStressAndSafetyFactor()
+    public async Task AnalyzeEngineAsync_WithStructuralParameters_AppliesStressButNotClientSafetyFactor()
     {
-        var result = await _engine.AnalyzeEngineAsync(
+        var baseline = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 1_500_000,
+            specificImpulse: 350,
+            chamberPressure: 250,
+            efficiency: 0.9);
+
+        var honest = await _engine.AnalyzeEngineAsync(
             "TestEngine",
             "Structural",
             new Dictionary<string, object>
             {
                 ["maxStress"] = 650e6,
-                ["safetyFactor"] = 2.25,
                 ["iterations"] = 66
-            });
+            },
+            baseline);
+        var forged = await _engine.AnalyzeEngineAsync(
+            "TestEngine",
+            "Structural",
+            new Dictionary<string, object>
+            {
+                ["maxStress"] = 650e6,
+                ["safetyFactor"] = 100.0,
+                ["iterations"] = 66
+            },
+            baseline);
 
-        result.SimulationType.Should().Be("Structural");
-        result.Iterations.Should().Be(66);
-        result.StructuralAnalysis.MaxStress.Should().Be(650e6);
-        result.StructuralAnalysis.SafetyFactor.Should().Be(2.25);
-        result.PerformanceMetrics["MaxStress"].Should().Be(650e6);
+        forged.SimulationType.Should().Be("Structural");
+        forged.Iterations.Should().Be(66);
+        forged.StructuralAnalysis.MaxStress.Should().Be(650e6);
+        forged.StructuralAnalysis.SafetyFactor.Should().BeApproximately(
+            honest.StructuralAnalysis.SafetyFactor,
+            0.0001);
+        forged.StructuralAnalysis.SafetyFactor.Should().BeLessThan(10.0);
+        forged.PerformanceMetrics["MaxStress"].Should().Be(650e6);
     }
 
     [Fact]

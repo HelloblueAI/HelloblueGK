@@ -709,6 +709,40 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task ExecuteLaunch_IgnoresClientSuccessThresholdsForMissionPassFail()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+        // Engine efficiency is below the server floor (0.90). Ultra-low client thresholds
+        // previously forged MissionSuccess=true; they must be ignored.
+        launch.Engine.Efficiency = 0.50;
+        launch.LaunchParametersJson = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["successEfficiencyThreshold"] = 0.001,
+            ["successAccuracyThreshold"] = 0.001
+        });
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var executeResult = await controller.ExecuteLaunch(launch.Id);
+        executeResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Failed");
+        persisted.MissionSuccess.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ExecuteLaunch_WhenEngineDeactivated_ReturnsBadRequestWithoutStarting()
     {
         await using var context = CreateContext();
