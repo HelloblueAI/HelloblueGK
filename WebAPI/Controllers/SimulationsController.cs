@@ -472,16 +472,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var executionTime = (DateTime.UtcNow - startedAt).TotalSeconds;
                 var accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0
                     ?? analysisResult.ConvergenceRate;
-                if (accuracy <= 0)
+                var convergenceRate = analysisResult.ConvergenceRate;
+                // Fail closed: never invent optimistic Accuracy / ConvergenceRate trust metrics.
+                if (accuracy <= 0 || convergenceRate <= 0)
                 {
-                    accuracy = 0.95;
+                    await FailSimulationAsync(
+                        context,
+                        simulationId,
+                        "Simulation failed because solver trust metrics were missing or non-positive.");
+                    return;
                 }
 
                 var completedAt = DateTime.UtcNow;
-                var iterations = analysisResult.Iterations > 0 ? analysisResult.Iterations : 1000;
-                var convergenceRate = analysisResult.ConvergenceRate > 0
-                    ? analysisResult.ConvergenceRate
-                    : 0.99;
+                var iterations = analysisResult.Iterations > 0 ? analysisResult.Iterations : 0;
                 var resultsJson = JsonSerializer.Serialize(new
                 {
                     simulationType = analysisResult.SimulationType,
