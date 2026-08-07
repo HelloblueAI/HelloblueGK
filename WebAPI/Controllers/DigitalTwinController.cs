@@ -599,13 +599,20 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return NotFound(new { message = $"Digital twin with ID {id} not found" });
                 }
 
-                digitalTwin.IsActive = false;
-                digitalTwin.LastUpdated = DateTime.UtcNow;
-                await _context.SaveChangesAsync();
+                // Historical/inactive rows share the owner+engine runtime key with the
+                // current active twin (after ForceCreate). Only the active twin may
+                // evict process-local state; otherwise deactivate of an old row would
+                // wipe the live twin's learning/prediction runtime.
+                var wasActive = digitalTwin.IsActive;
+                if (wasActive)
+                {
+                    digitalTwin.IsActive = false;
+                    digitalTwin.LastUpdated = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
 
-                // Evict process-local twin state so deactivated twins cannot accumulate forever.
-                var runtimeKey = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
-                _digitalTwinEngine.RemoveDigitalTwin(runtimeKey);
+                    var runtimeKey = BuildDigitalTwinEngineKey(digitalTwin.EngineId, digitalTwin.CreatedBy);
+                    _digitalTwinEngine.RemoveDigitalTwin(runtimeKey);
+                }
 
                 return Ok(new { message = "Digital twin deactivated successfully" });
             }
