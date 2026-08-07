@@ -242,4 +242,53 @@ public class RateLimitingServiceTests
         newClientResult.Message.Should().Be("Rate limit capacity reached");
         report.TotalBuckets.Should().Be(2);
     }
+
+    [Fact]
+    public async Task CheckTestRateLimitAsync_DoesNotConsumeProductionBucketCapacity()
+    {
+        using var cappedService = new RateLimitingService(
+            _mockLogger.Object,
+            maxTrackedIdentifiers: 1,
+            maxTestIdentifiers: 2);
+        var policy = new RateLimitPolicy
+        {
+            RequestsPerWindow = 2,
+            WindowSize = TimeSpan.FromMinutes(1),
+            Algorithm = RateLimitAlgorithm.SlidingWindow
+        };
+
+        await cappedService.CheckRateLimitAsync("prod-client", policy);
+
+        var testResult = await cappedService.CheckTestRateLimitAsync("test-client", policy);
+        var stillBlockedProd = await cappedService.CheckRateLimitAsync("another-prod-client", policy);
+        var report = await cappedService.GenerateReportAsync();
+
+        testResult.IsAllowed.Should().BeTrue();
+        stillBlockedProd.IsAllowed.Should().BeFalse();
+        stillBlockedProd.Message.Should().Be("Rate limit capacity reached");
+        report.TotalBuckets.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task CheckTestRateLimitAsync_WhenTestCapacityReached_ShouldBlockWithoutAffectingProduction()
+    {
+        using var cappedService = new RateLimitingService(
+            _mockLogger.Object,
+            maxTrackedIdentifiers: 10,
+            maxTestIdentifiers: 1);
+        var policy = new RateLimitPolicy
+        {
+            RequestsPerWindow = 5,
+            WindowSize = TimeSpan.FromMinutes(1),
+            Algorithm = RateLimitAlgorithm.SlidingWindow
+        };
+
+        await cappedService.CheckTestRateLimitAsync("test-1", policy);
+        var blockedTest = await cappedService.CheckTestRateLimitAsync("test-2", policy);
+        var production = await cappedService.CheckRateLimitAsync("prod-client", policy);
+
+        blockedTest.IsAllowed.Should().BeFalse();
+        blockedTest.Message.Should().Be("Test rate limit capacity reached");
+        production.IsAllowed.Should().BeTrue();
+    }
 }

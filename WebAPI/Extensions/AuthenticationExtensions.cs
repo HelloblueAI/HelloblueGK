@@ -159,6 +159,7 @@ public static class AuthenticationExtensions
                         if (tokenVersion != user.AccessTokenVersion)
                         {
                             context.Fail("JWT access token has been revoked.");
+                            return;
                         }
                     }
                 };

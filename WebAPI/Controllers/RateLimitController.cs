@@ -117,6 +117,21 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(request.Identifier))
+                {
+                    return BadRequest(new { message = "Identifier is required." });
+                }
+
+                if (request.MaxRequests < 1)
+                {
+                    return BadRequest(new { message = "MaxRequests must be at least 1." });
+                }
+
+                if (request.WindowSeconds < 1)
+                {
+                    return BadRequest(new { message = "WindowSeconds must be at least 1." });
+                }
+
                 var policy = new RateLimitPolicy
                 {
                     RequestsPerWindow = request.MaxRequests,
@@ -124,7 +139,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     Algorithm = RateLimitAlgorithm.SlidingWindow
                 };
 
-                var result = await _rateLimitingService.CheckRateLimitAsync(request.Identifier, policy);
+                // Isolated test buckets only — never touch production auth/API capacity.
+                var result = await _rateLimitingService.CheckTestRateLimitAsync(request.Identifier, policy);
                 return Ok(result);
             }
             catch (Exception ex)

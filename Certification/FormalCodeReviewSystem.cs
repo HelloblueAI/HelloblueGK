@@ -28,21 +28,56 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReview> CreateReviewAsync(CodeReview review)
         {
-            // Generate review number
-            var year = DateTime.UtcNow.Year;
-            var existingCount = await _context.CodeReviews
-                .CountAsync(cr => cr.ReviewNumber.StartsWith($"CR-{year}-"));
-            
-            review.ReviewNumber = $"CR-{year}-{(existingCount + 1):D4}";
             review.Id = Guid.NewGuid();
             review.CreatedAt = DateTime.UtcNow;
             review.Status = CodeReviewStatus.Pending;
 
-            _context.CodeReviews.Add(review);
-            await _context.SaveChangesAsync();
+            // Allocate via max-suffix + retry so concurrent creates cannot collide on the unique ReviewNumber index.
+            const int maxAttempts = 8;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                review.ReviewNumber = await AllocateNextReviewNumberAsync();
+                _context.CodeReviews.Add(review);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation(
+                        "Created code review {ReviewNumber} for {FilePath}",
+                        review.ReviewNumber,
+                        LogSanitizer.Sanitize(review.FilePath));
+                    return review;
+                }
+                catch (DbUpdateException) when (attempt < maxAttempts - 1)
+                {
+                    _context.Entry(review).State = EntityState.Detached;
+                }
+            }
 
-            _logger.LogInformation("Created code review {ReviewNumber} for {FilePath}", review.ReviewNumber, LogSanitizer.Sanitize(review.FilePath));
-            return review;
+            throw new InvalidOperationException("Unable to allocate a unique code review number");
+        }
+
+        private async Task<string> AllocateNextReviewNumberAsync()
+        {
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"CR-{year}-";
+            var existing = await _context.CodeReviews
+                .Where(cr => cr.ReviewNumber.StartsWith(prefix))
+                .Select(cr => cr.ReviewNumber)
+                .ToListAsync();
+
+            // Numeric max — not lexicographic OrderByDescending (CR-…-10000 < CR-…-9999 as strings).
+            var next = 1;
+            foreach (var number in existing)
+            {
+                if (number.Length > prefix.Length
+                    && int.TryParse(number.AsSpan(prefix.Length), out var parsed)
+                    && parsed >= next)
+                {
+                    next = parsed + 1;
+                }
+            }
+
+            return $"{prefix}{next:D4}";
         }
 
         /// <summary>
@@ -53,17 +88,30 @@ namespace HB_NLP_Research_Lab.Certification
             if (!isCertified)
                 throw new InvalidOperationException("Reviewer must be certified for Level A reviews");
 
+            if (string.IsNullOrWhiteSpace(reviewerName))
+                throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
+
+            var review = await _context.CodeReviews
+                .FirstOrDefaultAsync(r => r.Id == reviewId);
+            if (review == null)
+                throw new ArgumentException($"Review {reviewId} not found");
+
             var assignment = new CodeReviewAssignment
             {
                 Id = Guid.NewGuid(),
                 ReviewId = reviewId,
-                ReviewerName = reviewerName,
+                ReviewerName = reviewerName.Trim(),
                 IsCertified = isCertified,
                 AssignedAt = DateTime.UtcNow,
                 Status = ReviewAssignmentStatus.Assigned
             };
 
             _context.CodeReviewAssignments.Add(assignment);
+            if (review.Status == CodeReviewStatus.Pending)
+            {
+                review.Status = CodeReviewStatus.InProgress;
+            }
+
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Assigned certified reviewer {ReviewerName} to review {ReviewId}", LogSanitizer.SanitizeIdentifier(reviewerName), reviewId);
@@ -115,10 +163,35 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var review = await _context.CodeReviews
                 .Include(r => r.Findings)
+                .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
 
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
+
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot approve review with status {review.Status}");
+            }
+
+            // Level A reviews require at least one completed certified reviewer assignment.
+            // Without this gate, create+approve forges compliance while bypassing assign/findings.
+            var hasCompletedCertifiedReviewer = review.Assignments.Any(a =>
+                a.IsCertified && a.Status == ReviewAssignmentStatus.Completed);
+            if (!hasCompletedCertifiedReviewer)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve review without at least one completed certified reviewer assignment");
+            }
+
+            var allAssignmentsCompleted = review.Assignments.Count > 0 &&
+                review.Assignments.All(a => a.Status == ReviewAssignmentStatus.Completed);
+            if (!allAssignmentsCompleted)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve review until all assigned reviewers have completed their findings");
+            }
 
             // Check for critical findings
             var criticalFindings = review.Findings.Where(f => f.Severity == FindingSeverity.Critical).ToList();
@@ -166,19 +239,38 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReviewComplianceCheck> VerifyComplianceAsync(List<string> requiredFiles)
         {
-            var reviewedFiles = await _context.CodeReviews
+            requiredFiles ??= new List<string>();
+            var normalizedRequired = requiredFiles
+                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .Select(NormalizeFilePath)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var approvedFiles = (await _context.CodeReviews
                 .Where(r => r.Status == CodeReviewStatus.Approved)
                 .Select(r => r.FilePath)
                 .Distinct()
-                .ToListAsync();
+                .ToListAsync())
+                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .Select(NormalizeFilePath)
+                .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
-                TotalRequiredFiles = requiredFiles.Count,
-                ReviewedFiles = reviewedFiles.Count,
-                UnreviewedFiles = requiredFiles.Except(reviewedFiles).ToList()
+                TotalRequiredFiles = normalizedRequired.Count,
+                // Count only required files that have an approved review — not all approved rows.
+                ReviewedFiles = normalizedRequired.Count(approvedFiles.Contains),
+                UnreviewedFiles = normalizedRequired.Where(f => !approvedFiles.Contains(f)).ToList()
             };
+
+            // Fail closed: an empty required set must never imply Level A compliance.
+            if (normalizedRequired.Count == 0)
+            {
+                check.IsCompliant = false;
+                check.Issues.Add("Required file list is empty; code-review compliance cannot be asserted");
+                return check;
+            }
 
             check.IsCompliant = check.UnreviewedFiles.Count == 0;
 
@@ -193,6 +285,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             return check;
         }
+
+        private static string NormalizeFilePath(string filePath) =>
+            filePath.Trim().Replace('\\', '/');
     }
 
     // Data Models
