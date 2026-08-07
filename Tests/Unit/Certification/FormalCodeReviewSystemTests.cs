@@ -132,6 +132,43 @@ public class FormalCodeReviewSystemTests
         check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("WebAPI/Program.cs");
     }
 
+    [Fact]
+    public async Task VerifyComplianceAsync_NormalizesPathSeparatorsBeforeMatching()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = @"Core\HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob", isCertified: true);
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync(new List<string>
+        {
+            " Core/HelloblueGKEngine.cs "
+        });
+
+        check.IsCompliant.Should().BeTrue();
+        check.ReviewedFiles.Should().Be(1);
+        check.UnreviewedFiles.Should().BeEmpty();
+    }
+
     private static CodeReviewDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<CodeReviewDbContext>()

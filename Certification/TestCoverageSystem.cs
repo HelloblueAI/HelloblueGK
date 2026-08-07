@@ -302,32 +302,17 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Prefer server-computed percentages from counts when totals are present so
             // clients cannot assert 100% while covered/total counts disagree.
-            if (metrics.TotalStatements > 0)
-            {
-                metrics.StatementCoverage = (double)metrics.CoveredStatements / metrics.TotalStatements * 100.0;
-            }
-            else
-            {
-                metrics.StatementCoverage = NormalizePercentage(metrics.StatementCoverage, nameof(metrics.StatementCoverage));
-            }
+            metrics.StatementCoverage = metrics.TotalStatements > 0
+                ? (double)metrics.CoveredStatements / metrics.TotalStatements * 100.0
+                : NormalizePercentage(metrics.StatementCoverage, nameof(metrics.StatementCoverage));
 
-            if (metrics.TotalBranches > 0)
-            {
-                metrics.BranchCoverage = (double)metrics.CoveredBranches / metrics.TotalBranches * 100.0;
-            }
-            else
-            {
-                metrics.BranchCoverage = NormalizePercentage(metrics.BranchCoverage, nameof(metrics.BranchCoverage));
-            }
+            metrics.BranchCoverage = metrics.TotalBranches > 0
+                ? (double)metrics.CoveredBranches / metrics.TotalBranches * 100.0
+                : NormalizePercentage(metrics.BranchCoverage, nameof(metrics.BranchCoverage));
 
-            if (metrics.TotalConditions > 0)
-            {
-                metrics.ConditionCoverage = (double)metrics.CoveredConditions / metrics.TotalConditions * 100.0;
-            }
-            else
-            {
-                metrics.ConditionCoverage = NormalizePercentage(metrics.ConditionCoverage, nameof(metrics.ConditionCoverage));
-            }
+            metrics.ConditionCoverage = metrics.TotalConditions > 0
+                ? (double)metrics.CoveredConditions / metrics.TotalConditions * 100.0
+                : NormalizePercentage(metrics.ConditionCoverage, nameof(metrics.ConditionCoverage));
 
             metrics.MCDCCoverage = NormalizePercentage(metrics.MCDCCoverage, nameof(metrics.MCDCCoverage));
             metrics.PathCoverage = NormalizePercentage(metrics.PathCoverage, nameof(metrics.PathCoverage));

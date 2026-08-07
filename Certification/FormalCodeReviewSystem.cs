@@ -207,7 +207,7 @@ namespace HB_NLP_Research_Lab.Certification
             requiredFiles ??= new List<string>();
             var normalizedRequired = requiredFiles
                 .Where(f => !string.IsNullOrWhiteSpace(f))
-                .Select(f => f.Trim().Replace('\\', '/'))
+                .Select(NormalizeFilePath)
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
 
@@ -216,6 +216,8 @@ namespace HB_NLP_Research_Lab.Certification
                 .Select(r => r.FilePath)
                 .Distinct()
                 .ToListAsync())
+                .Where(f => !string.IsNullOrWhiteSpace(f))
+                .Select(NormalizeFilePath)
                 .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
@@ -248,6 +250,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             return check;
         }
+
+        private static string NormalizeFilePath(string filePath) =>
+            filePath.Trim().Replace('\\', '/');
     }
 
     // Data Models
