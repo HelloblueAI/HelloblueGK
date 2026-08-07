@@ -49,7 +49,7 @@ public class DigitalTwinEngineTests : IDisposable
         twin.Should().NotBeNull();
         twin.EngineId.Should().Be(engineId);
         twin.EngineModel.Should().NotBeNull();
-        twin.PredictionAccuracy.Should().BeGreaterThan(0);
+        twin.PredictionAccuracy.Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
         twin.LearningStatus.Should().NotBeNullOrEmpty();
     }
 
@@ -132,8 +132,106 @@ public class DigitalTwinEngineTests : IDisposable
         // Assert
         prediction.Should().NotBeNull();
         prediction.EngineId.Should().Be(engineId);
-        prediction.ConfidenceLevel.Should().BeGreaterThan(0);
+        prediction.ConfidenceLevel.Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
         prediction.PredictedMetrics.Should().NotBeEmpty();
+    }
+
+    [Fact]
+    public async Task PredictEngineBehaviorAsync_IgnoresClientReliabilityOverride()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineId = "TestEngine_ReliabilityForge";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel
+            {
+                Name = "Reliability Engine",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_500_000,
+                    ["Efficiency"] = 0.92
+                }
+            });
+
+        var baseline = await _digitalTwinEngine.PredictEngineBehaviorAsync(
+            engineId,
+            new PredictionScenario
+            {
+                Name = "Baseline",
+                Parameters = new Dictionary<string, object>()
+            });
+        var forged = await _digitalTwinEngine.PredictEngineBehaviorAsync(
+            engineId,
+            new PredictionScenario
+            {
+                Name = "ForgedReliability",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["reliability"] = 1.0
+                }
+            });
+
+        forged.PredictedMetrics["Reliability"].Should().BeApproximately(
+            baseline.PredictedMetrics["Reliability"],
+            0.0001);
+        forged.PredictedMetrics["Reliability"].Should().BeLessThan(1.0);
+        forged.ConfidenceLevel.Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+    }
+
+    [Fact]
+    public async Task LearnFromTestFlightAsync_UpdatesAccuracyFromFlightResiduals()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineId = "TestEngine_AccuracyResiduals";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel
+            {
+                Name = "Residual Engine",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000,
+                    ["Efficiency"] = 0.90
+                }
+            });
+
+        var matching = await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000,
+                    ["Efficiency"] = 0.90
+                }
+            });
+        var mismatched = await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 500_000,
+                    ["Efficiency"] = 0.45
+                }
+            });
+
+        matching.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeApproximately(1.0, 0.0001);
+        matching.UpdatedPredictionAccuracy.ThrustPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
+        matching.UpdatedPredictionAccuracy.ThermalPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
+        // No structural/reliability residuals in the flight metrics — stay unproven, not overall.
+        matching.UpdatedPredictionAccuracy.StructuralPredictionAccuracy
+            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+        matching.UpdatedPredictionAccuracy.FailurePredictionAccuracy
+            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+
+        mismatched.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeLessThan(0.6);
+        mismatched.UpdatedPredictionAccuracy.OverallAccuracy
+            .Should().BeLessThan(matching.UpdatedPredictionAccuracy.OverallAccuracy);
     }
 
     [Fact]

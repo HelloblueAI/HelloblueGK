@@ -18,6 +18,10 @@ namespace HB_NLP_Research_Lab.Core
     {
         public const int MaxHistoryEntries = 256;
         public const int MaxActiveTwins = 256;
+        /// <summary>
+        /// Conservative accuracy for twins that have not yet been scored against flight residuals.
+        /// </summary>
+        public const double UnprovenPredictionAccuracy = 0.5;
 
         private readonly AdvancedPhysicsEngine _physicsEngine;
         private readonly ValidationEngine _validationEngine;
@@ -129,7 +133,8 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Digital Twin] EngineModel.Name: {engineModel.Name}");
             Console.WriteLine($"[Digital Twin] EngineModel.Parameters.Count: {engineModel.Parameters.Count}");
 
-            // Create comprehensive digital twin
+            // Create comprehensive digital twin. Accuracy starts unproven until learn
+            // residuals are observed — never advertise near-perfect confidence at create.
             var digitalTwin = new EngineDigitalTwin
             {
                 EngineId = engineId,
@@ -137,7 +142,7 @@ namespace HB_NLP_Research_Lab.Core
                 CreationTimestamp = DateTime.UtcNow,
                 LastUpdateTimestamp = DateTime.UtcNow,
                 LearningStatus = "Active",
-                PredictionAccuracy = 0.999,
+                PredictionAccuracy = UnprovenPredictionAccuracy,
                 TwinVersion = "1.0.0"
             };
             
@@ -168,15 +173,7 @@ namespace HB_NLP_Research_Lab.Core
                             // The twin is written last so readers never observe it
                             // without corresponding history and accuracy state.
                             _learningHistories[engineId] = CreateLearningHistory(engineId);
-                            _predictionAccuracies[engineId] = new PredictionAccuracy
-                            {
-                                EngineId = engineId,
-                                OverallAccuracy = 0.999,
-                                ThrustPredictionAccuracy = 0.998,
-                                ThermalPredictionAccuracy = 0.997,
-                                StructuralPredictionAccuracy = 0.999,
-                                FailurePredictionAccuracy = 0.999
-                            };
+                            _predictionAccuracies[engineId] = CreateUnprovenPredictionAccuracy(engineId);
                             isNewKey = !_digitalTwins.ContainsKey(engineId);
                             _digitalTwins[engineId] = digitalTwin;
                             if (isNewKey)
@@ -209,7 +206,7 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<EngineDigitalTwin> EnsureDigitalTwinAsync(
             string engineId,
             EngineModel engineModel,
-            double predictionAccuracy = 0.999)
+            double predictionAccuracy = UnprovenPredictionAccuracy)
         {
             ThrowIfDisposed();
             if (string.IsNullOrWhiteSpace(engineId))
@@ -337,7 +334,7 @@ namespace HB_NLP_Research_Lab.Core
             string engineId,
             TestFlightData flightData)
         {
-            if (!_digitalTwins.ContainsKey(engineId))
+            if (!_digitalTwins.TryGetValue(engineId, out var twinForLearning))
             {
                 Console.WriteLine($"[Digital Twin] ERROR: Digital twin not found for engine: {engineId}");
                 throw new ArgumentException($"Digital twin not found for engine: {engineId}");
@@ -355,7 +352,10 @@ namespace HB_NLP_Research_Lab.Core
 
             var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
             var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
-            var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(engineId, flightData);
+            var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(
+                engineId,
+                flightData,
+                twinForLearning.EngineModel);
 
             // Commit the learning result only after every asynchronous stage
             // succeeds and while replacement/disposal are excluded.
@@ -415,6 +415,8 @@ namespace HB_NLP_Research_Lab.Core
                         engineId,
                         scenario,
                         twinForPrediction.EngineModel);
+                    // Confidence tracks observed prediction accuracy — never a constant 0.999.
+                    prediction.ConfidenceLevel = Math.Clamp(predictionAccuracy.OverallAccuracy, 0.0, 1.0);
                     var predictionRecord = new PredictionRecord
                     {
                         Timestamp = DateTime.UtcNow,
@@ -629,6 +631,16 @@ namespace HB_NLP_Research_Lab.Core
             LearningEvents = new List<LearningEvent>(),
             ModelImprovements = new List<ModelImprovement>(),
             PredictionHistory = new List<PredictionRecord>()
+        };
+
+        private static PredictionAccuracy CreateUnprovenPredictionAccuracy(string engineId) => new()
+        {
+            EngineId = engineId,
+            OverallAccuracy = UnprovenPredictionAccuracy,
+            ThrustPredictionAccuracy = UnprovenPredictionAccuracy,
+            ThermalPredictionAccuracy = UnprovenPredictionAccuracy,
+            StructuralPredictionAccuracy = UnprovenPredictionAccuracy,
+            FailurePredictionAccuracy = UnprovenPredictionAccuracy
         };
 
         private static void TrimBoundedHistory<T>(List<T> list)
@@ -1024,7 +1036,9 @@ namespace HB_NLP_Research_Lab.Core
             var efficiency = TryReadEngineModelParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
                 ? Math.Clamp(engineEfficiency, 0.0, 1.0)
                 : 0.92;
-            var reliability = 0.999;
+            // Baseline reliability is a model prior; scenario throttle may derate it.
+            // Clients must not set PredictedMetrics.Reliability directly.
+            var reliability = 0.95;
             var parameters = scenario.Parameters ?? new Dictionary<string, object>();
 
             if (TryReadScenarioDouble(parameters, "thrust", out var requestedThrust) && requestedThrust > 0)
@@ -1047,13 +1061,8 @@ namespace HB_NLP_Research_Lab.Core
                 efficiency = Math.Clamp(efficiency * Math.Min(throttle, 1.05), 0.0, 0.99);
                 if (throttle > 1.0)
                 {
-                    reliability = Math.Clamp(reliability - ((throttle - 1.0) * 0.05), 0.9, 0.999);
+                    reliability = Math.Clamp(reliability - ((throttle - 1.0) * 0.05), 0.5, 0.95);
                 }
-            }
-
-            if (TryReadScenarioDouble(parameters, "reliability", out var requestedReliability) && requestedReliability > 0)
-            {
-                reliability = Math.Clamp(requestedReliability, 0.0, 1.0);
             }
 
             if (TryReadScenarioDouble(parameters, "ambientTemperature", out var ambientTemperature))
@@ -1073,7 +1082,8 @@ namespace HB_NLP_Research_Lab.Core
                     ["Efficiency"] = efficiency,
                     ["Reliability"] = reliability
                 },
-                ConfidenceLevel = 0.999,
+                // Overwritten by DigitalTwinEngine with stored prediction accuracy when available.
+                ConfidenceLevel = DigitalTwinEngine.UnprovenPredictionAccuracy,
                 PredictionTimestamp = DateTime.UtcNow,
                 PredictedIssues = new List<string>(),
                 RecommendedActions = new List<string>()
@@ -1144,18 +1154,123 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
         
-        public async Task<PredictionAccuracy> UpdatePredictionAccuracyAsync(string engineId, TestFlightData flightData)
+        public async Task<PredictionAccuracy> UpdatePredictionAccuracyAsync(
+            string engineId,
+            TestFlightData flightData,
+            EngineModel? engineModel = null)
         {
             await Task.Delay(50);
+
+            var thrustAccuracy = ComputeMetricAccuracy(
+                engineModel,
+                flightData,
+                modelKeys: new[] { "Thrust" },
+                flightKeys: new[] { "Thrust" });
+            var thermalAccuracy = ComputeMetricAccuracy(
+                engineModel,
+                flightData,
+                modelKeys: new[] { "Efficiency", "ThermalEfficiency" },
+                flightKeys: new[] { "Efficiency", "ThermalEfficiency" });
+            var structuralAccuracy = ComputeMetricAccuracy(
+                engineModel,
+                flightData,
+                modelKeys: new[] { "ChamberPressure", "MaxStress" },
+                flightKeys: new[] { "ChamberPressure", "MaxStress" });
+            var failureAccuracy = ComputeMetricAccuracy(
+                engineModel,
+                flightData,
+                modelKeys: new[] { "Reliability" },
+                flightKeys: new[] { "Reliability" });
+
+            var scored = new[] { thrustAccuracy, thermalAccuracy, structuralAccuracy, failureAccuracy }
+                .Where(value => !double.IsNaN(value))
+                .ToArray();
+            var overall = scored.Length > 0
+                ? scored.Average()
+                : DigitalTwinEngine.UnprovenPredictionAccuracy;
+
             return new PredictionAccuracy
             {
                 EngineId = engineId,
-                OverallAccuracy = 0.999,
-                ThrustPredictionAccuracy = 0.998,
-                ThermalPredictionAccuracy = 0.997,
-                StructuralPredictionAccuracy = 0.999,
-                FailurePredictionAccuracy = 0.999
+                OverallAccuracy = overall,
+                // Unscored components stay unproven — do not inherit the blended overall.
+                ThrustPredictionAccuracy = ResolveComponentAccuracy(thrustAccuracy),
+                ThermalPredictionAccuracy = ResolveComponentAccuracy(thermalAccuracy),
+                StructuralPredictionAccuracy = ResolveComponentAccuracy(structuralAccuracy),
+                FailurePredictionAccuracy = ResolveComponentAccuracy(failureAccuracy)
             };
+        }
+
+        private static double ResolveComponentAccuracy(double componentAccuracy)
+        {
+            return double.IsNaN(componentAccuracy)
+                ? DigitalTwinEngine.UnprovenPredictionAccuracy
+                : componentAccuracy;
+        }
+
+        private static double ComputeMetricAccuracy(
+            EngineModel? engineModel,
+            TestFlightData flightData,
+            IReadOnlyList<string> modelKeys,
+            IReadOnlyList<string> flightKeys)
+        {
+            if (engineModel == null ||
+                flightData.FlightMetrics == null ||
+                flightData.FlightMetrics.Count == 0)
+            {
+                return double.NaN;
+            }
+
+            if (!TryReadEngineModelParameter(engineModel, modelKeys, out var expected) || expected <= 0)
+            {
+                return double.NaN;
+            }
+
+            if (!TryReadFlightMetric(flightData.FlightMetrics, flightKeys, out var actual))
+            {
+                return double.NaN;
+            }
+
+            var relativeError = Math.Abs(actual - expected) / Math.Abs(expected);
+            return Math.Clamp(1.0 - relativeError, 0.0, 1.0);
+        }
+
+        private static bool TryReadEngineModelParameter(
+            EngineModel? engineModel,
+            IReadOnlyList<string> keys,
+            out double value)
+        {
+            foreach (var key in keys.Where(candidate =>
+                         TryReadEngineModelParameter(engineModel, candidate, out _)))
+            {
+                TryReadEngineModelParameter(engineModel, key, out value);
+                return true;
+            }
+
+            value = 0;
+            return false;
+        }
+
+        private static bool TryReadFlightMetric(
+            IReadOnlyDictionary<string, double> metrics,
+            IReadOnlyList<string> keys,
+            out double value)
+        {
+            foreach (var key in keys)
+            {
+                var match = metrics.FirstOrDefault(pair =>
+                    string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase));
+                if (match.Key != null &&
+                    !double.IsNaN(match.Value) &&
+                    !double.IsInfinity(match.Value))
+                {
+                    value = match.Value;
+                    return true;
+                }
+            }
+
+            value = 0;
+            return false;
         }
     }
 

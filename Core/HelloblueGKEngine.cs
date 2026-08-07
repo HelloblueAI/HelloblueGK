@@ -573,11 +573,8 @@ namespace HB_NLP_Research_Lab.Core
                     structuralResult.StressDistribution["chamber"] = maxStress;
                 }
 
-                if (TryReadDoubleParameter(parameters, "safetyFactor", out var safetyFactor) &&
-                    safetyFactor > 0)
-                {
-                    structuralResult.SafetyFactor = safetyFactor;
-                }
+                // Do not let clients overwrite SafetyFactor — it is a solver-owned trust signal
+                // (same policy as Accuracy / ConvergenceRate).
 
                 if (TryReadDoubleParameter(parameters, "maxDisplacement", out var maxDisplacement))
                 {

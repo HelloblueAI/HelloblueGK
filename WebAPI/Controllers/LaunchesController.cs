@@ -21,6 +21,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
     [Tags("Launches")]
     public class LaunchesController : ControllerBase
     {
+        // Mission pass/fail thresholds are server policy — clients must not lower them
+        // via LaunchParameters (e.g. successAccuracyThreshold=0.001) to forge MissionSuccess.
+        private const double MissionSuccessEfficiencyThreshold = 0.90;
+        private const double MissionSuccessAccuracyThreshold = 95.0;
+
         private readonly HelloblueGKDbContext _context;
         private readonly HelloblueGKEngine _engine;
         private readonly ILogger<LaunchesController> _logger;
@@ -492,14 +497,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                                 requestedMassRatio > 1.0
                     ? requestedMassRatio
                     : 2.0;
-                var efficiencyThreshold = TryReadLaunchDouble(launchParameters, "successEfficiencyThreshold", out var effThreshold) &&
-                                         effThreshold > 0
-                    ? Math.Clamp(effThreshold, 0.0, 1.0)
-                    : 0.90;
-                var accuracyThreshold = TryReadLaunchDouble(launchParameters, "successAccuracyThreshold", out var accThreshold) &&
-                                        accThreshold > 0
-                    ? accThreshold
-                    : 95.0;
+                var efficiencyThreshold = MissionSuccessEfficiencyThreshold;
+                var accuracyThreshold = MissionSuccessAccuracyThreshold;
                 var simulationType = TryReadLaunchString(launchParameters, "simulationType") ?? "MultiPhysics";
 
                 var design = HelloblueGKEngine.CreateDesignParametersFromEngine(
