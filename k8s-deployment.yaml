@@ -57,6 +57,10 @@ spec:
           value: "https://app.helloblue.com"
         - name: OPENFOAM_VERSION
           value: "8"
+        # Multi-replica shared DB: age-gate startup reconciliation so rolling
+        # deploys do not fail-close InProgress work still running on peer pods.
+        - name: BackgroundWork__InterruptedJobMinimumAge
+          value: "00:30:00"
         resources:
           requests:
             memory: "8Gi"

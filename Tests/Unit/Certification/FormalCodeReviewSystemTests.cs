@@ -81,6 +81,46 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task CreateReviewAsync_AfterFiveDigitSuffix_AllocatesNextNumericSequence()
+    {
+        await using var context = CreateContext();
+        var year = DateTime.UtcNow.Year;
+        // Lexicographic OrderByDescending would pick …-9999 over …-10000 and collide.
+        context.CodeReviews.AddRange(
+            new CodeReview
+            {
+                Id = Guid.NewGuid(),
+                ReviewNumber = $"CR-{year}-9999",
+                FilePath = "a.cs",
+                FunctionName = "A",
+                Author = "alice",
+                CreatedAt = DateTime.UtcNow
+            },
+            new CodeReview
+            {
+                Id = Guid.NewGuid(),
+                ReviewNumber = $"CR-{year}-10000",
+                FilePath = "b.cs",
+                FunctionName = "B",
+                Author = "bob",
+                CreatedAt = DateTime.UtcNow
+            });
+        await context.SaveChangesAsync();
+
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "c.cs",
+            FunctionName = "C",
+            LineStart = 1,
+            LineEnd = 2,
+            Author = "carol"
+        });
+
+        created.ReviewNumber.Should().Be($"CR-{year}-10001");
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_WithEmptyRequiredFiles_IsNotCompliant()
     {
         await using var context = CreateContext();

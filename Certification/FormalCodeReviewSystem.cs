@@ -28,21 +28,56 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReview> CreateReviewAsync(CodeReview review)
         {
-            // Generate review number
-            var year = DateTime.UtcNow.Year;
-            var existingCount = await _context.CodeReviews
-                .CountAsync(cr => cr.ReviewNumber.StartsWith($"CR-{year}-"));
-            
-            review.ReviewNumber = $"CR-{year}-{(existingCount + 1):D4}";
             review.Id = Guid.NewGuid();
             review.CreatedAt = DateTime.UtcNow;
             review.Status = CodeReviewStatus.Pending;
 
-            _context.CodeReviews.Add(review);
-            await _context.SaveChangesAsync();
+            // Allocate via max-suffix + retry so concurrent creates cannot collide on the unique ReviewNumber index.
+            const int maxAttempts = 8;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                review.ReviewNumber = await AllocateNextReviewNumberAsync();
+                _context.CodeReviews.Add(review);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation(
+                        "Created code review {ReviewNumber} for {FilePath}",
+                        review.ReviewNumber,
+                        LogSanitizer.Sanitize(review.FilePath));
+                    return review;
+                }
+                catch (DbUpdateException) when (attempt < maxAttempts - 1)
+                {
+                    _context.Entry(review).State = EntityState.Detached;
+                }
+            }
 
-            _logger.LogInformation("Created code review {ReviewNumber} for {FilePath}", review.ReviewNumber, LogSanitizer.Sanitize(review.FilePath));
-            return review;
+            throw new InvalidOperationException("Unable to allocate a unique code review number");
+        }
+
+        private async Task<string> AllocateNextReviewNumberAsync()
+        {
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"CR-{year}-";
+            var existing = await _context.CodeReviews
+                .Where(cr => cr.ReviewNumber.StartsWith(prefix))
+                .Select(cr => cr.ReviewNumber)
+                .ToListAsync();
+
+            // Numeric max — not lexicographic OrderByDescending (CR-…-10000 < CR-…-9999 as strings).
+            var next = 1;
+            foreach (var number in existing)
+            {
+                if (number.Length > prefix.Length
+                    && int.TryParse(number.AsSpan(prefix.Length), out var parsed)
+                    && parsed >= next)
+                {
+                    next = parsed + 1;
+                }
+            }
+
+            return $"{prefix}{next:D4}";
         }
 
         /// <summary>

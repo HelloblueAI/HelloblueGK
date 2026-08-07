@@ -26,24 +26,42 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Create a new problem report (PR)
         /// </summary>
-        public async Task<ProblemReport> CreateProblemReportAsync(ProblemReport report)
+        /// <param name="report">Problem report payload</param>
+        /// <param name="explicitSeverity">
+        /// Optional admin-asserted severity. Keyword classification from Impact is applied as a floor
+        /// so free-text wording cannot under-classify safety/critical impact as Minor.
+        /// </param>
+        public async Task<ProblemReport> CreateProblemReportAsync(
+            ProblemReport report,
+            ProblemSeverity? explicitSeverity = null)
         {
-            // Generate PR number (format: PR-YYYY-NNNN)
-            var year = DateTime.UtcNow.Year;
-            var existingCount = await _context.ProblemReports
-                .CountAsync(pr => pr.ReportNumber.StartsWith($"PR-{year}-"));
-            
-            report.ReportNumber = $"PR-{year}-{(existingCount + 1):D4}";
             report.Id = Guid.NewGuid();
             report.CreatedAt = DateTime.UtcNow;
             report.Status = ProblemReportStatus.Open;
-            report.Severity = DetermineSeverity(report);
+            report.Severity = ResolveSeverity(report.Impact, explicitSeverity);
 
-            _context.ProblemReports.Add(report);
-            await _context.SaveChangesAsync();
+            const int maxAttempts = 8;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                report.ReportNumber = await AllocateNextReportNumberAsync();
+                _context.ProblemReports.Add(report);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogWarning(
+                        "Created problem report {ReportNumber}: {Title}",
+                        report.ReportNumber,
+                        LogSanitizer.Sanitize(report.Title));
+                    return report;
+                }
+                catch (DbUpdateException) when (attempt < maxAttempts - 1)
+                {
+                    // Unique ReportNumber race — detach and retry with a fresh sequence value.
+                    _context.Entry(report).State = EntityState.Detached;
+                }
+            }
 
-            _logger.LogWarning("Created problem report {ReportNumber}: {Title}", report.ReportNumber, LogSanitizer.Sanitize(report.Title));
-            return report;
+            throw new InvalidOperationException("Unable to allocate a unique problem report number");
         }
 
         /// <summary>
@@ -62,14 +80,29 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException($"Problem report {reportNumber} not found");
 
             var oldStatus = report.Status;
-            report.Status = newStatus;
-            report.UpdatedAt = DateTime.UtcNow;
+            if (oldStatus == newStatus)
+                throw new InvalidOperationException($"Problem report {reportNumber} is already in status {newStatus}");
 
-            if (newStatus == ProblemReportStatus.Closed && !string.IsNullOrEmpty(resolution))
+            if (!IsAllowedStatusTransition(oldStatus, newStatus))
             {
-                report.Resolution = resolution;
+                throw new InvalidOperationException(
+                    $"Problem report {reportNumber} cannot transition from {oldStatus} to {newStatus}");
+            }
+
+            if (newStatus == ProblemReportStatus.Closed)
+            {
+                if (string.IsNullOrWhiteSpace(resolution))
+                {
+                    throw new InvalidOperationException(
+                        $"Problem report {reportNumber} requires a non-empty resolution before closing");
+                }
+
+                report.Resolution = resolution.Trim();
                 report.ClosedAt = DateTime.UtcNow;
             }
+
+            report.Status = newStatus;
+            report.UpdatedAt = DateTime.UtcNow;
 
             // Track status changes — capture OldStatus before mutation for an accurate audit trail.
             var statusChange = new ProblemReportStatusChange
@@ -181,6 +214,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ProblemReportComplianceCheck> VerifyComplianceAsync()
         {
+            var totalReports = await _context.ProblemReports.CountAsync();
             var reports = await _context.ProblemReports
                 .Where(pr => pr.Severity == ProblemSeverity.Critical || 
                             pr.Severity == ProblemSeverity.Major)
@@ -199,30 +233,112 @@ namespace HB_NLP_Research_Lab.Certification
                     r.Status != ProblemReportStatus.Closed)
             };
 
-            check.IsCompliant = check.UnresolvedCriticalProblems == 0 && 
-                               check.UnresolvedMajorProblems == 0;
-
-            if (!check.IsCompliant)
+            // Empty problem-report store must fail closed — 0 unresolved on 0 reports is not evidence.
+            if (totalReports == 0)
             {
-                check.Issues.Add("Critical problems must be resolved before certification");
-                check.Issues.Add("Major problems must be resolved before certification");
+                check.IsCompliant = false;
+                check.Issues.Add("No problem reports recorded; DO-178C Level A problem-reporting compliance cannot be asserted");
+                return check;
             }
 
+            // Closed without a recorded resolution must not satisfy certification gates.
+            var improperlyClosed = reports.Count(r =>
+                r.Status == ProblemReportStatus.Closed &&
+                string.IsNullOrWhiteSpace(r.Resolution));
+            if (improperlyClosed > 0)
+            {
+                check.Issues.Add($"{improperlyClosed} critical/major problem report(s) are Closed without a recorded resolution");
+            }
+
+            var unresolvedOk = check.UnresolvedCriticalProblems == 0 &&
+                               check.UnresolvedMajorProblems == 0;
+            if (!unresolvedOk)
+            {
+                if (check.UnresolvedCriticalProblems > 0)
+                    check.Issues.Add("Critical problems must be resolved before certification");
+                if (check.UnresolvedMajorProblems > 0)
+                    check.Issues.Add("Major problems must be resolved before certification");
+            }
+
+            check.IsCompliant = unresolvedOk && improperlyClosed == 0;
             return check;
         }
 
-        private ProblemSeverity DetermineSeverity(ProblemReport report)
+        private static bool IsAllowedStatusTransition(ProblemReportStatus from, ProblemReportStatus to)
         {
-            // Determine severity based on impact
-            if (report.Impact.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
-                report.Impact.Contains("critical", StringComparison.OrdinalIgnoreCase))
+            return (from, to) switch
+            {
+                (ProblemReportStatus.Open, ProblemReportStatus.UnderInvestigation) => true,
+                (ProblemReportStatus.Open, ProblemReportStatus.Rejected) => true,
+                (ProblemReportStatus.UnderInvestigation, ProblemReportStatus.Resolved) => true,
+                (ProblemReportStatus.UnderInvestigation, ProblemReportStatus.Rejected) => true,
+                (ProblemReportStatus.UnderInvestigation, ProblemReportStatus.Open) => true,
+                // Closure requires an investigated/resolved path — Open→Closed forges compliance.
+                (ProblemReportStatus.Resolved, ProblemReportStatus.Closed) => true,
+                (ProblemReportStatus.Resolved, ProblemReportStatus.UnderInvestigation) => true,
+                (ProblemReportStatus.Closed, ProblemReportStatus.Open) => true,
+                (ProblemReportStatus.Rejected, ProblemReportStatus.Open) => true,
+                _ => false
+            };
+        }
+
+        private async Task<string> AllocateNextReportNumberAsync()
+        {
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"PR-{year}-";
+            var existing = await _context.ProblemReports
+                .Where(pr => pr.ReportNumber.StartsWith(prefix))
+                .Select(pr => pr.ReportNumber)
+                .ToListAsync();
+
+            // Numeric max — not lexicographic OrderByDescending (PR-…-10000 < PR-…-9999 as strings).
+            var next = 1;
+            foreach (var number in existing)
+            {
+                if (number.Length > prefix.Length
+                    && int.TryParse(number.AsSpan(prefix.Length), out var parsed)
+                    && parsed >= next)
+                {
+                    next = parsed + 1;
+                }
+            }
+
+            return $"{prefix}{next:D4}";
+        }
+
+        /// <summary>
+        /// Resolve severity with fail-closed defaults and a keyword floor.
+        /// Unclassified impact defaults to Critical so Level A compliance cannot be forged by omitting
+        /// "critical/safety/major" keywords. Explicit severity may not under-classify below the floor.
+        /// </summary>
+        public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
+        {
+            var keywordFloor = ClassifyImpactKeywords(impact);
+            var resolved = explicitSeverity ?? keywordFloor ?? ProblemSeverity.Critical;
+
+            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            {
+                // Enum order is Critical(0) < Major(1) < Minor(2); higher int = lower severity.
+                resolved = keywordFloor.Value;
+            }
+
+            return resolved;
+        }
+
+        private static ProblemSeverity? ClassifyImpactKeywords(string? impact)
+        {
+            if (string.IsNullOrWhiteSpace(impact))
+                return null;
+
+            if (impact.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
+                impact.Contains("critical", StringComparison.OrdinalIgnoreCase))
                 return ProblemSeverity.Critical;
 
-            if (report.Impact.Contains("major", StringComparison.OrdinalIgnoreCase) ||
-                report.Impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
+            if (impact.Contains("major", StringComparison.OrdinalIgnoreCase) ||
+                impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
                 return ProblemSeverity.Major;
 
-            return ProblemSeverity.Minor;
+            return null;
         }
 
         private double CalculateAverageResolutionTime(List<ProblemReport> reports)

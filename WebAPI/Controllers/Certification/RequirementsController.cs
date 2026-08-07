@@ -147,9 +147,13 @@ public class RequirementsController : ControllerBase
             await _rts.LinkToCodeAsync(id, request.CodeFile, request.LineStart, request.LineEnd, request.FunctionName);
             return Ok(new { message = "Requirement linked to code successfully" });
         }
-        catch (ArgumentException)
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
         {
             return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -158,6 +162,7 @@ public class RequirementsController : ControllerBase
     /// </summary>
     [HttpPost("{id}/link-test")]
     [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<IActionResult> LinkToTest(Guid id, [FromBody] LinkTestRequest request)
     {
         try
@@ -166,9 +171,13 @@ public class RequirementsController : ControllerBase
             await _rts.LinkToTestAsync(id, request.TestCaseId, request.TestFile, coverageType);
             return Ok(new { message = "Requirement linked to test successfully" });
         }
-        catch (ArgumentException)
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
         {
             return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

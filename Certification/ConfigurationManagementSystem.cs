@@ -51,16 +51,32 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task ApproveBaselineAsync(Guid baselineId, string approvedBy)
         {
-            var baseline = await _context.SoftwareBaselines.FindAsync(baselineId);
+            var baseline = await _context.SoftwareBaselines
+                .Include(b => b.ConfigurationItems)
+                .FirstOrDefaultAsync(b => b.Id == baselineId);
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
+
+            if (baseline.Status is not (BaselineStatus.Draft or BaselineStatus.UnderReview))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved from status {baseline.Status}; " +
+                    "only Draft or UnderReview baselines may be approved");
+            }
+
+            // Empty baselines must not become official — Approve freezes the set and SCI would be vacuous.
+            if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
+            }
 
             baseline.Status = BaselineStatus.Approved;
             baseline.ApprovedBy = approvedBy;
             baseline.ApprovedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-            _logger.LogInformation("Approved baseline {BaselineName}", baseline.BaselineName);
+            _logger.LogInformation("Approved baseline {BaselineName}", LogSanitizer.Sanitize(baseline.BaselineName));
         }
 
         /// <summary>
@@ -84,6 +100,17 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task AddItemToBaselineAsync(Guid baselineId, Guid itemId, string version)
         {
+            var baseline = await _context.SoftwareBaselines.FindAsync(baselineId);
+            if (baseline == null)
+                throw new ArgumentException($"Baseline {baselineId} not found");
+
+            // Approved/Released/Obsolete baselines are frozen; mutations require a change request path.
+            if (baseline.Status is BaselineStatus.Approved or BaselineStatus.Released or BaselineStatus.Obsolete)
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} is {baseline.Status} and cannot accept new configuration items");
+            }
+
             var baselineItem = new BaselineConfigurationItem
             {
                 Id = Guid.NewGuid(),
@@ -104,21 +131,29 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ChangeRequest> CreateChangeRequestAsync(ChangeRequest request)
         {
-            // Generate CR number
-            var year = DateTime.UtcNow.Year;
-            var existingCount = await _context.ChangeRequests
-                .CountAsync(cr => cr.RequestNumber.StartsWith($"CR-{year}-"));
-            
-            request.RequestNumber = $"CR-{year}-{(existingCount + 1):D4}";
             request.Id = Guid.NewGuid();
             request.CreatedAt = DateTime.UtcNow;
             request.Status = ChangeRequestStatus.Submitted;
 
-            _context.ChangeRequests.Add(request);
-            await _context.SaveChangesAsync();
+            const int maxAttempts = 8;
+            for (var attempt = 0; attempt < maxAttempts; attempt++)
+            {
+                request.RequestNumber = await AllocateNextRequestNumberAsync();
+                _context.ChangeRequests.Add(request);
+                try
+                {
+                    await _context.SaveChangesAsync();
+                    _logger.LogInformation("Created change request {RequestNumber}", request.RequestNumber);
+                    return request;
+                }
+                catch (DbUpdateException) when (attempt < maxAttempts - 1)
+                {
+                    // Unique RequestNumber race — detach and retry with a fresh sequence value.
+                    _context.Entry(request).State = EntityState.Detached;
+                }
+            }
 
-            _logger.LogInformation("Created change request {RequestNumber}", request.RequestNumber);
-            return request;
+            throw new InvalidOperationException("Unable to allocate a unique change request number");
         }
 
         /// <summary>
@@ -131,6 +166,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (request == null)
                 throw new ArgumentException($"Change request {requestNumber} not found");
+
+            if (request.Status is not (ChangeRequestStatus.Submitted or ChangeRequestStatus.UnderReview))
+            {
+                throw new InvalidOperationException(
+                    $"Change request {requestNumber} cannot be approved from status {request.Status}; " +
+                    "only Submitted or UnderReview change requests may be approved");
+            }
 
             request.Status = ChangeRequestStatus.Approved;
             request.ApprovedBy = approvedBy;
@@ -197,6 +239,20 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
+
+            // SCI is certification evidence — only official baselines may produce an index.
+            if (baseline.Status is not (BaselineStatus.Approved or BaselineStatus.Released))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} is {baseline.Status}; SCI may only be generated for Approved or Released baselines");
+            }
+
+            // Empty SCI is not DO-178C evidence — reject zero-item Approved/Released baselines.
+            if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} has no configuration items; SCI cannot be generated without configuration evidence");
+            }
 
             var sci = new SoftwareConfigurationIndex
             {
@@ -268,9 +324,65 @@ namespace HB_NLP_Research_Lab.Certification
 
             report.TotalItems = items.Count;
             report.IssuesFound = report.Issues.Count;
+
+            // Empty baselines must fail closed — 0 issues on 0 items is not DO-178C evidence.
+            if (report.TotalItems == 0)
+            {
+                report.IsCompliant = false;
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.MissingBaseline,
+                    Severity = IssueSeverity.Critical,
+                    Description = $"Baseline {baseline.BaselineName} has no configuration items; compliance cannot be asserted"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
+            // Draft/UnderReview/Obsolete baselines must not report compliance even when items look clean.
+            if (baseline.Status is not (BaselineStatus.Approved or BaselineStatus.Released))
+            {
+                report.IsCompliant = false;
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.BaselineNotApproved,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Baseline {baseline.BaselineName} is {baseline.Status}; configuration compliance requires an Approved or Released baseline"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
             report.IsCompliant = report.Issues.Count == 0;
 
             return report;
+        }
+
+        private async Task<string> AllocateNextRequestNumberAsync()
+        {
+            var year = DateTime.UtcNow.Year;
+            var prefix = $"CR-{year}-";
+            var existing = await _context.ChangeRequests
+                .Where(cr => cr.RequestNumber.StartsWith(prefix))
+                .Select(cr => cr.RequestNumber)
+                .ToListAsync();
+
+            // Numeric max — not lexicographic OrderByDescending (CR-…-10000 < CR-…-9999 as strings).
+            var next = 1;
+            foreach (var number in existing)
+            {
+                if (number.Length > prefix.Length
+                    && int.TryParse(number.AsSpan(prefix.Length), out var parsed)
+                    && parsed >= next)
+                {
+                    next = parsed + 1;
+                }
+            }
+
+            return $"{prefix}{next:D4}";
         }
     }
 
@@ -437,7 +549,8 @@ namespace HB_NLP_Research_Lab.Certification
         ItemNotReleased,
         MissingVersion,
         InvalidChecksum,
-        MissingBaseline
+        MissingBaseline,
+        BaselineNotApproved
     }
 
     // DbContext
