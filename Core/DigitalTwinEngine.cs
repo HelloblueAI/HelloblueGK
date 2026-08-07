@@ -1193,16 +1193,19 @@ namespace HB_NLP_Research_Lab.Core
             {
                 EngineId = engineId,
                 OverallAccuracy = overall,
-                ThrustPredictionAccuracy = ResolveComponentAccuracy(thrustAccuracy, overall),
-                ThermalPredictionAccuracy = ResolveComponentAccuracy(thermalAccuracy, overall),
-                StructuralPredictionAccuracy = ResolveComponentAccuracy(structuralAccuracy, overall),
-                FailurePredictionAccuracy = ResolveComponentAccuracy(failureAccuracy, overall)
+                // Unscored components stay unproven — do not inherit the blended overall.
+                ThrustPredictionAccuracy = ResolveComponentAccuracy(thrustAccuracy),
+                ThermalPredictionAccuracy = ResolveComponentAccuracy(thermalAccuracy),
+                StructuralPredictionAccuracy = ResolveComponentAccuracy(structuralAccuracy),
+                FailurePredictionAccuracy = ResolveComponentAccuracy(failureAccuracy)
             };
         }
 
-        private static double ResolveComponentAccuracy(double componentAccuracy, double overallFallback)
+        private static double ResolveComponentAccuracy(double componentAccuracy)
         {
-            return double.IsNaN(componentAccuracy) ? overallFallback : componentAccuracy;
+            return double.IsNaN(componentAccuracy)
+                ? DigitalTwinEngine.UnprovenPredictionAccuracy
+                : componentAccuracy;
         }
 
         private static double ComputeMetricAccuracy(
@@ -1237,12 +1240,11 @@ namespace HB_NLP_Research_Lab.Core
             IReadOnlyList<string> keys,
             out double value)
         {
-            foreach (var key in keys)
+            foreach (var key in keys.Where(candidate =>
+                         TryReadEngineModelParameter(engineModel, candidate, out _)))
             {
-                if (TryReadEngineModelParameter(engineModel, key, out value))
-                {
-                    return true;
-                }
+                TryReadEngineModelParameter(engineModel, key, out value);
+                return true;
             }
 
             value = 0;

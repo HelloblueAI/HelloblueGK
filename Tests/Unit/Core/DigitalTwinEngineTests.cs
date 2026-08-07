@@ -221,6 +221,14 @@ public class DigitalTwinEngineTests : IDisposable
             });
 
         matching.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeApproximately(1.0, 0.0001);
+        matching.UpdatedPredictionAccuracy.ThrustPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
+        matching.UpdatedPredictionAccuracy.ThermalPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
+        // No structural/reliability residuals in the flight metrics — stay unproven, not overall.
+        matching.UpdatedPredictionAccuracy.StructuralPredictionAccuracy
+            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+        matching.UpdatedPredictionAccuracy.FailurePredictionAccuracy
+            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+
         mismatched.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeLessThan(0.6);
         mismatched.UpdatedPredictionAccuracy.OverallAccuracy
             .Should().BeLessThan(matching.UpdatedPredictionAccuracy.OverallAccuracy);
