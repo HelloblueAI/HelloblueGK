@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using System.Text.Json;
+using HB_NLP_Research_Lab.AI;
 using HB_NLP_Research_Lab.Core;
 using HB_NLP_Research_Lab.WebAPI.Controllers;
 using HB_NLP_Research_Lab.WebAPI.Data;
@@ -1291,6 +1292,60 @@ public class ControllerAuthorizationSecurityTests
         var deactivate = await controller.DeactivateDigitalTwin(twin.Id);
         deactivate.Should().BeOfType<OkObjectResult>();
         digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task DeactivateDigitalTwin_InactiveHistoricalTwin_DoesNotEvictActiveRuntime()
+    {
+        await using var context = CreateContext();
+        using var digitalTwinEngine = new DigitalTwinEngine();
+        var engine = CreateEngine("alice");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(
+            context,
+            CreatePrincipal("alice", isAdmin: true),
+            digitalTwinEngine);
+
+        var firstCreate = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin A"
+        });
+        var firstTwin = firstCreate.Should().BeOfType<CreatedAtActionResult>().Subject.Value
+            .Should().BeOfType<DigitalTwinResponse>().Subject;
+
+        var forceCreate = await controller.CreateDigitalTwin(new CreateDigitalTwinRequest
+        {
+            EngineId = engine.Id,
+            Name = "Twin B",
+            ForceCreate = true
+        });
+        forceCreate.Should().BeOfType<CreatedAtActionResult>();
+
+        var ownerKey = Convert.ToHexString(
+            System.Security.Cryptography.SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes("alice")))[..16];
+        var runtimeKey = $"Owner_{ownerKey}_Engine_{engine.Id}";
+
+        // Seed learning state on the active twin runtime.
+        await digitalTwinEngine.LearnFromTestFlightAsync(
+            runtimeKey,
+            new TestFlightData
+            {
+                EngineId = runtimeKey,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double> { ["Thrust"] = 1_000_000 }
+            });
+
+        // Deactivating the historical inactive twin must not wipe the shared runtime key.
+        var deactivateHistorical = await controller.DeactivateDigitalTwin(firstTwin.Id);
+        deactivateHistorical.Should().BeOfType<OkObjectResult>();
+
+        var report = await digitalTwinEngine.GenerateLearningPerformanceReportAsync(runtimeKey);
+        report.TotalLearningEvents.Should().Be(1);
+        digitalTwinEngine.RemoveDigitalTwin(runtimeKey).Should().BeTrue();
     }
 
     [Fact]

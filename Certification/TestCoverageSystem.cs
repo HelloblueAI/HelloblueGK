@@ -29,7 +29,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task RecordCoverageAsync(string filePath, CoverageMetrics metrics)
         {
+            ArgumentNullException.ThrowIfNull(metrics);
             filePath = NormalizeFilePath(filePath);
+            ValidateAndNormalizeMetrics(metrics);
 
             var coverage = await _context.CodeCoverage
                 .FirstOrDefaultAsync(c => c.FilePath == filePath);
@@ -176,8 +178,9 @@ namespace HB_NLP_Research_Lab.Certification
                     .Average(c => c?.MCDCCoverage ?? 0);
             }
 
-            // Check compliance
-            report.MeetsDO178CLevelA = report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
+            // Fail closed: empty coverage DB must never report DO-178C Level A compliance.
+            report.MeetsDO178CLevelA = report.TotalFiles > 0 &&
+                                      report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
                                       report.FilesWith100PercentBranchCoverage == report.TotalFiles &&
                                       report.SafetyCriticalFilesWithMCDC == report.SafetyCriticalFiles;
 
@@ -213,6 +216,17 @@ namespace HB_NLP_Research_Lab.Certification
                 SafetyCriticalFiles = allCoverage.Count(c => c.IsSafetyCritical),
                 SafetyCriticalFilesWithMCDC = allCoverage.Count(c => c.IsSafetyCritical && c.MCDCCoverage >= 100.0)
             };
+
+            // Fail closed when no coverage has been recorded — 0/0 must not imply compliance.
+            if (check.TotalFiles == 0)
+            {
+                check.StatementCoverageCompliant = false;
+                check.BranchCoverageCompliant = false;
+                check.MCDCCoverageCompliant = false;
+                check.IsCompliant = false;
+                check.Issues.Add("No coverage data recorded; DO-178C Level A compliance cannot be asserted");
+                return check;
+            }
 
             // DO-178C Level A requirements
             check.StatementCoverageCompliant = check.FilesWith100PercentStatementCoverage == check.TotalFiles;
@@ -278,6 +292,58 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return string.Join("/", segments);
+        }
+
+        private static void ValidateAndNormalizeMetrics(CoverageMetrics metrics)
+        {
+            ValidateCoveragePair(metrics.CoveredStatements, metrics.TotalStatements, nameof(metrics.CoveredStatements), nameof(metrics.TotalStatements));
+            ValidateCoveragePair(metrics.CoveredBranches, metrics.TotalBranches, nameof(metrics.CoveredBranches), nameof(metrics.TotalBranches));
+            ValidateCoveragePair(metrics.CoveredConditions, metrics.TotalConditions, nameof(metrics.CoveredConditions), nameof(metrics.TotalConditions));
+
+            // Prefer server-computed percentages from counts when totals are present so
+            // clients cannot assert 100% while covered/total counts disagree.
+            metrics.StatementCoverage = metrics.TotalStatements > 0
+                ? (double)metrics.CoveredStatements / metrics.TotalStatements * 100.0
+                : NormalizePercentage(metrics.StatementCoverage, nameof(metrics.StatementCoverage));
+
+            metrics.BranchCoverage = metrics.TotalBranches > 0
+                ? (double)metrics.CoveredBranches / metrics.TotalBranches * 100.0
+                : NormalizePercentage(metrics.BranchCoverage, nameof(metrics.BranchCoverage));
+
+            metrics.ConditionCoverage = metrics.TotalConditions > 0
+                ? (double)metrics.CoveredConditions / metrics.TotalConditions * 100.0
+                : NormalizePercentage(metrics.ConditionCoverage, nameof(metrics.ConditionCoverage));
+
+            metrics.MCDCCoverage = NormalizePercentage(metrics.MCDCCoverage, nameof(metrics.MCDCCoverage));
+            metrics.PathCoverage = NormalizePercentage(metrics.PathCoverage, nameof(metrics.PathCoverage));
+        }
+
+        private static void ValidateCoveragePair(int covered, int total, string coveredName, string totalName)
+        {
+            if (total < 0)
+            {
+                throw new ArgumentOutOfRangeException(totalName, "Coverage totals cannot be negative.");
+            }
+
+            if (covered < 0)
+            {
+                throw new ArgumentOutOfRangeException(coveredName, "Covered counts cannot be negative.");
+            }
+
+            if (covered > total)
+            {
+                throw new ArgumentOutOfRangeException(coveredName, "Covered counts cannot exceed totals.");
+            }
+        }
+
+        private static double NormalizePercentage(double value, string name)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value) || value < 0 || value > 100)
+            {
+                throw new ArgumentOutOfRangeException(name, "Coverage percentages must be between 0 and 100.");
+            }
+
+            return value;
         }
     }
 

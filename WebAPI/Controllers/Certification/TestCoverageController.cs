@@ -56,6 +56,10 @@ public class TestCoverageController : ControllerBase
         {
             await _tcs.RecordCoverageAsync(request.FilePath, metrics);
         }
+        catch (ArgumentOutOfRangeException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (ArgumentException ex) when (IsCoverageFilePathException(ex))
         {
             return BadRequest(new { message = "Coverage file path must be repository-relative and must not contain traversal segments." });
