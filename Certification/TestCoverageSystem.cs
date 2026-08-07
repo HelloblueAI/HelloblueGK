@@ -97,6 +97,12 @@ namespace HB_NLP_Research_Lab.Certification
                 coverage.LastUpdated = DateTime.UtcNow;
             }
 
+            // Recompute Level A gate after the safety-critical flag changes so MC/DC
+            // requirements apply immediately (and clear if the flag is removed).
+            coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
+                                              coverage.BranchCoverage >= 100.0 &&
+                                              (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
+
             await _context.SaveChangesAsync();
             _logger.LogInformation("Marked {FilePath} as safety-critical: {IsSafetyCritical}", LogSanitizer.Sanitize(filePath), isSafetyCritical);
         }
