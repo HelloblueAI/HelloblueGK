@@ -81,15 +81,83 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Assign reviewer to code review
+        /// Register (or re-activate) a server-owned certified reviewer.
+        /// Certification status is never accepted from assign-reviewer clients.
         /// </summary>
-        public async Task AssignReviewerAsync(Guid reviewId, string reviewerName, bool isCertified)
+        public async Task<CertifiedReviewer> RegisterCertifiedReviewerAsync(
+            string reviewerName,
+            string? certifiedBy = null)
         {
-            if (!isCertified)
-                throw new InvalidOperationException("Reviewer must be certified for Level A reviews");
-
             if (string.IsNullOrWhiteSpace(reviewerName))
                 throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
+
+            var normalized = NormalizeReviewerName(reviewerName);
+            var existing = await FindCertifiedReviewerAsync(normalized);
+            if (existing != null)
+            {
+                existing.IsActive = true;
+                existing.ReviewerName = normalized;
+                existing.CertifiedBy = string.IsNullOrWhiteSpace(certifiedBy)
+                    ? existing.CertifiedBy
+                    : certifiedBy.Trim();
+                existing.CertifiedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return existing;
+            }
+
+            var reviewer = new CertifiedReviewer
+            {
+                Id = Guid.NewGuid(),
+                ReviewerName = normalized,
+                IsActive = true,
+                CertifiedBy = string.IsNullOrWhiteSpace(certifiedBy) ? null : certifiedBy.Trim(),
+                CertifiedAt = DateTime.UtcNow
+            };
+            _context.CertifiedReviewers.Add(reviewer);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Registered certified reviewer {ReviewerName}",
+                LogSanitizer.SanitizeIdentifier(normalized));
+            return reviewer;
+        }
+
+        /// <summary>
+        /// Revoke a certified reviewer so they can no longer satisfy Level A assignment gates.
+        /// </summary>
+        public async Task RevokeCertifiedReviewerAsync(string reviewerName)
+        {
+            if (string.IsNullOrWhiteSpace(reviewerName))
+                throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
+
+            var existing = await FindCertifiedReviewerAsync(NormalizeReviewerName(reviewerName));
+            if (existing == null)
+                throw new ArgumentException($"Certified reviewer '{reviewerName.Trim()}' not found", nameof(reviewerName));
+
+            existing.IsActive = false;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Revoked certified reviewer {ReviewerName}",
+                LogSanitizer.SanitizeIdentifier(existing.ReviewerName));
+        }
+
+        /// <summary>
+        /// Assign a server-certified reviewer to a code review.
+        /// Client-asserted certification flags are intentionally not accepted.
+        /// </summary>
+        public async Task AssignReviewerAsync(Guid reviewId, string reviewerName)
+        {
+            if (string.IsNullOrWhiteSpace(reviewerName))
+                throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
+
+            var normalized = NormalizeReviewerName(reviewerName);
+            var rosterEntry = await FindCertifiedReviewerAsync(normalized);
+            if (rosterEntry is not { IsActive: true })
+            {
+                throw new InvalidOperationException(
+                    "Reviewer must be on the server certified-reviewer roster for Level A reviews");
+            }
 
             var review = await _context.CodeReviews
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
@@ -100,8 +168,8 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 ReviewId = reviewId,
-                ReviewerName = reviewerName.Trim(),
-                IsCertified = isCertified,
+                ReviewerName = rosterEntry.ReviewerName,
+                IsCertified = true,
                 AssignedAt = DateTime.UtcNow,
                 Status = ReviewAssignmentStatus.Assigned
             };
@@ -114,8 +182,26 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Assigned certified reviewer {ReviewerName} to review {ReviewId}", LogSanitizer.SanitizeIdentifier(reviewerName), reviewId);
+            _logger.LogInformation(
+                "Assigned certified reviewer {ReviewerName} to review {ReviewId}",
+                LogSanitizer.SanitizeIdentifier(rosterEntry.ReviewerName),
+                reviewId);
         }
+
+        private async Task<CertifiedReviewer?> FindCertifiedReviewerAsync(string normalizedReviewerName)
+        {
+            var candidates = await _context.CertifiedReviewers
+                .Where(r => r.ReviewerName == normalizedReviewerName)
+                .ToListAsync();
+
+            // Prefer exact Ordinal match after normalize; fall back to case-insensitive for legacy rows.
+            return candidates.FirstOrDefault(r =>
+                       string.Equals(r.ReviewerName, normalizedReviewerName, StringComparison.Ordinal))
+                   ?? candidates.FirstOrDefault(r =>
+                       string.Equals(r.ReviewerName, normalizedReviewerName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static string NormalizeReviewerName(string reviewerName) => reviewerName.Trim();
 
         /// <summary>
         /// Submit review findings
@@ -320,6 +406,18 @@ namespace HB_NLP_Research_Lab.Certification
         public DateTime? CompletedAt { get; set; }
     }
 
+    /// <summary>
+    /// Server-owned certified reviewer roster. Assignment IsCertified is derived from this store.
+    /// </summary>
+    public class CertifiedReviewer
+    {
+        public Guid Id { get; set; }
+        public string ReviewerName { get; set; } = string.Empty;
+        public bool IsActive { get; set; } = true;
+        public string? CertifiedBy { get; set; }
+        public DateTime CertifiedAt { get; set; }
+    }
+
     public class ReviewFinding
     {
         public Guid Id { get; set; }
@@ -403,6 +501,7 @@ namespace HB_NLP_Research_Lab.Certification
         public DbSet<CodeReview> CodeReviews { get; set; }
         public DbSet<CodeReviewAssignment> CodeReviewAssignments { get; set; }
         public DbSet<ReviewFinding> ReviewFindings { get; set; }
+        public DbSet<CertifiedReviewer> CertifiedReviewers { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -414,6 +513,13 @@ namespace HB_NLP_Research_Lab.Certification
                 entity.HasIndex(e => e.ReviewNumber).IsUnique();
                 entity.HasMany(e => e.Assignments).WithOne().HasForeignKey("ReviewId");
                 entity.HasMany(e => e.Findings).WithOne().HasForeignKey("ReviewId");
+            });
+
+            modelBuilder.Entity<CertifiedReviewer>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.ReviewerName).IsUnique();
+                entity.Property(e => e.ReviewerName).IsRequired().HasMaxLength(256);
             });
         }
     }

@@ -97,7 +97,76 @@ public class CodeReviewsController : ControllerBase
     }
 
     /// <summary>
-    /// Assign certified reviewer
+    /// Register a certified reviewer on the server-owned roster
+    /// </summary>
+    [HttpPost("certified-reviewers")]
+    [ProducesResponseType(typeof(CertifiedReviewerResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> RegisterCertifiedReviewer([FromBody] RegisterCertifiedReviewerRequest request)
+    {
+        try
+        {
+            var reviewer = await _crs.RegisterCertifiedReviewerAsync(
+                request.ReviewerName,
+                User.Identity?.Name);
+            return CreatedAtAction(
+                nameof(ListCertifiedReviewers),
+                routeValues: null,
+                value: new CertifiedReviewerResponse
+                {
+                    ReviewerName = reviewer.ReviewerName,
+                    IsActive = reviewer.IsActive,
+                    CertifiedBy = reviewer.CertifiedBy,
+                    CertifiedAt = reviewer.CertifiedAt
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// List certified reviewers
+    /// </summary>
+    [HttpGet("certified-reviewers")]
+    [ProducesResponseType(typeof(IEnumerable<CertifiedReviewerResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListCertifiedReviewers()
+    {
+        var reviewers = await _context.CertifiedReviewers
+            .AsNoTracking()
+            .OrderBy(r => r.ReviewerName)
+            .Select(r => new CertifiedReviewerResponse
+            {
+                ReviewerName = r.ReviewerName,
+                IsActive = r.IsActive,
+                CertifiedBy = r.CertifiedBy,
+                CertifiedAt = r.CertifiedAt
+            })
+            .ToListAsync();
+        return Ok(reviewers);
+    }
+
+    /// <summary>
+    /// Revoke a certified reviewer
+    /// </summary>
+    [HttpDelete("certified-reviewers/{reviewerName}")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RevokeCertifiedReviewer(string reviewerName)
+    {
+        try
+        {
+            await _crs.RevokeCertifiedReviewerAsync(reviewerName);
+            return Ok(new { message = "Certified reviewer revoked" });
+        }
+        catch (ArgumentException ex) when (ex.ParamName == "reviewerName")
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Assign a server-roster certified reviewer.
+    /// Client-asserted IsCertified flags are ignored — certification comes from the roster only.
     /// </summary>
     [HttpPost("{id}/assign-reviewer")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -105,7 +174,7 @@ public class CodeReviewsController : ControllerBase
     {
         try
         {
-            await _crs.AssignReviewerAsync(id, request.ReviewerName, request.IsCertified);
+            await _crs.AssignReviewerAsync(id, request.ReviewerName);
             return Ok(new { message = "Reviewer assigned successfully" });
         }
         catch (ArgumentException ex) when (ex.ParamName == "reviewerName")
@@ -226,7 +295,25 @@ public class CreateCodeReviewRequest
 public class AssignReviewerRequest
 {
     public string ReviewerName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Obsolete client-asserted flag. Ignored by the server; certification is roster-derived.
+    /// Kept only so older clients do not fail model binding.
+    /// </summary>
     public bool IsCertified { get; set; }
+}
+
+public class RegisterCertifiedReviewerRequest
+{
+    public string ReviewerName { get; set; } = string.Empty;
+}
+
+public class CertifiedReviewerResponse
+{
+    public string ReviewerName { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+    public string? CertifiedBy { get; set; }
+    public DateTime CertifiedAt { get; set; }
 }
 
 public class SubmitFindingsRequest

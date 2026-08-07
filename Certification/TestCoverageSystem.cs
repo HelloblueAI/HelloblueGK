@@ -178,8 +178,10 @@ namespace HB_NLP_Research_Lab.Certification
                     .Average(c => c?.MCDCCoverage ?? 0);
             }
 
-            // Fail closed: empty coverage DB must never report DO-178C Level A compliance.
+            // Fail closed: empty coverage DB / no safety-critical inventory must never
+            // report DO-178C Level A compliance (vacuous MC/DC when SafetyCriticalFiles==0).
             report.MeetsDO178CLevelA = report.TotalFiles > 0 &&
+                                      report.SafetyCriticalFiles > 0 &&
                                       report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
                                       report.FilesWith100PercentBranchCoverage == report.TotalFiles &&
                                       report.SafetyCriticalFilesWithMCDC == report.SafetyCriticalFiles;
@@ -228,10 +230,10 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
-            // DO-178C Level A requirements
+            // DO-178C Level A requirements — MC/DC cannot be vacuously true with zero safety-critical files.
             check.StatementCoverageCompliant = check.FilesWith100PercentStatementCoverage == check.TotalFiles;
             check.BranchCoverageCompliant = check.FilesWith100PercentBranchCoverage == check.TotalFiles;
-            check.MCDCCoverageCompliant = check.SafetyCriticalFiles == 0 || 
+            check.MCDCCoverageCompliant = check.SafetyCriticalFiles > 0 &&
                                          check.SafetyCriticalFilesWithMCDC == check.SafetyCriticalFiles;
 
             check.IsCompliant = check.StatementCoverageCompliant && 
@@ -246,7 +248,9 @@ namespace HB_NLP_Research_Lab.Certification
                 if (!check.BranchCoverageCompliant)
                     check.Issues.Add($"Not all files have 100% branch coverage ({check.FilesWith100PercentBranchCoverage}/{check.TotalFiles})");
                 
-                if (!check.MCDCCoverageCompliant)
+                if (check.SafetyCriticalFiles == 0)
+                    check.Issues.Add("No safety-critical files marked; MC/DC compliance cannot be asserted");
+                else if (!check.MCDCCoverageCompliant)
                     check.Issues.Add($"Not all safety-critical files have 100% MC/DC coverage ({check.SafetyCriticalFilesWithMCDC}/{check.SafetyCriticalFiles})");
             }
 
@@ -300,21 +304,43 @@ namespace HB_NLP_Research_Lab.Certification
             ValidateCoveragePair(metrics.CoveredBranches, metrics.TotalBranches, nameof(metrics.CoveredBranches), nameof(metrics.TotalBranches));
             ValidateCoveragePair(metrics.CoveredConditions, metrics.TotalConditions, nameof(metrics.CoveredConditions), nameof(metrics.TotalConditions));
 
-            // Prefer server-computed percentages from counts when totals are present so
-            // clients cannot assert 100% while covered/total counts disagree.
-            metrics.StatementCoverage = metrics.TotalStatements > 0
-                ? (double)metrics.CoveredStatements / metrics.TotalStatements * 100.0
-                : NormalizePercentage(metrics.StatementCoverage, nameof(metrics.StatementCoverage));
+            // Level A evidence requires countable statement/branch totals — percentage-only
+            // records with zero totals previously forged 100% compliance.
+            if (metrics.TotalStatements <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(metrics.TotalStatements),
+                    "Coverage records require a positive TotalStatements count.");
+            }
 
-            metrics.BranchCoverage = metrics.TotalBranches > 0
-                ? (double)metrics.CoveredBranches / metrics.TotalBranches * 100.0
-                : NormalizePercentage(metrics.BranchCoverage, nameof(metrics.BranchCoverage));
+            if (metrics.TotalBranches <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(metrics.TotalBranches),
+                    "Coverage records require a positive TotalBranches count.");
+            }
+
+            // Server-compute percentages from counts so clients cannot assert 100% while
+            // covered/total counts disagree.
+            metrics.StatementCoverage = (double)metrics.CoveredStatements / metrics.TotalStatements * 100.0;
+            metrics.BranchCoverage = (double)metrics.CoveredBranches / metrics.TotalBranches * 100.0;
 
             metrics.ConditionCoverage = metrics.TotalConditions > 0
                 ? (double)metrics.CoveredConditions / metrics.TotalConditions * 100.0
-                : NormalizePercentage(metrics.ConditionCoverage, nameof(metrics.ConditionCoverage));
+                : 0.0;
 
-            metrics.MCDCCoverage = NormalizePercentage(metrics.MCDCCoverage, nameof(metrics.MCDCCoverage));
+            // MC/DC cannot be client-asserted without condition evidence. When condition
+            // totals exist, cap claimed MC/DC by measured condition coverage.
+            if (metrics.TotalConditions > 0)
+            {
+                var claimedMcdc = NormalizePercentage(metrics.MCDCCoverage, nameof(metrics.MCDCCoverage));
+                metrics.MCDCCoverage = Math.Min(claimedMcdc, metrics.ConditionCoverage);
+            }
+            else
+            {
+                metrics.MCDCCoverage = 0.0;
+            }
+
             metrics.PathCoverage = NormalizePercentage(metrics.PathCoverage, nameof(metrics.PathCoverage));
         }
 

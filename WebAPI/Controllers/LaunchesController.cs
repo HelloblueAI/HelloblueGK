@@ -541,8 +541,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     maxAltitude = (maxVelocity * maxVelocity) / (2 * gravity);
                 }
 
-                // Mission success based on effective (override-aware) efficiency / validation thresholds.
-                var missionSuccess = design.Efficiency > efficiencyThreshold &&
+                // Mission success uses persisted engine efficiency — not client LaunchParameters
+                // overrides — so efficiency:0.95 cannot forge a pass for a weak engine.
+                // Scenario overrides still drive the simulated design/physics above.
+                var missionSuccess = launch.Engine.Efficiency > efficiencyThreshold &&
                     (analysisResult.ValidationReport?.OverallAccuracy ?? 0) > accuracyThreshold;
 
                 var missionDuration = (DateTime.UtcNow - startTime).TotalSeconds;
@@ -563,7 +565,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     maxVelocity = maxVelocity,
                     maxAltitude = maxAltitude,
                     missionDuration = missionDuration,
-                    engineEfficiency = design.Efficiency,
+                    engineEfficiency = launch.Engine.Efficiency,
+                    simulatedEfficiency = design.Efficiency,
                     validationAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
                     simulationType = analysisResult.SimulationType,
                     appliedLaunchParameters = launchParameters
