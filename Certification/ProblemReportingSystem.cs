@@ -286,19 +286,21 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var year = DateTime.UtcNow.Year;
             var prefix = $"PR-{year}-";
-            var lastNumber = await _context.ProblemReports
+            var existing = await _context.ProblemReports
                 .Where(pr => pr.ReportNumber.StartsWith(prefix))
-                .OrderByDescending(pr => pr.ReportNumber)
                 .Select(pr => pr.ReportNumber)
-                .FirstOrDefaultAsync();
+                .ToListAsync();
 
+            // Numeric max — not lexicographic OrderByDescending (PR-…-10000 < PR-…-9999 as strings).
             var next = 1;
-            if (!string.IsNullOrEmpty(lastNumber)
-                && lastNumber.Length > prefix.Length
-                && int.TryParse(lastNumber.AsSpan(prefix.Length), out var parsed)
-                && parsed >= 0)
+            foreach (var number in existing)
             {
-                next = parsed + 1;
+                if (number.Length > prefix.Length
+                    && int.TryParse(number.AsSpan(prefix.Length), out var parsed)
+                    && parsed >= next)
+                {
+                    next = parsed + 1;
+                }
             }
 
             return $"{prefix}{next:D4}";

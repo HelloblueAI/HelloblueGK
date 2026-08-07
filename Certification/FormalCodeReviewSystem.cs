@@ -60,19 +60,21 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var year = DateTime.UtcNow.Year;
             var prefix = $"CR-{year}-";
-            var lastNumber = await _context.CodeReviews
+            var existing = await _context.CodeReviews
                 .Where(cr => cr.ReviewNumber.StartsWith(prefix))
-                .OrderByDescending(cr => cr.ReviewNumber)
                 .Select(cr => cr.ReviewNumber)
-                .FirstOrDefaultAsync();
+                .ToListAsync();
 
+            // Numeric max — not lexicographic OrderByDescending (CR-…-10000 < CR-…-9999 as strings).
             var next = 1;
-            if (!string.IsNullOrEmpty(lastNumber)
-                && lastNumber.Length > prefix.Length
-                && int.TryParse(lastNumber.AsSpan(prefix.Length), out var parsed)
-                && parsed >= 0)
+            foreach (var number in existing)
             {
-                next = parsed + 1;
+                if (number.Length > prefix.Length
+                    && int.TryParse(number.AsSpan(prefix.Length), out var parsed)
+                    && parsed >= next)
+                {
+                    next = parsed + 1;
+                }
             }
 
             return $"{prefix}{next:D4}";
