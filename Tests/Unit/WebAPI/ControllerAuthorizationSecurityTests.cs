@@ -744,6 +744,44 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task ExecuteLaunch_IgnoresClientEfficiencyOverrideForMissionPassFail()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+        // Persisted engine is below the server efficiency floor. Client efficiency override
+        // must not forge MissionSuccess — scenario physics may still use the override.
+        launch.Engine.Efficiency = 0.50;
+        launch.LaunchParametersJson = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["efficiency"] = 0.95
+        });
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var executeResult = await controller.ExecuteLaunch(launch.Id);
+        executeResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Failed");
+        persisted.MissionSuccess.Should().BeFalse();
+        persisted.ResultsJson.Should().NotBeNullOrWhiteSpace();
+
+        using var document = JsonDocument.Parse(persisted.ResultsJson!);
+        document.RootElement.GetProperty("engineEfficiency").GetDouble().Should().BeApproximately(0.50, 0.0001);
+        document.RootElement.GetProperty("simulatedEfficiency").GetDouble().Should().BeApproximately(0.95, 0.0001);
+    }
+
+    [Fact]
     public async Task ExecuteLaunch_WhenEngineDeactivated_ReturnsBadRequestWithoutStarting()
     {
         await using var context = CreateContext();

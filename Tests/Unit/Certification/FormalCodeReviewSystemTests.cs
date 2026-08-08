@@ -36,6 +36,7 @@ public class FormalCodeReviewSystemTests
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
 
         var created = await system.CreateReviewAsync(new CodeReview
         {
@@ -46,7 +47,7 @@ public class FormalCodeReviewSystemTests
             Author = "alice"
         });
 
-        await system.AssignReviewerAsync(created.Id, "certified-bob", isCertified: true);
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
         await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
         {
             new()
@@ -70,14 +71,61 @@ public class FormalCodeReviewSystemTests
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
 
         var assign = async () => await system.AssignReviewerAsync(
             Guid.NewGuid(),
-            "certified-bob",
-            isCertified: true);
+            "certified-bob");
 
         await assign.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*not found*");
+    }
+
+    [Fact]
+    public async Task AssignReviewerAsync_WhenReviewerNotOnRoster_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        // Client used to forge IsCertified=true; without a roster entry this must fail.
+        var assign = async () => await system.AssignReviewerAsync(created.Id, "not-certified");
+
+        await assign.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*certified-reviewer roster*");
+
+        context.CodeReviewAssignments.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AssignReviewerAsync_WhenReviewerRevoked_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RevokeCertifiedReviewerAsync("certified-bob");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        var assign = async () => await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        await assign.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*certified-reviewer roster*");
     }
 
     [Fact]
@@ -138,6 +186,7 @@ public class FormalCodeReviewSystemTests
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
 
         var created = await system.CreateReviewAsync(new CodeReview
         {
@@ -147,7 +196,7 @@ public class FormalCodeReviewSystemTests
             LineEnd = 10,
             Author = "alice"
         });
-        await system.AssignReviewerAsync(created.Id, "certified-bob", isCertified: true);
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
         await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
         {
             new()
@@ -177,6 +226,7 @@ public class FormalCodeReviewSystemTests
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
 
         var created = await system.CreateReviewAsync(new CodeReview
         {
@@ -186,7 +236,7 @@ public class FormalCodeReviewSystemTests
             LineEnd = 10,
             Author = "alice"
         });
-        await system.AssignReviewerAsync(created.Id, "certified-bob", isCertified: true);
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
         await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
         {
             new()

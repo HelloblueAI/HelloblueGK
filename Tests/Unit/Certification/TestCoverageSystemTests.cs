@@ -66,11 +66,82 @@ public class TestCoverageSystemTests
         var act = async () => await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
         {
             TotalStatements = 10,
-            CoveredStatements = 11
+            CoveredStatements = 11,
+            TotalBranches = 2,
+            CoveredBranches = 1
         });
 
         await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
         context.CodeCoverage.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RecordCoverageAsync_WithZeroTotals_RejectsPercentageOnlyForge()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            StatementCoverage = 100,
+            BranchCoverage = 100,
+            MCDCCoverage = 100,
+            TotalStatements = 0,
+            CoveredStatements = 0,
+            TotalBranches = 0,
+            CoveredBranches = 0
+        });
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        context.CodeCoverage.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RecordCoverageAsync_WithoutConditionTotals_ForcesMcdcToZero()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            MCDCCoverage = 100, // forged without condition evidence
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 0,
+            CoveredConditions = 0
+        });
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        coverage.MCDCCoverage.Should().Be(0.0);
+        coverage.StatementCoverage.Should().Be(100.0);
+        coverage.BranchCoverage.Should().Be(100.0);
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_WithNoSafetyCriticalFiles_IsNotCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MCDCCoverage = 100
+        });
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.MCDCCoverageCompliant.Should().BeFalse();
+        check.SafetyCriticalFiles.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("No safety-critical", StringComparison.OrdinalIgnoreCase));
     }
 
     private static TestCoverageDbContext CreateContext()

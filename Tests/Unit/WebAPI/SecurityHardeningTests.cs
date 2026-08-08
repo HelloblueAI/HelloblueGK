@@ -1777,7 +1777,13 @@ public class SecurityHardeningTests
             FilePath = " Core\\Control\\EngineController.cs ",
             StatementCoverage = 100,
             BranchCoverage = 100,
-            MCDCCoverage = 100
+            MCDCCoverage = 100,
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2
         });
 
         result.Should().BeOfType<OkObjectResult>();
