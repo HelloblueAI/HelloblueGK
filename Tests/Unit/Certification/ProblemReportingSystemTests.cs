@@ -187,10 +187,12 @@ public class ProblemReportingSystemTests
 
     [Theory]
     [InlineData(null, null, ProblemSeverity.Critical)]
-    [InlineData("routine observation", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation", null, ProblemSeverity.Minor)]
     [InlineData("major performance impact", null, ProblemSeverity.Major)]
     [InlineData("critical safety fault", ProblemSeverity.Minor, ProblemSeverity.Critical)]
     [InlineData("routine observation", ProblemSeverity.Minor, ProblemSeverity.Minor)]
+    [InlineData("blocks certification gate", ProblemSeverity.Minor, ProblemSeverity.Critical)]
+    [InlineData("unclassified blocking issue", ProblemSeverity.Major, ProblemSeverity.Critical)]
     public void ResolveSeverity_FailClosedAndKeywordFloor(
         string? impact,
         ProblemSeverity? explicitSeverity,
