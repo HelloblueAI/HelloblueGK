@@ -308,18 +308,21 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Resolve severity with fail-closed defaults and a keyword floor.
-        /// Unclassified impact defaults to Critical so Level A compliance cannot be forged by omitting
-        /// "critical/safety/major" keywords. Explicit severity may not under-classify below the floor.
+        /// Unclassified impact floors at Critical so Level A compliance cannot be forged by asserting
+        /// Minor/Major without supporting keywords. Explicit severity may not under-classify below the floor.
         /// </summary>
         public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
         {
-            var keywordFloor = ClassifyImpactKeywords(impact);
-            var resolved = explicitSeverity ?? keywordFloor ?? ProblemSeverity.Critical;
+            var keywordClass = ClassifyImpactKeywords(impact);
+            // Unclassified impact (no keywords) floors at Critical — clients cannot assert Minor
+            // to hide blocking issues from Critical/Major compliance gates.
+            var floor = keywordClass ?? ProblemSeverity.Critical;
+            var resolved = explicitSeverity ?? floor;
 
-            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            if ((int)resolved > (int)floor)
             {
                 // Enum order is Critical(0) < Major(1) < Minor(2); higher int = lower severity.
-                resolved = keywordFloor.Value;
+                resolved = floor;
             }
 
             return resolved;
@@ -337,6 +340,13 @@ namespace HB_NLP_Research_Lab.Certification
             if (impact.Contains("major", StringComparison.OrdinalIgnoreCase) ||
                 impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
                 return ProblemSeverity.Major;
+
+            if (impact.Contains("minor", StringComparison.OrdinalIgnoreCase) ||
+                impact.Contains("cosmetic", StringComparison.OrdinalIgnoreCase) ||
+                impact.Contains("observation", StringComparison.OrdinalIgnoreCase) ||
+                impact.Contains("routine", StringComparison.OrdinalIgnoreCase) ||
+                impact.Contains("nit", StringComparison.OrdinalIgnoreCase))
+                return ProblemSeverity.Minor;
 
             return null;
         }
