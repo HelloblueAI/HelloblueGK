@@ -622,21 +622,6 @@ namespace HB_NLP_Research_Lab.Core
             return value > 1.0 ? Math.Clamp(value / 100.0, 0.0, 1.0) : Math.Clamp(value, 0.0, 1.0);
         }
 
-        private static bool TryReadIntParameter(
-            IReadOnlyDictionary<string, object>? parameters,
-            string key,
-            out int value)
-        {
-            value = 0;
-            if (!TryReadDoubleParameter(parameters, key, out var numeric))
-            {
-                return false;
-            }
-
-            value = (int)Math.Round(numeric, MidpointRounding.AwayFromZero);
-            return true;
-        }
-
         private static bool TryReadDoubleParameter(
             IReadOnlyDictionary<string, object>? parameters,
             string key,
