@@ -225,6 +225,13 @@ namespace HB_NLP_Research_Lab.Certification
                 finding.ReviewId = reviewId;
                 finding.ReviewerName = reviewerName;
                 finding.CreatedAt = DateTime.UtcNow;
+                // Safety findings cannot be under-classified below Critical by the client.
+                if (finding.Category == FindingCategory.Safety &&
+                    finding.Severity is FindingSeverity.Major or FindingSeverity.Minor or FindingSeverity.Info)
+                {
+                    finding.Severity = FindingSeverity.Critical;
+                }
+
                 _context.ReviewFindings.Add(finding);
             }
 
@@ -240,6 +247,30 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Submitted {Count} findings for review {ReviewNumber}", findings.Count, review.ReviewNumber);
+        }
+
+        /// <summary>
+        /// Disposition (resolve) a finding so Major/Critical no longer block approval.
+        /// </summary>
+        public async Task ResolveFindingAsync(Guid reviewId, Guid findingId, string resolvedBy)
+        {
+            if (string.IsNullOrWhiteSpace(resolvedBy))
+                throw new ArgumentException("Resolver is required", nameof(resolvedBy));
+
+            var finding = await _context.ReviewFindings
+                .FirstOrDefaultAsync(f => f.Id == findingId && f.ReviewId == reviewId);
+            if (finding == null)
+                throw new ArgumentException($"Finding {findingId} not found for review {reviewId}");
+
+            finding.Resolved = true;
+            finding.ResolvedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Resolved finding {FindingId} on review {ReviewId} by {ResolvedBy}",
+                findingId,
+                reviewId,
+                LogSanitizer.SanitizeIdentifier(resolvedBy));
         }
 
         /// <summary>
@@ -279,13 +310,49 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve review until all assigned reviewers have completed their findings");
             }
 
-            // Check for critical findings
-            var criticalFindings = review.Findings.Where(f => f.Severity == FindingSeverity.Critical).ToList();
-            if (criticalFindings.Any())
-                throw new InvalidOperationException($"Cannot approve review with {criticalFindings.Count} critical findings");
+            // Level A independence: approver must not be the author or a completing reviewer.
+            var normalizedApprover = NormalizeReviewerName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
+
+            if (!string.IsNullOrWhiteSpace(review.Author) &&
+                string.Equals(NormalizeReviewerName(review.Author), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a code review as its author; Level A requires an independent approver");
+            }
+
+            var completingReviewers = review.Assignments
+                .Where(a => a.Status == ReviewAssignmentStatus.Completed)
+                .Select(a => a.ReviewerName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+            if (completingReviewers.Any(name =>
+                    string.Equals(NormalizeReviewerName(name), normalizedApprover, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a code review as one of its completing reviewers; Level A requires separation of duties");
+            }
+
+            // Critical and Major findings block approval until dispositioned (Resolved).
+            // Client-asserted Severity under-classification to Minor is a residual risk;
+            // Safety-category findings are forced to Critical on submit.
+            var blockingFindings = review.Findings
+                .Where(f => !f.Resolved &&
+                            (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major))
+                .ToList();
+            if (blockingFindings.Count > 0)
+            {
+                var criticalCount = blockingFindings.Count(f => f.Severity == FindingSeverity.Critical);
+                var majorCount = blockingFindings.Count(f => f.Severity == FindingSeverity.Major);
+                throw new InvalidOperationException(
+                    $"Cannot approve review with {criticalCount} unresolved critical and {majorCount} unresolved major findings");
+            }
 
             review.Status = CodeReviewStatus.Approved;
-            review.ApprovedBy = approvedBy;
+            review.ApprovedBy = normalizedApprover;
             review.ApprovedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();

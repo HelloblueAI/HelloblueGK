@@ -169,6 +169,115 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task ApproveReviewAsync_WithUnresolvedMajorFinding_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Major,
+                Category = FindingCategory.Correctness,
+                Description = "Logic defect"
+            }
+        });
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved major*");
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_AsAuthor_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>());
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "alice");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent approver*");
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_AsCompletingReviewer_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>());
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "certified-bob");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*separation of duties*");
+    }
+
+    [Fact]
+    public async Task SubmitFindingsAsync_SafetyCategory_ElevatesSeverityToCritical()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Safety,
+                Description = "Possible hazard under-classified as minor"
+            }
+        });
+
+        var finding = await context.ReviewFindings.SingleAsync();
+        finding.Severity.Should().Be(FindingSeverity.Critical);
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_WithEmptyRequiredFiles_IsNotCompliant()
     {
         await using var context = CreateContext();
