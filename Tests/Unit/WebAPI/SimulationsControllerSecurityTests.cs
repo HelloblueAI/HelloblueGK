@@ -258,7 +258,8 @@ public class SimulationsControllerSecurityTests
             .SingleAsync(candidate => candidate.Id == response.Id);
 
         simulation.Status.Should().Be("Completed");
-        simulation.Iterations.Should().Be(77);
+        // Request parameters may still echo iterations=77, but persisted trust metric is solver-owned.
+        simulation.Iterations.Should().Be(120);
         simulation.ResultsJson.Should().NotBeNullOrWhiteSpace();
         using var document = JsonDocument.Parse(simulation.ResultsJson!);
         document.RootElement.GetProperty("simulationType").GetString().Should().Be("Thermal");

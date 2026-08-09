@@ -864,7 +864,10 @@ public class ControllerAuthorizationSecurityTests
 
         using var document = JsonDocument.Parse(persisted.ResultsJson!);
         document.RootElement.GetProperty("algorithmType").GetString().Should().Be("Genetic");
+        // Improvement baseline is persisted Engine.Efficiency — not the client scenario override.
         document.RootElement.GetProperty("originalParameters").GetProperty("efficiency").GetDouble()
+            .Should().BeApproximately(0.8, 0.0001);
+        document.RootElement.GetProperty("appliedParameters").GetProperty("efficiency").GetDouble()
             .Should().BeApproximately(0.88, 0.0001);
         document.RootElement.GetProperty("stages").EnumerateArray()
             .Select(element => element.GetString())

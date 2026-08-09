@@ -126,7 +126,8 @@ public class HelloblueGKEngineTests : IDisposable
             new Dictionary<string, object> { ["iterations"] = 42 });
 
         result.SimulationType.Should().Be("CFD");
-        result.Iterations.Should().Be(42);
+        // Client iterations overrides are ignored — ConvergenceIterations stay solver-owned.
+        result.Iterations.Should().Be(150);
         result.ThrustAnalysis.MaxThrust.Should().BeGreaterThan(0);
         result.ThermalAnalysis.MaxTemperature.Should().Be(0);
         result.StructuralAnalysis.MaxStress.Should().Be(0);
@@ -172,11 +173,11 @@ public class HelloblueGKEngineTests : IDisposable
             });
 
         result.SimulationType.Should().Be("CFD");
-        result.Iterations.Should().Be(88);
+        result.Iterations.Should().Be(150);
         result.ThrustAnalysis.MaxThrust.Should().Be(1234567);
         result.ThrustAnalysis.Efficiency.Should().BeApproximately(0.91, 0.0001);
         result.PerformanceMetrics["ChamberPressure"].Should().Be(275.5);
-        result.PerformanceMetrics["Iterations"].Should().Be(88);
+        result.PerformanceMetrics["Iterations"].Should().Be(result.Iterations);
     }
 
     [Fact]
@@ -212,7 +213,7 @@ public class HelloblueGKEngineTests : IDisposable
             });
 
         result.SimulationType.Should().Be("Thermal");
-        result.Iterations.Should().Be(55);
+        result.Iterations.Should().Be(120);
         result.ThermalAnalysis.MaxTemperature.Should().Be(4100);
         result.ThermalAnalysis.CoolingEfficiency.Should().BeApproximately(0.77, 0.0001);
         result.PerformanceMetrics["MaxTemperature"].Should().Be(4100);
@@ -248,7 +249,7 @@ public class HelloblueGKEngineTests : IDisposable
             baseline);
 
         forged.SimulationType.Should().Be("Structural");
-        forged.Iterations.Should().Be(66);
+        forged.Iterations.Should().Be(100);
         forged.StructuralAnalysis.MaxStress.Should().Be(650e6);
         forged.StructuralAnalysis.SafetyFactor.Should().BeApproximately(
             honest.StructuralAnalysis.SafetyFactor,

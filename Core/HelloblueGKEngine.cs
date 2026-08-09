@@ -126,12 +126,14 @@ namespace HB_NLP_Research_Lab.Core
                         thermalResult?.ConvergenceIterations ?? 0,
                         structuralResult?.ConvergenceIterations ?? 0
                     }.Max();
-                    solverAccuracy = new[]
+                    // Fail closed: never invent ConvergenceRate/Accuracy when solvers return nothing.
+                    var positiveAccuracies = new[]
                     {
                         cfdResult?.Accuracy ?? 0,
                         thermalResult?.Accuracy ?? 0,
                         structuralResult?.Accuracy ?? 0
-                    }.Where(value => value > 0).DefaultIfEmpty(95.0).Average();
+                    }.Where(value => value > 0).ToArray();
+                    solverAccuracy = positiveAccuracies.Length > 0 ? positiveAccuracies.Average() : 0;
                     break;
             }
 
@@ -145,15 +147,9 @@ namespace HB_NLP_Research_Lab.Core
                 thermalResult,
                 structuralResult);
 
-            if (TryReadIntParameter(parameters, "iterations", out var requestedIterations) &&
-                requestedIterations > 0)
-            {
-                iterations = requestedIterations;
-            }
-
             // Apply typed physics request parameters so CFD/Thermal/Structural results
             // reflect accepted inputs instead of only echoing them in ResultsJson.
-            // Solver Accuracy / ConvergenceRate remain solver-owned trust signals.
+            // Solver Accuracy / ConvergenceRate / Iterations remain solver-owned trust signals.
             ApplyPhysicsParameterOverrides(
                 parameters,
                 cfdResult,
@@ -161,8 +157,10 @@ namespace HB_NLP_Research_Lab.Core
                 structuralResult,
                 ref iterations);
 
-            // Real-time validation
+            // Real-time validation metadata — but OverallAccuracy used by MissionSuccess /
+            // Simulation.Accuracy must stay solver-owned (RNG placeholders must not gate trust).
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
+            validationReport.OverallAccuracy = NormalizeRatio(solverAccuracy) * 100.0;
             cancellationToken.ThrowIfCancellationRequested();
 
             // AI optimization remains part of the full MultiPhysics path for backward compatibility.
@@ -480,10 +478,9 @@ namespace HB_NLP_Research_Lab.Core
                 structuralResult.MaxStress = maxStress;
                 structuralResult.StressDistribution["chamber"] = maxStress;
                 structuralResult.StressDistribution["nozzle"] = maxStress * 0.75;
-                if (baseline.Efficiency > 0)
-                {
-                    structuralResult.SafetyFactor = Math.Clamp(1.2 + (baseline.Efficiency * 0.5), 1.2, 2.0);
-                }
+                // Do not re-seed SafetyFactor from baseline.Efficiency — launch/request paths can
+                // mutate baselineDesign.Efficiency via ApplyDesignParameterOverrides, which would
+                // forge the solver-owned SafetyFactor trust signal.
             }
         }
 
@@ -499,25 +496,9 @@ namespace HB_NLP_Research_Lab.Core
                 return;
             }
 
-            if (TryReadIntParameter(parameters, "iterations", out var requestedIterations) &&
-                requestedIterations > 0)
-            {
-                iterations = requestedIterations;
-                if (cfdResult != null)
-                {
-                    cfdResult.ConvergenceIterations = requestedIterations;
-                }
-
-                if (thermalResult != null)
-                {
-                    thermalResult.ConvergenceIterations = requestedIterations;
-                }
-
-                if (structuralResult != null)
-                {
-                    structuralResult.ConvergenceIterations = requestedIterations;
-                }
-            }
+            // Client "iterations" overrides are ignored — ConvergenceIterations stay solver-owned
+            // (parity with Accuracy / ConvergenceRate / SafetyFactor trust policy).
+            _ = iterations;
 
             if (cfdResult != null)
             {

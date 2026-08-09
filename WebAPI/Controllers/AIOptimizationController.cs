@@ -405,13 +405,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var startTime = DateTime.UtcNow;
 
-                // Start from engine baselines, then apply request parameter overrides.
+                // Persisted engine characteristics are the trust baseline for improvement %.
+                // Request parameter overrides may shape the optimization scenario, but must not
+                // redefine "original" efficiency (tiny client efficiency → forged ImprovementPercentage).
+                var baselineEfficiency = engine.Efficiency;
                 var parameters = new EngineDesignParameters
                 {
                     Thrust = engine.Thrust,
                     SpecificImpulse = engine.SpecificImpulse,
                     ChamberPressure = engine.ChamberPressure,
-                    Efficiency = engine.Efficiency
+                    Efficiency = baselineEfficiency
                 };
                 HelloblueGKEngine.ApplyDesignParameterOverrides(parameters, request.Parameters);
 
@@ -427,8 +430,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
 
-                // Calculate improvement
-                var originalEfficiency = parameters.Efficiency;
+                // Calculate improvement against persisted engine efficiency only.
+                var originalEfficiency = baselineEfficiency;
                 var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? originalEfficiency;
                 var improvement = originalEfficiency > 0 
                     ? ((optimizedEfficiency - originalEfficiency) / originalEfficiency) * 100 
@@ -441,10 +444,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     appliedParameters = request.Parameters ?? new Dictionary<string, object>(),
                     originalParameters = new
                     {
-                        thrust = parameters.Thrust,
-                        specificImpulse = parameters.SpecificImpulse,
-                        chamberPressure = parameters.ChamberPressure,
-                        efficiency = parameters.Efficiency
+                        thrust = engine.Thrust,
+                        specificImpulse = engine.SpecificImpulse,
+                        chamberPressure = engine.ChamberPressure,
+                        efficiency = baselineEfficiency
                     },
                     optimizedParameters = new
                     {
