@@ -278,6 +278,41 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task SubmitFindingsAsync_CriticalKeywords_ElevateClientMinorSeverity()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Logic,
+                Description = "Critical catastrophic failure path left unguarded"
+            }
+        });
+
+        var finding = await context.ReviewFindings.SingleAsync();
+        finding.Severity.Should().Be(FindingSeverity.Critical);
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved critical*");
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_WithEmptyRequiredFiles_IsNotCompliant()
     {
         await using var context = CreateContext();

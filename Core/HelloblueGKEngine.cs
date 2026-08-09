@@ -157,10 +157,11 @@ namespace HB_NLP_Research_Lab.Core
                 structuralResult,
                 ref iterations);
 
-            // Real-time validation metadata — but OverallAccuracy used by MissionSuccess /
-            // Simulation.Accuracy must stay solver-owned (RNG placeholders must not gate trust).
+            // Keep ValidationReport.OverallAccuracy as the validation engine's fail-closed
+            // evidence score (unproven=50 without trusted flight/test binding). Do NOT overwrite
+            // it with hardcoded solver Accuracy (~99%) — that made MissionSuccess's validation
+            // accuracy gate vacuous while Simulation.Accuracy should use ConvergenceRate instead.
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
-            validationReport.OverallAccuracy = NormalizeRatio(solverAccuracy) * 100.0;
             cancellationToken.ThrowIfCancellationRequested();
 
             // AI optimization remains part of the full MultiPhysics path for backward compatibility.

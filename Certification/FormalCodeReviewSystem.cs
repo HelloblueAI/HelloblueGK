@@ -225,12 +225,7 @@ namespace HB_NLP_Research_Lab.Certification
                 finding.ReviewId = reviewId;
                 finding.ReviewerName = reviewerName;
                 finding.CreatedAt = DateTime.UtcNow;
-                // Safety findings cannot be under-classified below Critical by the client.
-                if (finding.Category == FindingCategory.Safety &&
-                    finding.Severity is FindingSeverity.Major or FindingSeverity.Minor or FindingSeverity.Info)
-                {
-                    finding.Severity = FindingSeverity.Critical;
-                }
+                finding.Severity = ResolveFindingSeverity(finding);
 
                 _context.ReviewFindings.Add(finding);
             }
@@ -247,6 +242,54 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Submitted {Count} findings for review {ReviewNumber}", findings.Count, review.ReviewNumber);
+        }
+
+        /// <summary>
+        /// Resolve finding severity with Safety elevation and a description keyword floor.
+        /// Explicit Minor/Info cannot hide Critical/Major language from approval gates.
+        /// Unclassified (no Safety category, no keywords) keeps the client severity.
+        /// </summary>
+        public static FindingSeverity ResolveFindingSeverity(ReviewFinding finding)
+        {
+            ArgumentNullException.ThrowIfNull(finding);
+
+            var resolved = finding.Severity;
+            if (finding.Category == FindingCategory.Safety)
+            {
+                resolved = FindingSeverity.Critical;
+            }
+
+            var keywordFloor = ClassifyFindingKeywords(finding.Description, finding.Recommendation);
+            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            {
+                // Enum order is Critical(0) < Major(1) < Minor(2) < Info(3); higher int = lower severity.
+                resolved = keywordFloor.Value;
+            }
+
+            return resolved;
+        }
+
+        private static FindingSeverity? ClassifyFindingKeywords(string? description, string? recommendation)
+        {
+            var text = $"{description} {recommendation}";
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            if (text.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("critical", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("catastrophic", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("hazard", StringComparison.OrdinalIgnoreCase))
+            {
+                return FindingSeverity.Critical;
+            }
+
+            if (text.Contains("major", StringComparison.OrdinalIgnoreCase) ||
+                text.Contains("significant", StringComparison.OrdinalIgnoreCase))
+            {
+                return FindingSeverity.Major;
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -337,8 +380,8 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Critical and Major findings block approval until dispositioned (Resolved).
-            // Client-asserted Severity under-classification to Minor is a residual risk;
-            // Safety-category findings are forced to Critical on submit.
+            // SubmitFindingsAsync applies Safety elevation + description keyword floors so
+            // clients cannot under-classify blocking findings to Minor/Info.
             var blockingFindings = review.Findings
                 .Where(f => !f.Resolved &&
                             (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major))

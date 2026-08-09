@@ -471,7 +471,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         .SetProperty(o => o.ExecutionTimeSeconds, executionTime)
                         .SetProperty(o => o.ImprovementPercentage, improvement)
                         .SetProperty(o => o.Generations, generations)
-                        .SetProperty(o => o.BestFitness, result.OverallImprovement)
+                        // Persist the efficiency-delta fitness, not RNG stage OverallImprovement.
+                        .SetProperty(o => o.BestFitness, improvement)
                         .SetProperty(o => o.ResultsJson, resultsJson));
 
                 if (completed == 0)

@@ -38,6 +38,18 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_KeepsValidationOverallAccuracyFailClosed()
+    {
+        var result = await _engine.AnalyzeEngineAsync("TestEngine", "CFD");
+
+        // Solver ConvergenceRate may be high, but validation evidence stays unproven
+        // until a trusted flight/test binding exists (MissionSuccess accuracy gate).
+        result.ConvergenceRate.Should().BeGreaterThan(0);
+        result.ValidationReport.OverallAccuracy.Should().Be(RealTimeValidationEngine.UnprovenValidationAccuracy);
+        result.ValidationReport.OverallAccuracy.Should().BeLessThan(95.0);
+    }
+
+    [Fact]
     public async Task AnalyzeEngineAsync_ShouldHaveValidThrustAnalysis()
     {
         // Arrange
