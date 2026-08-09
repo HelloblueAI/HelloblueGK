@@ -299,7 +299,7 @@ public class FormalCodeReviewSystemTests
             {
                 LineNumber = 5,
                 Severity = FindingSeverity.Minor,
-                Category = FindingCategory.Logic,
+                Category = FindingCategory.Correctness,
                 Description = "Critical catastrophic failure path left unguarded"
             }
         });
