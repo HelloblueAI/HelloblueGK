@@ -470,8 +470,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var executionTime = (DateTime.UtcNow - startedAt).TotalSeconds;
-                var accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0
-                    ?? analysisResult.ConvergenceRate;
+                // Solver-owned ConvergenceRate only — do not persist ValidationReport RNG /
+                // unproven placeholders as Simulation.Accuracy (parity with open #139).
+                var accuracy = analysisResult.ConvergenceRate;
                 var convergenceRate = analysisResult.ConvergenceRate;
                 // Fail closed: never invent optimistic Accuracy / ConvergenceRate trust metrics.
                 if (accuracy <= 0 || convergenceRate <= 0)
