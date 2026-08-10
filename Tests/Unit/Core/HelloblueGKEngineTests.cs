@@ -342,7 +342,11 @@ public class HelloblueGKEngineTests : IDisposable
 
         forged.ThrustAnalysis.Efficiency.Should().BeApproximately(0.5, 0.0001);
         forged.ConvergenceRate.Should().BeApproximately(honest.ConvergenceRate, 0.0001);
-        forged.ConvergenceRate.Should().BeGreaterThan(0.9);
+        // Placeholder solvers report UnprovenSolverAccuracy (50%) — not hardcoded 99.x.
+        forged.ConvergenceRate.Should().BeApproximately(
+            HighPerformanceCFDSolver.UnprovenSolverAccuracy / 100.0,
+            0.0001);
+        forged.ConvergenceRate.Should().BeLessThan(0.9);
     }
 
     [Fact]

@@ -126,12 +126,18 @@ namespace HB_NLP_Research_Lab.Core
                         thermalResult?.ConvergenceIterations ?? 0,
                         structuralResult?.ConvergenceIterations ?? 0
                     }.Max();
-                    solverAccuracy = new[]
+                    // Average positive solver accuracies. Do not DefaultIfEmpty(95.0) — that
+                    // invented optimistic MultiPhysics ConvergenceRate when solvers were unproven.
+                    // (Open #139 also removes DefaultIfEmpty; keep fail-closed if all are ≤0.)
+                    var positiveAccuracies = new[]
                     {
                         cfdResult?.Accuracy ?? 0,
                         thermalResult?.Accuracy ?? 0,
                         structuralResult?.Accuracy ?? 0
-                    }.Where(value => value > 0).DefaultIfEmpty(95.0).Average();
+                    }.Where(value => value > 0).ToArray();
+                    solverAccuracy = positiveAccuracies.Length > 0
+                        ? positiveAccuracies.Average()
+                        : 0.0;
                     break;
             }
 

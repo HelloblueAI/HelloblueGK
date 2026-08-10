@@ -71,8 +71,22 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
             }
 
+            // Level A independence: approver must not be the baseline author.
+            var normalizedApprover = NormalizeActorName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
+
+            if (!string.IsNullOrWhiteSpace(baseline.CreatedBy) &&
+                string.Equals(NormalizeActorName(baseline.CreatedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a baseline as its creator; Level A requires an independent approver");
+            }
+
             baseline.Status = BaselineStatus.Approved;
-            baseline.ApprovedBy = approvedBy;
+            baseline.ApprovedBy = approvedBy.Trim();
             baseline.ApprovedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
@@ -174,8 +188,22 @@ namespace HB_NLP_Research_Lab.Certification
                     "only Submitted or UnderReview change requests may be approved");
             }
 
+            // Level A / CCB independence: requester cannot self-approve.
+            var normalizedApprover = NormalizeActorName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.RequestedBy) &&
+                string.Equals(NormalizeActorName(request.RequestedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a change request as its requester; Level A requires separation of duties");
+            }
+
             request.Status = ChangeRequestStatus.Approved;
-            request.ApprovedBy = approvedBy;
+            request.ApprovedBy = approvedBy.Trim();
             request.ApprovedAt = DateTime.UtcNow;
             request.ApprovalNotes = approvalNotes;
 
@@ -184,7 +212,7 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 ChangeRequestId = request.Id,
-                ApprovedBy = approvedBy,
+                ApprovedBy = approvedBy.Trim(),
                 ApprovedAt = DateTime.UtcNow,
                 Notes = approvalNotes
             };
@@ -360,6 +388,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             return report;
         }
+
+        private static string NormalizeActorName(string? actorName) =>
+            string.IsNullOrWhiteSpace(actorName) ? string.Empty : actorName.Trim();
 
         private async Task<string> AllocateNextRequestNumberAsync()
         {
