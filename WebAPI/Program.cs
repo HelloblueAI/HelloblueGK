@@ -407,12 +407,15 @@ app.UseHttpMetrics();
 
 app.UseCors();
 
-// Authentication and Authorization
-app.UseAuthentication();
+// Rate-limit before authentication so JWT OnTokenValidated DB lookups cannot be
+// sprayed via skipped/authenticated paths (e.g. Bearer + /metrics → 403).
 if (builder.Configuration.GetValue("EnableRateLimiting", true))
 {
     app.UseRateLimiting();
 }
+
+// Authentication and Authorization
+app.UseAuthentication();
 app.UseAuthorization();
 
 // Swagger/OpenAPI documentation — internal-only in production (aerospace-style).

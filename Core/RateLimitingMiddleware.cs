@@ -157,11 +157,12 @@ namespace HB_NLP_Research_Lab.Core
 
         private bool ShouldSkipRateLimiting(string endpoint)
         {
+            // Only skip anonymous probe/docs paths. Do not prefix-skip /metrics or
+            // authenticated health APIs — those still pay JWT validation cost and must
+            // remain capacity-protected under the pre-auth rate-limit middleware order.
             var skipEndpoints = new[]
             {
                 "/health",
-                "/metrics",
-                "/api/v1/performance/health",
                 "/swagger",
                 "/favicon.ico"
             };
