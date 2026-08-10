@@ -221,6 +221,8 @@ public class SecurityHardeningTests
         user.PasswordHash.Split(':').Should().HaveCount(3);
         user.LastLoginAt.Should().NotBeNull();
         user.UpdatedAt.Should().NotBeNull();
+        // Re-login must bump atv so previously stolen access JWTs fail validation.
+        user.AccessTokenVersion.Should().Be(1);
         user.RefreshTokenHash.Should().Be("refresh-token-hash");
         user.RefreshTokenExpiresAt.Should().NotBeNull();
         user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
