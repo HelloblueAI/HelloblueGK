@@ -35,6 +35,39 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task ApproveBaselineAsync_RejectsCreatorAsApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SoD-Baseline", "1.0.0", "independence", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "sod.c");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "alice");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent approver*");
+    }
+
+    [Fact]
+    public async Task ApproveChangeRequestAsync_RejectsRequesterAsApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "SoD CR",
+            Description = "self-approve forge",
+            Justification = "test",
+            RequestedBy = "alice"
+        });
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "Alice", "CCB ok");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*separation of duties*");
+    }
+
+    [Fact]
     public async Task ApproveChangeRequestAsync_RejectsRejectedOrImplementedStatus()
     {
         await using var context = CreateContext();
