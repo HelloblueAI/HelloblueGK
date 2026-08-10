@@ -1929,11 +1929,13 @@ public class SecurityHardeningTests
         responseJson.Should().NotContain(sensitiveText);
     }
 
-    private static HelloblueGKDbContext CreateContext()
+    private static HelloblueGKDbContext CreateContext() => CreateSharedContext(Guid.NewGuid().ToString("N"));
+
+    private static HelloblueGKDbContext CreateSharedContext(string sharedName)
     {
         // Use SQLite so ExecuteUpdate-based refresh-token rotation can be exercised.
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
-            .UseSqlite($"Data Source=file:{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .UseSqlite($"Data Source=file:{sharedName}?mode=memory&cache=shared")
             .Options;
 
         var context = new HelloblueGKDbContext(options);
