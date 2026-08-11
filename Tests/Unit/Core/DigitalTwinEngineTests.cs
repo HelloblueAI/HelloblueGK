@@ -174,7 +174,8 @@ public class DigitalTwinEngineTests : IDisposable
         forged.PredictedMetrics["Reliability"].Should().BeApproximately(
             baseline.PredictedMetrics["Reliability"],
             0.0001);
-        forged.PredictedMetrics["Reliability"].Should().BeLessThan(1.0);
+        baseline.PredictedMetrics["Reliability"].Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+        forged.PredictedMetrics["Reliability"].Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
         forged.ConfidenceLevel.Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
     }
 

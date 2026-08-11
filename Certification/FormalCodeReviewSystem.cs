@@ -215,6 +215,14 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
+            // Terminal statuses must not accept new findings — otherwise a late submit
+            // can clobber Approved → Completed and reopen a compliance forge window.
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot submit findings for review with status {review.Status}");
+            }
+
             var assignment = review.Assignments.FirstOrDefault(a => a.ReviewerName == reviewerName);
             if (assignment == null)
                 throw new ArgumentException($"Reviewer {reviewerName} not assigned to review {reviewId}");
