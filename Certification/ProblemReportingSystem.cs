@@ -74,6 +74,8 @@ namespace HB_NLP_Research_Lab.Certification
             string? changedBy = null)
         {
             var report = await _context.ProblemReports
+                .Include(pr => pr.RequirementLinks)
+                .Include(pr => pr.TestLinks)
                 .FirstOrDefaultAsync(pr => pr.ReportNumber == reportNumber);
 
             if (report == null)
@@ -97,7 +99,22 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Problem report {reportNumber} requires a non-empty resolution before closing");
                 }
 
-                report.Resolution = resolution.Trim();
+                var normalizedResolution = resolution.Trim();
+                if (!HasSubstantiveResolution(normalizedResolution))
+                {
+                    throw new InvalidOperationException(
+                        $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
+                }
+
+                // Critical/Major closures need linked evidence — resolution text alone forges IsCompliant.
+                if (report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
+                    !HasResolutionEvidence(report))
+                {
+                    throw new InvalidOperationException(
+                        $"Problem report {reportNumber} requires a linked requirement or test case before closing");
+                }
+
+                report.Resolution = normalizedResolution;
                 report.ClosedAt = DateTime.UtcNow;
             }
 
@@ -216,6 +233,8 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var totalReports = await _context.ProblemReports.CountAsync();
             var reports = await _context.ProblemReports
+                .Include(pr => pr.RequirementLinks)
+                .Include(pr => pr.TestLinks)
                 .Where(pr => pr.Severity == ProblemSeverity.Critical || 
                             pr.Severity == ProblemSeverity.Major)
                 .ToListAsync();
@@ -241,13 +260,16 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
-            // Closed without a recorded resolution must not satisfy certification gates.
+            // Closed without substantive resolution + evidence links must not satisfy certification gates.
             var improperlyClosed = reports.Count(r =>
                 r.Status == ProblemReportStatus.Closed &&
-                string.IsNullOrWhiteSpace(r.Resolution));
+                (string.IsNullOrWhiteSpace(r.Resolution) ||
+                 !HasSubstantiveResolution(r.Resolution) ||
+                 !HasResolutionEvidence(r)));
             if (improperlyClosed > 0)
             {
-                check.Issues.Add($"{improperlyClosed} critical/major problem report(s) are Closed without a recorded resolution");
+                check.Issues.Add(
+                    $"{improperlyClosed} critical/major problem report(s) are Closed without substantive resolution evidence");
             }
 
             var unresolvedOk = check.UnresolvedCriticalProblems == 0 &&
@@ -262,6 +284,27 @@ namespace HB_NLP_Research_Lab.Certification
 
             check.IsCompliant = unresolvedOk && improperlyClosed == 0;
             return check;
+        }
+
+        private static bool HasResolutionEvidence(ProblemReport report) =>
+            report.RequirementLinks.Count > 0 || report.TestLinks.Count > 0;
+
+        /// <summary>
+        /// Reject vacuous closure text ("done", "fixed", "ok") that previously forged IsCompliant.
+        /// </summary>
+        internal static bool HasSubstantiveResolution(string resolution)
+        {
+            if (string.IsNullOrWhiteSpace(resolution))
+                return false;
+
+            var trimmed = resolution.Trim();
+            if (trimmed.Length < 12)
+                return false;
+
+            var normalized = trimmed.ToLowerInvariant();
+            return normalized is not (
+                "done" or "fixed" or "ok" or "okay" or "closed" or "resolved" or
+                "n/a" or "na" or "none" or "complete" or "completed" or "pass" or "passed");
         }
 
         private static bool IsAllowedStatusTransition(ProblemReportStatus from, ProblemReportStatus to)
