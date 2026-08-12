@@ -157,6 +157,18 @@ namespace HB_NLP_Research_Lab.Certification
             _context.BaselineConfigurationItems.Add(baselineItem);
             await _context.SaveChangesAsync();
 
+            // Post-save recheck closes the race where ApproveBaseline claims Approved after the
+            // pre-insert Draft/UnderReview check but before this insert commits — without this,
+            // items can land on a frozen Approved baseline.
+            await _context.Entry(baseline).ReloadAsync();
+            if (baseline.Status is BaselineStatus.Approved or BaselineStatus.Released or BaselineStatus.Obsolete)
+            {
+                _context.BaselineConfigurationItems.Remove(baselineItem);
+                await _context.SaveChangesAsync();
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} is {baseline.Status} and cannot accept new configuration items");
+            }
+
             _logger.LogInformation("Added configuration item {ItemId} to baseline {BaselineId}", itemId, baselineId);
         }
 

@@ -184,6 +184,44 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
+    public async Task LinkToRequirementAsync_RejectsEmptyRequirementId()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToRequirementAsync(created.ReportNumber, Guid.Empty);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*non-empty GUID*");
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsWhitespaceTestCaseId()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(created.ReportNumber, "   ");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*non-empty identifier*");
+    }
+
+    [Fact]
     public async Task CreateProblemReportAsync_UnclassifiedImpact_DefaultsToCritical()
     {
         await using var context = CreateContext();

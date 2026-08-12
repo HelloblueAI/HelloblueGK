@@ -144,6 +144,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkToRequirementAsync(string reportNumber, Guid requirementId)
         {
+            if (requirementId == Guid.Empty)
+                throw new ArgumentException("RequirementId must be a non-empty GUID", nameof(requirementId));
+
             var report = await _context.ProblemReports
                 .FirstOrDefaultAsync(pr => pr.ReportNumber == reportNumber);
 
@@ -170,6 +173,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkToTestAsync(string reportNumber, string testCaseId)
         {
+            if (string.IsNullOrWhiteSpace(testCaseId))
+                throw new ArgumentException("TestCaseId must be a non-empty identifier", nameof(testCaseId));
+
             var report = await _context.ProblemReports
                 .FirstOrDefaultAsync(pr => pr.ReportNumber == reportNumber);
 
@@ -180,7 +186,7 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 ProblemReportId = report.Id,
-                TestCaseId = testCaseId,
+                TestCaseId = testCaseId.Trim(),
                 CreatedAt = DateTime.UtcNow
             };
 
