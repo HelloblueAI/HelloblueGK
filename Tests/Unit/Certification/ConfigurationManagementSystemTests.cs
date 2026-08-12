@@ -32,6 +32,28 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*has no configuration items and cannot be approved*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ApproveBaselineAsync_AtomicClaim_RejectsSecondApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-Race", "1.0.0", "race", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "race.c");
+        await system.ApproveBaselineAsync(baseline.Id, "bob");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "carol");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be approved from status Approved*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.ApprovedBy.Should().Be("bob");
     }
 
     [Fact]
