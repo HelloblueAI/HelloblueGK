@@ -253,6 +253,33 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetPredictions_IgnoresClientEfficiencyOverride()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
+        digitalTwin.Engine!.Efficiency = 0.88;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest
+        {
+            ScenarioName = "Efficiency forge",
+            ScenarioParameters = new Dictionary<string, double>
+            {
+                ["efficiency"] = 0.99
+            }
+        });
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(okResult.Value));
+        var predictedMetrics = document.RootElement
+            .GetProperty("predictions")
+            .GetProperty("PredictedMetrics");
+        predictedMetrics.GetProperty("Efficiency").GetDouble().Should().BeApproximately(0.88, 0.0001);
+    }
+
+    [Fact]
     public async Task UpdateDigitalTwinLearning_AfterRuntimeRestart_RestoresPersistedTwin()
     {
         await using var context = CreateContext();

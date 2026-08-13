@@ -67,6 +67,114 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task CreateReviewAsync_WithEmptyFilePath_ThrowsArgumentException()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var create = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "   ",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        await create.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*File path*");
+        context.CodeReviews.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateReviewAsync_WithParentDirectorySegment_ThrowsArgumentException()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var create = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "../Secrets/keys.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        await create.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*parent-directory*");
+        context.CodeReviews.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AssignReviewerAsync_WhenReviewApproved_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterCertifiedReviewerAsync("certified-carol", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var assign = async () => await system.AssignReviewerAsync(created.Id, "certified-carol");
+
+        await assign.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Approved*");
+
+        var persisted = await context.CodeReviews
+            .Include(r => r.Assignments)
+            .SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.Approved);
+        persisted.Assignments.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task AssignReviewerAsync_WhenReviewRejected_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        created.Status = CodeReviewStatus.Rejected;
+        await context.SaveChangesAsync();
+
+        var assign = async () => await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        await assign.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Rejected*");
+        context.CodeReviewAssignments.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task AssignReviewerAsync_ForMissingReview_ThrowsArgumentException()
     {
         await using var context = CreateContext();
