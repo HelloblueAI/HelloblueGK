@@ -259,6 +259,63 @@ public class EnginesControllerSecurityTests
     }
 
     [Fact]
+    public async Task CreateEngine_RejectsNonFiniteOrOutOfRangeEfficiency()
+    {
+        await using var context = new HelloblueGKDbContext(CreateOptions());
+        var controller = CreateController(context, CreatePrincipal("admin"));
+
+        var result = await controller.CreateEngine(new CreateEngineRequest
+        {
+            Name = "Infinite Efficiency",
+            EngineType = "Raptor",
+            Thrust = 2_100_000,
+            SpecificImpulse = 375,
+            ChamberPressure = 290,
+            ExpansionRatio = 35,
+            Efficiency = double.PositiveInfinity,
+            Propellant = "Methalox",
+            MixtureRatio = 3.5,
+            MassFlowRate = 625
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        (await context.Engines.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task UpdateEngine_RejectsEfficiencyAboveOneWithoutChangingEngine()
+    {
+        var options = CreateOptions();
+        int engineId;
+
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            var engine = CreateEngine(DateTime.UtcNow.AddDays(-1));
+            seedContext.Engines.Add(engine);
+            await seedContext.SaveChangesAsync();
+            engineId = engine.Id;
+        }
+
+        await using (var updateContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(updateContext);
+            var result = await controller.UpdateEngine(engineId, new UpdateEngineRequest
+            {
+                Efficiency = 1.5
+            });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            var stored = await verifyContext.Engines.SingleAsync(e => e.Id == engineId);
+            stored.Efficiency.Should().Be(0.97);
+            stored.UpdatedAt.Should().BeNull();
+        }
+    }
+
+    [Fact]
     public async Task UpdateEngine_WhenBodyIdMismatchesRouteId_ReturnsBadRequestWithoutChangingEngine()
     {
         var options = CreateOptions();
