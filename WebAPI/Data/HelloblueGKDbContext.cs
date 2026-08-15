@@ -47,7 +47,7 @@ public class HelloblueGKDbContext : DbContext
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).IsRequired().HasMaxLength(200);
             entity.Property(e => e.EngineType).IsRequired().HasMaxLength(100);
-            entity.HasIndex(e => e.Name);
+            entity.HasIndex(e => e.Name).IsUnique();
             entity.HasIndex(e => e.CreatedAt);
         });
 

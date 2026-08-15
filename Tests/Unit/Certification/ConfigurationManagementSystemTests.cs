@@ -7,6 +7,33 @@ namespace HelloblueGK.Tests.Unit.Certification;
 public class ConfigurationManagementSystemTests
 {
     [Fact]
+    public async Task CreateConfigurationItemAsync_RejectsEmptyNameAndTraversalPath()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var missingName = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "  ",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/core.c"
+        });
+        await missingName.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*ItemName is required*");
+
+        var traversal = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "../secrets/core.c"
+        });
+        await traversal.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*traversal*");
+
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ApproveBaselineAsync_RejectsNonDraftOrUnderReviewStatus()
     {
         await using var context = CreateContext();

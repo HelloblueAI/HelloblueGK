@@ -196,6 +196,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var createdEngine = await _engineRepository.CreateAsync(engine);
                 return CreatedAtAction(nameof(GetEngineById), new { id = createdEngine.Id }, createdEngine);
             }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating engine");
@@ -242,6 +250,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 request.ApplyTo(engine);
                 var updatedEngine = await _engineRepository.UpdateAsync(engine);
                 return Ok(updatedEngine);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -326,7 +342,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             return new Engine
             {
-                Name = Name,
+                Name = Name?.Trim() ?? string.Empty,
                 EngineType = EngineType,
                 Thrust = Thrust,
                 SpecificImpulse = SpecificImpulse,
@@ -376,7 +392,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             if (Name != null)
             {
-                engine.Name = Name;
+                engine.Name = Name.Trim();
             }
 
             if (EngineType != null)

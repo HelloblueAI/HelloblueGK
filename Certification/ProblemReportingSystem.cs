@@ -35,6 +35,10 @@ namespace HB_NLP_Research_Lab.Certification
             ProblemReport report,
             ProblemSeverity? explicitSeverity = null)
         {
+            ArgumentNullException.ThrowIfNull(report);
+            report.Title = NormalizeRequiredText(report.Title, nameof(report.Title));
+            report.Description = NormalizeRequiredText(report.Description, nameof(report.Description));
+
             report.Id = Guid.NewGuid();
             report.CreatedAt = DateTime.UtcNow;
             report.Status = ProblemReportStatus.Open;
@@ -323,6 +327,16 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return resolved;
+        }
+
+        private static string NormalizeRequiredText(string? value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{fieldName} is required", fieldName);
+            }
+
+            return value.Trim();
         }
 
         private static ProblemSeverity? ClassifyImpactKeywords(string? impact)

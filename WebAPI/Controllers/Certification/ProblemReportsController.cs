@@ -58,7 +58,15 @@ public class ProblemReportsController : ControllerBase
             ReportedBy = User.Identity?.Name ?? "System"
         };
 
-        var created = await _prs.CreateProblemReportAsync(report, explicitSeverity);
+        ProblemReport created;
+        try
+        {
+            created = await _prs.CreateProblemReportAsync(report, explicitSeverity);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
 
         return CreatedAtAction(nameof(GetProblemReport), new { reportNumber = created.ReportNumber },
             new ProblemReportResponse
