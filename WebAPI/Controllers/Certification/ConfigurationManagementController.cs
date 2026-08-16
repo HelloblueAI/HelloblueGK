@@ -38,23 +38,30 @@ public class ConfigurationManagementController : ControllerBase
     [ProducesResponseType(typeof(BaselineResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateBaseline([FromBody] CreateBaselineRequest request)
     {
-        var baseline = await _cms.CreateBaselineAsync(
-            request.BaselineName,
-            request.Version,
-            request.Description,
-            User.Identity?.Name ?? "System");
+        try
+        {
+            var baseline = await _cms.CreateBaselineAsync(
+                request.BaselineName,
+                request.Version,
+                request.Description,
+                User.Identity?.Name ?? "System");
 
-        return CreatedAtAction(nameof(GetBaseline), new { id = baseline.Id },
-            new BaselineResponse
-            {
-                Id = baseline.Id,
-                BaselineName = baseline.BaselineName,
-                Version = baseline.Version,
-                Description = baseline.Description,
-                Status = baseline.Status.ToString(),
-                CreatedBy = baseline.CreatedBy,
-                CreatedAt = baseline.CreatedAt
-            });
+            return CreatedAtAction(nameof(GetBaseline), new { id = baseline.Id },
+                new BaselineResponse
+                {
+                    Id = baseline.Id,
+                    BaselineName = baseline.BaselineName,
+                    Version = baseline.Version,
+                    Description = baseline.Description,
+                    Status = baseline.Status.ToString(),
+                    CreatedBy = baseline.CreatedBy,
+                    CreatedAt = baseline.CreatedAt
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>

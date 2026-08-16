@@ -645,6 +645,132 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Register_WithShortPassword_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateRegisterController(context);
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "newuser",
+            Email = "newuser@example.com",
+            Password = "short"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Register_WithInvalidUsernameOrEmail_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateRegisterController(context);
+
+        var invalidUsername = await controller.Register(new RegisterRequest
+        {
+            Username = "bad user/../admin",
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        invalidUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var invalidEmail = await controller.Register(new RegisterRequest
+        {
+            Username = "ok_user",
+            Email = "not-an-email",
+            Password = "Password123!"
+        });
+        invalidEmail.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateRequirement_InvalidPriority_ReturnsBadRequest()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-PRI-001",
+            Title = "Valve timing",
+            Description = "Main valve open sequence",
+            Priority = "not-a-priority"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        requirementsContext.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateRequirement_LowercaseCritical_IsAcceptedAndFloored()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-PRI-002",
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            Priority = "critical"
+        });
+
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var persisted = await requirementsContext.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Fact]
     public async Task BackgroundJobReconciliation_FailsInterruptedPendingAndRunningJobs_LeavesScheduledLaunches()
     {
         await using var context = CreateContext();
@@ -1794,6 +1920,55 @@ public class SecurityHardeningTests
     {
         using var modelData = JsonDocument.Parse(modelDataJson);
         return modelData.RootElement.GetProperty("EngineId").GetString();
+    }
+
+    private static AuthController CreateRegisterController(HelloblueGKDbContext context)
+    {
+        var jwtService = new Mock<IJwtService>();
+        jwtService.Setup(service => service.GenerateToken(It.IsAny<User>())).Returns("token");
+        jwtService.Setup(service => service.GenerateRefreshToken()).Returns("refresh-token");
+        jwtService.Setup(service => service.HashRefreshToken(It.IsAny<string>())).Returns("refresh-hash");
+        jwtService.Setup(service => service.GetTokenExpirationSeconds()).Returns(3600);
+        jwtService.Setup(service => service.GetRefreshTokenExpirationSeconds()).Returns(604800);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        return new AuthController(
+            context,
+            jwtService.Object,
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/auth/register"
+                    }
+                }
+            }
+        };
+    }
+
+    private static RequirementsDbContext CreateRequirementsContext()
+    {
+        var options = new DbContextOptionsBuilder<RequirementsDbContext>()
+            .UseSqlite($"Data Source=file:requirements-ctrl-{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .Options;
+
+        var context = new RequirementsDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static AuthController CreateAuthController(

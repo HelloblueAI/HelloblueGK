@@ -323,12 +323,49 @@ public class AuthController : ControllerBase
             });
         }
 
+        if (password.Length < 8)
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Password must be at least 8 characters",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
         if (password.Length > MaxPasswordLength)
         {
             return BadRequest(new ErrorResponse
             {
                 StatusCode = StatusCodes.Status400BadRequest,
                 Message = $"Password cannot exceed {MaxPasswordLength} characters",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(username.Trim(), "^[a-zA-Z0-9_-]+$"))
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Username can only contain letters, numbers, underscores, and hyphens",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        if (email.Trim().IndexOf('@') <= 0 || email.Trim().IndexOf('@') != email.Trim().LastIndexOf('@')
+            || email.Trim().EndsWith('@') || !email.Trim().Contains('.'))
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Invalid email format",
                 Timestamp = DateTime.UtcNow,
                 Path = Request.Path,
                 Method = Request.Method

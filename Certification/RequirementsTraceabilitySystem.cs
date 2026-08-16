@@ -28,6 +28,16 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<Requirement> CreateRequirementAsync(Requirement requirement)
         {
+            ArgumentNullException.ThrowIfNull(requirement);
+
+            // Priority is fail-closed: unclassified defaults to Critical (MC/DC required),
+            // and safety/critical keywords cannot be under-classified to skip Level A gates.
+            requirement.Priority = ResolvePriority(
+                requirement.RequirementNumber,
+                requirement.Title,
+                requirement.Description,
+                requirement.Priority);
+
             requirement.Id = Guid.NewGuid();
             requirement.CreatedAt = DateTime.UtcNow;
             requirement.Status = RequirementStatus.Draft;
@@ -38,6 +48,60 @@ namespace HB_NLP_Research_Lab.Certification
 
             _logger.LogInformation("Created requirement {RequirementId}: {Title}", requirement.Id, LogSanitizer.Sanitize(requirement.Title));
             return requirement;
+        }
+
+        /// <summary>
+        /// Resolve requirement priority with a keyword floor.
+        /// Unclassified priority defaults to Critical so MC/DC cannot be skipped by omission.
+        /// Explicit Medium/Low may not under-classify safety/critical wording.
+        /// </summary>
+        public static RequirementPriority ResolvePriority(
+            string? requirementNumber,
+            string? title,
+            string? description,
+            RequirementPriority? explicitPriority)
+        {
+            var keywordFloor = ClassifyPriorityKeywords(requirementNumber, title, description);
+            var resolved = explicitPriority ?? keywordFloor ?? RequirementPriority.Critical;
+
+            // Enum order is Critical(0) < High(1) < Medium(2) < Low(3); higher int = lower priority.
+            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            {
+                resolved = keywordFloor.Value;
+            }
+
+            return resolved;
+        }
+
+        private static RequirementPriority? ClassifyPriorityKeywords(
+            string? requirementNumber,
+            string? title,
+            string? description)
+        {
+            if (ContainsPriorityKeyword(requirementNumber, title, description,
+                    "safety", "critical", "catastrophic"))
+            {
+                return RequirementPriority.Critical;
+            }
+
+            return null;
+        }
+
+        private static bool ContainsPriorityKeyword(string? requirementNumber, string? title, string? description, params string[] keywords)
+        {
+            foreach (var text in new[] { requirementNumber, title, description })
+            {
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+
+                foreach (var keyword in keywords)
+                {
+                    if (text.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>

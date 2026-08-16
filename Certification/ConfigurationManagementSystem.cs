@@ -28,11 +28,16 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<SoftwareBaseline> CreateBaselineAsync(string baselineName, string version, string description, string createdBy)
         {
+            if (string.IsNullOrWhiteSpace(baselineName))
+                throw new ArgumentException("Baseline name is required", nameof(baselineName));
+            if (string.IsNullOrWhiteSpace(version))
+                throw new ArgumentException("Baseline version is required", nameof(version));
+
             var baseline = new SoftwareBaseline
             {
                 Id = Guid.NewGuid(),
-                BaselineName = baselineName,
-                Version = version,
+                BaselineName = baselineName.Trim(),
+                Version = version.Trim(),
                 Description = description,
                 Status = BaselineStatus.Draft,
                 CreatedBy = createdBy,

@@ -43,16 +43,34 @@ public class RequirementsController : ControllerBase
     {
         try
         {
-            var priority = Enum.TryParse<RequirementPriority>(request.Priority, out var parsedPriority) 
-                ? parsedPriority 
-                : RequirementPriority.Medium;
+            RequirementPriority? explicitPriority = null;
+            if (!string.IsNullOrWhiteSpace(request.Priority))
+            {
+                if (!Enum.TryParse<RequirementPriority>(request.Priority, ignoreCase: true, out var parsedPriority))
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        StatusCode = StatusCodes.Status400BadRequest,
+                        Message = $"Invalid requirement priority: {request.Priority}",
+                        Timestamp = DateTime.UtcNow,
+                        Path = HttpContext.Request.Path,
+                        Method = HttpContext.Request.Method
+                    });
+                }
+
+                explicitPriority = parsedPriority;
+            }
 
             var requirement = new Requirement
             {
                 RequirementNumber = request.RequirementNumber,
                 Title = request.Title,
                 Description = request.Description,
-                Priority = priority,
+                Priority = RequirementsTraceabilitySystem.ResolvePriority(
+                    request.RequirementNumber,
+                    request.Title,
+                    request.Description,
+                    explicitPriority),
                 CreatedBy = User.Identity?.Name ?? "System"
             };
 

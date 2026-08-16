@@ -38,27 +38,34 @@ public class CodeReviewsController : ControllerBase
     [ProducesResponseType(typeof(CodeReviewResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateReview([FromBody] CreateCodeReviewRequest request)
     {
-        var review = new CodeReview
+        try
         {
-            FilePath = request.FilePath,
-            FunctionName = request.FunctionName,
-            LineStart = request.LineStart,
-            LineEnd = request.LineEnd,
-            Author = User.Identity?.Name ?? "System"
-        };
-
-        var created = await _crs.CreateReviewAsync(review);
-
-        return CreatedAtAction(nameof(GetReview), new { id = created.Id },
-            new CodeReviewResponse
+            var review = new CodeReview
             {
-                ReviewNumber = created.ReviewNumber,
-                FilePath = created.FilePath,
-                FunctionName = created.FunctionName,
-                Status = created.Status.ToString(),
-                Author = created.Author,
-                CreatedAt = created.CreatedAt
-            });
+                FilePath = request.FilePath,
+                FunctionName = request.FunctionName,
+                LineStart = request.LineStart,
+                LineEnd = request.LineEnd,
+                Author = User.Identity?.Name ?? "System"
+            };
+
+            var created = await _crs.CreateReviewAsync(review);
+
+            return CreatedAtAction(nameof(GetReview), new { id = created.Id },
+                new CodeReviewResponse
+                {
+                    ReviewNumber = created.ReviewNumber,
+                    FilePath = created.FilePath,
+                    FunctionName = created.FunctionName,
+                    Status = created.Status.ToString(),
+                    Author = created.Author,
+                    CreatedAt = created.CreatedAt
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -200,21 +207,40 @@ public class CodeReviewsController : ControllerBase
     {
         try
         {
-            var findings = request.Findings.Select(f => new ReviewFinding
+            var findings = new List<ReviewFinding>();
+            foreach (var finding in request.Findings ?? new List<ReviewFindingRequest>())
             {
-                LineNumber = f.LineNumber,
-                Severity = Enum.Parse<FindingSeverity>(f.Severity),
-                Category = Enum.Parse<FindingCategory>(f.Category),
-                Description = f.Description,
-                Recommendation = f.Recommendation
-            }).ToList();
+                if (!Enum.TryParse<FindingSeverity>(finding.Severity, ignoreCase: true, out var severity))
+                {
+                    return BadRequest(new { message = $"Invalid finding severity: {finding.Severity}" });
+                }
+
+                if (!Enum.TryParse<FindingCategory>(finding.Category, ignoreCase: true, out var category))
+                {
+                    return BadRequest(new { message = $"Invalid finding category: {finding.Category}" });
+                }
+
+                findings.Add(new ReviewFinding
+                {
+                    LineNumber = finding.LineNumber,
+                    Severity = severity,
+                    Category = category,
+                    Description = finding.Description,
+                    Recommendation = finding.Recommendation
+                });
+            }
 
             await _crs.SubmitFindingsAsync(id, User.Identity?.Name ?? "System", findings);
             return Ok(new { message = "Findings submitted successfully" });
         }
-        catch (ArgumentException)
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
+                                          || ex.Message.Contains("not assigned", StringComparison.OrdinalIgnoreCase))
         {
             return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

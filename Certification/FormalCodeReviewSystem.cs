@@ -28,6 +28,17 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReview> CreateReviewAsync(CodeReview review)
         {
+            ArgumentNullException.ThrowIfNull(review);
+
+            review.FilePath = NormalizeReviewFilePath(review.FilePath);
+            review.FunctionName = NormalizeRequiredText(review.FunctionName, "Function name");
+            if (review.LineStart <= 0 || review.LineEnd < review.LineStart)
+            {
+                throw new ArgumentException(
+                    "Code review line range must be a positive, ordered span",
+                    nameof(review));
+            }
+
             review.Id = Guid.NewGuid();
             review.CreatedAt = DateTime.UtcNow;
             review.Status = CodeReviewStatus.Pending;
@@ -208,6 +219,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task SubmitFindingsAsync(Guid reviewId, string reviewerName, List<ReviewFinding> findings)
         {
+            findings ??= new List<ReviewFinding>();
+
             var review = await _context.CodeReviews
                 .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
@@ -221,9 +234,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             foreach (var finding in findings)
             {
+                if (string.IsNullOrWhiteSpace(finding.Description))
+                    throw new ArgumentException("Finding description is required", nameof(findings));
+
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
                 finding.ReviewerName = reviewerName;
+                finding.Description = finding.Description.Trim();
                 finding.CreatedAt = DateTime.UtcNow;
                 _context.ReviewFindings.Add(finding);
             }
@@ -374,6 +391,45 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static string NormalizeFilePath(string filePath) =>
             filePath.Trim().Replace('\\', '/');
+
+        private static string NormalizeReviewFilePath(string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                throw new ArgumentException("File path is required", nameof(filePath));
+            }
+
+            var normalized = NormalizeFilePath(filePath);
+            if (normalized.StartsWith("/", StringComparison.Ordinal)
+                || normalized.StartsWith("//", StringComparison.Ordinal)
+                || (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':'))
+            {
+                throw new ArgumentException(
+                    "File path must be relative to the repository.",
+                    nameof(filePath));
+            }
+
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0
+                || segments.Any(segment => segment is "." or ".."))
+            {
+                throw new ArgumentException(
+                    "File path must not contain traversal segments.",
+                    nameof(filePath));
+            }
+
+            return string.Join("/", segments);
+        }
+
+        private static string NormalizeRequiredText(string? value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{fieldName} is required", fieldName);
+            }
+
+            return value.Trim();
+        }
     }
 
     // Data Models
