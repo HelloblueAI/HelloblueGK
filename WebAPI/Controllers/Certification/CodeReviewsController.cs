@@ -200,6 +200,11 @@ public class CodeReviewsController : ControllerBase
     {
         try
         {
+            if (request.Findings == null || request.Findings.Count == 0)
+            {
+                return BadRequest(new { message = "At least one review finding is required" });
+            }
+
             var findings = request.Findings.Select(f => new ReviewFinding
             {
                 LineNumber = f.LineNumber,
@@ -211,6 +216,10 @@ public class CodeReviewsController : ControllerBase
 
             await _crs.SubmitFindingsAsync(id, User.Identity?.Name ?? "System", findings);
             return Ok(new { message = "Findings submitted successfully" });
+        }
+        catch (ArgumentException ex) when (ex.ParamName == "findings")
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (ArgumentException)
         {

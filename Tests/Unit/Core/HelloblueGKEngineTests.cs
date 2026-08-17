@@ -87,9 +87,22 @@ public class HelloblueGKEngineTests : IDisposable
 
         // Assert
         summary.Should().NotBeNull();
-        summary.ValidationScore.Should().BeGreaterThanOrEqualTo(0).And.BeLessThanOrEqualTo(1);
+        summary.IsValid.Should().BeFalse();
+        summary.ValidationSource.Should().Be("Unproven");
+        summary.ValidationScore.Should().BeApproximately(0.5, 0.0001);
+        summary.ConfidenceLevel.Should().BeApproximately(0.5, 0.0001);
         summary.CriticalIssues.Should().BeGreaterThanOrEqualTo(0);
         summary.Warnings.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Fact]
+    public async Task GenerateValidationSummaryAsync_ForNamedModelWithoutTrustedSource_IsFailClosed()
+    {
+        var summary = await _engine.GenerateValidationSummaryAsync("HB-NLP-REV-001");
+
+        summary.IsValid.Should().BeFalse();
+        summary.ValidationSource.Should().Be("Unproven");
+        summary.ValidationScore.Should().BeApproximately(0.5, 0.0001);
     }
 
     [Fact]

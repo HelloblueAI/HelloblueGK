@@ -204,6 +204,64 @@ public class EnginesControllerSecurityTests
     }
 
     [Fact]
+    public async Task CreateEngine_WithWhitespaceName_ReturnsBadRequest()
+    {
+        var options = CreateOptions();
+
+        await using var context = new HelloblueGKDbContext(options);
+        var controller = CreateController(context, CreatePrincipal("real-admin"));
+
+        var result = await controller.CreateEngine(new CreateEngineRequest
+        {
+            Name = "   ",
+            EngineType = "Raptor",
+            Thrust = 2_100_000,
+            SpecificImpulse = 375,
+            ChamberPressure = 290,
+            ExpansionRatio = 35,
+            Efficiency = 0.96,
+            Propellant = "Methalox",
+            MixtureRatio = 3.5,
+            MassFlowRate = 625
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Engines.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateEngine_WithWhitespaceName_ReturnsBadRequestWithoutMutating()
+    {
+        var options = CreateOptions();
+        int engineId;
+
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            var engine = CreateEngine(DateTime.UtcNow);
+            seedContext.Engines.Add(engine);
+            await seedContext.SaveChangesAsync();
+            engineId = engine.Id;
+        }
+
+        await using (var updateContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(updateContext);
+            var result = await controller.UpdateEngine(engineId, new UpdateEngineRequest
+            {
+                Name = " \t "
+            });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            var stored = await verifyContext.Engines.SingleAsync(e => e.Id == engineId);
+            stored.Name.Should().Be("Baseline Engine");
+        }
+    }
+
+    [Fact]
     public async Task UpdateEngine_WhenFieldsAreOmitted_PreservesExistingEngineParameters()
     {
         var options = CreateOptions();

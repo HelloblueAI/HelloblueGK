@@ -196,6 +196,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var createdEngine = await _engineRepository.CreateAsync(engine);
                 return CreatedAtAction(nameof(GetEngineById), new { id = createdEngine.Id }, createdEngine);
             }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating engine");
@@ -242,6 +246,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 request.ApplyTo(engine);
                 var updatedEngine = await _engineRepository.UpdateAsync(engine);
                 return Ok(updatedEngine);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
             }
             catch (Exception ex)
             {
@@ -324,10 +332,20 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
         public Engine ToEngine(string createdBy)
         {
+            if (string.IsNullOrWhiteSpace(Name))
+            {
+                throw new ArgumentException("Engine name is required", nameof(Name));
+            }
+
+            if (string.IsNullOrWhiteSpace(EngineType))
+            {
+                throw new ArgumentException("Engine type is required", nameof(EngineType));
+            }
+
             return new Engine
             {
-                Name = Name,
-                EngineType = EngineType,
+                Name = Name.Trim(),
+                EngineType = EngineType.Trim(),
                 Thrust = Thrust,
                 SpecificImpulse = SpecificImpulse,
                 ChamberPressure = ChamberPressure,
@@ -376,12 +394,22 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             if (Name != null)
             {
-                engine.Name = Name;
+                if (string.IsNullOrWhiteSpace(Name))
+                {
+                    throw new ArgumentException("Engine name is required", nameof(Name));
+                }
+
+                engine.Name = Name.Trim();
             }
 
             if (EngineType != null)
             {
-                engine.EngineType = EngineType;
+                if (string.IsNullOrWhiteSpace(EngineType))
+                {
+                    throw new ArgumentException("Engine type is required", nameof(EngineType));
+                }
+
+                engine.EngineType = EngineType.Trim();
             }
 
             if (Thrust.HasValue)

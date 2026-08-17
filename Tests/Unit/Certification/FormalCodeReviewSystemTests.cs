@@ -67,6 +67,94 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task SubmitFindingsAsync_WithEmptyFindings_DoesNotCompleteAssignment()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var empty = async () => await system.SubmitFindingsAsync(
+            created.Id,
+            "certified-bob",
+            new List<ReviewFinding>());
+
+        await empty.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("findings");
+
+        var persisted = await context.CodeReviews
+            .Include(r => r.Assignments)
+            .SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.InProgress);
+        persisted.Assignments.Should().ContainSingle()
+            .Which.Status.Should().Be(ReviewAssignmentStatus.Assigned);
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*completed certified reviewer assignment*");
+    }
+
+    [Fact]
+    public async Task SubmitFindingsAsync_WithVacuousLineOrDescription_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var zeroLine = async () => await system.SubmitFindingsAsync(
+            created.Id,
+            "certified-bob",
+            new List<ReviewFinding>
+            {
+                new()
+                {
+                    LineNumber = 0,
+                    Severity = FindingSeverity.Minor,
+                    Category = FindingCategory.Standards,
+                    Description = "nit"
+                }
+            });
+        await zeroLine.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("findings");
+
+        var emptyDescription = async () => await system.SubmitFindingsAsync(
+            created.Id,
+            "certified-bob",
+            new List<ReviewFinding>
+            {
+                new()
+                {
+                    LineNumber = 4,
+                    Severity = FindingSeverity.Minor,
+                    Category = FindingCategory.Standards,
+                    Description = "   "
+                }
+            });
+        await emptyDescription.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("findings");
+    }
+
+    [Fact]
     public async Task AssignReviewerAsync_ForMissingReview_ThrowsArgumentException()
     {
         await using var context = CreateContext();

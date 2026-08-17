@@ -208,6 +208,31 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task SubmitFindingsAsync(Guid reviewId, string reviewerName, List<ReviewFinding> findings)
         {
+            ArgumentNullException.ThrowIfNull(findings);
+            if (findings.Count == 0)
+            {
+                throw new ArgumentException(
+                    "At least one review finding is required; an empty findings list cannot complete a certified assignment",
+                    nameof(findings));
+            }
+
+            foreach (var finding in findings)
+            {
+                if (finding.LineNumber <= 0)
+                {
+                    throw new ArgumentException(
+                        "Finding line number must be a positive line in the reviewed span",
+                        nameof(findings));
+                }
+
+                if (string.IsNullOrWhiteSpace(finding.Description))
+                {
+                    throw new ArgumentException("Finding description is required", nameof(findings));
+                }
+
+                finding.Description = finding.Description.Trim();
+            }
+
             var review = await _context.CodeReviews
                 .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);

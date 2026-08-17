@@ -109,26 +109,33 @@ public class ConfigurationManagementController : ControllerBase
     [ProducesResponseType(typeof(ChangeRequestResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateChangeRequest([FromBody] CreateChangeRequestRequest request)
     {
-        var changeRequest = new ChangeRequest
+        try
         {
-            Title = request.Title,
-            Description = request.Description,
-            Justification = request.Justification,
-            RequestedBy = User.Identity?.Name ?? "System"
-        };
-
-        var created = await _cms.CreateChangeRequestAsync(changeRequest);
-
-        return CreatedAtAction(nameof(GetChangeRequest), new { requestNumber = created.RequestNumber },
-            new ChangeRequestResponse
+            var changeRequest = new ChangeRequest
             {
-                RequestNumber = created.RequestNumber,
-                Title = created.Title,
-                Description = created.Description,
-                Status = created.Status.ToString(),
-                RequestedBy = created.RequestedBy,
-                CreatedAt = created.CreatedAt
-            });
+                Title = request.Title,
+                Description = request.Description,
+                Justification = request.Justification,
+                RequestedBy = User.Identity?.Name ?? "System"
+            };
+
+            var created = await _cms.CreateChangeRequestAsync(changeRequest);
+
+            return CreatedAtAction(nameof(GetChangeRequest), new { requestNumber = created.RequestNumber },
+                new ChangeRequestResponse
+                {
+                    RequestNumber = created.RequestNumber,
+                    Title = created.Title,
+                    Description = created.Description,
+                    Status = created.Status.ToString(),
+                    RequestedBy = created.RequestedBy,
+                    CreatedAt = created.CreatedAt
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -167,6 +174,10 @@ public class ConfigurationManagementController : ControllerBase
         {
             await _cms.ApproveChangeRequestAsync(requestNumber, User.Identity?.Name ?? "System", request.ApprovalNotes ?? string.Empty);
             return Ok(new { message = "Change request approved successfully" });
+        }
+        catch (ArgumentException ex) when (ex.ParamName == "approvalNotes")
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (ArgumentException)
         {
