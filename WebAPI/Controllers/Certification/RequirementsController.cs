@@ -70,6 +70,10 @@ public class RequirementsController : ControllerBase
                     TraceabilityStatus = created.TraceabilityStatus.ToString()
                 });
         }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error creating requirement");
@@ -167,7 +171,11 @@ public class RequirementsController : ControllerBase
     {
         try
         {
-            var coverageType = Enum.Parse<TestCoverageType>(request.CoverageType);
+            if (!Enum.TryParse<TestCoverageType>(request.CoverageType, ignoreCase: true, out var coverageType))
+            {
+                return BadRequest(new { message = $"Invalid test coverage type: {request.CoverageType}" });
+            }
+
             await _rts.LinkToTestAsync(id, request.TestCaseId, request.TestFile, coverageType);
             return Ok(new { message = "Requirement linked to test successfully" });
         }

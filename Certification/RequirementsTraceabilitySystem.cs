@@ -28,6 +28,16 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<Requirement> CreateRequirementAsync(Requirement requirement)
         {
+            if (string.IsNullOrWhiteSpace(requirement.RequirementNumber))
+                throw new ArgumentException("Requirement number is required", nameof(requirement));
+            if (string.IsNullOrWhiteSpace(requirement.Title))
+                throw new ArgumentException("Requirement title is required", nameof(requirement));
+            if (string.IsNullOrWhiteSpace(requirement.Description))
+                throw new ArgumentException("Requirement description is required", nameof(requirement));
+
+            requirement.RequirementNumber = requirement.RequirementNumber.Trim();
+            requirement.Title = requirement.Title.Trim();
+            requirement.Description = requirement.Description.Trim();
             requirement.Id = Guid.NewGuid();
             requirement.CreatedAt = DateTime.UtcNow;
             requirement.Status = RequirementStatus.Draft;

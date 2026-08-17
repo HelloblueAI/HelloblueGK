@@ -67,6 +67,92 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task SubmitFindingsAsync_WithEmptyList_DoesNotCompleteAssignment()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var submit = async () => await system.SubmitFindingsAsync(
+            created.Id,
+            "certified-bob",
+            new List<ReviewFinding>());
+
+        await submit.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*At least one review finding*");
+
+        var assignment = await context.CodeReviewAssignments.SingleAsync();
+        assignment.Status.Should().Be(ReviewAssignmentStatus.Assigned);
+        context.ReviewFindings.Should().BeEmpty();
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*completed*");
+    }
+
+    [Fact]
+    public async Task SubmitFindingsAsync_WithVacuousDescriptionOrLine_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var emptyDescription = async () => await system.SubmitFindingsAsync(
+            created.Id,
+            "certified-bob",
+            new List<ReviewFinding>
+            {
+                new()
+                {
+                    LineNumber = 5,
+                    Severity = FindingSeverity.Minor,
+                    Category = FindingCategory.Standards,
+                    Description = "   "
+                }
+            });
+        await emptyDescription.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*description*");
+
+        var zeroLine = async () => await system.SubmitFindingsAsync(
+            created.Id,
+            "certified-bob",
+            new List<ReviewFinding>
+            {
+                new()
+                {
+                    LineNumber = 0,
+                    Severity = FindingSeverity.Info,
+                    Category = FindingCategory.Documentation,
+                    Description = "No defects found"
+                }
+            });
+        await zeroLine.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*line number*");
+
+        context.ReviewFindings.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task AssignReviewerAsync_ForMissingReview_ThrowsArgumentException()
     {
         await using var context = CreateContext();

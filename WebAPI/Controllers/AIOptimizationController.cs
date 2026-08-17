@@ -427,11 +427,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
 
-                // Calculate improvement
-                var originalEfficiency = parameters.Efficiency;
-                var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? originalEfficiency;
-                var improvement = originalEfficiency > 0 
-                    ? ((optimizedEfficiency - originalEfficiency) / originalEfficiency) * 100 
+                // Improvement is always versus the persisted engine baseline.
+                // Client parameter overrides may change the starting design for the
+                // optimizer, but they cannot inflate ImprovementPercentage.
+                var baselineEfficiency = engine.Efficiency;
+                var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? baselineEfficiency;
+                var improvement = baselineEfficiency > 0
+                    ? ((optimizedEfficiency - baselineEfficiency) / baselineEfficiency) * 100
                     : 0.0;
 
                 var generations = result.OptimizationStages?.Length ?? 100;
@@ -439,6 +441,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     algorithmType = result.AlgorithmType ?? request.AlgorithmType,
                     appliedParameters = request.Parameters ?? new Dictionary<string, object>(),
+                    baselineEfficiency,
                     originalParameters = new
                     {
                         thrust = parameters.Thrust,

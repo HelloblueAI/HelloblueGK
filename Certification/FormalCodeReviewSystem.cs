@@ -208,6 +208,19 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task SubmitFindingsAsync(Guid reviewId, string reviewerName, List<ReviewFinding> findings)
         {
+            if (findings == null || findings.Count == 0)
+                throw new ArgumentException("At least one review finding is required", nameof(findings));
+
+            foreach (var finding in findings)
+            {
+                if (finding.LineNumber <= 0)
+                    throw new ArgumentException("Finding line number must be a positive line in the reviewed span", nameof(findings));
+                if (string.IsNullOrWhiteSpace(finding.Description))
+                    throw new ArgumentException("Finding description is required", nameof(findings));
+
+                finding.Description = finding.Description.Trim();
+            }
+
             var review = await _context.CodeReviews
                 .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
@@ -277,6 +290,12 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new InvalidOperationException(
                     "Cannot approve review until all assigned reviewers have completed their findings");
+            }
+
+            if (review.Findings.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve review with no findings; empty submissions cannot complete Level A evidence");
             }
 
             // Check for critical findings

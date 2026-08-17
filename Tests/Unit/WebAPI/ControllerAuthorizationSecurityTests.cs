@@ -872,6 +872,60 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task StartOptimization_ImprovementPercentage_UsesPersistedEngineBaseline()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        engine.CreatedBy = null;
+        engine.Thrust = 1_000_000;
+        engine.SpecificImpulse = 300;
+        engine.ChamberPressure = 10_000_000;
+        engine.Efficiency = 0.8;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+
+        // A tiny client efficiency override used to inflate ImprovementPercentage
+        // against the overridden baseline instead of the persisted engine.
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic",
+            Parameters = new Dictionary<string, object> { ["efficiency"] = 0.001 }
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.AIOptimizationRuns.AsNoTracking()
+            .SingleAsync(o => o.Id == response.Id);
+        persisted.Status.Should().Be("Completed");
+
+        using var document = JsonDocument.Parse(persisted.ResultsJson!);
+        document.RootElement.GetProperty("baselineEfficiency").GetDouble()
+            .Should().BeApproximately(0.8, 0.0001);
+        document.RootElement.GetProperty("originalParameters").GetProperty("efficiency").GetDouble()
+            .Should().BeApproximately(0.001, 0.0001);
+
+        var optimizedEfficiency = document.RootElement.GetProperty("optimizedParameters")
+            .GetProperty("efficiency").GetDouble();
+        var expectedImprovement = ((optimizedEfficiency - 0.8) / 0.8) * 100;
+        persisted.ImprovementPercentage.Should().BeApproximately(expectedImprovement, 0.0001);
+        // Client 0.001 → 0.95 would be a ~95,000% forge if the override were the baseline.
+        persisted.ImprovementPercentage.Should().BeLessThan(100);
+    }
+
+    [Fact]
     public async Task StartOptimization_WhenEngineIsDeletedBeforeWorkerRuns_MarksRunFailed()
     {
         var databaseName = Guid.NewGuid().ToString("N");
