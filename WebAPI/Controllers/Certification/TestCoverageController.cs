@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using HB_NLP_Research_Lab.Certification;
 using HB_NLP_Research_Lab.WebAPI.Data;
 
@@ -28,6 +29,80 @@ public class TestCoverageController : ControllerBase
         _tcs = tcs;
         _context = context;
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Register a required coverage file on the server-owned roster.
+    /// </summary>
+    [HttpPost("required-files")]
+    [ProducesResponseType(typeof(RequiredCoverageFileResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> RegisterRequiredFile([FromBody] RegisterRequiredCoverageFileRequest request)
+    {
+        try
+        {
+            var required = await _tcs.RegisterRequiredFileAsync(
+                request.FilePath,
+                request.IsSafetyCritical,
+                User.Identity?.Name);
+            return CreatedAtAction(
+                nameof(ListRequiredFiles),
+                value: new RequiredCoverageFileResponse
+                {
+                    Id = required.Id,
+                    FilePath = required.FilePath,
+                    IsSafetyCritical = required.IsSafetyCritical,
+                    IsActive = required.IsActive,
+                    RegisteredBy = required.RegisteredBy,
+                    RegisteredAt = required.RegisteredAt
+                });
+        }
+        catch (ArgumentException ex) when (IsCoverageFilePathException(ex) ||
+                                           string.Equals(ex.ParamName, "filePath", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// List active required coverage files.
+    /// </summary>
+    [HttpGet("required-files")]
+    [ProducesResponseType(typeof(IEnumerable<RequiredCoverageFileResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListRequiredFiles()
+    {
+        var files = await _context.RequiredCoverageFiles
+            .AsNoTracking()
+            .Where(f => f.IsActive)
+            .OrderBy(f => f.FilePath)
+            .Select(f => new RequiredCoverageFileResponse
+            {
+                Id = f.Id,
+                FilePath = f.FilePath,
+                IsSafetyCritical = f.IsSafetyCritical,
+                IsActive = f.IsActive,
+                RegisteredBy = f.RegisteredBy,
+                RegisteredAt = f.RegisteredAt
+            })
+            .ToListAsync();
+        return Ok(files);
+    }
+
+    /// <summary>
+    /// Revoke a required coverage file from the compliance roster.
+    /// </summary>
+    [HttpDelete("required-files")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RevokeRequiredFile([FromBody] RegisterRequiredCoverageFileRequest request)
+    {
+        try
+        {
+            await _tcs.RevokeRequiredFileAsync(request.FilePath);
+            return Ok(new { message = "Required coverage file revoked" });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -148,6 +223,22 @@ public class TestCoverageController : ControllerBase
 }
 
 // Request/Response Models
+public class RegisterRequiredCoverageFileRequest
+{
+    public string FilePath { get; set; } = string.Empty;
+    public bool IsSafetyCritical { get; set; } = true;
+}
+
+public class RequiredCoverageFileResponse
+{
+    public Guid Id { get; set; }
+    public string FilePath { get; set; } = string.Empty;
+    public bool IsSafetyCritical { get; set; }
+    public bool IsActive { get; set; }
+    public string? RegisteredBy { get; set; }
+    public DateTime RegisteredAt { get; set; }
+}
+
 public class RecordCoverageRequest
 {
     public string FilePath { get; set; } = string.Empty;
