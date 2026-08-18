@@ -32,6 +32,28 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*has no configuration items and cannot be approved*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ApproveBaselineAsync_AtomicClaim_RejectsSecondApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-Race", "1.0.0", "race", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "race.c");
+        await system.ApproveBaselineAsync(baseline.Id, "bob");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "carol");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot be approved from status Approved*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.ApprovedBy.Should().Be("bob");
     }
 
     [Fact]
@@ -166,6 +188,47 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task AddItemToBaselineAsync_RemovesItemWhenBaselineApprovedConcurrently()
+    {
+        // Shared in-memory DB + two contexts: context A holds a stale Draft tracker entry while
+        // context B approves — AddItem must not leave the late item on the Approved baseline.
+        var dbName = $"config-mgmt-race-{Guid.NewGuid():N}";
+        await using var contextA = CreateSharedContext(dbName);
+        await using var contextB = CreateSharedContext(dbName);
+        var systemA = new ConfigurationManagementSystem(contextA, NullLogger<ConfigurationManagementSystem>.Instance);
+        var systemB = new ConfigurationManagementSystem(contextB, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await systemA.CreateBaselineAsync("Race-Add", "1.0.0", "race", "alice");
+        await AddReleasedItemAsync(systemA, contextA, baseline.Id, "seed.c");
+        var lateItem = await systemA.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "late.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/late.c",
+            Checksum = "late",
+            Size = 32
+        });
+        lateItem.Status = ConfigurationItemStatus.Released;
+        await contextA.SaveChangesAsync();
+
+        // Stale Draft snapshot in A's tracker (simulates load-before-approve race).
+        _ = await contextA.SoftwareBaselines.FindAsync(baseline.Id);
+        await systemB.ApproveBaselineAsync(baseline.Id, "bob");
+
+        var act = async () => await systemA.AddItemToBaselineAsync(baseline.Id, lateItem.Id, "1.0.1");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*cannot accept new configuration items*");
+
+        var itemCount = await contextB.BaselineConfigurationItems
+            .AsNoTracking()
+            .CountAsync(i => i.BaselineId == baseline.Id);
+        itemCount.Should().Be(1);
+
+        var persisted = await contextB.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Approved);
+    }
+
+    [Fact]
     public async Task CreateChangeRequestAsync_AllocatesMonotonicRequestNumbers()
     {
         await using var context = CreateContext();
@@ -210,9 +273,12 @@ public class ConfigurationManagementSystemTests
     }
 
     private static ConfigurationDbContext CreateContext()
+        => CreateSharedContext($"config-mgmt-{Guid.NewGuid():N}");
+
+    private static ConfigurationDbContext CreateSharedContext(string dbName)
     {
         var options = new DbContextOptionsBuilder<ConfigurationDbContext>()
-            .UseSqlite($"Data Source=file:config-mgmt-{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .UseSqlite($"Data Source=file:{dbName}?mode=memory&cache=shared")
             .Options;
 
         var context = new ConfigurationDbContext(options);

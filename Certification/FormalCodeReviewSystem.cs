@@ -215,6 +215,14 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
+            // Terminal statuses must not accept new findings — otherwise a late submit
+            // can clobber Approved → Completed and reopen a compliance forge window.
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot submit findings for review with status {review.Status}");
+            }
+
             var assignment = review.Assignments.FirstOrDefault(a => a.ReviewerName == reviewerName);
             if (assignment == null)
                 throw new ArgumentException($"Reviewer {reviewerName} not assigned to review {reviewId}");
@@ -261,6 +269,12 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Cannot approve review with status {review.Status}");
             }
 
+            if (review.Status != CodeReviewStatus.Completed)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot approve review with status {review.Status}; review must be Completed");
+            }
+
             // Level A reviews require at least one completed certified reviewer assignment.
             // Without this gate, create+approve forges compliance while bypassing assign/findings.
             var hasCompletedCertifiedReviewer = review.Assignments.Any(a =>
@@ -279,16 +293,49 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve review until all assigned reviewers have completed their findings");
             }
 
-            // Check for critical findings
+            // Check for critical findings on the loaded snapshot (pre-claim).
             var criticalFindings = review.Findings.Where(f => f.Severity == FindingSeverity.Critical).ToList();
             if (criticalFindings.Any())
                 throw new InvalidOperationException($"Cannot approve review with {criticalFindings.Count} critical findings");
 
+            // Atomic Completed → Approved claim closes the load/check/SaveChanges TOCTOU where a
+            // concurrent SubmitFindings inserts Critical findings and still leaves Approved.
+            var approvedAt = DateTime.UtcNow;
+            var claimed = await _context.CodeReviews
+                .Where(r => r.Id == reviewId && r.Status == CodeReviewStatus.Completed)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(r => r.Status, CodeReviewStatus.Approved)
+                    .SetProperty(r => r.ApprovedBy, approvedBy)
+                    .SetProperty(r => r.ApprovedAt, approvedAt));
+
+            if (claimed == 0)
+            {
+                await _context.Entry(review).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Cannot approve review with status {review.Status}; concurrent status change detected");
+            }
+
+            // Re-check Critical findings after the claim. If a concurrent submit raced in,
+            // revert the approval so Approved never coexists with Critical findings.
+            var criticalAfterClaim = await _context.ReviewFindings
+                .CountAsync(f => f.ReviewId == reviewId && f.Severity == FindingSeverity.Critical);
+            if (criticalAfterClaim > 0)
+            {
+                await _context.CodeReviews
+                    .Where(r => r.Id == reviewId && r.Status == CodeReviewStatus.Approved)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(r => r.Status, CodeReviewStatus.Completed)
+                        .SetProperty(r => r.ApprovedBy, (string?)null)
+                        .SetProperty(r => r.ApprovedAt, (DateTime?)null));
+
+                throw new InvalidOperationException(
+                    $"Cannot approve review with {criticalAfterClaim} critical findings");
+            }
+
             review.Status = CodeReviewStatus.Approved;
             review.ApprovedBy = approvedBy;
-            review.ApprovedAt = DateTime.UtcNow;
+            review.ApprovedAt = approvedAt;
 
-            await _context.SaveChangesAsync();
             _logger.LogInformation("Approved code review {ReviewNumber}", review.ReviewNumber);
         }
 

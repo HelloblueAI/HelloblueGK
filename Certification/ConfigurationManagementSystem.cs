@@ -71,11 +71,45 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
             }
 
+            // Atomic Draft|UnderReview → Approved claim closes load/check/SaveChanges TOCTOU
+            // (concurrent empty-item races / double-approve).
+            var approvedAt = DateTime.UtcNow;
+            var claimed = await _context.SoftwareBaselines
+                .Where(b => b.Id == baselineId &&
+                            (b.Status == BaselineStatus.Draft || b.Status == BaselineStatus.UnderReview))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(b => b.Status, BaselineStatus.Approved)
+                    .SetProperty(b => b.ApprovedBy, approvedBy)
+                    .SetProperty(b => b.ApprovedAt, approvedAt));
+
+            if (claimed == 0)
+            {
+                await _context.Entry(baseline).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved from status {baseline.Status}; " +
+                    "concurrent status change detected");
+            }
+
+            // Re-check item count after claim — a concurrent empty baseline must not stay Approved.
+            var itemCount = await _context.BaselineConfigurationItems
+                .CountAsync(i => i.BaselineId == baselineId);
+            if (itemCount == 0)
+            {
+                await _context.SoftwareBaselines
+                    .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(b => b.Status, BaselineStatus.Draft)
+                        .SetProperty(b => b.ApprovedBy, (string?)null)
+                        .SetProperty(b => b.ApprovedAt, (DateTime?)null));
+
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
+            }
+
             baseline.Status = BaselineStatus.Approved;
             baseline.ApprovedBy = approvedBy;
-            baseline.ApprovedAt = DateTime.UtcNow;
+            baseline.ApprovedAt = approvedAt;
 
-            await _context.SaveChangesAsync();
             _logger.LogInformation("Approved baseline {BaselineName}", LogSanitizer.Sanitize(baseline.BaselineName));
         }
 
@@ -122,6 +156,18 @@ namespace HB_NLP_Research_Lab.Certification
 
             _context.BaselineConfigurationItems.Add(baselineItem);
             await _context.SaveChangesAsync();
+
+            // Post-save recheck closes the race where ApproveBaseline claims Approved after the
+            // pre-insert Draft/UnderReview check but before this insert commits — without this,
+            // items can land on a frozen Approved baseline.
+            await _context.Entry(baseline).ReloadAsync();
+            if (baseline.Status is BaselineStatus.Approved or BaselineStatus.Released or BaselineStatus.Obsolete)
+            {
+                _context.BaselineConfigurationItems.Remove(baselineItem);
+                await _context.SaveChangesAsync();
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} is {baseline.Status} and cannot accept new configuration items");
+            }
 
             _logger.LogInformation("Added configuration item {ItemId} to baseline {BaselineId}", itemId, baselineId);
         }
@@ -174,23 +220,40 @@ namespace HB_NLP_Research_Lab.Certification
                     "only Submitted or UnderReview change requests may be approved");
             }
 
-            request.Status = ChangeRequestStatus.Approved;
-            request.ApprovedBy = approvedBy;
-            request.ApprovedAt = DateTime.UtcNow;
-            request.ApprovalNotes = approvalNotes;
+            // Atomic Submitted|UnderReview → Approved claim closes double-approve TOCTOU.
+            var approvedAt = DateTime.UtcNow;
+            var claimed = await _context.ChangeRequests
+                .Where(cr => cr.Id == request.Id &&
+                             (cr.Status == ChangeRequestStatus.Submitted ||
+                              cr.Status == ChangeRequestStatus.UnderReview))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(cr => cr.Status, ChangeRequestStatus.Approved)
+                    .SetProperty(cr => cr.ApprovedBy, approvedBy)
+                    .SetProperty(cr => cr.ApprovedAt, approvedAt)
+                    .SetProperty(cr => cr.ApprovalNotes, approvalNotes));
 
-            // Track approval
-            var approval = new ChangeRequestApproval
+            if (claimed == 0)
+            {
+                await _context.Entry(request).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Change request {requestNumber} cannot be approved from status {request.Status}; " +
+                    "concurrent status change detected");
+            }
+
+            _context.ChangeRequestApprovals.Add(new ChangeRequestApproval
             {
                 Id = Guid.NewGuid(),
                 ChangeRequestId = request.Id,
                 ApprovedBy = approvedBy,
-                ApprovedAt = DateTime.UtcNow,
+                ApprovedAt = approvedAt,
                 Notes = approvalNotes
-            };
-
-            _context.ChangeRequestApprovals.Add(approval);
+            });
             await _context.SaveChangesAsync();
+
+            request.Status = ChangeRequestStatus.Approved;
+            request.ApprovedBy = approvedBy;
+            request.ApprovedAt = approvedAt;
+            request.ApprovalNotes = approvalNotes;
 
             _logger.LogInformation("Approved change request {RequestNumber}", LogSanitizer.SanitizeIdentifier(requestNumber));
         }
