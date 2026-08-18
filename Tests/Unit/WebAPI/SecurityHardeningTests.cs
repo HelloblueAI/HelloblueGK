@@ -1065,6 +1065,22 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public void BasicHealthAction_DoesNotLeakHostingEnvironment()
+    {
+        var controller = new HealthController(engine: null!);
+        var result = controller.Get();
+
+        var payload = result.Should().BeOfType<OkObjectResult>().Subject.Value;
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+
+        json.Should().Contain("Healthy");
+        json.Should().NotContain("environment");
+        json.Should().NotContain("Development");
+        json.Should().NotContain("Production");
+        json.Should().NotContain("Staging");
+    }
+
+    [Fact]
     public async Task GlobalExceptionHandler_InProduction_DoesNotExposeArgumentExceptionDetails()
     {
         const string sensitiveMessage = "database shard secret detail";

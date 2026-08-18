@@ -214,53 +214,73 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ProblemReportComplianceCheck> VerifyComplianceAsync()
         {
-            var totalReports = await _context.ProblemReports.CountAsync();
-            var reports = await _context.ProblemReports
-                .Where(pr => pr.Severity == ProblemSeverity.Critical || 
+            var allReports = await _context.ProblemReports.ToListAsync();
+            var safetyClassReports = allReports
+                .Where(pr => pr.Severity == ProblemSeverity.Critical ||
                             pr.Severity == ProblemSeverity.Major)
-                .ToListAsync();
+                .ToList();
 
             var check = new ProblemReportComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
-                TotalCriticalProblems = reports.Count(r => r.Severity == ProblemSeverity.Critical),
-                UnresolvedCriticalProblems = reports.Count(r => 
-                    r.Severity == ProblemSeverity.Critical && 
+                TotalCriticalProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Critical),
+                UnresolvedCriticalProblems = safetyClassReports.Count(r =>
+                    r.Severity == ProblemSeverity.Critical &&
                     r.Status != ProblemReportStatus.Closed),
-                TotalMajorProblems = reports.Count(r => r.Severity == ProblemSeverity.Major),
-                UnresolvedMajorProblems = reports.Count(r => 
-                    r.Severity == ProblemSeverity.Major && 
+                TotalMajorProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Major),
+                UnresolvedMajorProblems = safetyClassReports.Count(r =>
+                    r.Severity == ProblemSeverity.Major &&
                     r.Status != ProblemReportStatus.Closed)
             };
 
             // Empty problem-report store must fail closed — 0 unresolved on 0 reports is not evidence.
-            if (totalReports == 0)
+            if (allReports.Count == 0)
             {
                 check.IsCompliant = false;
                 check.Issues.Add("No problem reports recorded; DO-178C Level A problem-reporting compliance cannot be asserted");
                 return check;
             }
 
+            // Minor-only stores are not Level A evidence. Explicit Minor + "routine observation"
+            // previously forged IsCompliant=true while leaving tickets Open. Rejected-only
+            // Critical/Major rows are also not a completed lifecycle.
+            var closedSafetyClass = safetyClassReports.Count(r =>
+                r.Status == ProblemReportStatus.Closed &&
+                !string.IsNullOrWhiteSpace(r.Resolution));
+            if (closedSafetyClass == 0)
+            {
+                check.IsCompliant = false;
+                check.Issues.Add(
+                    "No closed critical or major problem reports with a recorded resolution; DO-178C Level A problem-reporting compliance cannot be asserted");
+                return check;
+            }
+
             // Closed without a recorded resolution must not satisfy certification gates.
-            var improperlyClosed = reports.Count(r =>
+            // Include every non-Rejected severity so a Closed Critical cannot hide an
+            // Open or blank-resolution Minor.
+            var blockingReports = allReports
+                .Where(r => r.Status != ProblemReportStatus.Rejected)
+                .ToList();
+            var improperlyClosed = blockingReports.Count(r =>
                 r.Status == ProblemReportStatus.Closed &&
                 string.IsNullOrWhiteSpace(r.Resolution));
             if (improperlyClosed > 0)
             {
-                check.Issues.Add($"{improperlyClosed} critical/major problem report(s) are Closed without a recorded resolution");
+                check.Issues.Add($"{improperlyClosed} problem report(s) are Closed without a recorded resolution");
             }
 
-            var unresolvedOk = check.UnresolvedCriticalProblems == 0 &&
-                               check.UnresolvedMajorProblems == 0;
-            if (!unresolvedOk)
+            var unresolvedAny = blockingReports.Count(r => r.Status != ProblemReportStatus.Closed);
+            if (unresolvedAny > 0)
             {
                 if (check.UnresolvedCriticalProblems > 0)
                     check.Issues.Add("Critical problems must be resolved before certification");
                 if (check.UnresolvedMajorProblems > 0)
                     check.Issues.Add("Major problems must be resolved before certification");
+                if (unresolvedAny > check.UnresolvedCriticalProblems + check.UnresolvedMajorProblems)
+                    check.Issues.Add("Unresolved minor problem reports block certification");
             }
 
-            check.IsCompliant = unresolvedOk && improperlyClosed == 0;
+            check.IsCompliant = unresolvedAny == 0 && improperlyClosed == 0;
             return check;
         }
 

@@ -53,6 +53,11 @@ public class RateLimitingMiddlewareSecurityTests
     [InlineData("/api/v1/auth/refresh")]
     [InlineData("/api/v1.0/auth/refresh")]
     [InlineData("/api/v1/account/login")]
+    [InlineData("/api/v1/account/logout")]
+    [InlineData("/api/v1/account/sso-callback")]
+    [InlineData("/api/v1.0/account/sso-callback")]
+    [InlineData("/api/v1/account/sso-signout-callback")]
+    [InlineData("/api/v1.0/account/sso-signout-callback")]
     public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldUseAuthPolicy(string path)
     {
         // Arrange
@@ -328,6 +333,25 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ForNonAuthApi_WithOversizedContentLength_ShouldRejectPayload()
+    {
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var requestBody = new string('x', 1024);
+
+        var result = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/engines",
+            HttpMethods.Post,
+            requestBody: requestBody,
+            includeContentLength: true,
+            contentLengthOverride: RateLimitingMiddleware.MaxRequestBodyBytes + 1);
+
+        result.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        result.NextCalled.Should().BeFalse();
+        result.ResponseBody.Should().Contain("256 KB");
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAiOptimizationReadEndpoint_ShouldUseAiPolicy()
     {
         // Arrange
@@ -351,7 +375,8 @@ public class RateLimitingMiddlewareSecurityTests
         string method,
         IPAddress? remoteIpAddress = null,
         string? requestBody = null,
-        bool includeContentLength = true)
+        bool includeContentLength = true,
+        long? contentLengthOverride = null)
     {
         var nextCalled = false;
         RequestDelegate next = context =>
@@ -376,7 +401,7 @@ public class RateLimitingMiddlewareSecurityTests
             context.Request.Body = new MemoryStream(bodyBytes);
             if (includeContentLength)
             {
-                context.Request.ContentLength = bodyBytes.Length;
+                context.Request.ContentLength = contentLengthOverride ?? bodyBytes.Length;
             }
 
             context.Request.ContentType = "application/json";
