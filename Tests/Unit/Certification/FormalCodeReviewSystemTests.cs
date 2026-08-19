@@ -430,6 +430,28 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public void ResolveFindingSeverity_SubstringAndNegatedKeywords_DoNotElevate()
+    {
+        FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
+        {
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Correctness,
+            Description = "Change is insignificant and non-critical"
+        }).Should().Be(FindingSeverity.Minor);
+    }
+
+    [Fact]
+    public void ResolveFindingSeverity_SafetyCriticalCompound_ElevatesToCritical()
+    {
+        FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
+        {
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Correctness,
+            Description = "Missing safety-critical interlock"
+        }).Should().Be(FindingSeverity.Critical);
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_WithEmptyRequiredFileRoster_IsNotCompliant()
     {
         await using var context = CreateContext();

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -277,25 +278,27 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
+        // Whole-token match: "insignificant" must not hit "significant", and "non-critical"
+        // must not hit "critical". Hyphenated compounds like "safety-critical" still match.
+        private static readonly Regex CriticalKeywordPattern = new(
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|critical|catastrophic|hazard)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex MajorKeywordPattern = new(
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(major|significant)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
         private static FindingSeverity? ClassifyFindingKeywords(string? description, string? recommendation)
         {
             var text = $"{description} {recommendation}";
             if (string.IsNullOrWhiteSpace(text))
                 return null;
 
-            if (text.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("critical", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("catastrophic", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("hazard", StringComparison.OrdinalIgnoreCase))
-            {
+            if (CriticalKeywordPattern.IsMatch(text))
                 return FindingSeverity.Critical;
-            }
 
-            if (text.Contains("major", StringComparison.OrdinalIgnoreCase) ||
-                text.Contains("significant", StringComparison.OrdinalIgnoreCase))
-            {
+            if (MajorKeywordPattern.IsMatch(text))
                 return FindingSeverity.Major;
-            }
 
             return null;
         }
