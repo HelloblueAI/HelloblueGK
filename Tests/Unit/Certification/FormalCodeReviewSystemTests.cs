@@ -286,12 +286,12 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
-    public async Task VerifyComplianceAsync_WithEmptyRequiredFiles_IsNotCompliant()
+    public async Task VerifyComplianceAsync_WithEmptyRequiredFileRoster_IsNotCompliant()
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
 
-        var check = await system.VerifyComplianceAsync(new List<string>());
+        var check = await system.VerifyComplianceAsync();
 
         check.IsCompliant.Should().BeFalse();
         check.TotalRequiredFiles.Should().Be(0);
@@ -299,11 +299,13 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
-    public async Task VerifyComplianceAsync_CountsOnlyRequiredApprovedIntersection()
+    public async Task VerifyComplianceAsync_UsesServerOwnedRequiredFileRoster()
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
         await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+        await system.RegisterRequiredFileAsync("WebAPI/Program.cs", "admin");
 
         var created = await system.CreateReviewAsync(new CodeReview
         {
@@ -326,16 +328,67 @@ public class FormalCodeReviewSystemTests
         });
         await system.ApproveReviewAsync(created.Id, "admin");
 
-        var check = await system.VerifyComplianceAsync(new List<string>
-        {
-            "Core/HelloblueGKEngine.cs",
-            "WebAPI/Program.cs"
-        });
+        var check = await system.VerifyComplianceAsync();
 
         check.TotalRequiredFiles.Should().Be(2);
         check.ReviewedFiles.Should().Be(1);
         check.IsCompliant.Should().BeFalse();
-        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("WebAPI/Program.cs");
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("webapi/program.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_IgnoresClientCherryPickedScope_WhenRosterHasMoreFiles()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+        await system.RegisterRequiredFileAsync("Core/EngineSafety.cs", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        // Even if a legacy client would have sent only the approved file, compliance
+        // must still fail closed against the full server-owned roster.
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.UnreviewedFiles.Should().Contain("core/enginesafety.cs");
+    }
+
+    [Fact]
+    public async Task RegisterRequiredFileAsync_CollapsesCaseVariantDuplicates()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var first = await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+        var second = await system.RegisterRequiredFileAsync("core/hellobluegkengine.cs", "admin");
+
+        second.Id.Should().Be(first.Id);
+        second.FilePath.Should().Be("core/hellobluegkengine.cs");
+        context.RequiredReviewFiles.Count(f => f.IsActive).Should().Be(1);
+
+        await system.RevokeRequiredFileAsync("CORE/HelloBlueGKEngine.cs");
+        context.RequiredReviewFiles.Single(f => f.Id == first.Id).IsActive.Should().BeFalse();
     }
 
     [Fact]
@@ -344,6 +397,7 @@ public class FormalCodeReviewSystemTests
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
         await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterRequiredFileAsync(" Core/HelloblueGKEngine.cs ", "admin");
 
         var created = await system.CreateReviewAsync(new CodeReview
         {
@@ -366,10 +420,7 @@ public class FormalCodeReviewSystemTests
         });
         await system.ApproveReviewAsync(created.Id, "admin");
 
-        var check = await system.VerifyComplianceAsync(new List<string>
-        {
-            " Core/HelloblueGKEngine.cs "
-        });
+        var check = await system.VerifyComplianceAsync();
 
         check.IsCompliant.Should().BeTrue();
         check.ReviewedFiles.Should().Be(1);
