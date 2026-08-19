@@ -291,6 +291,8 @@ public class ProblemReportingSystemTests
     [InlineData("routine observation", ProblemSeverity.Minor, ProblemSeverity.Minor)]
     [InlineData("blocks certification gate", ProblemSeverity.Minor, ProblemSeverity.Critical)]
     [InlineData("unclassified blocking issue", ProblemSeverity.Major, ProblemSeverity.Critical)]
+    [InlineData("nitrogen tank pressure anomaly", null, ProblemSeverity.Critical)]
+    [InlineData("reviewer nit only", null, ProblemSeverity.Minor)]
     public void ResolveSeverity_FailClosedAndKeywordFloor(
         string? impact,
         ProblemSeverity? explicitSeverity,

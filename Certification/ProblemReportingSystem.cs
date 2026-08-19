@@ -382,23 +382,54 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(impact))
                 return null;
 
-            if (impact.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("critical", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "safety") ||
+                ContainsImpactKeyword(impact, "critical"))
                 return ProblemSeverity.Critical;
 
-            if (impact.Contains("major", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "major") ||
+                ContainsImpactKeyword(impact, "significant"))
                 return ProblemSeverity.Major;
 
-            if (impact.Contains("minor", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("cosmetic", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("observation", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("routine", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("nit", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "minor") ||
+                ContainsImpactKeyword(impact, "cosmetic") ||
+                ContainsImpactKeyword(impact, "observation") ||
+                ContainsImpactKeyword(impact, "routine") ||
+                ContainsImpactKeyword(impact, "nit"))
                 return ProblemSeverity.Minor;
 
             return null;
         }
+
+        /// <summary>
+        /// Whole-token keyword match so short tokens like "nit" do not match inside
+        /// "nitrogen" / similar substrings.
+        /// </summary>
+        private static bool ContainsImpactKeyword(string impact, string keyword)
+        {
+            var start = 0;
+            while (start <= impact.Length - keyword.Length)
+            {
+                var index = impact.IndexOf(keyword, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    return false;
+                }
+
+                var beforeOk = index == 0 || !IsImpactTokenChar(impact[index - 1]);
+                var afterIndex = index + keyword.Length;
+                var afterOk = afterIndex >= impact.Length || !IsImpactTokenChar(impact[afterIndex]);
+                if (beforeOk && afterOk)
+                {
+                    return true;
+                }
+
+                start = index + 1;
+            }
+
+            return false;
+        }
+
+        private static bool IsImpactTokenChar(char c) => char.IsLetterOrDigit(c);
 
         private double CalculateAverageResolutionTime(List<ProblemReport> reports)
         {

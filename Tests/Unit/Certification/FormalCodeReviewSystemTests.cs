@@ -333,7 +333,7 @@ public class FormalCodeReviewSystemTests
         check.TotalRequiredFiles.Should().Be(2);
         check.ReviewedFiles.Should().Be(1);
         check.IsCompliant.Should().BeFalse();
-        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("WebAPI/Program.cs");
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("webapi/program.cs");
     }
 
     [Fact]
@@ -371,7 +371,24 @@ public class FormalCodeReviewSystemTests
         var check = await system.VerifyComplianceAsync();
 
         check.IsCompliant.Should().BeFalse();
-        check.UnreviewedFiles.Should().Contain("Core/EngineSafety.cs");
+        check.UnreviewedFiles.Should().Contain("core/enginesafety.cs");
+    }
+
+    [Fact]
+    public async Task RegisterRequiredFileAsync_CollapsesCaseVariantDuplicates()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var first = await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+        var second = await system.RegisterRequiredFileAsync("core/hellobluegkengine.cs", "admin");
+
+        second.Id.Should().Be(first.Id);
+        second.FilePath.Should().Be("core/hellobluegkengine.cs");
+        context.RequiredReviewFiles.Count(f => f.IsActive).Should().Be(1);
+
+        await system.RevokeRequiredFileAsync("CORE/HelloBlueGKEngine.cs");
+        context.RequiredReviewFiles.Single(f => f.Id == first.Id).IsActive.Should().BeFalse();
     }
 
     [Fact]

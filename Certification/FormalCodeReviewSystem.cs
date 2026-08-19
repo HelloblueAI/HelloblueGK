@@ -382,7 +382,16 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(normalized))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
-            var existing = await FindRequiredReviewFileAsync(normalized);
+            var matches = (await _context.RequiredReviewFiles.ToListAsync())
+                .Where(f => string.Equals(
+                    NormalizeFilePath(f.FilePath),
+                    normalized,
+                    StringComparison.Ordinal))
+                .OrderByDescending(f => f.IsActive)
+                .ThenByDescending(f => f.RegisteredAt)
+                .ToList();
+
+            var existing = matches.FirstOrDefault();
             if (existing != null)
             {
                 existing.IsActive = true;
@@ -391,6 +400,18 @@ namespace HB_NLP_Research_Lab.Certification
                     ? existing.RegisteredBy
                     : registeredBy.Trim();
                 existing.RegisteredAt = DateTime.UtcNow;
+
+                // Collapse case-variant duplicates so compliance cannot double-count
+                // and unique indexes stay consistent on case-sensitive stores.
+                foreach (var duplicate in matches.Skip(1))
+                {
+                    duplicate.IsActive = false;
+                    if (!string.Equals(duplicate.FilePath, normalized, StringComparison.Ordinal))
+                    {
+                        duplicate.FilePath = $"{normalized}#duplicate-{duplicate.Id:N}";
+                    }
+                }
+
                 await _context.SaveChangesAsync();
                 return existing;
             }
@@ -494,18 +515,24 @@ namespace HB_NLP_Research_Lab.Certification
 
         private async Task<RequiredReviewFile?> FindRequiredReviewFileAsync(string normalizedFilePath)
         {
-            var candidates = await _context.RequiredReviewFiles
-                .Where(f => f.FilePath == normalizedFilePath)
-                .ToListAsync();
-
-            return candidates.FirstOrDefault(f =>
-                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.Ordinal))
-                   ?? candidates.FirstOrDefault(f =>
-                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.OrdinalIgnoreCase));
+            // Case-insensitive match so mixed-casing rows collapse onto the canonical path.
+            var candidates = await _context.RequiredReviewFiles.ToListAsync();
+            return candidates
+                .OrderByDescending(f => f.IsActive)
+                .ThenByDescending(f => f.RegisteredAt)
+                .FirstOrDefault(f =>
+                    string.Equals(
+                        NormalizeFilePath(f.FilePath),
+                        normalizedFilePath,
+                        StringComparison.Ordinal));
         }
 
+        /// <summary>
+        /// Canonical review path: trim, forward slashes, lowercase — so case-sensitive
+        /// stores cannot hold duplicate roster rows for the same logical file.
+        /// </summary>
         private static string NormalizeFilePath(string filePath) =>
-            filePath.Trim().Replace('\\', '/');
+            filePath.Trim().Replace('\\', '/').ToLowerInvariant();
     }
 
     // Data Models
