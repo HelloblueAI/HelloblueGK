@@ -357,18 +357,21 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Resolve severity with fail-closed defaults and a keyword floor.
-        /// Unclassified impact defaults to Critical so Level A compliance cannot be forged by omitting
-        /// "critical/safety/major" keywords. Explicit severity may not under-classify below the floor.
+        /// Unclassified impact floors at Critical so Level A compliance cannot be forged by asserting
+        /// Minor/Major without supporting keywords. Explicit severity may not under-classify below the floor.
         /// </summary>
         public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
         {
-            var keywordFloor = ClassifyImpactKeywords(impact);
-            var resolved = explicitSeverity ?? keywordFloor ?? ProblemSeverity.Critical;
+            var keywordClass = ClassifyImpactKeywords(impact);
+            // Unclassified impact (no keywords) floors at Critical — clients cannot assert Minor
+            // to hide blocking issues from Critical/Major compliance gates.
+            var floor = keywordClass ?? ProblemSeverity.Critical;
+            var resolved = explicitSeverity ?? floor;
 
-            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            if ((int)resolved > (int)floor)
             {
                 // Enum order is Critical(0) < Major(1) < Minor(2); higher int = lower severity.
-                resolved = keywordFloor.Value;
+                resolved = floor;
             }
 
             return resolved;
@@ -379,16 +382,54 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(impact))
                 return null;
 
-            if (impact.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("critical", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "safety") ||
+                ContainsImpactKeyword(impact, "critical"))
                 return ProblemSeverity.Critical;
 
-            if (impact.Contains("major", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "major") ||
+                ContainsImpactKeyword(impact, "significant"))
                 return ProblemSeverity.Major;
+
+            if (ContainsImpactKeyword(impact, "minor") ||
+                ContainsImpactKeyword(impact, "cosmetic") ||
+                ContainsImpactKeyword(impact, "observation") ||
+                ContainsImpactKeyword(impact, "routine") ||
+                ContainsImpactKeyword(impact, "nit"))
+                return ProblemSeverity.Minor;
 
             return null;
         }
+
+        /// <summary>
+        /// Whole-token keyword match so short tokens like "nit" do not match inside
+        /// "nitrogen" / similar substrings.
+        /// </summary>
+        private static bool ContainsImpactKeyword(string impact, string keyword)
+        {
+            var start = 0;
+            while (start <= impact.Length - keyword.Length)
+            {
+                var index = impact.IndexOf(keyword, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    return false;
+                }
+
+                var beforeOk = index == 0 || !IsImpactTokenChar(impact[index - 1]);
+                var afterIndex = index + keyword.Length;
+                var afterOk = afterIndex >= impact.Length || !IsImpactTokenChar(impact[afterIndex]);
+                if (beforeOk && afterOk)
+                {
+                    return true;
+                }
+
+                start = index + 1;
+            }
+
+            return false;
+        }
+
+        private static bool IsImpactTokenChar(char c) => char.IsLetterOrDigit(c);
 
         private double CalculateAverageResolutionTime(List<ProblemReport> reports)
         {

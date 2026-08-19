@@ -138,7 +138,7 @@ public class HelloblueGKEngineTests : IDisposable
             new Dictionary<string, object> { ["iterations"] = 42 });
 
         result.SimulationType.Should().Be("CFD");
-        // Client iterations overrides are ignored — ConvergenceIterations stay solver-owned.
+        // Client iterations overrides are ignored — ConvergenceIterations is solver-owned.
         result.Iterations.Should().Be(150);
         result.ThrustAnalysis.MaxThrust.Should().BeGreaterThan(0);
         result.ThermalAnalysis.MaxTemperature.Should().Be(0);
@@ -189,7 +189,7 @@ public class HelloblueGKEngineTests : IDisposable
         result.ThrustAnalysis.MaxThrust.Should().Be(1234567);
         result.ThrustAnalysis.Efficiency.Should().BeApproximately(0.91, 0.0001);
         result.PerformanceMetrics["ChamberPressure"].Should().Be(275.5);
-        result.PerformanceMetrics["Iterations"].Should().Be(result.Iterations);
+        result.PerformanceMetrics["Iterations"].Should().Be(150);
     }
 
     [Fact]
@@ -232,7 +232,7 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
-    public async Task AnalyzeEngineAsync_WithStructuralParameters_AppliesStressButNotClientSafetyFactor()
+    public async Task AnalyzeEngineAsync_WithStructuralParameters_AppliesStressButNotClientSafetyFactorOrIterations()
     {
         var baseline = HelloblueGKEngine.CreateDesignParametersFromEngine(
             thrust: 1_500_000,
@@ -256,12 +256,13 @@ public class HelloblueGKEngineTests : IDisposable
             {
                 ["maxStress"] = 650e6,
                 ["safetyFactor"] = 100.0,
-                ["iterations"] = 66
+                ["iterations"] = 1
             },
             baseline);
 
         forged.SimulationType.Should().Be("Structural");
         forged.Iterations.Should().Be(100);
+        forged.Iterations.Should().Be(honest.Iterations);
         forged.StructuralAnalysis.MaxStress.Should().Be(650e6);
         forged.StructuralAnalysis.SafetyFactor.Should().BeApproximately(
             honest.StructuralAnalysis.SafetyFactor,

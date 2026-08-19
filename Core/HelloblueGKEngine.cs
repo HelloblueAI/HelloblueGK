@@ -154,8 +154,7 @@ namespace HB_NLP_Research_Lab.Core
                 parameters,
                 cfdResult,
                 thermalResult,
-                structuralResult,
-                ref iterations);
+                structuralResult);
 
             // Keep ValidationReport.OverallAccuracy as the validation engine's fail-closed
             // evidence score (unproven=50 without trusted flight/test binding). Do NOT overwrite
@@ -489,17 +488,15 @@ namespace HB_NLP_Research_Lab.Core
             IReadOnlyDictionary<string, object>? parameters,
             CfdAnalysisResult? cfdResult,
             ThermalAnalysisResult? thermalResult,
-            StructuralAnalysisResult? structuralResult,
-            ref int iterations)
+            StructuralAnalysisResult? structuralResult)
         {
             if (parameters == null)
             {
                 return;
             }
 
-            // Client "iterations" overrides are ignored — ConvergenceIterations stay solver-owned
-            // (parity with Accuracy / ConvergenceRate / SafetyFactor trust policy).
-            _ = iterations;
+            // Client "iterations" overrides are intentionally ignored — ConvergenceIterations
+            // is solver-owned evidence and must not be forgeable via request parameters.
 
             if (cfdResult != null)
             {
@@ -627,21 +624,6 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             return value > 1.0 ? Math.Clamp(value / 100.0, 0.0, 1.0) : Math.Clamp(value, 0.0, 1.0);
-        }
-
-        private static bool TryReadIntParameter(
-            IReadOnlyDictionary<string, object>? parameters,
-            string key,
-            out int value)
-        {
-            value = 0;
-            if (!TryReadDoubleParameter(parameters, key, out var numeric))
-            {
-                return false;
-            }
-
-            value = (int)Math.Round(numeric, MidpointRounding.AwayFromZero);
-            return true;
         }
 
         private static bool TryReadDoubleParameter(
