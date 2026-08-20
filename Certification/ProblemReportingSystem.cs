@@ -147,11 +147,14 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Problem report {reportNumber} cannot transition from {oldStatus} to {newStatus}; concurrent status change detected");
             }
 
+            // Reload so the change tracker matches the claimed row. Setting State=Unchanged
+            // after ExecuteUpdate reverts to the pre-claim snapshot (Open) and later
+            // reads/updates on the same context see a stale status.
+            await _context.Entry(report).ReloadAsync();
             report.Status = newStatus;
             report.UpdatedAt = updatedAt;
             report.Resolution = resolutionToPersist;
             report.ClosedAt = closedAtToPersist;
-            _context.Entry(report).State = EntityState.Unchanged;
 
             // Track status changes — capture OldStatus before mutation for an accurate audit trail.
             var statusChange = new ProblemReportStatusChange
