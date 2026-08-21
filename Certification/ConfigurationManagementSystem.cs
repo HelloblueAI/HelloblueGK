@@ -53,6 +53,7 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var baseline = await _context.SoftwareBaselines
                 .Include(b => b.ConfigurationItems)
+                    .ThenInclude(ci => ci.ConfigurationItem)
                 .FirstOrDefaultAsync(b => b.Id == baselineId);
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
@@ -64,11 +65,18 @@ namespace HB_NLP_Research_Lab.Certification
                     "only Draft or UnderReview baselines may be approved");
             }
 
-            // Empty baselines must not become official — Approve freezes the set and SCI would be vacuous.
+            // Empty / unreleased / checksum-free items must not become official —
+            // Approve freezes the set and SCI would otherwise be vacuous.
             if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
             {
                 throw new InvalidOperationException(
                     $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
+            }
+
+            if (!HasReleasedChecksumEvidence(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
             // Atomic Draft|UnderReview → Approved claim closes load/check/SaveChanges TOCTOU
@@ -90,10 +98,13 @@ namespace HB_NLP_Research_Lab.Certification
                     "concurrent status change detected");
             }
 
-            // Re-check item count after claim — a concurrent empty baseline must not stay Approved.
-            var itemCount = await _context.BaselineConfigurationItems
-                .CountAsync(i => i.BaselineId == baselineId);
-            if (itemCount == 0)
+            // Re-check item evidence after claim — a concurrent empty or unreleased
+            // baseline must not stay Approved.
+            var claimedItems = await _context.BaselineConfigurationItems
+                .Where(i => i.BaselineId == baselineId)
+                .Include(i => i.ConfigurationItem)
+                .ToListAsync();
+            if (claimedItems.Count == 0 || !HasReleasedChecksumEvidence(claimedItems))
             {
                 await _context.SoftwareBaselines
                     .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
@@ -103,7 +114,9 @@ namespace HB_NLP_Research_Lab.Certification
                         .SetProperty(b => b.ApprovedAt, (DateTime?)null));
 
                 throw new InvalidOperationException(
-                    $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
+                    claimedItems.Count == 0
+                        ? $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved"
+                        : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -310,11 +323,17 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} is {baseline.Status}; SCI may only be generated for Approved or Released baselines");
             }
 
-            // Empty SCI is not DO-178C evidence — reject zero-item Approved/Released baselines.
+            // Empty / unreleased / checksum-free SCI is not DO-178C evidence.
             if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
             {
                 throw new InvalidOperationException(
                     $"Baseline {baseline.BaselineName} has no configuration items; SCI cannot be generated without configuration evidence");
+            }
+
+            if (!HasReleasedChecksumEvidence(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item is Released with a checksum");
             }
 
             var sci = new SoftwareConfigurationIndex
@@ -447,6 +466,12 @@ namespace HB_NLP_Research_Lab.Certification
 
             return $"{prefix}{next:D4}";
         }
+
+        private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
+            links.All(link =>
+                link.ConfigurationItem != null &&
+                link.ConfigurationItem.Status == ConfigurationItemStatus.Released &&
+                !string.IsNullOrWhiteSpace(link.ConfigurationItem.Checksum));
     }
 
     // Data Models

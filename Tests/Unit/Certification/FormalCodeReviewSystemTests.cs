@@ -392,6 +392,67 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task RegisterRequiredFileAsync_RejectsTraversalAndAbsolutePaths()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var traversal = async () => await system.RegisterRequiredFileAsync("../secrets/core.c", "admin");
+        await traversal.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("filePath");
+
+        var absolute = async () => await system.RegisterRequiredFileAsync("/etc/passwd", "admin");
+        await absolute.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("filePath");
+
+        context.RequiredReviewFiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LegacyTraversalRosterAndApproval_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        context.RequiredReviewFiles.Add(new RequiredReviewFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "../secrets/core.c",
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "../secrets/core.c",
+            FunctionName = "Leak",
+            LineStart = 1,
+            LineEnd = 2,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 1,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.UnreviewedFiles.Should().Contain("../secrets/core.c");
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_NormalizesPathSeparatorsBeforeMatching()
     {
         await using var context = CreateContext();
