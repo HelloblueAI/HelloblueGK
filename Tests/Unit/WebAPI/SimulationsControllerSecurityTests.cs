@@ -276,7 +276,7 @@ public class SimulationsControllerSecurityTests
         document.RootElement.TryGetProperty("validationSource", out var validationSource).Should().BeTrue();
         validationSource.GetString().Should().NotBeNull();
         (validationSource.GetString() ?? string.Empty)
-            .Should().NotStartWith("Trusted:", StringComparison.Ordinal);
+            .Should().NotStartWith("Trusted:");
     }
 
     [Fact]
@@ -326,7 +326,7 @@ public class SimulationsControllerSecurityTests
         document.RootElement.TryGetProperty("overallAccuracy", out _).Should().BeFalse();
         document.RootElement.TryGetProperty("confidenceLevel", out _).Should().BeFalse();
         document.RootElement.GetProperty("validationSource").GetString()
-            .Should().NotStartWith("Trusted:", StringComparison.Ordinal);
+            .Should().NotStartWith("Trusted:");
     }
 
     [Fact]
