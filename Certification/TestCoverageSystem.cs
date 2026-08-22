@@ -491,7 +491,16 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static string NormalizeTestFilePath(string testFile)
         {
-            var normalized = NormalizeFilePath(testFile);
+            string normalized;
+            try
+            {
+                normalized = NormalizeFilePath(testFile);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException(ex.Message, nameof(testFile), ex);
+            }
+
             if (!normalized.StartsWith("Tests/", StringComparison.Ordinal))
             {
                 throw new ArgumentException(
