@@ -164,6 +164,17 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
+            // Completed reviews are frozen pending approve/reject. A late assignment
+            // would leave Status=Completed with an Assigned reviewer and reopen
+            // SubmitFindings after the review was already ready for approval.
+            if (review.Status is CodeReviewStatus.Completed
+                or CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot assign a reviewer to a review with status {review.Status}");
+            }
+
             var assignment = new CodeReviewAssignment
             {
                 Id = Guid.NewGuid(),

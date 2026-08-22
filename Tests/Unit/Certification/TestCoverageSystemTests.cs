@@ -184,27 +184,133 @@ public class TestCoverageSystemTests
     }
 
     [Fact]
+    public async Task VerifyComplianceAsync_RosterWithCountsButNoTestLinks_IsNotCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.TestEvidenceCompliant.Should().BeFalse();
+        check.FilesWithTestEvidence.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+
+        var report = await system.GenerateCoverageReportAsync();
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_SafetyCriticalWithoutMcdcLink_IsNotCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+        await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            "TC-ENGINE-001",
+            "Tests/Unit/Core/EngineTests.cs",
+            CoverageType.Statement);
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.TestEvidenceCompliant.Should().BeFalse();
+        check.FilesWithTestEvidence.Should().Be(1);
+        check.SafetyCriticalFilesWithMcdcTestEvidence.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("MC/DC test-case link", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LegacyEmptyOrUnsafeLinks_FailClosed()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        context.CoverageTestCaseLinks.Add(new CoverageTestCaseLink
+        {
+            Id = Guid.NewGuid(),
+            CodeCoverageId = coverage.Id,
+            TestCaseId = "  ",
+            TestFile = "../secrets/core.c",
+            CoverageType = CoverageType.MCDC,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.TestEvidenceCompliant.Should().BeFalse();
+        check.FilesWithTestEvidence.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task LinkTestCaseAsync_RejectsEmptyIdsAndUnsafeTestFiles()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var emptyId = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs", "  ", "Tests/Unit/Core/EngineTests.cs", CoverageType.MCDC);
+        await emptyId.Should().ThrowAsync<ArgumentException>().WithParameterName("testCaseId");
+
+        var traversal = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs", "TC-1", "../Tests/Unit/Core/EngineTests.cs", CoverageType.MCDC);
+        await traversal.Should().ThrowAsync<ArgumentException>().WithParameterName("testFile");
+
+        var notUnderTests = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs", "TC-1", "Core/Engine.cs", CoverageType.MCDC);
+        await notUnderTests.Should().ThrowAsync<ArgumentException>().WithParameterName("testFile");
+
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_RosterWithLevelAEvidence_IsCompliant()
     {
         await using var context = CreateContext();
         var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
         await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
 
-        await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
-        {
-            TotalStatements = 10,
-            CoveredStatements = 10,
-            TotalBranches = 4,
-            CoveredBranches = 4,
-            TotalConditions = 2,
-            CoveredConditions = 2,
-            MCDCCoverage = 100
-        });
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+        await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            "TC-ENGINE-001",
+            "Tests/Unit/Core/EngineTests.cs",
+            CoverageType.MCDC);
 
         var check = await system.VerifyComplianceAsync();
         check.IsCompliant.Should().BeTrue();
         check.MCDCCoverageCompliant.Should().BeTrue();
+        check.TestEvidenceCompliant.Should().BeTrue();
+        check.FilesWithTestEvidence.Should().Be(1);
+        check.SafetyCriticalFilesWithMcdcTestEvidence.Should().Be(1);
+
+        var report = await system.GenerateCoverageReportAsync();
+        report.MeetsDO178CLevelA.Should().BeTrue();
+        report.CoverageGaps.Should().BeEmpty();
     }
+
+    private static CoverageMetrics LevelAMetrics() => new()
+    {
+        TotalStatements = 10,
+        CoveredStatements = 10,
+        TotalBranches = 4,
+        CoveredBranches = 4,
+        TotalConditions = 2,
+        CoveredConditions = 2,
+        MCDCCoverage = 100
+    };
 
     private static TestCoverageDbContext CreateContext()
     {

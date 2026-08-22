@@ -567,7 +567,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     missionDuration = missionDuration,
                     engineEfficiency = launch.Engine.Efficiency,
                     simulatedEfficiency = design.Efficiency,
-                    validationAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
+                    // Persist provenance only — RealTimeValidationEngine OverallAccuracy is
+                    // synthetic RNG (85–100) and must not become stored mission evidence.
+                    validationSource = analysisResult.ValidationReport?.ValidationSource,
                     simulationType = analysisResult.SimulationType,
                     appliedLaunchParameters = launchParameters
                 });
