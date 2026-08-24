@@ -64,7 +64,7 @@ public class EngineRepository : IEngineRepository
         await EnsureNameIsUniqueAsync(engine.Name);
         engine.CreatedAt = DateTime.UtcNow;
         _context.Engines.Add(engine);
-        await _context.SaveChangesAsync();
+        await SaveUniqueNameAsync(engine);
         return engine;
     }
 
@@ -74,7 +74,7 @@ public class EngineRepository : IEngineRepository
         await EnsureNameIsUniqueAsync(engine.Name, engine.Id);
         engine.UpdatedAt = DateTime.UtcNow;
         _context.Engines.Update(engine);
-        await _context.SaveChangesAsync();
+        await SaveUniqueNameAsync(engine);
         return engine;
     }
 
@@ -133,6 +133,36 @@ public class EngineRepository : IEngineRepository
         {
             throw new InvalidOperationException($"An engine named '{name}' already exists.");
         }
+    }
+
+    private async Task SaveUniqueNameAsync(Engine engine)
+    {
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            _context.Entry(engine).State = EntityState.Detached;
+            throw new InvalidOperationException($"An engine named '{engine.Name}' already exists.", ex);
+        }
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+    {
+        for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
+        {
+            var message = inner.Message;
+            if (message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("IX_Engines_Name", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 

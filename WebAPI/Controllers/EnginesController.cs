@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
@@ -209,6 +210,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 return Conflict(new { message = ex.Message });
             }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogWarning(ex, "Engine name unique constraint violated on create");
+                return Conflict(new { message = $"An engine named '{request?.Name}' already exists." });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating engine");
@@ -268,6 +274,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             catch (InvalidOperationException ex)
             {
                 return Conflict(new { message = ex.Message });
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogWarning(ex, "Engine name unique constraint violated on update {EngineId}", id);
+                return Conflict(new { message = $"An engine named '{request?.Name}' already exists." });
             }
             catch (Exception ex)
             {
