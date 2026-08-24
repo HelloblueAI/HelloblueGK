@@ -28,6 +28,11 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<SoftwareBaseline> CreateBaselineAsync(string baselineName, string version, string description, string createdBy)
         {
+            if (string.IsNullOrWhiteSpace(baselineName))
+                throw new ArgumentException("Baseline name is required", nameof(baselineName));
+            if (string.IsNullOrWhiteSpace(version))
+                throw new ArgumentException("Baseline version is required", nameof(version));
+
             var baseline = new SoftwareBaseline
             {
                 Id = Guid.NewGuid(),
@@ -191,6 +196,11 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ChangeRequest> CreateChangeRequestAsync(ChangeRequest request)
         {
+            ArgumentNullException.ThrowIfNull(request);
+            if (string.IsNullOrWhiteSpace(request.Title))
+                throw new ArgumentException("Change request title is required", nameof(request));
+            request.Title = request.Title.Trim();
+
             request.Id = Guid.NewGuid();
             request.CreatedAt = DateTime.UtcNow;
             request.Status = ChangeRequestStatus.Submitted;

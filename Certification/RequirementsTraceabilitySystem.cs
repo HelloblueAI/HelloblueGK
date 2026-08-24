@@ -28,13 +28,37 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<Requirement> CreateRequirementAsync(Requirement requirement)
         {
+            ArgumentNullException.ThrowIfNull(requirement);
+            requirement.RequirementNumber = NormalizeRequirementNumber(requirement.RequirementNumber);
+            requirement.Title = NormalizeRequiredText(requirement.Title, "Title");
+            requirement.Description = NormalizeRequiredText(requirement.Description, "Description");
+
+            var numberTaken = await _context.Requirements
+                .AnyAsync(r => r.RequirementNumber == requirement.RequirementNumber);
+            if (numberTaken)
+            {
+                throw new ArgumentException(
+                    $"Requirement number '{requirement.RequirementNumber}' is already in use",
+                    nameof(requirement));
+            }
+
             requirement.Id = Guid.NewGuid();
             requirement.CreatedAt = DateTime.UtcNow;
             requirement.Status = RequirementStatus.Draft;
             requirement.TraceabilityStatus = TraceabilityStatus.NotTraced;
 
             _context.Requirements.Add(requirement);
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+            {
+                _context.Entry(requirement).State = EntityState.Detached;
+                throw new ArgumentException(
+                    $"Requirement number '{requirement.RequirementNumber}' is already in use",
+                    nameof(requirement));
+            }
 
             _logger.LogInformation("Created requirement {RequirementId}: {Title}", requirement.Id, LogSanitizer.Sanitize(requirement.Title));
             return requirement;
@@ -50,6 +74,8 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(designDocument))
                 throw new ArgumentException("Design document is required", nameof(designDocument));
 
+            var normalizedDesignDocument = NormalizeEvidencePath(designDocument, nameof(designDocument));
+
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
                 throw new ArgumentException($"Requirement {requirementId} not found");
@@ -59,7 +85,7 @@ namespace HB_NLP_Research_Lab.Certification
                 Id = Guid.NewGuid(),
                 RequirementId = requirementId,
                 DesignElementId = designElementId.Trim(),
-                DesignDocument = designDocument.Trim(),
+                DesignDocument = normalizedDesignDocument,
                 CreatedAt = DateTime.UtcNow,
                 Verified = false
             };
@@ -84,6 +110,8 @@ namespace HB_NLP_Research_Lab.Certification
             if (lineStart <= 0 || lineEnd < lineStart)
                 throw new ArgumentException("Code line range must be a positive, ordered span");
 
+            var normalizedCodeFile = NormalizeEvidencePath(codeFile, nameof(codeFile));
+
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
                 throw new ArgumentException($"Requirement {requirementId} not found");
@@ -92,7 +120,7 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 RequirementId = requirementId,
-                CodeFile = codeFile.Trim(),
+                CodeFile = normalizedCodeFile,
                 LineStart = lineStart,
                 LineEnd = lineEnd,
                 FunctionName = functionName.Trim(),
@@ -119,6 +147,8 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(testFile))
                 throw new ArgumentException("Test file is required", nameof(testFile));
 
+            var normalizedTestFile = NormalizeEvidencePath(testFile, nameof(testFile));
+
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
                 throw new ArgumentException($"Requirement {requirementId} not found");
@@ -128,7 +158,7 @@ namespace HB_NLP_Research_Lab.Certification
                 Id = Guid.NewGuid(),
                 RequirementId = requirementId,
                 TestCaseId = testCaseId.Trim(),
-                TestFile = testFile.Trim(),
+                TestFile = normalizedTestFile,
                 CoverageType = coverageType,
                 CreatedAt = DateTime.UtcNow,
                 Verified = false,
@@ -490,6 +520,75 @@ namespace HB_NLP_Research_Lab.Certification
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
             !string.IsNullOrWhiteSpace(t.TestCaseId) &&
             !string.IsNullOrWhiteSpace(t.TestFile);
+
+        private static string NormalizeRequirementNumber(string? requirementNumber)
+        {
+            var normalized = NormalizeRequiredText(requirementNumber, "RequirementNumber");
+            if (normalized.Contains("..", StringComparison.Ordinal) ||
+                normalized.IndexOfAny(['/', '\\']) >= 0)
+            {
+                throw new ArgumentException(
+                    "Requirement number must not contain path segments.",
+                    nameof(requirementNumber));
+            }
+
+            return normalized;
+        }
+
+        private static string NormalizeRequiredText(string? value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{fieldName} is required", fieldName);
+            }
+
+            var trimmed = value.Trim();
+            if (trimmed.Any(char.IsControl))
+            {
+                throw new ArgumentException($"{fieldName} must not contain control characters", fieldName);
+            }
+
+            return trimmed;
+        }
+
+        private static string NormalizeEvidencePath(string path, string paramName)
+        {
+            var normalized = path.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so RTM
+            // evidence cannot point outside the repository.
+            if (normalized.StartsWith("/", StringComparison.Ordinal)
+                || normalized.StartsWith("//", StringComparison.Ordinal)
+                || normalized.Contains("://", StringComparison.Ordinal)
+                || normalized.Contains(':', StringComparison.Ordinal))
+            {
+                throw new ArgumentException("Evidence path must be relative to the repository.", paramName);
+            }
+
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0
+                || segments.Any(segment => segment is "." or ".."))
+            {
+                throw new ArgumentException("Evidence path must not contain traversal segments.", paramName);
+            }
+
+            return string.Join("/", segments);
+        }
+
+        private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+        {
+            for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
+            {
+                var message = inner.Message;
+                if (message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     public enum RequirementLinkKind

@@ -7,6 +7,35 @@ namespace HelloblueGK.Tests.Unit.Certification;
 public class ConfigurationManagementSystemTests
 {
     [Fact]
+    public async Task CreateBaselineAsync_RejectsEmptyName()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateBaselineAsync("  ", "1.0.0", "initial", "alice");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Baseline name is required*");
+    }
+
+    [Fact]
+    public async Task CreateChangeRequestAsync_RejectsEmptyTitle()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = " ",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*title is required*");
+    }
+
+    [Fact]
     public async Task ApproveBaselineAsync_RejectsNonDraftOrUnderReviewStatus()
     {
         await using var context = CreateContext();

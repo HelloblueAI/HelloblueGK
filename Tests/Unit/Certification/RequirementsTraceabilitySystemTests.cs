@@ -180,6 +180,126 @@ public class RequirementsTraceabilitySystemTests
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
     }
 
+    [Fact]
+    public async Task CreateRequirementAsync_RejectsEmptyNumberAndTitle()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "   ",
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*RequirementNumber is required*");
+    }
+
+    [Fact]
+    public async Task CreateRequirementAsync_RejectsDuplicateRequirementNumber()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-010",
+            Title = "First",
+            Description = "Original requirement",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-010",
+            Title = "Duplicate",
+            Description = "Same number",
+            CreatedBy = "bob"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*already in use*");
+    }
+
+    [Fact]
+    public async Task LinkToCodeAsync_RejectsParentDirectoryTraversal()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-011",
+            Title = "Path integrity",
+            Description = "Code links must stay in-repo",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToCodeAsync(
+            requirement.Id,
+            "../Secrets/keys.cs",
+            1,
+            10,
+            "Forge");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*traversal*");
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsAbsoluteEvidencePath()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-012",
+            Title = "Test path integrity",
+            Description = "Test links must stay in-repo",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-1",
+            "/etc/passwd",
+            TestCoverageType.Statement);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
+    }
+
+    [Theory]
+    [InlineData("http://example.test/design.md")]
+    [InlineData("https://example.test/design.md")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("file:C:/secrets/keys.cs")]
+    public async Task LinkToDesignAsync_RejectsSchemeUriEvidencePath(string designDocument)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-013",
+            Title = "URI integrity",
+            Description = "Design links must stay in-repo",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToDesignAsync(
+            requirement.Id,
+            "DE-1",
+            designDocument);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
+    }
+
     private static RequirementsDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<RequirementsDbContext>()
