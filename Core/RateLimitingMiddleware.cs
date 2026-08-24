@@ -616,14 +616,39 @@ namespace HB_NLP_Research_Lab.Core
             {
                 rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(identifier, _policy);
             }
-            catch (Exception ex)
+            catch (TimeoutException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (OperationCanceledException ex) when (!context.RequestAborted.IsCancellationRequested)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (CryptographicException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (JsonException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (InvalidOperationException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+
+            async Task WriteUnavailableAsync(Exception ex)
             {
                 _logger.LogError(ex, "Error in pre-auth rate limiting for {ClientIdentifier}", identifier);
                 context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
                 context.Response.ContentType = "application/json";
                 await context.Response.WriteAsync(
                     """{"error":"Rate limiting unavailable","message":"Rate limiting is temporarily unavailable. Please try again later."}""");
-                return;
             }
 
             if (!rateLimitResult.IsAllowed)
