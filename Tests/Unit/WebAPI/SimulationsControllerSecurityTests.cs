@@ -258,7 +258,9 @@ public class SimulationsControllerSecurityTests
             .SingleAsync(candidate => candidate.Id == response.Id);
 
         simulation.Status.Should().Be("Completed");
-        simulation.Iterations.Should().Be(77);
+        // Requested iterations may be echoed in ResultsJson parameters, but persisted
+        // Iterations must remain solver-owned (Thermal ConvergenceIterations = 120).
+        simulation.Iterations.Should().Be(120);
         simulation.ResultsJson.Should().NotBeNullOrWhiteSpace();
         using var document = JsonDocument.Parse(simulation.ResultsJson!);
         document.RootElement.GetProperty("simulationType").GetString().Should().Be("Thermal");
@@ -512,7 +514,7 @@ public class SimulationsControllerSecurityTests
     {
         var engine = new Engine
         {
-            Name = $"{createdBy}-engine",
+            Name = $"{createdBy}-engine-{Guid.NewGuid():N}",
             EngineType = "Test",
             CreatedBy = createdBy
         };
