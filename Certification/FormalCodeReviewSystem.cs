@@ -278,14 +278,15 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
-        // Whole-token match: "insignificant" must not hit "significant", and "non-critical"
-        // must not hit "critical". Hyphenated compounds like "safety-critical" still match.
+        // Whole-token stems plus explicit inflections: "hazards"/"critically" still elevate,
+        // but "insignificant" must not hit "significant" and "non-critical" must not hit
+        // "critical". Hyphenated compounds like "safety-critical" still match.
         private static readonly Regex CriticalKeywordPattern = new(
-            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|critical|catastrophic|hazard)(?![A-Za-z0-9])",
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?)(?![A-Za-z0-9])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static readonly Regex MajorKeywordPattern = new(
-            @"(?<!non[- ]?)(?<![A-Za-z0-9])(major|significant)(?![A-Za-z0-9])",
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(major(?:ly)?|significant(?:ly)?|significance)(?![A-Za-z0-9])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static FindingSeverity? ClassifyFindingKeywords(string? description, string? recommendation)

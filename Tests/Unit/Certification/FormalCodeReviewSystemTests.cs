@@ -436,7 +436,7 @@ public class FormalCodeReviewSystemTests
         {
             Severity = FindingSeverity.Minor,
             Category = FindingCategory.Correctness,
-            Description = "Change is insignificant and non-critical"
+            Description = "Change is insignificant, non-critical, and affects a majority of comments"
         }).Should().Be(FindingSeverity.Minor);
     }
 
@@ -449,6 +449,32 @@ public class FormalCodeReviewSystemTests
             Category = FindingCategory.Correctness,
             Description = "Missing safety-critical interlock"
         }).Should().Be(FindingSeverity.Critical);
+    }
+
+    [Theory]
+    [InlineData("Documented hazards remain unmitigated")]
+    [InlineData("Hazardous over-temperature path")]
+    [InlineData("Fails critically under abort")]
+    [InlineData("Catastrophically unbounded recursion")]
+    public void ResolveFindingSeverity_DerivedCriticalKeywords_ElevateToCritical(string description)
+    {
+        FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
+        {
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Correctness,
+            Description = description
+        }).Should().Be(FindingSeverity.Critical);
+    }
+
+    [Fact]
+    public void ResolveFindingSeverity_DerivedMajorKeywords_ElevateToMajor()
+    {
+        FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
+        {
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Correctness,
+            Description = "Performance degrades significantly under load"
+        }).Should().Be(FindingSeverity.Major);
     }
 
     [Fact]
