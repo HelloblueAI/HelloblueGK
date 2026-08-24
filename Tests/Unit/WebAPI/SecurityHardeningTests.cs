@@ -690,6 +690,39 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Register_WithOversizedUsernameOrName_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateRegisterController(context);
+
+        var shortUsername = await controller.Register(new RegisterRequest
+        {
+            Username = "ab",
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        shortUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var longUsername = await controller.Register(new RegisterRequest
+        {
+            Username = new string('a', 101),
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        longUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var longFirstName = await controller.Register(new RegisterRequest
+        {
+            Username = "ok_user",
+            Email = "ok@example.com",
+            Password = "Password123!",
+            FirstName = new string('A', 101)
+        });
+        longFirstName.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CreateRequirement_InvalidPriority_ReturnsBadRequest()
     {
         await using var requirementsContext = CreateRequirementsContext();

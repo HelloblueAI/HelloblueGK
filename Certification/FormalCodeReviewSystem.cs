@@ -252,6 +252,13 @@ namespace HB_NLP_Research_Lab.Certification
                 if (string.IsNullOrWhiteSpace(finding.Description))
                     throw new ArgumentException("Finding description is required", nameof(findings));
 
+                if (finding.LineNumber < review.LineStart || finding.LineNumber > review.LineEnd)
+                {
+                    throw new ArgumentException(
+                        $"Finding line number must fall within the review line range {review.LineStart}-{review.LineEnd}",
+                        nameof(findings));
+                }
+
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
                 finding.ReviewerName = reviewerName;
@@ -514,12 +521,10 @@ namespace HB_NLP_Research_Lab.Certification
             string filePath,
             string? registeredBy = null)
         {
-            if (string.IsNullOrWhiteSpace(filePath))
-                throw new ArgumentException("File path is required", nameof(filePath));
-
-            var normalized = NormalizeFilePath(filePath);
-            if (string.IsNullOrWhiteSpace(normalized))
-                throw new ArgumentException("File path is required", nameof(filePath));
+            // Same repository-relative gate as CreateReview — roster rows with `..` or
+            // absolute paths can never be satisfied (CreateReview rejects them) and
+            // must not enter the Level A required-file inventory.
+            var normalized = NormalizeReviewFilePath(filePath);
 
             var matches = (await _context.RequiredReviewFiles.ToListAsync())
                 .Where(f => string.Equals(

@@ -102,7 +102,7 @@ public class FormalCodeReviewSystemTests
         });
 
         await create.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*parent-directory*");
+            .WithMessage("*traversal*");
         context.CodeReviews.Should().BeEmpty();
     }
 
@@ -851,6 +851,61 @@ public class FormalCodeReviewSystemTests
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*Finding description is required*");
         context.ReviewFindings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubmitFindingsAsync_RejectsLineNumberOutsideReviewSpan()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var act = async () => await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 99,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "Comment cites a line that was never in the review span"
+            }
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*line range*");
+        context.ReviewFindings.Should().BeEmpty();
+        var persisted = await context.CodeReviews
+            .Include(r => r.Assignments)
+            .SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.InProgress);
+        persisted.Assignments.Single().Status.Should().Be(ReviewAssignmentStatus.Assigned);
+    }
+
+    [Fact]
+    public async Task RegisterRequiredFileAsync_RejectsTraversalAndAbsolutePaths()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var traversal = async () => await system.RegisterRequiredFileAsync("../secrets/core.c", "admin");
+        await traversal.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*traversal*");
+
+        var absolute = async () => await system.RegisterRequiredFileAsync("/etc/passwd", "admin");
+        await absolute.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
+
+        context.RequiredReviewFiles.Should().BeEmpty();
     }
 
     private static CodeReviewDbContext CreateContext()
