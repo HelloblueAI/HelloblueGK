@@ -407,16 +407,22 @@ app.UseHttpMetrics();
 
 app.UseCors();
 
-// Rate-limit before authentication so JWT OnTokenValidated DB lookups cannot be
-// sprayed via skipped/authenticated paths (e.g. Bearer + /metrics → 403).
+// IP-only pre-auth cap for Authorization-bearing and /metrics requests so
+// JWT OnTokenValidated DB lookups cannot be sprayed. Full policies run after
+// authentication so ExpensiveMutation / API buckets can key on user:… .
 if (builder.Configuration.GetValue("EnableRateLimiting", true))
 {
-    app.UseRateLimiting();
+    app.UsePreAuthRateLimiting();
 }
 
 // Authentication and Authorization
 app.UseAuthentication();
 app.UseAuthorization();
+
+if (builder.Configuration.GetValue("EnableRateLimiting", true))
+{
+    app.UseRateLimiting();
+}
 
 // Swagger/OpenAPI documentation — internal-only in production (aerospace-style).
 // Production: SSO via /api/v1/Account/login when OpenIdConnect is enabled, otherwise JWT Bearer.
