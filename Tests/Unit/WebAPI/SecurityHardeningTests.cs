@@ -1534,6 +1534,25 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public void RequestPayloadLimits_RejectsNonFiniteNumericValues()
+    {
+        var values = new Dictionary<string, object>
+        {
+            ["thrust"] = double.PositiveInfinity,
+            ["efficiency"] = 0.95
+        };
+
+        var ok = RequestPayloadLimits.TryValidateDictionary(
+            values,
+            "LaunchParameters",
+            out var message);
+
+        ok.Should().BeFalse();
+        message.Should().Contain("thrust");
+        message.Should().Contain("finite");
+    }
+
+    [Fact]
     public async Task Swagger_InDevelopment_AllowsPublicAccessWhenConfigured()
     {
         using var factory = new TestWebApiFactory(Environments.Development, new Dictionary<string, string?>

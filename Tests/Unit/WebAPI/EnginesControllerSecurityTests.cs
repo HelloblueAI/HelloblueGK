@@ -204,6 +204,83 @@ public class EnginesControllerSecurityTests
     }
 
     [Fact]
+    public void ValidationCacheKey_IncludesPersistedIdSoDuplicateNamesDoNotCollide()
+    {
+        var first = CreateEngine(DateTime.UtcNow, "Raptor");
+        first.Id = 11;
+        var second = CreateEngine(DateTime.UtcNow, "Raptor");
+        second.Id = 22;
+
+        first.ValidationCacheKey.Should().Be("11:Raptor");
+        second.ValidationCacheKey.Should().Be("22:Raptor");
+        first.ValidationCacheKey.Should().NotBe(second.ValidationCacheKey);
+    }
+
+    [Fact]
+    public async Task CreateEngine_WhenNameAlreadyExists_ReturnsConflict()
+    {
+        var options = CreateOptions();
+
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow, "Raptor"));
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var createContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(createContext, CreatePrincipal("real-admin"));
+            var result = await controller.CreateEngine(new CreateEngineRequest
+            {
+                Name = "raptor",
+                EngineType = "Raptor",
+                Thrust = 2_100_000,
+                Efficiency = 0.96
+            });
+
+            result.Should().BeOfType<ConflictObjectResult>();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            (await verifyContext.Engines.CountAsync()).Should().Be(1);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateEngine_WhenRenamingToExistingName_ReturnsConflict()
+    {
+        var options = CreateOptions();
+        int engineId;
+
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-2), "Raptor"));
+            var other = CreateEngine(DateTime.UtcNow.AddMinutes(-1), "Merlin");
+            seedContext.Engines.Add(other);
+            await seedContext.SaveChangesAsync();
+            engineId = other.Id;
+        }
+
+        await using (var updateContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(updateContext);
+            var result = await controller.UpdateEngine(engineId, new UpdateEngineRequest
+            {
+                Name = "RAPTOR"
+            });
+
+            result.Should().BeOfType<ConflictObjectResult>();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            var stored = await verifyContext.Engines.SingleAsync(e => e.Id == engineId);
+            stored.Name.Should().Be("Merlin");
+        }
+    }
+
+    [Fact]
     public async Task UpdateEngine_WhenFieldsAreOmitted_PreservesExistingEngineParameters()
     {
         var options = CreateOptions();

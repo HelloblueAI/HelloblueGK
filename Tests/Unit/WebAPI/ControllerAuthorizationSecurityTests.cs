@@ -581,6 +581,49 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task ScheduleLaunch_WithWhitespaceMissionName_ReturnsBadRequestWithoutCreatingLaunch()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = engine.Id,
+            MissionName = "   "
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Launches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ScheduleLaunch_WithNonFiniteLaunchParameter_ReturnsBadRequestWithoutCreatingLaunch()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = engine.Id,
+            MissionName = "Infinity Burn",
+            LaunchParameters = new Dictionary<string, object>
+            {
+                ["massRatio"] = double.PositiveInfinity
+            }
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("finite");
+        context.Launches.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ExecuteLaunch_WhenBackgroundQueueIsFull_ReturnsServiceUnavailableWithoutStartingLaunch()
     {
         await using var context = CreateContext();

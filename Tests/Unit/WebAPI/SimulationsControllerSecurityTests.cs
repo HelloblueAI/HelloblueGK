@@ -514,7 +514,7 @@ public class SimulationsControllerSecurityTests
     {
         var engine = new Engine
         {
-            Name = $"{createdBy}-engine",
+            Name = $"{createdBy}-engine-{Guid.NewGuid():N}",
             EngineType = "Test",
             CreatedBy = createdBy
         };

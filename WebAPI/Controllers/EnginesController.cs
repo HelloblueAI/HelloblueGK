@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
@@ -201,6 +202,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var createdEngine = await _engineRepository.CreateAsync(engine);
                 return CreatedAtAction(nameof(GetEngineById), new { id = createdEngine.Id }, createdEngine);
             }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogWarning(ex, "Engine name unique constraint violated on create");
+                return Conflict(new { message = $"An engine named '{request?.Name}' already exists." });
+            }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating engine");
@@ -252,6 +266,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 request.ApplyTo(engine);
                 var updatedEngine = await _engineRepository.UpdateAsync(engine);
                 return Ok(updatedEngine);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogWarning(ex, "Engine name unique constraint violated on update {EngineId}", id);
+                return Conflict(new { message = $"An engine named '{request?.Name}' already exists." });
             }
             catch (Exception ex)
             {
@@ -336,8 +363,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             return new Engine
             {
-                Name = Name.Trim(),
-                EngineType = EngineType.Trim(),
+                Name = Name?.Trim() ?? string.Empty,
+                EngineType = EngineType?.Trim() ?? string.Empty,
                 Thrust = Thrust,
                 SpecificImpulse = SpecificImpulse,
                 ChamberPressure = ChamberPressure,

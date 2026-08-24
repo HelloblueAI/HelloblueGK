@@ -144,6 +144,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = "Request body is required" });
                 }
 
+                if (string.IsNullOrWhiteSpace(request.MissionName))
+                {
+                    return BadRequest(new { message = "Mission name is required" });
+                }
+
                 if (!RequestPayloadLimits.TryValidateDictionary(
                     request.LaunchParameters,
                     nameof(request.LaunchParameters),
@@ -173,7 +178,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Create launch record
                 var launch = new Launch
                 {
-                    MissionName = request.MissionName,
+                    MissionName = request.MissionName.Trim(),
                     Description = request.Description,
                     EngineId = request.EngineId,
                     EngineCount = request.EngineCount,
@@ -512,7 +517,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 // Simulate launch using engine analysis with stored mission parameters.
                 var analysisResult = await _engine.AnalyzeEngineAsync(
-                    launch.Engine.Name,
+                    launch.Engine.ValidationCacheKey,
                     simulationType,
                     launchParameters,
                     design,

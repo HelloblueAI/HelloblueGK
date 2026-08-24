@@ -129,6 +129,35 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
+    public async Task CreateProblemReportAsync_RejectsEmptyTitleAndDescription()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var missingTitle = async () => await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "  ",
+            Description = "Observed unexpected pressure oscillation",
+            Impact = "major performance impact",
+            ReportedBy = "alice"
+        });
+        await missingTitle.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Title is required*");
+
+        var missingDescription = async () => await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Injector anomaly",
+            Description = " ",
+            Impact = "major performance impact",
+            ReportedBy = "alice"
+        });
+        await missingDescription.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Description is required*");
+
+        context.ProblemReports.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_RejectsVacuousResolutionText()
     {
         await using var context = CreateContext();

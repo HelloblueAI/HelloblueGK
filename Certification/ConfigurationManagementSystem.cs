@@ -137,6 +137,10 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ConfigurationItem> CreateConfigurationItemAsync(ConfigurationItem item)
         {
+            ArgumentNullException.ThrowIfNull(item);
+            item.ItemName = NormalizeRequiredText(item.ItemName, nameof(item.ItemName));
+            item.FilePath = NormalizeEvidencePath(item.FilePath);
+
             item.Id = Guid.NewGuid();
             item.CreatedAt = DateTime.UtcNow;
             item.Status = ConfigurationItemStatus.UnderDevelopment;
@@ -326,6 +330,48 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Implemented change request {RequestNumber}", requestNumber);
+        }
+
+        private static string NormalizeRequiredText(string? value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{fieldName} is required", fieldName);
+            }
+
+            return value.Trim();
+        }
+
+        private static string NormalizeEvidencePath(string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                throw new ArgumentException("Configuration item file path is required.", nameof(filePath));
+            }
+
+            var normalized = filePath.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so SCI
+            // evidence cannot point outside the repository (parity with RTM).
+            if (normalized.StartsWith("/", StringComparison.Ordinal)
+                || normalized.StartsWith("//", StringComparison.Ordinal)
+                || normalized.Contains("://", StringComparison.Ordinal)
+                || normalized.Contains(':', StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Configuration item file path must be relative to the repository.",
+                    nameof(filePath));
+            }
+
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0
+                || segments.Any(segment => segment is "." or ".."))
+            {
+                throw new ArgumentException(
+                    "Configuration item file path must not contain traversal segments.",
+                    nameof(filePath));
+            }
+
+            return string.Join("/", segments);
         }
 
         /// <summary>
