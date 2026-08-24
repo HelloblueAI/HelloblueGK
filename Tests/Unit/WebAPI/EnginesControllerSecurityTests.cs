@@ -204,6 +204,83 @@ public class EnginesControllerSecurityTests
     }
 
     [Fact]
+    public void ValidationCacheKey_IncludesPersistedIdSoDuplicateNamesDoNotCollide()
+    {
+        var first = CreateEngine(DateTime.UtcNow, "Raptor");
+        first.Id = 11;
+        var second = CreateEngine(DateTime.UtcNow, "Raptor");
+        second.Id = 22;
+
+        first.ValidationCacheKey.Should().Be("11:Raptor");
+        second.ValidationCacheKey.Should().Be("22:Raptor");
+        first.ValidationCacheKey.Should().NotBe(second.ValidationCacheKey);
+    }
+
+    [Fact]
+    public async Task CreateEngine_WhenNameAlreadyExists_ReturnsConflict()
+    {
+        var options = CreateOptions();
+
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow, "Raptor"));
+            await seedContext.SaveChangesAsync();
+        }
+
+        await using (var createContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(createContext, CreatePrincipal("real-admin"));
+            var result = await controller.CreateEngine(new CreateEngineRequest
+            {
+                Name = "raptor",
+                EngineType = "Raptor",
+                Thrust = 2_100_000,
+                Efficiency = 0.96
+            });
+
+            result.Should().BeOfType<ConflictObjectResult>();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            (await verifyContext.Engines.CountAsync()).Should().Be(1);
+        }
+    }
+
+    [Fact]
+    public async Task UpdateEngine_WhenRenamingToExistingName_ReturnsConflict()
+    {
+        var options = CreateOptions();
+        int engineId;
+
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            seedContext.Engines.Add(CreateEngine(DateTime.UtcNow.AddMinutes(-2), "Raptor"));
+            var other = CreateEngine(DateTime.UtcNow.AddMinutes(-1), "Merlin");
+            seedContext.Engines.Add(other);
+            await seedContext.SaveChangesAsync();
+            engineId = other.Id;
+        }
+
+        await using (var updateContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(updateContext);
+            var result = await controller.UpdateEngine(engineId, new UpdateEngineRequest
+            {
+                Name = "RAPTOR"
+            });
+
+            result.Should().BeOfType<ConflictObjectResult>();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            var stored = await verifyContext.Engines.SingleAsync(e => e.Id == engineId);
+            stored.Name.Should().Be("Merlin");
+        }
+    }
+
+    [Fact]
     public async Task UpdateEngine_WhenFieldsAreOmitted_PreservesExistingEngineParameters()
     {
         var options = CreateOptions();
@@ -255,6 +332,63 @@ public class EnginesControllerSecurityTests
             stored.CreatedAt.Should().Be(createdAt);
             stored.IsActive.Should().BeTrue();
             stored.UpdatedAt.Should().NotBeNull();
+        }
+    }
+
+    [Fact]
+    public async Task CreateEngine_RejectsNonFiniteOrOutOfRangeEfficiency()
+    {
+        await using var context = new HelloblueGKDbContext(CreateOptions());
+        var controller = CreateController(context, CreatePrincipal("admin"));
+
+        var result = await controller.CreateEngine(new CreateEngineRequest
+        {
+            Name = "Infinite Efficiency",
+            EngineType = "Raptor",
+            Thrust = 2_100_000,
+            SpecificImpulse = 375,
+            ChamberPressure = 290,
+            ExpansionRatio = 35,
+            Efficiency = double.PositiveInfinity,
+            Propellant = "Methalox",
+            MixtureRatio = 3.5,
+            MassFlowRate = 625
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        (await context.Engines.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task UpdateEngine_RejectsEfficiencyAboveOneWithoutChangingEngine()
+    {
+        var options = CreateOptions();
+        int engineId;
+
+        await using (var seedContext = new HelloblueGKDbContext(options))
+        {
+            var engine = CreateEngine(DateTime.UtcNow.AddDays(-1));
+            seedContext.Engines.Add(engine);
+            await seedContext.SaveChangesAsync();
+            engineId = engine.Id;
+        }
+
+        await using (var updateContext = new HelloblueGKDbContext(options))
+        {
+            var controller = CreateController(updateContext);
+            var result = await controller.UpdateEngine(engineId, new UpdateEngineRequest
+            {
+                Efficiency = 1.5
+            });
+
+            result.Should().BeOfType<BadRequestObjectResult>();
+        }
+
+        await using (var verifyContext = new HelloblueGKDbContext(options))
+        {
+            var stored = await verifyContext.Engines.SingleAsync(e => e.Id == engineId);
+            stored.Efficiency.Should().Be(0.97);
+            stored.UpdatedAt.Should().BeNull();
         }
     }
 

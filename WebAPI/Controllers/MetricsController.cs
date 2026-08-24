@@ -5,7 +5,9 @@ using Prometheus;
 namespace HB_NLP_Research_Lab.WebAPI.Controllers;
 
 /// <summary>
-/// Prometheus metrics endpoint controller
+/// Prometheus metrics endpoint controller.
+/// Trust gauges must not be client/admin-writable or seeded with sample values —
+/// they share <see cref="Metrics.DefaultRegistry"/> with the scrape endpoint.
 /// </summary>
 [ApiController]
 [Route("api/v{version:apiVersion}/[controller]")]
@@ -39,18 +41,21 @@ public class MetricsController : ControllerBase
         .CreateHistogram("hellobluegk_request_duration_seconds", "Request duration in seconds", new[] { "method", "endpoint" });
 
     /// <summary>
-    /// Get Prometheus metrics
+    /// Export the current Prometheus registry (no sample trust-gauge seeding).
     /// </summary>
     [HttpGet]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> GetMetrics()
     {
-        // Update sample metrics (in production, these would come from actual services)
-        AiInnovationScore.Set(98.5);
-        DigitalTwinAccuracy.Set(99.9);
-        QuantumAdvantage.Set(12.3);
-        EngineArchitectures.Set(4);
-        MultiPhysicsEfficiency.Set(97.0);
+        // Keep gauges registered but do not invent trust values. Real producers
+        // (twin/AI services) may Set them; until then scrapes report the default 0.
+        _ = ApiRequestsTotal;
+        _ = AiInnovationScore;
+        _ = DigitalTwinAccuracy;
+        _ = QuantumAdvantage;
+        _ = EngineArchitectures;
+        _ = MultiPhysicsEfficiency;
+        _ = RequestDuration;
 
         using var stream = new MemoryStream();
         await Prometheus.Metrics.DefaultRegistry.CollectAndExportAsTextAsync(stream, CancellationToken.None);
@@ -61,29 +66,7 @@ public class MetricsController : ControllerBase
     }
 
     /// <summary>
-    /// Update AI innovation score metric
-    /// </summary>
-    [HttpPost("ai-innovation")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult UpdateAiInnovationScore([FromBody] double score)
-    {
-        AiInnovationScore.Set(score);
-        return Ok(new { message = "AI innovation score updated", score });
-    }
-
-    /// <summary>
-    /// Update digital twin accuracy metric
-    /// </summary>
-    [HttpPost("digital-twin-accuracy")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public IActionResult UpdateDigitalTwinAccuracy([FromBody] double accuracy)
-    {
-        DigitalTwinAccuracy.Set(accuracy);
-        return Ok(new { message = "Digital twin accuracy updated", accuracy });
-    }
-
-    /// <summary>
-    /// Record a real-time learning event
+    /// Record a real-time learning event counter increment (not a trust score).
     /// </summary>
     [HttpPost("learning-event")]
     [ProducesResponseType(StatusCodes.Status200OK)]
@@ -93,4 +76,3 @@ public class MetricsController : ControllerBase
         return Ok(new { message = "Learning event recorded" });
     }
 }
-
