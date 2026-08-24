@@ -350,9 +350,12 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var normalized = filePath.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so SCI
+            // evidence cannot point outside the repository (parity with RTM).
             if (normalized.StartsWith("/", StringComparison.Ordinal)
                 || normalized.StartsWith("//", StringComparison.Ordinal)
-                || (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':'))
+                || normalized.Contains("://", StringComparison.Ordinal)
+                || normalized.Contains(':', StringComparison.Ordinal))
             {
                 throw new ArgumentException(
                     "Configuration item file path must be relative to the repository.",

@@ -33,6 +33,28 @@ public class ConfigurationManagementSystemTests
         context.ConfigurationItems.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("http://example.test/core.c")]
+    [InlineData("https://example.test/core.c")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("file:C:/secrets/core.c")]
+    public async Task CreateConfigurationItemAsync_RejectsSchemeUriEvidencePath(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = filePath
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task CreateBaselineAsync_RejectsEmptyName()
     {
