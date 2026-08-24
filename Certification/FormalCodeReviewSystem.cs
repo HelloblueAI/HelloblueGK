@@ -29,6 +29,13 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReview> CreateReviewAsync(CodeReview review)
         {
+            if (string.IsNullOrWhiteSpace(review.FilePath))
+                throw new ArgumentException("File path is required", nameof(review));
+
+            review.FilePath = NormalizeFilePath(review.FilePath);
+            if (string.IsNullOrWhiteSpace(review.FilePath) || review.FilePath.Contains("..", StringComparison.Ordinal))
+                throw new ArgumentException("File path is required and must not contain parent-directory segments", nameof(review));
+
             review.Id = Guid.NewGuid();
             review.CreatedAt = DateTime.UtcNow;
             review.Status = CodeReviewStatus.Pending;
@@ -164,6 +171,12 @@ namespace HB_NLP_Research_Lab.Certification
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
+
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot assign a reviewer to a review with status {review.Status}");
+            }
 
             var assignment = new CodeReviewAssignment
             {

@@ -396,6 +396,47 @@ public class DigitalTwinEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task PredictEngineBehaviorAsync_IgnoresClientEfficiencyOverride()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "EfficiencyForgeTwin";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel
+            {
+                Name = "Raptor",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 2_200_000,
+                    ["Efficiency"] = 0.88
+                }
+            });
+
+        var forged = await _digitalTwinEngine.PredictEngineBehaviorAsync(
+            engineId,
+            new PredictionScenario
+            {
+                Name = "Client efficiency forge",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["efficiency"] = 0.99
+                }
+            });
+
+        forged.PredictedMetrics["Efficiency"].Should().BeApproximately(0.88, 0.0001);
+        forged.PredictedMetrics["Thrust"].Should().Be(2_200_000);
+    }
+
+    [Fact]
+    public async Task InitializeAsync_ShouldAdvertiseUnprovenPredictionAccuracy()
+    {
+        var status = await _digitalTwinEngine.InitializeAsync();
+
+        status.PredictionAccuracy.Should().Be($"{DigitalTwinEngine.UnprovenPredictionAccuracy:P0}");
+        status.PredictionAccuracy.Should().NotContain("99");
+    }
+
+    [Fact]
     public async Task GenerateDigitalTwinSummaryAsync_ShouldReturnSummary()
     {
         // Arrange

@@ -47,18 +47,25 @@ public class CodeReviewsController : ControllerBase
             Author = User.Identity?.Name ?? "System"
         };
 
-        var created = await _crs.CreateReviewAsync(review);
+        try
+        {
+            var created = await _crs.CreateReviewAsync(review);
 
-        return CreatedAtAction(nameof(GetReview), new { id = created.Id },
-            new CodeReviewResponse
-            {
-                ReviewNumber = created.ReviewNumber,
-                FilePath = created.FilePath,
-                FunctionName = created.FunctionName,
-                Status = created.Status.ToString(),
-                Author = created.Author,
-                CreatedAt = created.CreatedAt
-            });
+            return CreatedAtAction(nameof(GetReview), new { id = created.Id },
+                new CodeReviewResponse
+                {
+                    ReviewNumber = created.ReviewNumber,
+                    FilePath = created.FilePath,
+                    FunctionName = created.FunctionName,
+                    Status = created.Status.ToString(),
+                    Author = created.Author,
+                    CreatedAt = created.CreatedAt
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>

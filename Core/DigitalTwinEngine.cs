@@ -97,7 +97,7 @@ namespace HB_NLP_Research_Lab.Core
                     IsReady = true,
                     ActiveSystems = new[] { "Live Learning", "Predictive Twin", "Autonomous Testing", "Real-Time Learning" },
                     LearningMode = "Continuous",
-                    PredictionAccuracy = "99.9%",
+                    PredictionAccuracy = $"{UnprovenPredictionAccuracy:P0}",
                     TwinCount = _digitalTwins.Count,
                     GateCount = _engineGates.Count
                 };
@@ -1058,11 +1058,9 @@ namespace HB_NLP_Research_Lab.Core
                 thrust *= thrustScale;
             }
 
-            if (TryReadScenarioDouble(parameters, "efficiency", out var requestedEfficiency) && requestedEfficiency > 0)
-            {
-                efficiency = Math.Clamp(requestedEfficiency, 0.0, 1.0);
-            }
-            else if (TryReadScenarioDouble(parameters, "throttle", out var throttle) && throttle > 0)
+            // Clients must not set PredictedMetrics.Efficiency directly (Reliability parity).
+            // Throttle and ambient temperature may derate the engine-model baseline only.
+            if (TryReadScenarioDouble(parameters, "throttle", out var throttle) && throttle > 0)
             {
                 // Throttle below 1.0 reduces delivered thrust and efficiency; above 1.0 trades reliability.
                 thrust *= throttle;
