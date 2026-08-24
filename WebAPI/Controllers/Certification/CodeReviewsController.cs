@@ -87,11 +87,13 @@ public class CodeReviewsController : ControllerBase
             CreatedAt = review.CreatedAt,
             Findings = review.Findings.Select(f => new ReviewFindingResponse
             {
+                Id = f.Id,
                 LineNumber = f.LineNumber,
                 Severity = f.Severity.ToString(),
                 Category = f.Category.ToString(),
                 Description = f.Description,
-                Recommendation = f.Recommendation
+                Recommendation = f.Recommendation,
+                Resolved = f.Resolved
             }).ToList()
         });
     }
@@ -287,6 +289,28 @@ public class CodeReviewsController : ControllerBase
     }
 
     /// <summary>
+    /// Resolve (disposition) a review finding so it no longer blocks approval
+    /// </summary>
+    [HttpPost("{id}/findings/{findingId}/resolve")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ResolveFinding(Guid id, Guid findingId)
+    {
+        try
+        {
+            await _crs.ResolveFindingAsync(id, findingId, User.Identity?.Name ?? "System");
+            return Ok(new { message = "Finding resolved successfully" });
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Approve code review
     /// </summary>
     [HttpPost("{id}/approve")]
@@ -298,9 +322,13 @@ public class CodeReviewsController : ControllerBase
             await _crs.ApproveReviewAsync(id, User.Identity?.Name ?? "System");
             return Ok(new { message = "Code review approved successfully" });
         }
-        catch (ArgumentException)
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
         {
             return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
@@ -434,11 +462,13 @@ public class CodeReviewResponse
 
 public class ReviewFindingResponse
 {
+    public Guid Id { get; set; }
     public int LineNumber { get; set; }
     public string Severity { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? Recommendation { get; set; }
+    public bool Resolved { get; set; }
 }
 
 public class CodeReviewSummaryResponse
