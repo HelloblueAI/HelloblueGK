@@ -165,6 +165,74 @@ public class CodeReviewsController : ControllerBase
     }
 
     /// <summary>
+    /// Register a file on the server-owned required-review inventory.
+    /// </summary>
+    [HttpPost("required-files")]
+    [ProducesResponseType(typeof(RequiredReviewFileResponse), StatusCodes.Status201Created)]
+    public async Task<IActionResult> RegisterRequiredFile([FromBody] RegisterRequiredFileRequest request)
+    {
+        try
+        {
+            var required = await _crs.RegisterRequiredFileAsync(
+                request.FilePath,
+                User.Identity?.Name);
+            return CreatedAtAction(
+                nameof(ListRequiredFiles),
+                routeValues: null,
+                value: new RequiredReviewFileResponse
+                {
+                    FilePath = required.FilePath,
+                    IsActive = required.IsActive,
+                    RegisteredBy = required.RegisteredBy,
+                    RegisteredAt = required.RegisteredAt
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// List server-owned required review files
+    /// </summary>
+    [HttpGet("required-files")]
+    [ProducesResponseType(typeof(IEnumerable<RequiredReviewFileResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> ListRequiredFiles()
+    {
+        var files = await _context.RequiredReviewFiles
+            .AsNoTracking()
+            .OrderBy(f => f.FilePath)
+            .Select(f => new RequiredReviewFileResponse
+            {
+                FilePath = f.FilePath,
+                IsActive = f.IsActive,
+                RegisteredBy = f.RegisteredBy,
+                RegisteredAt = f.RegisteredAt
+            })
+            .ToListAsync();
+        return Ok(files);
+    }
+
+    /// <summary>
+    /// Revoke a required review file
+    /// </summary>
+    [HttpDelete("required-files")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RevokeRequiredFile([FromQuery] string filePath)
+    {
+        try
+        {
+            await _crs.RevokeRequiredFileAsync(filePath);
+            return Ok(new { message = "Required review file revoked" });
+        }
+        catch (ArgumentException ex) when (ex.ParamName == "filePath")
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Assign a server-roster certified reviewer.
     /// Client-asserted IsCertified flags are ignored — certification comes from the roster only.
     /// </summary>
@@ -264,13 +332,14 @@ public class CodeReviewsController : ControllerBase
     }
 
     /// <summary>
-    /// Verify code review compliance
+    /// Verify code review compliance against the server-owned required-file roster.
+    /// Client-supplied RequiredFiles bodies are ignored when present (legacy clients).
     /// </summary>
     [HttpPost("verify-compliance")]
     [ProducesResponseType(typeof(CodeReviewComplianceResponse), StatusCodes.Status200OK)]
-    public async Task<IActionResult> VerifyCompliance([FromBody] VerifyComplianceRequest request)
+    public async Task<IActionResult> VerifyCompliance()
     {
-        var check = await _crs.VerifyComplianceAsync(request.RequiredFiles);
+        var check = await _crs.VerifyComplianceAsync();
         return Ok(new CodeReviewComplianceResponse
         {
             CheckedAt = check.CheckedAt,
@@ -316,6 +385,19 @@ public class CertifiedReviewerResponse
     public DateTime CertifiedAt { get; set; }
 }
 
+public class RegisterRequiredFileRequest
+{
+    public string FilePath { get; set; } = string.Empty;
+}
+
+public class RequiredReviewFileResponse
+{
+    public string FilePath { get; set; } = string.Empty;
+    public bool IsActive { get; set; }
+    public string? RegisteredBy { get; set; }
+    public DateTime RegisteredAt { get; set; }
+}
+
 public class SubmitFindingsRequest
 {
     public List<ReviewFindingRequest> Findings { get; set; } = new();
@@ -330,6 +412,9 @@ public class ReviewFindingRequest
     public string? Recommendation { get; set; }
 }
 
+/// <summary>
+/// Legacy request body. RequiredFiles are ignored — compliance uses the server roster.
+/// </summary>
 public class VerifyComplianceRequest
 {
     public List<string> RequiredFiles { get; set; } = new();

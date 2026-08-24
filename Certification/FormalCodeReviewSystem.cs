@@ -215,6 +215,14 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
+            // Terminal statuses must not accept new findings — otherwise a late submit
+            // can clobber Approved → Completed and reopen a compliance forge window.
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot submit findings for review with status {review.Status}");
+            }
+
             var assignment = review.Assignments.FirstOrDefault(a => a.ReviewerName == reviewerName);
             if (assignment == null)
                 throw new ArgumentException($"Reviewer {reviewerName} not assigned to review {reviewId}");
@@ -261,6 +269,12 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Cannot approve review with status {review.Status}");
             }
 
+            if (review.Status != CodeReviewStatus.Completed)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot approve review with status {review.Status}; review must be Completed");
+            }
+
             // Level A reviews require at least one completed certified reviewer assignment.
             // Without this gate, create+approve forges compliance while bypassing assign/findings.
             var hasCompletedCertifiedReviewer = review.Assignments.Any(a =>
@@ -279,16 +293,49 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve review until all assigned reviewers have completed their findings");
             }
 
-            // Check for critical findings
+            // Check for critical findings on the loaded snapshot (pre-claim).
             var criticalFindings = review.Findings.Where(f => f.Severity == FindingSeverity.Critical).ToList();
             if (criticalFindings.Any())
                 throw new InvalidOperationException($"Cannot approve review with {criticalFindings.Count} critical findings");
 
+            // Atomic Completed → Approved claim closes the load/check/SaveChanges TOCTOU where a
+            // concurrent SubmitFindings inserts Critical findings and still leaves Approved.
+            var approvedAt = DateTime.UtcNow;
+            var claimed = await _context.CodeReviews
+                .Where(r => r.Id == reviewId && r.Status == CodeReviewStatus.Completed)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(r => r.Status, CodeReviewStatus.Approved)
+                    .SetProperty(r => r.ApprovedBy, approvedBy)
+                    .SetProperty(r => r.ApprovedAt, approvedAt));
+
+            if (claimed == 0)
+            {
+                await _context.Entry(review).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Cannot approve review with status {review.Status}; concurrent status change detected");
+            }
+
+            // Re-check Critical findings after the claim. If a concurrent submit raced in,
+            // revert the approval so Approved never coexists with Critical findings.
+            var criticalAfterClaim = await _context.ReviewFindings
+                .CountAsync(f => f.ReviewId == reviewId && f.Severity == FindingSeverity.Critical);
+            if (criticalAfterClaim > 0)
+            {
+                await _context.CodeReviews
+                    .Where(r => r.Id == reviewId && r.Status == CodeReviewStatus.Approved)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(r => r.Status, CodeReviewStatus.Completed)
+                        .SetProperty(r => r.ApprovedBy, (string?)null)
+                        .SetProperty(r => r.ApprovedAt, (DateTime?)null));
+
+                throw new InvalidOperationException(
+                    $"Cannot approve review with {criticalAfterClaim} critical findings");
+            }
+
             review.Status = CodeReviewStatus.Approved;
             review.ApprovedBy = approvedBy;
-            review.ApprovedAt = DateTime.UtcNow;
+            review.ApprovedAt = approvedAt;
 
-            await _context.SaveChangesAsync();
             _logger.LogInformation("Approved code review {ReviewNumber}", review.ReviewNumber);
         }
 
@@ -321,17 +368,111 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Verify all code has been reviewed
+        /// Register (or re-activate) a server-owned required review file.
+        /// Compliance scope is never accepted from verify-compliance clients.
         /// </summary>
-        public async Task<CodeReviewComplianceCheck> VerifyComplianceAsync(List<string> requiredFiles)
+        public async Task<RequiredReviewFile> RegisterRequiredFileAsync(
+            string filePath,
+            string? registeredBy = null)
         {
-            requiredFiles ??= new List<string>();
-            var normalizedRequired = requiredFiles
+            if (string.IsNullOrWhiteSpace(filePath))
+                throw new ArgumentException("File path is required", nameof(filePath));
+
+            var normalized = NormalizeFilePath(filePath);
+            if (string.IsNullOrWhiteSpace(normalized))
+                throw new ArgumentException("File path is required", nameof(filePath));
+
+            var matches = (await _context.RequiredReviewFiles.ToListAsync())
+                .Where(f => string.Equals(
+                    NormalizeFilePath(f.FilePath),
+                    normalized,
+                    StringComparison.Ordinal))
+                .OrderByDescending(f => f.IsActive)
+                .ThenByDescending(f => f.RegisteredAt)
+                .ToList();
+
+            var existing = matches.FirstOrDefault();
+            if (existing != null)
+            {
+                existing.IsActive = true;
+                existing.FilePath = normalized;
+                existing.RegisteredBy = string.IsNullOrWhiteSpace(registeredBy)
+                    ? existing.RegisteredBy
+                    : registeredBy.Trim();
+                existing.RegisteredAt = DateTime.UtcNow;
+
+                // Collapse case-variant duplicates so compliance cannot double-count
+                // and unique indexes stay consistent on case-sensitive stores.
+                foreach (var duplicate in matches.Skip(1))
+                {
+                    duplicate.IsActive = false;
+                    if (!string.Equals(duplicate.FilePath, normalized, StringComparison.Ordinal))
+                    {
+                        duplicate.FilePath = $"{normalized}#duplicate-{duplicate.Id:N}";
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                return existing;
+            }
+
+            var required = new RequiredReviewFile
+            {
+                Id = Guid.NewGuid(),
+                FilePath = normalized,
+                IsActive = true,
+                RegisteredBy = string.IsNullOrWhiteSpace(registeredBy) ? null : registeredBy.Trim(),
+                RegisteredAt = DateTime.UtcNow
+            };
+            _context.RequiredReviewFiles.Add(required);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Registered required review file {FilePath}",
+                LogSanitizer.Sanitize(normalized));
+            return required;
+        }
+
+        /// <summary>
+        /// Revoke a required review file so it no longer participates in compliance scope.
+        /// </summary>
+        public async Task RevokeRequiredFileAsync(string filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+                throw new ArgumentException("File path is required", nameof(filePath));
+
+            var existing = await FindRequiredReviewFileAsync(NormalizeFilePath(filePath));
+            if (existing == null)
+                throw new ArgumentException($"Required review file '{filePath.Trim()}' not found", nameof(filePath));
+
+            existing.IsActive = false;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Revoked required review file {FilePath}",
+                LogSanitizer.Sanitize(existing.FilePath));
+        }
+
+        /// <summary>
+        /// Verify all server-roster required files have approved code reviews.
+        /// Client-supplied required-file lists are intentionally not accepted.
+        /// </summary>
+        public async Task<CodeReviewComplianceCheck> VerifyComplianceAsync()
+        {
+            var normalizedRequired = (await _context.RequiredReviewFiles
+                .Where(f => f.IsActive)
+                .Select(f => f.FilePath)
+                .ToListAsync())
                 .Where(f => !string.IsNullOrWhiteSpace(f))
                 .Select(NormalizeFilePath)
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
 
+            return await BuildComplianceCheckAsync(normalizedRequired);
+        }
+
+        private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
+        {
             var approvedFiles = (await _context.CodeReviews
                 .Where(r => r.Status == CodeReviewStatus.Approved)
                 .Select(r => r.FilePath)
@@ -354,7 +495,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (normalizedRequired.Count == 0)
             {
                 check.IsCompliant = false;
-                check.Issues.Add("Required file list is empty; code-review compliance cannot be asserted");
+                check.Issues.Add("Required file roster is empty; code-review compliance cannot be asserted");
                 return check;
             }
 
@@ -372,8 +513,26 @@ namespace HB_NLP_Research_Lab.Certification
             return check;
         }
 
+        private async Task<RequiredReviewFile?> FindRequiredReviewFileAsync(string normalizedFilePath)
+        {
+            // Case-insensitive match so mixed-casing rows collapse onto the canonical path.
+            var candidates = await _context.RequiredReviewFiles.ToListAsync();
+            return candidates
+                .OrderByDescending(f => f.IsActive)
+                .ThenByDescending(f => f.RegisteredAt)
+                .FirstOrDefault(f =>
+                    string.Equals(
+                        NormalizeFilePath(f.FilePath),
+                        normalizedFilePath,
+                        StringComparison.Ordinal));
+        }
+
+        /// <summary>
+        /// Canonical review path: trim, forward slashes, lowercase — so case-sensitive
+        /// stores cannot hold duplicate roster rows for the same logical file.
+        /// </summary>
         private static string NormalizeFilePath(string filePath) =>
-            filePath.Trim().Replace('\\', '/');
+            filePath.Trim().Replace('\\', '/').ToLowerInvariant();
     }
 
     // Data Models
@@ -416,6 +575,19 @@ namespace HB_NLP_Research_Lab.Certification
         public bool IsActive { get; set; } = true;
         public string? CertifiedBy { get; set; }
         public DateTime CertifiedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Server-owned inventory of files that must have approved Level A code reviews.
+    /// Compliance scope is derived from this store — never from client request bodies.
+    /// </summary>
+    public class RequiredReviewFile
+    {
+        public Guid Id { get; set; }
+        public string FilePath { get; set; } = string.Empty;
+        public bool IsActive { get; set; } = true;
+        public string? RegisteredBy { get; set; }
+        public DateTime RegisteredAt { get; set; }
     }
 
     public class ReviewFinding
@@ -502,6 +674,7 @@ namespace HB_NLP_Research_Lab.Certification
         public DbSet<CodeReviewAssignment> CodeReviewAssignments { get; set; }
         public DbSet<ReviewFinding> ReviewFindings { get; set; }
         public DbSet<CertifiedReviewer> CertifiedReviewers { get; set; }
+        public DbSet<RequiredReviewFile> RequiredReviewFiles { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -520,6 +693,13 @@ namespace HB_NLP_Research_Lab.Certification
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.ReviewerName).IsUnique();
                 entity.Property(e => e.ReviewerName).IsRequired().HasMaxLength(256);
+            });
+
+            modelBuilder.Entity<RequiredReviewFile>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.FilePath).IsUnique();
+                entity.Property(e => e.FilePath).IsRequired().HasMaxLength(1024);
             });
         }
     }

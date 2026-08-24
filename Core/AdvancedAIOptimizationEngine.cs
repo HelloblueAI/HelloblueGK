@@ -387,11 +387,6 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class ReinforcementLearningOptimizer
     {
-        private const int EpisodeCount = 24;
-        private const double Epsilon = 0.2;
-        private const double LearningRate = 0.3;
-        private const double DiscountFactor = 0.9;
-
         public Task<StageResult> OptimizeAsync(EngineDesignParameters parameters) =>
             OptimizeAsync(parameters, CancellationToken.None);
 
@@ -402,104 +397,23 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Reinforcement Learning] 🎯 Running policy-iteration optimization...");
             await Task.Delay(120, cancellationToken);
 
-            var random = new Random(HashCode.Combine(
-                parameters.Thrust.GetHashCode(),
-                parameters.SpecificImpulse.GetHashCode(),
-                parameters.ChamberPressure.GetHashCode(),
-                parameters.Efficiency.GetHashCode()));
-
-            var qValues = new double[4];
-            var bestParameters = Clone(parameters);
-            var bestReward = Score(parameters);
-
-            var current = Clone(parameters);
-            for (var episode = 0; episode < EpisodeCount; episode++)
-            {
-                var action = random.NextDouble() < Epsilon
-                    ? random.Next(qValues.Length)
-                    : ArgMax(qValues);
-
-                var candidate = ApplyAction(current, action);
-                var reward = Score(candidate) - Score(current);
-                var nextBest = qValues.Max();
-                qValues[action] += LearningRate * (reward + DiscountFactor * nextBest - qValues[action]);
-
-                current = candidate;
-                var candidateScore = Score(candidate);
-                if (candidateScore > bestReward)
-                {
-                    bestReward = candidateScore;
-                    bestParameters = candidate;
-                }
-            }
-
-            var baselineScore = Score(parameters);
-            var improvement = baselineScore <= 0
-                ? 0
-                : Math.Max(0, ((bestReward - baselineScore) / baselineScore) * 100.0);
-
-            return new StageResult
-            {
-                StageName = "Reinforcement Learning",
-                ImprovementPercentage = improvement,
-                OptimizedParameters = bestParameters,
-                ExecutionTime = TimeSpan.FromMilliseconds(120)
-            };
-        }
-
-        private static EngineDesignParameters ApplyAction(EngineDesignParameters current, int action)
-        {
-            var next = Clone(current);
-            switch (action)
-            {
-                case 0:
-                    next.Thrust *= 1.02;
-                    break;
-                case 1:
-                    next.SpecificImpulse *= 1.015;
-                    break;
-                case 2:
-                    next.ChamberPressure *= 1.01;
-                    break;
-                default:
-                    next.Efficiency = Math.Min(next.Efficiency * 1.02, 0.98);
-                    break;
-            }
-
-            return next;
-        }
-
-        private static double Score(EngineDesignParameters parameters)
-        {
-            // Prefer efficient high-Isp designs with bounded chamber pressure growth.
-            return (parameters.Thrust / 1_000_000.0) * 0.25
-                + (parameters.SpecificImpulse / 400.0) * 0.35
-                + Math.Min(parameters.ChamberPressure / 250.0, 2.0) * 0.1
-                + parameters.Efficiency * 0.3;
-        }
-
-        private static int ArgMax(IReadOnlyList<double> values)
-        {
-            var bestIndex = 0;
-            for (var i = 1; i < values.Count; i++)
-            {
-                if (values[i] > values[bestIndex])
-                {
-                    bestIndex = i;
-                }
-            }
-
-            return bestIndex;
-        }
-
-        private static EngineDesignParameters Clone(EngineDesignParameters parameters)
-        {
-            return new EngineDesignParameters
+            // Fail closed: the prior synthetic ApplyAction/Score loop invented ImprovementPercentage
+            // (and efficiency gains up to 0.98) without real policy evidence — parity with
+            // Genetic/Neural/MultiObjective fail-closed hardening.
+            var optimizedParameters = new EngineDesignParameters
             {
                 Thrust = parameters.Thrust,
                 SpecificImpulse = parameters.SpecificImpulse,
                 ChamberPressure = parameters.ChamberPressure,
                 Efficiency = parameters.Efficiency
+            };
+
+            return new StageResult
+            {
+                StageName = "Reinforcement Learning",
+                ImprovementPercentage = 0.0,
+                OptimizedParameters = optimizedParameters,
+                ExecutionTime = TimeSpan.FromMilliseconds(120)
             };
         }
     }

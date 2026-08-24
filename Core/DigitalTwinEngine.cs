@@ -352,10 +352,18 @@ namespace HB_NLP_Research_Lab.Core
 
             var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
             var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
+            var priorAccuracy = twinForLearning.PredictionAccuracy;
+            if (_predictionAccuracies.TryGetValue(engineId, out var storedAccuracy) &&
+                storedAccuracy.OverallAccuracy > 0)
+            {
+                priorAccuracy = storedAccuracy.OverallAccuracy;
+            }
+
             var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(
                 engineId,
                 flightData,
-                twinForLearning.EngineModel);
+                twinForLearning.EngineModel,
+                priorAccuracy);
 
             // Commit the learning result only after every asynchronous stage
             // succeeds and while replacement/disposal are excluded.
@@ -1154,10 +1162,16 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
         
+        /// <summary>
+        /// Score flight residuals against the engine model.
+        /// Incomplete telemetry cannot raise overall accuracy above unproven, and a single
+        /// perfect echo is EMA-blended with the prior so Admin learn cannot forge 1.0 in one shot.
+        /// </summary>
         public async Task<PredictionAccuracy> UpdatePredictionAccuracyAsync(
             string engineId,
             TestFlightData flightData,
-            EngineModel? engineModel = null)
+            EngineModel? engineModel = null,
+            double? priorOverallAccuracy = null)
         {
             await Task.Delay(50);
 
@@ -1182,12 +1196,34 @@ namespace HB_NLP_Research_Lab.Core
                 modelKeys: new[] { "Reliability" },
                 flightKeys: new[] { "Reliability" });
 
-            var scored = new[] { thrustAccuracy, thermalAccuracy, structuralAccuracy, failureAccuracy }
-                .Where(value => !double.IsNaN(value))
-                .ToArray();
-            var overall = scored.Length > 0
-                ? scored.Average()
+            var rawScores = new[] { thrustAccuracy, thermalAccuracy, structuralAccuracy, failureAccuracy };
+            var scoredCount = rawScores.Count(value => !double.IsNaN(value));
+            // Unscored components contribute unproven (0.5) — never drop them from the average
+            // so a single matching Thrust echo cannot produce OverallAccuracy=1.0.
+            var componentScores = new[]
+            {
+                ResolveComponentAccuracy(thrustAccuracy),
+                ResolveComponentAccuracy(thermalAccuracy),
+                ResolveComponentAccuracy(structuralAccuracy),
+                ResolveComponentAccuracy(failureAccuracy)
+            };
+            var sampleOverall = componentScores.Average();
+
+            // Partial evidence cannot claim better than the unproven baseline.
+            if (scoredCount < rawScores.Length)
+            {
+                sampleOverall = Math.Min(sampleOverall, DigitalTwinEngine.UnprovenPredictionAccuracy);
+            }
+
+            var prior = priorOverallAccuracy is > 0 and <= 1.0
+                ? priorOverallAccuracy.Value
                 : DigitalTwinEngine.UnprovenPredictionAccuracy;
+            // One perfect telemetry echo moves accuracy only a fraction of the way to 1.0.
+            const double sampleWeight = 0.25;
+            var overall = Math.Clamp(
+                (sampleWeight * sampleOverall) + ((1.0 - sampleWeight) * prior),
+                0.0,
+                1.0);
 
             return new PredictionAccuracy
             {

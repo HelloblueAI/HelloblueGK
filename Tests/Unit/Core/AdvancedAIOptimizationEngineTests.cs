@@ -185,7 +185,9 @@ public class AdvancedAIOptimizationEngineTests
         result.AlgorithmType.Should().Be("ReinforcementLearning");
         result.OptimizationStages.Should().ContainSingle();
         result.OptimizationStages[0].StageName.Should().Be("Reinforcement Learning");
-        result.OptimizedParameters.Thrust.Should().BeGreaterThanOrEqualTo(parameters.Thrust);
-        result.OptimizedParameters.Efficiency.Should().BeGreaterThanOrEqualTo(parameters.Efficiency);
+        result.OptimizationStages[0].ImprovementPercentage.Should().Be(0.0);
+        result.OverallImprovement.Should().Be(0.0);
+        result.OptimizedParameters.Thrust.Should().Be(parameters.Thrust);
+        result.OptimizedParameters.Efficiency.Should().Be(parameters.Efficiency);
     }
 }
