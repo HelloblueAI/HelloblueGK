@@ -36,8 +36,8 @@ namespace HB_NLP_Research_Lab.Certification
             var baseline = new SoftwareBaseline
             {
                 Id = Guid.NewGuid(),
-                BaselineName = baselineName,
-                Version = version,
+                BaselineName = baselineName.Trim(),
+                Version = version.Trim(),
                 Description = description,
                 Status = BaselineStatus.Draft,
                 CreatedBy = createdBy,

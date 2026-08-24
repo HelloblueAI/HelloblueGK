@@ -102,7 +102,7 @@ public class FormalCodeReviewSystemTests
         });
 
         await create.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*parent-directory*");
+            .WithMessage("*traversal*");
         context.CodeReviews.Should().BeEmpty();
     }
 
@@ -764,6 +764,93 @@ public class FormalCodeReviewSystemTests
         check.IsCompliant.Should().BeTrue();
         check.ReviewedFiles.Should().Be(1);
         check.UnreviewedFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("/etc/passwd")]
+    [InlineData("C:\\Windows\\system32\\kernel.cs")]
+    [InlineData("../secret.cs")]
+    [InlineData("Core/../../secret.cs")]
+    public async Task CreateReviewAsync_RejectsVacuousOrUnsafeFilePath(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = filePath,
+            FunctionName = "Analyze",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        context.CodeReviews.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateReviewAsync_RejectsEmptyFunctionNameAndInvalidLineRange()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var missingFunction = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/Engine.cs",
+            FunctionName = "  ",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await missingFunction.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Function name is required*");
+
+        var invalidRange = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/Engine.cs",
+            FunctionName = "Ignite",
+            LineStart = 10,
+            LineEnd = 2,
+            Author = "alice"
+        });
+        await invalidRange.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*line range*");
+    }
+
+    [Fact]
+    public async Task SubmitFindingsAsync_RejectsEmptyDescription()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var act = async () => await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "   "
+            }
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Finding description is required*");
+        context.ReviewFindings.Should().BeEmpty();
     }
 
     private static CodeReviewDbContext CreateContext()

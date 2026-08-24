@@ -7,6 +7,23 @@ namespace HelloblueGK.Tests.Unit.Certification;
 public class ConfigurationManagementSystemTests
 {
     [Fact]
+    public async Task CreateBaselineAsync_RejectsEmptyNameOrVersion()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var missingName = async () => await system.CreateBaselineAsync("  ", "1.0.0", "initial", "alice");
+        await missingName.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Baseline name is required*");
+
+        var missingVersion = async () => await system.CreateBaselineAsync("SCI-1", " ", "initial", "alice");
+        await missingVersion.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Baseline version is required*");
+
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CreateConfigurationItemAsync_RejectsEmptyNameAndTraversalPath()
     {
         await using var context = CreateContext();
@@ -53,17 +70,6 @@ public class ConfigurationManagementSystemTests
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*relative*");
         context.ConfigurationItems.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task CreateBaselineAsync_RejectsEmptyName()
-    {
-        await using var context = CreateContext();
-        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
-
-        var act = async () => await system.CreateBaselineAsync("  ", "1.0.0", "initial", "alice");
-        await act.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*Baseline name is required*");
     }
 
     [Fact]

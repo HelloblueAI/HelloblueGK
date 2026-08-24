@@ -181,6 +181,43 @@ public class RequirementsTraceabilitySystemTests
     }
 
     [Fact]
+    public async Task CreateRequirementAsync_SafetyWording_CannotUnderClassifyPriority()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-SAFE-001",
+            Title = "Safety-critical igniter interlock",
+            Description = "Must inhibit igniter without propellant flow",
+            Priority = RequirementPriority.Medium,
+            CreatedBy = "alice"
+        });
+
+        requirement.Priority.Should().Be(RequirementPriority.Critical);
+        var persisted = await context.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Theory]
+    [InlineData(null, "Valve timing", "Main valve open sequence", null, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Valve timing", "Main valve open sequence", RequirementPriority.Medium, RequirementPriority.Medium)]
+    [InlineData("REQ-SAFETY-1", "Valve timing", "Main valve open sequence", RequirementPriority.Low, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Chamber pressure limit", "critical overpressure protection", RequirementPriority.High, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Routine housekeeping", "catastrophic failure containment", RequirementPriority.Medium, RequirementPriority.Critical)]
+    public void ResolvePriority_FailClosedAndKeywordFloor(
+        string? number,
+        string? title,
+        string? description,
+        RequirementPriority? explicitPriority,
+        RequirementPriority expected)
+    {
+        RequirementsTraceabilitySystem.ResolvePriority(number, title, description, explicitPriority)
+            .Should().Be(expected);
+    }
+
+    [Fact]
     public async Task CreateRequirementAsync_RejectsEmptyNumberAndTitle()
     {
         await using var context = CreateContext();

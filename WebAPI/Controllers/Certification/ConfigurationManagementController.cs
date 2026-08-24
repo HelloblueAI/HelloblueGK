@@ -45,31 +45,30 @@ public class ConfigurationManagementController : ControllerBase
             return BadRequest(new { message = "Baseline name and version are required" });
         }
 
-        SoftwareBaseline baseline;
         try
         {
-            baseline = await _cms.CreateBaselineAsync(
+            var baseline = await _cms.CreateBaselineAsync(
                 request.BaselineName.Trim(),
                 request.Version.Trim(),
                 request.Description,
                 User.Identity?.Name ?? "System");
+
+            return CreatedAtAction(nameof(GetBaseline), new { id = baseline.Id },
+                new BaselineResponse
+                {
+                    Id = baseline.Id,
+                    BaselineName = baseline.BaselineName,
+                    Version = baseline.Version,
+                    Description = baseline.Description,
+                    Status = baseline.Status.ToString(),
+                    CreatedBy = baseline.CreatedBy,
+                    CreatedAt = baseline.CreatedAt
+                });
         }
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
-
-        return CreatedAtAction(nameof(GetBaseline), new { id = baseline.Id },
-            new BaselineResponse
-            {
-                Id = baseline.Id,
-                BaselineName = baseline.BaselineName,
-                Version = baseline.Version,
-                Description = baseline.Description,
-                Status = baseline.Status.ToString(),
-                CreatedBy = baseline.CreatedBy,
-                CreatedAt = baseline.CreatedAt
-            });
     }
 
     /// <summary>
