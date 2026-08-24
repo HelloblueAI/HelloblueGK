@@ -273,6 +273,33 @@ public class RequirementsTraceabilitySystemTests
             .WithMessage("*relative*");
     }
 
+    [Theory]
+    [InlineData("http://example.test/design.md")]
+    [InlineData("https://example.test/design.md")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("file:C:/secrets/keys.cs")]
+    public async Task LinkToDesignAsync_RejectsSchemeUriEvidencePath(string designDocument)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-013",
+            Title = "URI integrity",
+            Description = "Design links must stay in-repo",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToDesignAsync(
+            requirement.Id,
+            "DE-1",
+            designDocument);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
+    }
+
     private static RequirementsDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<RequirementsDbContext>()

@@ -52,7 +52,7 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 await _context.SaveChangesAsync();
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
             {
                 _context.Entry(requirement).State = EntityState.Detached;
                 throw new ArgumentException(
@@ -554,9 +554,12 @@ namespace HB_NLP_Research_Lab.Certification
         private static string NormalizeEvidencePath(string path, string paramName)
         {
             var normalized = path.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so RTM
+            // evidence cannot point outside the repository.
             if (normalized.StartsWith("/", StringComparison.Ordinal)
                 || normalized.StartsWith("//", StringComparison.Ordinal)
-                || (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':'))
+                || normalized.Contains("://", StringComparison.Ordinal)
+                || normalized.Contains(':', StringComparison.Ordinal))
             {
                 throw new ArgumentException("Evidence path must be relative to the repository.", paramName);
             }
@@ -569,6 +572,22 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return string.Join("/", segments);
+        }
+
+        private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+        {
+            for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
+            {
+                var message = inner.Message;
+                if (message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+                    || message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 
