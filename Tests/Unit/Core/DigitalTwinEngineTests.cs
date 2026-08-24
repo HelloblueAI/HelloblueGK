@@ -174,7 +174,8 @@ public class DigitalTwinEngineTests : IDisposable
         forged.PredictedMetrics["Reliability"].Should().BeApproximately(
             baseline.PredictedMetrics["Reliability"],
             0.0001);
-        forged.PredictedMetrics["Reliability"].Should().BeLessThan(1.0);
+        baseline.PredictedMetrics["Reliability"].Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+        forged.PredictedMetrics["Reliability"].Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
         forged.ConfidenceLevel.Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
     }
 
@@ -191,7 +192,9 @@ public class DigitalTwinEngineTests : IDisposable
                 Parameters = new Dictionary<string, double>
                 {
                     ["Thrust"] = 1_000_000,
-                    ["Efficiency"] = 0.90
+                    ["Efficiency"] = 0.90,
+                    ["ChamberPressure"] = 250,
+                    ["Reliability"] = 0.95
                 }
             });
 
@@ -204,7 +207,9 @@ public class DigitalTwinEngineTests : IDisposable
                 FlightMetrics = new Dictionary<string, double>
                 {
                     ["Thrust"] = 1_000_000,
-                    ["Efficiency"] = 0.90
+                    ["Efficiency"] = 0.90,
+                    ["ChamberPressure"] = 250,
+                    ["Reliability"] = 0.95
                 }
             });
         var mismatched = await _digitalTwinEngine.LearnFromTestFlightAsync(
@@ -216,22 +221,101 @@ public class DigitalTwinEngineTests : IDisposable
                 FlightMetrics = new Dictionary<string, double>
                 {
                     ["Thrust"] = 500_000,
-                    ["Efficiency"] = 0.45
+                    ["Efficiency"] = 0.45,
+                    ["ChamberPressure"] = 100,
+                    ["Reliability"] = 0.40
                 }
             });
 
-        matching.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeApproximately(1.0, 0.0001);
+        // Complete perfect match is EMA-blended with unproven prior (0.25*1 + 0.75*0.5 = 0.625).
+        matching.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeApproximately(0.625, 0.0001);
         matching.UpdatedPredictionAccuracy.ThrustPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
         matching.UpdatedPredictionAccuracy.ThermalPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
-        // No structural/reliability residuals in the flight metrics — stay unproven, not overall.
-        matching.UpdatedPredictionAccuracy.StructuralPredictionAccuracy
-            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
-        matching.UpdatedPredictionAccuracy.FailurePredictionAccuracy
-            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+        matching.UpdatedPredictionAccuracy.StructuralPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
+        matching.UpdatedPredictionAccuracy.FailurePredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
 
         mismatched.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeLessThan(0.6);
         mismatched.UpdatedPredictionAccuracy.OverallAccuracy
             .Should().BeLessThan(matching.UpdatedPredictionAccuracy.OverallAccuracy);
+    }
+
+    [Fact]
+    public async Task LearnFromTestFlightAsync_PartialTelemetryEcho_CannotForgeHighAccuracy()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineId = "TestEngine_PartialEchoForge";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel
+            {
+                Name = "Echo Engine",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000,
+                    ["Efficiency"] = 0.90,
+                    ["ChamberPressure"] = 250,
+                    ["Reliability"] = 0.95
+                }
+            });
+
+        // Classic Admin echo forge: predict-model values for only two metrics.
+        var echo = await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000,
+                    ["Efficiency"] = 0.90
+                }
+            });
+
+        echo.UpdatedPredictionAccuracy.OverallAccuracy
+            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+        echo.UpdatedPredictionAccuracy.ThrustPredictionAccuracy.Should().BeApproximately(1.0, 0.0001);
+        echo.UpdatedPredictionAccuracy.StructuralPredictionAccuracy
+            .Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
+    }
+
+    [Fact]
+    public async Task LearnFromTestFlightAsync_SinglePerfectEcho_CannotReachFullAccuracy()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        var engineId = "TestEngine_SingleEchoCap";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel
+            {
+                Name = "Full Echo Engine",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000,
+                    ["Efficiency"] = 0.90,
+                    ["ChamberPressure"] = 250,
+                    ["Reliability"] = 0.95
+                }
+            });
+
+        var echo = await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000,
+                    ["Efficiency"] = 0.90,
+                    ["ChamberPressure"] = 250,
+                    ["Reliability"] = 0.95
+                }
+            });
+
+        echo.UpdatedPredictionAccuracy.OverallAccuracy.Should().BeLessThan(0.7);
+        echo.UpdatedPredictionAccuracy.OverallAccuracy
+            .Should().BeGreaterThan(DigitalTwinEngine.UnprovenPredictionAccuracy);
     }
 
     [Fact]
