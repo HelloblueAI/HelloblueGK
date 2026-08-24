@@ -336,6 +336,12 @@ namespace HB_NLP_Research_Lab.Core
     // High-performance CFD solver
     public class HighPerformanceCFDSolver
     {
+        /// <summary>
+        /// Placeholder solver accuracy (percent). Must stay ≤ trust gates so hardcoded
+        /// 99.x constants cannot forge Simulation.Accuracy / ConvergenceRate.
+        /// </summary>
+        public const double UnprovenSolverAccuracy = 50.0;
+
         public Task InitializeAsync() => InitializeAsync(CancellationToken.None);
 
         public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -355,7 +361,8 @@ namespace HB_NLP_Research_Lab.Core
                 PressureDistribution = new Dictionary<string, double> { { "chamber", 300e6 }, { "nozzle", 100e6 } },
                 TurbulenceIntensity = 0.05,
                 CalculationCount = 1000000,
-                Accuracy = 99.5,
+                // Fail-closed unproven — do not emit hardcoded 99.x trust percentages.
+                Accuracy = UnprovenSolverAccuracy,
                 ConvergenceIterations = 150
             };
         }
@@ -363,7 +370,7 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ValidationResult> ValidateModelAsync(string engineModel)
         {
             await Task.Delay(10);
-            return new ValidationResult { Accuracy = 97.2 };
+            return new ValidationResult { Accuracy = UnprovenSolverAccuracy };
         }
     }
 
@@ -389,7 +396,7 @@ namespace HB_NLP_Research_Lab.Core
                 TemperatureDistribution = new Dictionary<string, double> { { "chamber", 3500 }, { "nozzle", 2800 } },
                 HeatTransferRate = 5000000,
                 CalculationCount = 800000,
-                Accuracy = 98.8,
+                Accuracy = HighPerformanceCFDSolver.UnprovenSolverAccuracy,
                 ConvergenceIterations = 120
             };
         }
@@ -397,7 +404,7 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ValidationResult> ValidateModelAsync(string engineModel)
         {
             await Task.Delay(10);
-            return new ValidationResult { Accuracy = 96.9 };
+            return new ValidationResult { Accuracy = HighPerformanceCFDSolver.UnprovenSolverAccuracy };
         }
     }
 
@@ -423,7 +430,7 @@ namespace HB_NLP_Research_Lab.Core
                 StressDistribution = new Dictionary<string, double> { { "chamber", 800e6 }, { "nozzle", 600e6 } },
                 SafetyFactor = 1.5,
                 CalculationCount = 600000,
-                Accuracy = 99.1,
+                Accuracy = HighPerformanceCFDSolver.UnprovenSolverAccuracy,
                 ConvergenceIterations = 100
             };
         }
@@ -431,7 +438,7 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ValidationResult> ValidateModelAsync(string engineModel)
         {
             await Task.Delay(10);
-            return new ValidationResult { Accuracy = 96.9 };
+            return new ValidationResult { Accuracy = HighPerformanceCFDSolver.UnprovenSolverAccuracy };
         }
     }
 

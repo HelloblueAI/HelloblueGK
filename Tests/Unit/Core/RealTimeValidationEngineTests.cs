@@ -23,7 +23,9 @@ public class RealTimeValidationEngineTests : IDisposable
 
         // Assert
         report.Should().NotBeNull();
-        report.OverallAccuracy.Should().BeGreaterThanOrEqualTo(0).And.BeLessThanOrEqualTo(100);
+        report.OverallAccuracy.Should().Be(RealTimeValidationEngine.UnprovenValidationAccuracy);
+        // Must stay below MissionSuccess accuracy floor (95) so placeholder RNG cannot forge passes.
+        report.OverallAccuracy.Should().BeLessThan(95.0);
         // Confidence must stay fail-closed/unproven — no invented 0.85–0.95 trust evidence.
         report.ConfidenceLevel.Should().Be(RealTimeValidationEngine.UnprovenValidationConfidence);
     }

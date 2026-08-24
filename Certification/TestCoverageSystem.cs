@@ -144,23 +144,101 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Generate coverage report for certification
+        /// Register (or re-activate) a server-owned required coverage file.
+        /// Compliance scope is never accepted from client RecordCoverage inventories alone.
+        /// </summary>
+        public async Task<RequiredCoverageFile> RegisterRequiredFileAsync(
+            string filePath,
+            bool isSafetyCritical = true,
+            string? registeredBy = null)
+        {
+            var normalized = NormalizeFilePath(filePath);
+            var existing = await FindRequiredCoverageFileAsync(normalized);
+            if (existing != null)
+            {
+                existing.IsActive = true;
+                existing.FilePath = normalized;
+                existing.IsSafetyCritical = isSafetyCritical;
+                existing.RegisteredBy = string.IsNullOrWhiteSpace(registeredBy)
+                    ? existing.RegisteredBy
+                    : registeredBy.Trim();
+                existing.RegisteredAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return existing;
+            }
+
+            var required = new RequiredCoverageFile
+            {
+                Id = Guid.NewGuid(),
+                FilePath = normalized,
+                IsSafetyCritical = isSafetyCritical,
+                IsActive = true,
+                RegisteredBy = string.IsNullOrWhiteSpace(registeredBy) ? null : registeredBy.Trim(),
+                RegisteredAt = DateTime.UtcNow
+            };
+            _context.RequiredCoverageFiles.Add(required);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Registered required coverage file {FilePath} (safetyCritical={IsSafetyCritical})",
+                LogSanitizer.Sanitize(normalized),
+                isSafetyCritical);
+            return required;
+        }
+
+        /// <summary>
+        /// Revoke a required coverage file so it no longer participates in compliance scope.
+        /// </summary>
+        public async Task RevokeRequiredFileAsync(string filePath)
+        {
+            var existing = await FindRequiredCoverageFileAsync(NormalizeFilePath(filePath));
+            if (existing == null)
+                throw new ArgumentException($"Required coverage file '{filePath.Trim()}' not found", nameof(filePath));
+
+            existing.IsActive = false;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Revoked required coverage file {FilePath}",
+                LogSanitizer.Sanitize(existing.FilePath));
+        }
+
+        /// <summary>
+        /// Generate coverage report for certification against the server-owned roster.
         /// </summary>
         public async Task<CoverageReport> GenerateCoverageReportAsync()
         {
-            var allCoverage = await _context.CodeCoverage
-                .Include(c => c.TestCaseLinks)
+            var roster = await _context.RequiredCoverageFiles
+                .Where(f => f.IsActive)
                 .ToListAsync();
+            var coverageByPath = (await _context.CodeCoverage
+                .Include(c => c.TestCaseLinks)
+                .ToListAsync())
+                .ToDictionary(c => c.FilePath, StringComparer.Ordinal);
+
+            var rosterCoverage = new List<CodeCoverage>();
+            foreach (var required in roster)
+            {
+                if (coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                {
+                    // Roster owns the safety-critical flag for Level A MC/DC scope.
+                    coverage.IsSafetyCritical = required.IsSafetyCritical;
+                    coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
+                                                      coverage.BranchCoverage >= 100.0 &&
+                                                      (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
+                    rosterCoverage.Add(coverage);
+                }
+            }
 
             var report = new CoverageReport
             {
                 GeneratedAt = DateTime.UtcNow,
-                TotalFiles = allCoverage.Count,
-                FilesWith100PercentStatementCoverage = allCoverage.Count(c => c.StatementCoverage >= 100.0),
-                FilesWith100PercentBranchCoverage = allCoverage.Count(c => c.BranchCoverage >= 100.0),
-                SafetyCriticalFiles = allCoverage.Count(c => c.IsSafetyCritical),
-                SafetyCriticalFilesWithMCDC = allCoverage.Count(c => c.IsSafetyCritical && c.MCDCCoverage >= 100.0),
-                Files = allCoverage.Select(c => new CoverageReportEntry
+                TotalFiles = roster.Count,
+                FilesWith100PercentStatementCoverage = rosterCoverage.Count(c => c.StatementCoverage >= 100.0),
+                FilesWith100PercentBranchCoverage = rosterCoverage.Count(c => c.BranchCoverage >= 100.0),
+                SafetyCriticalFiles = roster.Count(r => r.IsSafetyCritical),
+                SafetyCriticalFilesWithMCDC = rosterCoverage.Count(c => c.IsSafetyCritical && c.MCDCCoverage >= 100.0),
+                Files = rosterCoverage.Select(c => new CoverageReportEntry
                 {
                     FilePath = c.FilePath,
                     StatementCoverage = c.StatementCoverage,
@@ -173,94 +251,158 @@ namespace HB_NLP_Research_Lab.Certification
                 }).ToList()
             };
 
-            // Calculate overall coverage
-            if (allCoverage.Any())
+            if (rosterCoverage.Count > 0)
             {
-                report.OverallStatementCoverage = allCoverage.Average(c => c.StatementCoverage);
-                report.OverallBranchCoverage = allCoverage.Average(c => c.BranchCoverage);
-                report.OverallMCDCCoverage = allCoverage
+                report.OverallStatementCoverage = rosterCoverage.Average(c => c.StatementCoverage);
+                report.OverallBranchCoverage = rosterCoverage.Average(c => c.BranchCoverage);
+                report.OverallMCDCCoverage = rosterCoverage
                     .Where(c => c.IsSafetyCritical)
                     .DefaultIfEmpty()
                     .Average(c => c?.MCDCCoverage ?? 0);
             }
 
-            // Fail closed: empty coverage DB / no safety-critical inventory must never
-            // report DO-178C Level A compliance (vacuous MC/DC when SafetyCriticalFiles==0).
-            report.MeetsDO178CLevelA = report.TotalFiles > 0 &&
+            // Fail closed: empty roster / missing evidence / no safety-critical inventory.
+            var missingRosterFiles = roster.Count(r => !coverageByPath.ContainsKey(r.FilePath));
+            report.MeetsDO178CLevelA = roster.Count > 0 &&
+                                      missingRosterFiles == 0 &&
                                       report.SafetyCriticalFiles > 0 &&
                                       report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
                                       report.FilesWith100PercentBranchCoverage == report.TotalFiles &&
                                       report.SafetyCriticalFilesWithMCDC == report.SafetyCriticalFiles;
 
-            // Identify gaps
-            report.CoverageGaps = allCoverage
-                .Where(c => !c.MeetsLevelARequirements)
-                .Select(c => new CoverageGap
+            report.CoverageGaps = roster
+                .Select(required =>
                 {
-                    FilePath = c.FilePath,
-                    StatementCoverage = c.StatementCoverage,
-                    BranchCoverage = c.BranchCoverage,
-                    MCDCCoverage = c.MCDCCoverage,
-                    IsSafetyCritical = c.IsSafetyCritical,
-                    GapDescription = GenerateGapDescription(c)
-                }).ToList();
+                    if (!coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                    {
+                        return new CoverageGap
+                        {
+                            FilePath = required.FilePath,
+                            IsSafetyCritical = required.IsSafetyCritical,
+                            GapDescription = "No coverage evidence recorded for required file"
+                        };
+                    }
+
+                    return coverage.MeetsLevelARequirements
+                        ? null
+                        : new CoverageGap
+                        {
+                            FilePath = coverage.FilePath,
+                            StatementCoverage = coverage.StatementCoverage,
+                            BranchCoverage = coverage.BranchCoverage,
+                            MCDCCoverage = coverage.MCDCCoverage,
+                            IsSafetyCritical = coverage.IsSafetyCritical,
+                            GapDescription = GenerateGapDescription(coverage)
+                        };
+                })
+                .Where(gap => gap != null)
+                .Select(gap => gap!)
+                .ToList();
 
             return report;
         }
 
         /// <summary>
-        /// Verify coverage compliance for certification
+        /// Verify coverage compliance against the server-owned required-file roster.
+        /// Client-invented coverage rows outside the roster cannot forge IsCompliant.
         /// </summary>
         public async Task<CoverageComplianceCheck> VerifyComplianceAsync()
         {
-            var allCoverage = await _context.CodeCoverage.ToListAsync();
+            var roster = await _context.RequiredCoverageFiles
+                .Where(f => f.IsActive)
+                .ToListAsync();
+            var coverageByPath = (await _context.CodeCoverage.ToListAsync())
+                .ToDictionary(c => c.FilePath, StringComparer.Ordinal);
+
+            var rosterCoverage = new List<CodeCoverage>();
+            var missingFiles = new List<string>();
+            foreach (var required in roster)
+            {
+                if (!coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                {
+                    missingFiles.Add(required.FilePath);
+                    continue;
+                }
+
+                coverage.IsSafetyCritical = required.IsSafetyCritical;
+                coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
+                                                  coverage.BranchCoverage >= 100.0 &&
+                                                  (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
+                rosterCoverage.Add(coverage);
+            }
 
             var check = new CoverageComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
-                TotalFiles = allCoverage.Count,
-                FilesWith100PercentStatementCoverage = allCoverage.Count(c => c.StatementCoverage >= 100.0),
-                FilesWith100PercentBranchCoverage = allCoverage.Count(c => c.BranchCoverage >= 100.0),
-                SafetyCriticalFiles = allCoverage.Count(c => c.IsSafetyCritical),
-                SafetyCriticalFilesWithMCDC = allCoverage.Count(c => c.IsSafetyCritical && c.MCDCCoverage >= 100.0)
+                TotalFiles = roster.Count,
+                FilesWith100PercentStatementCoverage = rosterCoverage.Count(c => c.StatementCoverage >= 100.0),
+                FilesWith100PercentBranchCoverage = rosterCoverage.Count(c => c.BranchCoverage >= 100.0),
+                SafetyCriticalFiles = roster.Count(r => r.IsSafetyCritical),
+                SafetyCriticalFilesWithMCDC = rosterCoverage.Count(c => c.IsSafetyCritical && c.MCDCCoverage >= 100.0)
             };
 
-            // Fail closed when no coverage has been recorded — 0/0 must not imply compliance.
+            // Fail closed when the server roster is empty — cherry-picked client files must not imply compliance.
             if (check.TotalFiles == 0)
             {
                 check.StatementCoverageCompliant = false;
                 check.BranchCoverageCompliant = false;
                 check.MCDCCoverageCompliant = false;
                 check.IsCompliant = false;
-                check.Issues.Add("No coverage data recorded; DO-178C Level A compliance cannot be asserted");
+                check.Issues.Add("Required coverage roster is empty; DO-178C Level A compliance cannot be asserted");
                 return check;
             }
 
-            // DO-178C Level A requirements — MC/DC cannot be vacuously true with zero safety-critical files.
+            if (missingFiles.Count > 0)
+            {
+                check.StatementCoverageCompliant = false;
+                check.BranchCoverageCompliant = false;
+                check.MCDCCoverageCompliant = false;
+                check.IsCompliant = false;
+                check.Issues.Add($"{missingFiles.Count} required coverage file(s) have no recorded evidence");
+                foreach (var missing in missingFiles)
+                {
+                    check.Issues.Add($"Missing coverage evidence: {missing}");
+                }
+
+                return check;
+            }
+
             check.StatementCoverageCompliant = check.FilesWith100PercentStatementCoverage == check.TotalFiles;
             check.BranchCoverageCompliant = check.FilesWith100PercentBranchCoverage == check.TotalFiles;
             check.MCDCCoverageCompliant = check.SafetyCriticalFiles > 0 &&
                                          check.SafetyCriticalFilesWithMCDC == check.SafetyCriticalFiles;
 
-            check.IsCompliant = check.StatementCoverageCompliant && 
-                               check.BranchCoverageCompliant && 
+            check.IsCompliant = check.StatementCoverageCompliant &&
+                               check.BranchCoverageCompliant &&
                                check.MCDCCoverageCompliant;
 
             if (!check.IsCompliant)
             {
                 if (!check.StatementCoverageCompliant)
-                    check.Issues.Add($"Not all files have 100% statement coverage ({check.FilesWith100PercentStatementCoverage}/{check.TotalFiles})");
-                
+                    check.Issues.Add($"Not all required files have 100% statement coverage ({check.FilesWith100PercentStatementCoverage}/{check.TotalFiles})");
+
                 if (!check.BranchCoverageCompliant)
-                    check.Issues.Add($"Not all files have 100% branch coverage ({check.FilesWith100PercentBranchCoverage}/{check.TotalFiles})");
-                
+                    check.Issues.Add($"Not all required files have 100% branch coverage ({check.FilesWith100PercentBranchCoverage}/{check.TotalFiles})");
+
                 if (check.SafetyCriticalFiles == 0)
-                    check.Issues.Add("No safety-critical files marked; MC/DC compliance cannot be asserted");
+                    check.Issues.Add("No safety-critical files on the required coverage roster; MC/DC compliance cannot be asserted");
                 else if (!check.MCDCCoverageCompliant)
-                    check.Issues.Add($"Not all safety-critical files have 100% MC/DC coverage ({check.SafetyCriticalFilesWithMCDC}/{check.SafetyCriticalFiles})");
+                    check.Issues.Add($"Not all safety-critical required files have 100% MC/DC coverage ({check.SafetyCriticalFilesWithMCDC}/{check.SafetyCriticalFiles})");
             }
 
             return check;
+        }
+
+        private async Task<RequiredCoverageFile?> FindRequiredCoverageFileAsync(string normalizedFilePath)
+        {
+            var candidates = await _context.RequiredCoverageFiles
+                .Where(f => f.FilePath == normalizedFilePath)
+                .ToListAsync();
+
+            return candidates.FirstOrDefault(f =>
+                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.Ordinal))
+                   ?? candidates.FirstOrDefault(f =>
+                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.OrdinalIgnoreCase));
         }
 
         private string GenerateGapDescription(CodeCoverage coverage)
@@ -489,6 +631,20 @@ namespace HB_NLP_Research_Lab.Certification
         public List<string> Issues { get; set; } = new();
     }
 
+    /// <summary>
+    /// Server-owned inventory of files that must have Level A coverage evidence.
+    /// Compliance scope is derived from this store — never from client-invented coverage rows alone.
+    /// </summary>
+    public class RequiredCoverageFile
+    {
+        public Guid Id { get; set; }
+        public string FilePath { get; set; } = string.Empty;
+        public bool IsSafetyCritical { get; set; } = true;
+        public bool IsActive { get; set; } = true;
+        public string? RegisteredBy { get; set; }
+        public DateTime RegisteredAt { get; set; }
+    }
+
     // DbContext
     public class TestCoverageDbContext : DbContext
     {
@@ -496,6 +652,7 @@ namespace HB_NLP_Research_Lab.Certification
 
         public DbSet<CodeCoverage> CodeCoverage { get; set; }
         public DbSet<CoverageTestCaseLink> CoverageTestCaseLinks { get; set; }
+        public DbSet<RequiredCoverageFile> RequiredCoverageFiles { get; set; }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
@@ -506,6 +663,13 @@ namespace HB_NLP_Research_Lab.Certification
                 entity.HasKey(e => e.Id);
                 entity.HasIndex(e => e.FilePath).IsUnique();
                 entity.HasMany(e => e.TestCaseLinks).WithOne().HasForeignKey("CodeCoverageId");
+            });
+
+            modelBuilder.Entity<RequiredCoverageFile>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.HasIndex(e => e.FilePath).IsUnique();
+                entity.Property(e => e.FilePath).IsRequired().HasMaxLength(1024);
             });
         }
     }

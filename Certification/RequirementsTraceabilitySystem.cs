@@ -43,7 +43,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Link requirement to design element
         /// </summary>
-        public async Task LinkToDesignAsync(Guid requirementId, string designElementId, string designDocument)
+        public async Task<RequirementDesignLink> LinkToDesignAsync(Guid requirementId, string designElementId, string designDocument)
         {
             if (string.IsNullOrWhiteSpace(designElementId))
                 throw new ArgumentException("Design element id is required", nameof(designElementId));
@@ -65,16 +65,17 @@ namespace HB_NLP_Research_Lab.Certification
             };
 
             _context.RequirementDesignLinks.Add(link);
-            await UpdateTraceabilityStatusAsync(requirementId);
             await _context.SaveChangesAsync();
+            await UpdateTraceabilityStatusAsync(requirementId);
 
             _logger.LogInformation("Linked requirement {RequirementId} to design {DesignElementId}", requirementId, designElementId);
+            return link;
         }
 
         /// <summary>
         /// Link requirement to code implementation
         /// </summary>
-        public async Task LinkToCodeAsync(Guid requirementId, string codeFile, int lineStart, int lineEnd, string functionName)
+        public async Task<RequirementCodeLink> LinkToCodeAsync(Guid requirementId, string codeFile, int lineStart, int lineEnd, string functionName)
         {
             if (string.IsNullOrWhiteSpace(codeFile))
                 throw new ArgumentException("Code file is required", nameof(codeFile));
@@ -100,17 +101,18 @@ namespace HB_NLP_Research_Lab.Certification
             };
 
             _context.RequirementCodeLinks.Add(link);
-            await UpdateTraceabilityStatusAsync(requirementId);
             await _context.SaveChangesAsync();
+            await UpdateTraceabilityStatusAsync(requirementId);
 
             _logger.LogInformation("Linked requirement {RequirementId} to code {CodeFile}:{LineStart}-{LineEnd}", 
                 requirementId, LogSanitizer.Sanitize(codeFile), lineStart, lineEnd);
+            return link;
         }
 
         /// <summary>
         /// Link requirement to test case
         /// </summary>
-        public async Task LinkToTestAsync(Guid requirementId, string testCaseId, string testFile, TestCoverageType coverageType)
+        public async Task<RequirementTestLink> LinkToTestAsync(Guid requirementId, string testCaseId, string testFile, TestCoverageType coverageType)
         {
             if (string.IsNullOrWhiteSpace(testCaseId))
                 throw new ArgumentException("Test case id is required", nameof(testCaseId));
@@ -134,10 +136,11 @@ namespace HB_NLP_Research_Lab.Certification
             };
 
             _context.RequirementTestLinks.Add(link);
-            await UpdateTraceabilityStatusAsync(requirementId);
             await _context.SaveChangesAsync();
+            await UpdateTraceabilityStatusAsync(requirementId);
 
             _logger.LogInformation("Linked requirement {RequirementId} to test {TestCaseId}", requirementId, LogSanitizer.SanitizeIdentifier(testCaseId));
+            return link;
         }
 
         /// <summary>
@@ -233,6 +236,17 @@ namespace HB_NLP_Research_Lab.Certification
                         Description = $"Requirement {req.RequirementNumber} has no design link"
                     });
                 }
+                else if (!HasVerifiedDesignLinks(req))
+                {
+                    report.Issues.Add(new TraceabilityIssue
+                    {
+                        RequirementId = req.Id,
+                        RequirementNumber = req.RequirementNumber,
+                        IssueType = TraceabilityIssueType.MissingDesignLink,
+                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Description = $"Requirement {req.RequirementNumber} has no verified design link"
+                    });
+                }
 
                 // Check if requirement has code implementation
                 if (!hasCode)
@@ -244,6 +258,17 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = TraceabilityIssueType.MissingCodeLink,
                         Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no code implementation"
+                    });
+                }
+                else if (!HasVerifiedCodeLinks(req))
+                {
+                    report.Issues.Add(new TraceabilityIssue
+                    {
+                        RequirementId = req.Id,
+                        RequirementNumber = req.RequirementNumber,
+                        IssueType = TraceabilityIssueType.MissingCodeLink,
+                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Description = $"Requirement {req.RequirementNumber} has no verified code link"
                     });
                 }
 
@@ -259,11 +284,25 @@ namespace HB_NLP_Research_Lab.Certification
                         Description = $"Requirement {req.RequirementNumber} has no test coverage"
                     });
                 }
+                else if (!HasPassedVerifiedTestLinks(req))
+                {
+                    report.Issues.Add(new TraceabilityIssue
+                    {
+                        RequirementId = req.Id,
+                        RequirementNumber = req.RequirementNumber,
+                        IssueType = TraceabilityIssueType.MissingTestLink,
+                        Severity = IssueSeverity.Critical,
+                        Description = $"Requirement {req.RequirementNumber} has no verified passed test evidence"
+                    });
+                }
 
-                // Check for MC/DC coverage for safety-critical requirements
+                // Check for MC/DC coverage for safety-critical requirements.
+                // CoverageType alone is client-asserted — require verified Passed MC/DC evidence.
                 if (req.Priority == RequirementPriority.Critical &&
                     !req.TestLinks.Any(t =>
                         t.CoverageType == TestCoverageType.MCDC &&
+                        t.Verified &&
+                        t.TestResult == TestResult.Passed &&
                         !string.IsNullOrWhiteSpace(t.TestCaseId) &&
                         !string.IsNullOrWhiteSpace(t.TestFile)))
                 {
@@ -273,7 +312,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingMCDCCoverage,
                         Severity = IssueSeverity.Critical,
-                        Description = $"Critical requirement {req.RequirementNumber} lacks MC/DC coverage"
+                        Description = $"Critical requirement {req.RequirementNumber} lacks verified passed MC/DC coverage"
                     });
                 }
             }
@@ -314,15 +353,19 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (requirement == null) return;
 
-            bool hasDesign = HasMeaningfulDesignLinks(requirement);
-            bool hasCode = HasMeaningfulCodeLinks(requirement);
-            bool hasTest = HasMeaningfulTestLinks(requirement);
+            // FullyTraced requires verified (and for tests, passed) evidence — link presence alone is not enough.
+            bool hasDesign = HasVerifiedDesignLinks(requirement);
+            bool hasCode = HasVerifiedCodeLinks(requirement);
+            bool hasTest = HasPassedVerifiedTestLinks(requirement);
+            bool hasAnyLink = HasMeaningfulDesignLinks(requirement) ||
+                              HasMeaningfulCodeLinks(requirement) ||
+                              HasMeaningfulTestLinks(requirement);
 
             if (hasDesign && hasCode && hasTest)
             {
                 requirement.TraceabilityStatus = TraceabilityStatus.FullyTraced;
             }
-            else if (hasDesign || hasCode || hasTest)
+            else if (hasAnyLink)
             {
                 requirement.TraceabilityStatus = TraceabilityStatus.PartiallyTraced;
             }
@@ -334,22 +377,126 @@ namespace HB_NLP_Research_Lab.Certification
             await _context.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Mark an existing design/code/test link as verified (server-owned disposition step).
+        /// </summary>
+        public async Task VerifyLinkAsync(Guid requirementId, Guid linkId, RequirementLinkKind linkKind)
+        {
+            var requirement = await _context.Requirements
+                .Include(r => r.DesignLinks)
+                .Include(r => r.CodeLinks)
+                .Include(r => r.TestLinks)
+                .FirstOrDefaultAsync(r => r.Id == requirementId);
+            if (requirement == null)
+                throw new ArgumentException($"Requirement {requirementId} not found");
+
+            switch (linkKind)
+            {
+                case RequirementLinkKind.Design:
+                {
+                    var link = requirement.DesignLinks.FirstOrDefault(d => d.Id == linkId);
+                    if (link == null)
+                        throw new ArgumentException($"Design link {linkId} not found");
+                    if (!HasMeaningfulDesignLink(link))
+                        throw new InvalidOperationException("Cannot verify a vacuous design link");
+                    link.Verified = true;
+                    break;
+                }
+                case RequirementLinkKind.Code:
+                {
+                    var link = requirement.CodeLinks.FirstOrDefault(c => c.Id == linkId);
+                    if (link == null)
+                        throw new ArgumentException($"Code link {linkId} not found");
+                    if (!HasMeaningfulCodeLink(link))
+                        throw new InvalidOperationException("Cannot verify a vacuous code link");
+                    link.Verified = true;
+                    break;
+                }
+                case RequirementLinkKind.Test:
+                {
+                    var link = requirement.TestLinks.FirstOrDefault(t => t.Id == linkId);
+                    if (link == null)
+                        throw new ArgumentException($"Test link {linkId} not found");
+                    if (!HasMeaningfulTestLink(link))
+                        throw new InvalidOperationException("Cannot verify a vacuous test link");
+                    if (link.TestResult != TestResult.Passed)
+                        throw new InvalidOperationException("Cannot verify a test link that has not Passed");
+                    link.Verified = true;
+                    break;
+                }
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(linkKind));
+            }
+
+            await _context.SaveChangesAsync();
+            await UpdateTraceabilityStatusAsync(requirementId);
+        }
+
+        /// <summary>
+        /// Record an execution result for a test link. Passing is required before verify.
+        /// </summary>
+        public async Task RecordTestResultAsync(Guid requirementId, Guid testLinkId, TestResult testResult)
+        {
+            var requirement = await _context.Requirements
+                .Include(r => r.TestLinks)
+                .FirstOrDefaultAsync(r => r.Id == requirementId);
+            if (requirement == null)
+                throw new ArgumentException($"Requirement {requirementId} not found");
+
+            var link = requirement.TestLinks.FirstOrDefault(t => t.Id == testLinkId);
+            if (link == null)
+                throw new ArgumentException($"Test link {testLinkId} not found");
+
+            link.TestResult = testResult;
+            if (testResult != TestResult.Passed)
+            {
+                // Failed/NotRun/Blocked evidence cannot remain verified.
+                link.Verified = false;
+            }
+
+            await _context.SaveChangesAsync();
+            await UpdateTraceabilityStatusAsync(requirementId);
+        }
+
         private static bool HasMeaningfulDesignLinks(Requirement requirement) =>
-            requirement.DesignLinks.Any(d =>
-                !string.IsNullOrWhiteSpace(d.DesignElementId) &&
-                !string.IsNullOrWhiteSpace(d.DesignDocument));
+            requirement.DesignLinks.Any(HasMeaningfulDesignLink);
 
         private static bool HasMeaningfulCodeLinks(Requirement requirement) =>
-            requirement.CodeLinks.Any(c =>
-                !string.IsNullOrWhiteSpace(c.CodeFile) &&
-                !string.IsNullOrWhiteSpace(c.FunctionName) &&
-                c.LineStart > 0 &&
-                c.LineEnd >= c.LineStart);
+            requirement.CodeLinks.Any(HasMeaningfulCodeLink);
 
         private static bool HasMeaningfulTestLinks(Requirement requirement) =>
+            requirement.TestLinks.Any(HasMeaningfulTestLink);
+
+        private static bool HasVerifiedDesignLinks(Requirement requirement) =>
+            requirement.DesignLinks.Any(d => HasMeaningfulDesignLink(d) && d.Verified);
+
+        private static bool HasVerifiedCodeLinks(Requirement requirement) =>
+            requirement.CodeLinks.Any(c => HasMeaningfulCodeLink(c) && c.Verified);
+
+        private static bool HasPassedVerifiedTestLinks(Requirement requirement) =>
             requirement.TestLinks.Any(t =>
-                !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-                !string.IsNullOrWhiteSpace(t.TestFile));
+                HasMeaningfulTestLink(t) && t.Verified && t.TestResult == TestResult.Passed);
+
+        private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
+            !string.IsNullOrWhiteSpace(d.DesignElementId) &&
+            !string.IsNullOrWhiteSpace(d.DesignDocument);
+
+        private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
+            !string.IsNullOrWhiteSpace(c.CodeFile) &&
+            !string.IsNullOrWhiteSpace(c.FunctionName) &&
+            c.LineStart > 0 &&
+            c.LineEnd >= c.LineStart;
+
+        private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
+            !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+            !string.IsNullOrWhiteSpace(t.TestFile);
+    }
+
+    public enum RequirementLinkKind
+    {
+        Design,
+        Code,
+        Test
     }
 
     // Data Models
