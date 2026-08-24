@@ -641,7 +641,7 @@ namespace HB_NLP_Research_Lab.Core
             await _next(context);
         }
 
-        internal static bool ShouldApply(HttpContext context)
+        public static bool ShouldApply(HttpContext context)
         {
             if (context.Request.Headers.ContainsKey("Authorization"))
             {

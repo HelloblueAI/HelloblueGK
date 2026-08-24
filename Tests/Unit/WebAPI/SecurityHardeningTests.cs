@@ -1337,6 +1337,37 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task UnauthenticatedExpensiveMutation_IsRateLimitedBeforeAuthorization()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production, new Dictionary<string, string?>
+        {
+            ["EnableRateLimiting"] = "true"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        HttpResponseMessage lastAllowed = default!;
+        for (var i = 0; i < 10; i++)
+        {
+            lastAllowed = await client.PostAsync(
+                "/api/v1/simulations",
+                new StringContent("{}", Encoding.UTF8, "application/json"));
+        }
+
+        var blocked = await client.PostAsync(
+            "/api/v1/simulations",
+            new StringContent("{}", Encoding.UTF8, "application/json"));
+
+        lastAllowed.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        lastAllowed.Headers.Should().ContainKey("X-RateLimit-Limit");
+        lastAllowed.Headers.GetValues("X-RateLimit-Limit").Should().Contain("10");
+        blocked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        blocked.Headers.Should().ContainKey("Retry-After");
+    }
+
+    [Fact]
     public async Task JwtBearer_WithInactiveUser_RejectsPreviouslyIssuedToken()
     {
         using var factory = new TestWebApiFactory(Environments.Production);
