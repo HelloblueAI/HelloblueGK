@@ -126,18 +126,15 @@ namespace HB_NLP_Research_Lab.Core
                         thermalResult?.ConvergenceIterations ?? 0,
                         structuralResult?.ConvergenceIterations ?? 0
                     }.Max();
-                    // Average positive solver accuracies. Do not DefaultIfEmpty(95.0) — that
-                    // invented optimistic MultiPhysics ConvergenceRate when solvers were unproven.
-                    // (Open #139 also removes DefaultIfEmpty; keep fail-closed if all are ≤0.)
+                    // Fail closed: average positive solver accuracies only. Do not invent
+                    // ConvergenceRate/Accuracy (including DefaultIfEmpty(95)) when solvers return nothing.
                     var positiveAccuracies = new[]
                     {
                         cfdResult?.Accuracy ?? 0,
                         thermalResult?.Accuracy ?? 0,
                         structuralResult?.Accuracy ?? 0
                     }.Where(value => value > 0).ToArray();
-                    solverAccuracy = positiveAccuracies.Length > 0
-                        ? positiveAccuracies.Average()
-                        : 0.0;
+                    solverAccuracy = positiveAccuracies.Length > 0 ? positiveAccuracies.Average() : 0;
                     break;
             }
 
@@ -160,7 +157,10 @@ namespace HB_NLP_Research_Lab.Core
                 thermalResult,
                 structuralResult);
 
-            // Real-time validation
+            // Keep ValidationReport.OverallAccuracy as the validation engine's fail-closed
+            // evidence score (unproven=50 without trusted flight/test binding). Do NOT overwrite
+            // it with hardcoded solver Accuracy (~99%) — that made MissionSuccess's validation
+            // accuracy gate vacuous while Simulation.Accuracy should use ConvergenceRate instead.
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -479,10 +479,9 @@ namespace HB_NLP_Research_Lab.Core
                 structuralResult.MaxStress = maxStress;
                 structuralResult.StressDistribution["chamber"] = maxStress;
                 structuralResult.StressDistribution["nozzle"] = maxStress * 0.75;
-                if (baseline.Efficiency > 0)
-                {
-                    structuralResult.SafetyFactor = Math.Clamp(1.2 + (baseline.Efficiency * 0.5), 1.2, 2.0);
-                }
+                // Do not re-seed SafetyFactor from baseline.Efficiency — launch/request paths can
+                // mutate baselineDesign.Efficiency via ApplyDesignParameterOverrides, which would
+                // forge the solver-owned SafetyFactor trust signal.
             }
         }
 

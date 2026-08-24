@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -233,6 +234,8 @@ namespace HB_NLP_Research_Lab.Certification
                 finding.ReviewId = reviewId;
                 finding.ReviewerName = reviewerName;
                 finding.CreatedAt = DateTime.UtcNow;
+                finding.Severity = ResolveFindingSeverity(finding);
+
                 _context.ReviewFindings.Add(finding);
             }
 
@@ -248,6 +251,81 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Submitted {Count} findings for review {ReviewNumber}", findings.Count, review.ReviewNumber);
+        }
+
+        /// <summary>
+        /// Resolve finding severity with Safety elevation and a description keyword floor.
+        /// Explicit Minor/Info cannot hide Critical/Major language from approval gates.
+        /// Unclassified (no Safety category, no keywords) keeps the client severity.
+        /// </summary>
+        public static FindingSeverity ResolveFindingSeverity(ReviewFinding finding)
+        {
+            ArgumentNullException.ThrowIfNull(finding);
+
+            var resolved = finding.Severity;
+            if (finding.Category == FindingCategory.Safety)
+            {
+                resolved = FindingSeverity.Critical;
+            }
+
+            var keywordFloor = ClassifyFindingKeywords(finding.Description, finding.Recommendation);
+            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            {
+                // Enum order is Critical(0) < Major(1) < Minor(2) < Info(3); higher int = lower severity.
+                resolved = keywordFloor.Value;
+            }
+
+            return resolved;
+        }
+
+        // Whole-token stems plus explicit inflections: "hazards"/"critically" still elevate,
+        // but "insignificant" must not hit "significant" and "non-critical" must not hit
+        // "critical". Hyphenated compounds like "safety-critical" still match.
+        private static readonly Regex CriticalKeywordPattern = new(
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex MajorKeywordPattern = new(
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(major(?:ly)?|significant(?:ly)?|significance)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static FindingSeverity? ClassifyFindingKeywords(string? description, string? recommendation)
+        {
+            var text = $"{description} {recommendation}";
+            if (string.IsNullOrWhiteSpace(text))
+                return null;
+
+            if (CriticalKeywordPattern.IsMatch(text))
+                return FindingSeverity.Critical;
+
+            if (MajorKeywordPattern.IsMatch(text))
+                return FindingSeverity.Major;
+
+            return null;
+        }
+
+        /// <summary>
+        /// Disposition (resolve) a finding so Major/Critical no longer block approval.
+        /// </summary>
+        public async Task ResolveFindingAsync(Guid reviewId, Guid findingId, string resolvedBy)
+        {
+            if (string.IsNullOrWhiteSpace(resolvedBy))
+                throw new ArgumentException("Resolver is required", nameof(resolvedBy));
+
+            var finding = await _context.ReviewFindings
+                .FirstOrDefaultAsync(f => f.Id == findingId && f.ReviewId == reviewId);
+            if (finding == null)
+                throw new ArgumentException($"Finding {findingId} not found for review {reviewId}");
+
+            finding.Resolved = true;
+            finding.ResolvedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation(
+                "Resolved finding {FindingId} on review {ReviewId} by {ResolvedBy}",
+                findingId,
+                reviewId,
+                LogSanitizer.SanitizeIdentifier(resolvedBy));
         }
 
         /// <summary>
@@ -293,10 +371,46 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve review until all assigned reviewers have completed their findings");
             }
 
-            // Check for critical findings on the loaded snapshot (pre-claim).
-            var criticalFindings = review.Findings.Where(f => f.Severity == FindingSeverity.Critical).ToList();
-            if (criticalFindings.Any())
-                throw new InvalidOperationException($"Cannot approve review with {criticalFindings.Count} critical findings");
+            // Level A independence: approver must not be the author or a completing reviewer.
+            var normalizedApprover = NormalizeReviewerName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
+
+            if (!string.IsNullOrWhiteSpace(review.Author) &&
+                string.Equals(NormalizeReviewerName(review.Author), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a code review as its author; Level A requires an independent approver");
+            }
+
+            var completingReviewers = review.Assignments
+                .Where(a => a.Status == ReviewAssignmentStatus.Completed)
+                .Select(a => a.ReviewerName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToList();
+            if (completingReviewers.Any(name =>
+                    string.Equals(NormalizeReviewerName(name), normalizedApprover, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a code review as one of its completing reviewers; Level A requires separation of duties");
+            }
+
+            // Critical and Major findings block approval until dispositioned (Resolved).
+            // SubmitFindingsAsync applies Safety elevation + description keyword floors so
+            // clients cannot under-classify blocking findings to Minor/Info.
+            var blockingFindings = review.Findings
+                .Where(f => !f.Resolved &&
+                            (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major))
+                .ToList();
+            if (blockingFindings.Count > 0)
+            {
+                var criticalCount = blockingFindings.Count(f => f.Severity == FindingSeverity.Critical);
+                var majorCount = blockingFindings.Count(f => f.Severity == FindingSeverity.Major);
+                throw new InvalidOperationException(
+                    $"Cannot approve review with {criticalCount} unresolved critical findings and {majorCount} unresolved major findings");
+            }
 
             // Atomic Completed → Approved claim closes the load/check/SaveChanges TOCTOU where a
             // concurrent SubmitFindings inserts Critical findings and still leaves Approved.
@@ -305,7 +419,7 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(r => r.Id == reviewId && r.Status == CodeReviewStatus.Completed)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(r => r.Status, CodeReviewStatus.Approved)
-                    .SetProperty(r => r.ApprovedBy, approvedBy)
+                    .SetProperty(r => r.ApprovedBy, normalizedApprover)
                     .SetProperty(r => r.ApprovedAt, approvedAt));
 
             if (claimed == 0)
@@ -315,11 +429,13 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Cannot approve review with status {review.Status}; concurrent status change detected");
             }
 
-            // Re-check Critical findings after the claim. If a concurrent submit raced in,
-            // revert the approval so Approved never coexists with Critical findings.
-            var criticalAfterClaim = await _context.ReviewFindings
-                .CountAsync(f => f.ReviewId == reviewId && f.Severity == FindingSeverity.Critical);
-            if (criticalAfterClaim > 0)
+            // Re-check blocking findings after the claim. If a concurrent submit raced in,
+            // revert the approval so Approved never coexists with unresolved Critical/Major.
+            var blockingAfterClaim = await _context.ReviewFindings
+                .CountAsync(f => f.ReviewId == reviewId
+                    && !f.Resolved
+                    && (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major));
+            if (blockingAfterClaim > 0)
             {
                 await _context.CodeReviews
                     .Where(r => r.Id == reviewId && r.Status == CodeReviewStatus.Approved)
@@ -329,11 +445,11 @@ namespace HB_NLP_Research_Lab.Certification
                         .SetProperty(r => r.ApprovedAt, (DateTime?)null));
 
                 throw new InvalidOperationException(
-                    $"Cannot approve review with {criticalAfterClaim} critical findings");
+                    $"Cannot approve review with {blockingAfterClaim} unresolved critical/major findings");
             }
 
             review.Status = CodeReviewStatus.Approved;
-            review.ApprovedBy = approvedBy;
+            review.ApprovedBy = normalizedApprover;
             review.ApprovedAt = approvedAt;
 
             _logger.LogInformation("Approved code review {ReviewNumber}", review.ReviewNumber);
