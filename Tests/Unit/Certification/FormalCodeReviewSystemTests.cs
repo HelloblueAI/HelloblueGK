@@ -102,7 +102,7 @@ public class FormalCodeReviewSystemTests
         });
 
         await create.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*parent-directory*");
+            .WithMessage("*traversal*");
         context.CodeReviews.Should().BeEmpty();
     }
 
