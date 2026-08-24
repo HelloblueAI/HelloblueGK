@@ -64,6 +64,69 @@ public class RequirementsTraceabilitySystemTests
     }
 
     [Fact]
+    public async Task VerifyTraceabilityAsync_UnverifiedNotRunLinks_AreNotCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-004",
+            Title = "Shutdown interlock",
+            Description = "Commanded shutdown must close main valves",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        await system.LinkToDesignAsync(requirement.Id, "DES-004", "DesignDoc.pdf");
+        await system.LinkToCodeAsync(requirement.Id, "Core/Valves.cs", 10, 40, "CloseMainValves");
+        await system.LinkToTestAsync(requirement.Id, "TC-004", "Tests/ValvesTests.cs", TestCoverageType.MCDC);
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i =>
+            i.Description.Contains("verified design", StringComparison.OrdinalIgnoreCase));
+        report.Issues.Should().Contain(i =>
+            i.Description.Contains("verified code", StringComparison.OrdinalIgnoreCase));
+        report.Issues.Should().Contain(i =>
+            i.Description.Contains("verified passed test", StringComparison.OrdinalIgnoreCase));
+        report.Issues.Should().Contain(i =>
+            i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_VerifiedPassedEvidence_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-005",
+            Title = "Propellant sense",
+            Description = "Sensor validity gate",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        var design = await system.LinkToDesignAsync(requirement.Id, "DES-005", "DesignDoc.pdf");
+        var code = await system.LinkToCodeAsync(requirement.Id, "Core/Sensors.cs", 1, 20, "ValidateSensor");
+        var test = await system.LinkToTestAsync(requirement.Id, "TC-005", "Tests/SensorsTests.cs", TestCoverageType.MCDC);
+
+        await system.RecordTestResultAsync(requirement.Id, test.Id, TestResult.Passed);
+        await system.VerifyLinkAsync(requirement.Id, design.Id, RequirementLinkKind.Design);
+        await system.VerifyLinkAsync(requirement.Id, code.Id, RequirementLinkKind.Code);
+        await system.VerifyLinkAsync(requirement.Id, test.Id, RequirementLinkKind.Test);
+
+        var report = await system.VerifyTraceabilityAsync();
+        var persisted = await context.Requirements.SingleAsync();
+
+        report.IsCompliant.Should().BeTrue();
+        persisted.TraceabilityStatus.Should().Be(TraceabilityStatus.FullyTraced);
+    }
+
+    [Fact]
     public async Task VerifyTraceabilityAsync_VacuousLinks_DoNotSatisfyTraceability()
     {
         await using var context = CreateContext();

@@ -1,9 +1,10 @@
+using System.Net;
+using System.Security.Claims;
+using System.Text;
 using HB_NLP_Research_Lab.Core;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
-using System.Net;
-using System.Text;
 
 namespace HelloblueGK.Tests.Unit.Core;
 
@@ -328,6 +329,61 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_AuthenticatedUsersOnSameIp_DoNotShareExpensiveMutationQuota()
+    {
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var alice = CreateAuthenticatedUser("alice");
+        var bob = CreateAuthenticatedUser("bob");
+        var sharedIp = IPAddress.Parse("203.0.113.50");
+
+        MiddlewareInvocationResult aliceAllowed = default!;
+        for (var i = 0; i < 10; i++)
+        {
+            aliceAllowed = await InvokeMiddlewareAsync(
+                rateLimitingService,
+                "/api/v1/simulations",
+                HttpMethods.Post,
+                sharedIp,
+                user: alice);
+        }
+
+        var aliceBlocked = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/simulations",
+            HttpMethods.Post,
+            sharedIp,
+            user: alice);
+        var bobAllowed = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/simulations",
+            HttpMethods.Post,
+            sharedIp,
+            user: bob);
+
+        aliceAllowed.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        aliceBlocked.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        bobAllowed.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        bobAllowed.NextCalled.Should().BeTrue();
+    }
+
+    [Fact]
+    public void PreAuth_ShouldApply_ForAuthorizationAndMetricsOnly()
+    {
+        var bearer = new DefaultHttpContext();
+        bearer.Request.Headers.Authorization = "Bearer token";
+        bearer.Request.Path = "/api/v1/engines";
+        PreAuthRateLimitingMiddleware.ShouldApply(bearer).Should().BeTrue();
+
+        var metrics = new DefaultHttpContext();
+        metrics.Request.Path = "/metrics";
+        PreAuthRateLimitingMiddleware.ShouldApply(metrics).Should().BeTrue();
+
+        var login = new DefaultHttpContext();
+        login.Request.Path = "/api/v1/auth/login";
+        PreAuthRateLimitingMiddleware.ShouldApply(login).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAiOptimizationReadEndpoint_ShouldUseAiPolicy()
     {
         // Arrange
@@ -351,7 +407,8 @@ public class RateLimitingMiddlewareSecurityTests
         string method,
         IPAddress? remoteIpAddress = null,
         string? requestBody = null,
-        bool includeContentLength = true)
+        bool includeContentLength = true,
+        ClaimsPrincipal? user = null)
     {
         var nextCalled = false;
         RequestDelegate next = context =>
@@ -368,6 +425,10 @@ public class RateLimitingMiddlewareSecurityTests
 
         var context = new DefaultHttpContext();
         context.Connection.RemoteIpAddress = remoteIpAddress ?? IPAddress.Parse("203.0.113.10");
+        if (user != null)
+        {
+            context.User = user;
+        }
         context.Request.Path = path;
         context.Request.Method = method;
         if (requestBody != null)
@@ -397,6 +458,13 @@ public class RateLimitingMiddlewareSecurityTests
             nextCalled,
             headers,
             responseBody);
+    }
+
+    private static ClaimsPrincipal CreateAuthenticatedUser(string name)
+    {
+        return new ClaimsPrincipal(new ClaimsIdentity(
+            new[] { new Claim(ClaimTypes.Name, name) },
+            authenticationType: "Test"));
     }
 
     private sealed record MiddlewareInvocationResult(

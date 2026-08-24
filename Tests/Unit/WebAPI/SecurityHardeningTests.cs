@@ -221,6 +221,8 @@ public class SecurityHardeningTests
         user.PasswordHash.Split(':').Should().HaveCount(3);
         user.LastLoginAt.Should().NotBeNull();
         user.UpdatedAt.Should().NotBeNull();
+        // Re-login must bump atv so previously stolen access JWTs fail validation.
+        user.AccessTokenVersion.Should().Be(1);
         user.RefreshTokenHash.Should().Be("refresh-token-hash");
         user.RefreshTokenExpiresAt.Should().NotBeNull();
         user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
@@ -280,6 +282,8 @@ public class SecurityHardeningTests
         response.RefreshToken.Should().Be("rotated-refresh-token");
         user.RefreshTokenHash.Should().Be("rotated-refresh-hash");
         user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
+        // Successful refresh must bump atv so stolen pre-refresh access JWTs die immediately.
+        user.AccessTokenVersion.Should().Be(1);
     }
 
     [Fact]
@@ -1929,11 +1933,13 @@ public class SecurityHardeningTests
         responseJson.Should().NotContain(sensitiveText);
     }
 
-    private static HelloblueGKDbContext CreateContext()
+    private static HelloblueGKDbContext CreateContext() => CreateSharedContext(Guid.NewGuid().ToString("N"));
+
+    private static HelloblueGKDbContext CreateSharedContext(string sharedName)
     {
         // Use SQLite so ExecuteUpdate-based refresh-token rotation can be exercised.
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
-            .UseSqlite($"Data Source=file:{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .UseSqlite($"Data Source=file:{sharedName}?mode=memory&cache=shared")
             .Options;
 
         var context = new HelloblueGKDbContext(options);
