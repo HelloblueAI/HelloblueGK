@@ -12,14 +12,20 @@ namespace HB_NLP_Research_Lab.Core
         private const int DefaultMaxTrackedIdentifiers = 10000;
         private const int DefaultMaxTestIdentifiers = 64;
         private const string TestBucketPrefix = "test:";
+        private const string AuthBucketPrefix = "Auth:";
+        private const string AuthUsernameBucketPrefix = "AuthUsername:";
+        private const string PreAuthBucketPrefix = "PreAuth:";
 
         private readonly ILogger<RateLimitingService> _logger;
         private readonly ConcurrentDictionary<string, RateLimitBucket> _buckets;
+        private readonly ConcurrentDictionary<string, RateLimitBucket> _authBuckets;
         private readonly ConcurrentDictionary<string, RateLimitBucket> _testBuckets;
         private readonly Timer _cleanupTimer;
         private readonly object _bucketCreationLock = new();
+        private readonly object _authBucketCreationLock = new();
         private readonly object _testBucketCreationLock = new();
         private readonly int _maxTrackedIdentifiers;
+        private readonly int _maxAuthTrackedIdentifiers;
         private readonly int _maxTestIdentifiers;
 
         public RateLimitingService(ILogger<RateLimitingService> logger)
@@ -33,6 +39,15 @@ namespace HB_NLP_Research_Lab.Core
         }
 
         public RateLimitingService(ILogger<RateLimitingService> logger, int maxTrackedIdentifiers, int maxTestIdentifiers)
+            : this(logger, maxTrackedIdentifiers, maxTestIdentifiers, maxTrackedIdentifiers)
+        {
+        }
+
+        public RateLimitingService(
+            ILogger<RateLimitingService> logger,
+            int maxTrackedIdentifiers,
+            int maxTestIdentifiers,
+            int maxAuthTrackedIdentifiers)
         {
             _logger = logger;
             _maxTrackedIdentifiers = maxTrackedIdentifiers > 0
@@ -41,7 +56,11 @@ namespace HB_NLP_Research_Lab.Core
             _maxTestIdentifiers = maxTestIdentifiers > 0
                 ? maxTestIdentifiers
                 : throw new ArgumentOutOfRangeException(nameof(maxTestIdentifiers), "Maximum test identifiers must be greater than zero.");
+            _maxAuthTrackedIdentifiers = maxAuthTrackedIdentifiers > 0
+                ? maxAuthTrackedIdentifiers
+                : throw new ArgumentOutOfRangeException(nameof(maxAuthTrackedIdentifiers), "Maximum auth tracked identifiers must be greater than zero.");
             _buckets = new ConcurrentDictionary<string, RateLimitBucket>();
+            _authBuckets = new ConcurrentDictionary<string, RateLimitBucket>();
             _testBuckets = new ConcurrentDictionary<string, RateLimitBucket>();
             
             // Clean up expired buckets every minute
@@ -51,13 +70,15 @@ namespace HB_NLP_Research_Lab.Core
         public virtual async Task<RateLimitResult> CheckRateLimitAsync(string identifier, RateLimitPolicy policy)
         {
             var now = DateTime.UtcNow;
+            var isAuthIdentifier = IsAuthRateLimitIdentifier(identifier);
             var bucket = GetOrCreateBucket(identifier, policy, now);
             if (bucket == null)
             {
                 _logger.LogWarning(
-                    "Rate limit bucket capacity reached. Blocking new identifier {Identifier}. Capacity: {Capacity}",
+                    "Rate limit bucket capacity reached. Blocking new identifier {Identifier}. Capacity: {Capacity} Pool: {Pool}",
                     LogSanitizer.SanitizeIdentifier(identifier),
-                    _maxTrackedIdentifiers);
+                    isAuthIdentifier ? _maxAuthTrackedIdentifiers : _maxTrackedIdentifiers,
+                    isAuthIdentifier ? "auth" : "api");
 
                 return await Task.FromResult(new RateLimitResult
                 {
@@ -135,7 +156,7 @@ namespace HB_NLP_Research_Lab.Core
 
         public Task<RateLimitStatus> GetRateLimitStatusAsync(string identifier)
         {
-            if (!_buckets.TryGetValue(identifier, out var bucket))
+            if (!TryGetTrackedBucket(identifier, out var bucket) || bucket == null)
             {
                 return Task.FromResult(new RateLimitStatus
                 {
@@ -163,13 +184,16 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<RateLimitReport> GenerateReportAsync()
         {
             var now = DateTime.UtcNow;
-            var activeBuckets = _buckets.Values.Where(b => b.IsActive(now)).ToList();
+            var activeBuckets = _buckets.Values
+                .Concat(_authBuckets.Values)
+                .Where(b => b.IsActive(now))
+                .ToList();
 
             var report = new RateLimitReport
             {
                 GeneratedAt = now,
                 TotalActiveBuckets = activeBuckets.Count,
-                TotalBuckets = _buckets.Count,
+                TotalBuckets = _buckets.Count + _authBuckets.Count,
                 BlockedRequests = activeBuckets.Sum(b => b.BlockedRequests),
                 AllowedRequests = activeBuckets.Sum(b => b.AllowedRequests),
                 TopBlockedIdentifiers = activeBuckets
@@ -190,7 +214,9 @@ namespace HB_NLP_Research_Lab.Core
 
         public async Task ResetRateLimitAsync(string identifier)
         {
-            if (_buckets.TryRemove(identifier, out var bucket))
+            var removed = _buckets.TryRemove(identifier, out _)
+                || _authBuckets.TryRemove(identifier, out _);
+            if (removed)
             {
                 var sanitizedIdentifier = LogSanitizer.SanitizeIdentifier(identifier);
                 _logger.LogInformation("Rate limit reset for {Identifier}", sanitizedIdentifier);
@@ -202,13 +228,41 @@ namespace HB_NLP_Research_Lab.Core
         public async Task ResetAllRateLimitsAsync()
         {
             _buckets.Clear();
+            _authBuckets.Clear();
             _testBuckets.Clear();
             _logger.LogInformation("All rate limits have been reset");
             await Task.CompletedTask;
         }
 
+        public static bool IsAuthRateLimitIdentifier(string identifier)
+        {
+            if (string.IsNullOrEmpty(identifier))
+            {
+                return false;
+            }
+
+            return identifier.StartsWith(AuthBucketPrefix, StringComparison.OrdinalIgnoreCase)
+                || identifier.StartsWith(AuthUsernameBucketPrefix, StringComparison.OrdinalIgnoreCase)
+                || identifier.StartsWith(PreAuthBucketPrefix, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private bool TryGetTrackedBucket(string identifier, out RateLimitBucket? bucket)
+        {
+            if (IsAuthRateLimitIdentifier(identifier))
+            {
+                return _authBuckets.TryGetValue(identifier, out bucket);
+            }
+
+            return _buckets.TryGetValue(identifier, out bucket);
+        }
+
         private RateLimitBucket? GetOrCreateBucket(string identifier, RateLimitPolicy policy, DateTime now)
         {
+            if (IsAuthRateLimitIdentifier(identifier))
+            {
+                return GetOrCreateAuthBucket(identifier, policy, now);
+            }
+
             if (_buckets.TryGetValue(identifier, out var existingBucket))
             {
                 return existingBucket;
@@ -223,7 +277,7 @@ namespace HB_NLP_Research_Lab.Core
 
                 if (_buckets.Count >= _maxTrackedIdentifiers)
                 {
-                    CleanupExpiredBuckets(now);
+                    CleanupExpiredApiBuckets(now);
                     if (_buckets.Count >= _maxTrackedIdentifiers)
                     {
                         return null;
@@ -232,6 +286,34 @@ namespace HB_NLP_Research_Lab.Core
 
                 var bucket = new RateLimitBucket(identifier, policy);
                 return _buckets.TryAdd(identifier, bucket) ? bucket : _buckets[identifier];
+            }
+        }
+
+        private RateLimitBucket? GetOrCreateAuthBucket(string identifier, RateLimitPolicy policy, DateTime now)
+        {
+            if (_authBuckets.TryGetValue(identifier, out var existingBucket))
+            {
+                return existingBucket;
+            }
+
+            lock (_authBucketCreationLock)
+            {
+                if (_authBuckets.TryGetValue(identifier, out existingBucket))
+                {
+                    return existingBucket;
+                }
+
+                if (_authBuckets.Count >= _maxAuthTrackedIdentifiers)
+                {
+                    CleanupExpiredAuthBuckets(now);
+                    if (_authBuckets.Count >= _maxAuthTrackedIdentifiers)
+                    {
+                        return null;
+                    }
+                }
+
+                var bucket = new RateLimitBucket(identifier, policy);
+                return _authBuckets.TryAdd(identifier, bucket) ? bucket : _authBuckets[identifier];
             }
         }
 
@@ -266,6 +348,19 @@ namespace HB_NLP_Research_Lab.Core
         private void CleanupExpiredBuckets(object? state)
         {
             var now = state is DateTime cleanupTime ? cleanupTime : DateTime.UtcNow;
+            var expiredApi = CleanupExpiredApiBuckets(now);
+            var expiredAuth = CleanupExpiredAuthBuckets(now);
+            CleanupExpiredTestBuckets(now);
+
+            var expiredCount = expiredApi + expiredAuth;
+            if (expiredCount > 0)
+            {
+                _logger.LogDebug("Cleaned up {Count} expired rate limit buckets", expiredCount);
+            }
+        }
+
+        private int CleanupExpiredApiBuckets(DateTime now)
+        {
             var expiredKeys = _buckets
                 .Where(kvp => !kvp.Value.IsActive(now))
                 .Select(kvp => kvp.Key)
@@ -276,12 +371,22 @@ namespace HB_NLP_Research_Lab.Core
                 _buckets.TryRemove(key, out _);
             }
 
-            CleanupExpiredTestBuckets(now);
+            return expiredKeys.Count;
+        }
 
-            if (expiredKeys.Count > 0)
+        private int CleanupExpiredAuthBuckets(DateTime now)
+        {
+            var expiredKeys = _authBuckets
+                .Where(kvp => !kvp.Value.IsActive(now))
+                .Select(kvp => kvp.Key)
+                .ToList();
+
+            foreach (var key in expiredKeys)
             {
-                _logger.LogDebug("Cleaned up {Count} expired rate limit buckets", expiredKeys.Count);
+                _authBuckets.TryRemove(key, out _);
             }
+
+            return expiredKeys.Count;
         }
 
         private void CleanupExpiredTestBuckets(DateTime now)

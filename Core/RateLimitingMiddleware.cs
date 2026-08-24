@@ -37,7 +37,7 @@ namespace HB_NLP_Research_Lab.Core
         public async Task InvokeAsync(HttpContext context)
         {
             var endpoint = NormalizeEndpointPath(context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty);
-            var clientIdentifier = GetClientIdentifier(context);
+            var clientIdentifier = ResolveClientIdentifier(context);
 
             // Skip rate limiting for health checks and metrics endpoints
             if (ShouldSkipRateLimiting(endpoint))
@@ -134,7 +134,7 @@ namespace HB_NLP_Research_Lab.Core
             await _next(context);
         }
 
-        private string GetClientIdentifier(HttpContext context)
+        internal static string ResolveClientIdentifier(HttpContext context)
         {
             // Try to get client IP address
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -142,10 +142,13 @@ namespace HB_NLP_Research_Lab.Core
             // Do not trust forwarded IP headers unless ASP.NET Core ForwardedHeaders
             // middleware has been explicitly configured with known proxies/networks.
 
-            // For authenticated users, use user ID instead of IP
+            // For authenticated users, use user ID instead of IP so NAT/proxy
+            // clients do not share ExpensiveMutation / API quotas.
             if (context.User.Identity?.IsAuthenticated == true)
             {
-                var userId = context.User.Identity.Name ?? context.User.FindFirst("sub")?.Value;
+                var userId = context.User.Identity.Name
+                    ?? context.User.FindFirst("sub")?.Value
+                    ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                 if (!string.IsNullOrEmpty(userId))
                 {
                     return $"user:{userId}";
@@ -157,11 +160,12 @@ namespace HB_NLP_Research_Lab.Core
 
         private bool ShouldSkipRateLimiting(string endpoint)
         {
+            // Only skip anonymous probe/docs paths. Do not prefix-skip /metrics or
+            // authenticated health APIs — those still pay JWT validation cost and must
+            // remain capacity-protected (pre-auth IP cap + post-auth user/IP policies).
             var skipEndpoints = new[]
             {
                 "/health",
-                "/metrics",
-                "/api/v1/performance/health",
                 "/swagger",
                 "/favicon.ico"
             };
@@ -560,6 +564,118 @@ namespace HB_NLP_Research_Lab.Core
         public static IApplicationBuilder UseRateLimiting(this IApplicationBuilder app)
         {
             return app.UseMiddleware<RateLimitingMiddleware>();
+        }
+
+        public static IApplicationBuilder UsePreAuthRateLimiting(this IApplicationBuilder app)
+        {
+            return app.UseMiddleware<PreAuthRateLimitingMiddleware>();
+        }
+    }
+
+    /// <summary>
+    /// Coarse IP cap before JWT authentication. Bounds OnTokenValidated DB lookups
+    /// for Bearer and /metrics sprays without applying ExpensiveMutation (those
+    /// policies key on the authenticated user after <see cref="RateLimitingMiddleware"/>).
+    /// </summary>
+    public sealed class PreAuthRateLimitingMiddleware
+    {
+        private readonly RequestDelegate _next;
+        private readonly ILogger<PreAuthRateLimitingMiddleware> _logger;
+        private readonly RateLimitingService _rateLimitingService;
+        private readonly RateLimitPolicy _policy;
+
+        public PreAuthRateLimitingMiddleware(
+            RequestDelegate next,
+            ILogger<PreAuthRateLimitingMiddleware> logger,
+            RateLimitingService rateLimitingService)
+        {
+            _next = next;
+            _logger = logger;
+            _rateLimitingService = rateLimitingService;
+            _policy = new RateLimitPolicy
+            {
+                RequestsPerWindow = 200,
+                WindowSize = TimeSpan.FromMinutes(1),
+                Algorithm = RateLimitAlgorithm.SlidingWindow
+            };
+        }
+
+        public async Task InvokeAsync(HttpContext context)
+        {
+            if (!ShouldApply(context))
+            {
+                await _next(context);
+                return;
+            }
+
+            var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var identifier = $"PreAuth:ip:{clientIp}";
+
+            RateLimitResult rateLimitResult;
+            try
+            {
+                rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(identifier, _policy);
+            }
+            catch (TimeoutException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (OperationCanceledException ex) when (!context.RequestAborted.IsCancellationRequested)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (CryptographicException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (JsonException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (InvalidOperationException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+
+            async Task WriteUnavailableAsync(Exception ex)
+            {
+                _logger.LogError(ex, "Error in pre-auth rate limiting for {ClientIdentifier}", identifier);
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(
+                    """{"error":"Rate limiting unavailable","message":"Rate limiting is temporarily unavailable. Please try again later."}""");
+            }
+
+            if (!rateLimitResult.IsAllowed)
+            {
+                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                context.Response.ContentType = "application/json";
+                context.Response.Headers["Retry-After"] = Math.Max(
+                    0,
+                    (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds).ToString();
+                await context.Response.WriteAsync(
+                    """{"error":"Rate limit exceeded","message":"Rate limit exceeded."}""");
+                return;
+            }
+
+            await _next(context);
+        }
+
+        public static bool ShouldApply(HttpContext context)
+        {
+            if (context.Request.Headers.ContainsKey("Authorization"))
+            {
+                return true;
+            }
+
+            var path = RateLimitingMiddleware.NormalizeEndpointPath(
+                context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty);
+            return path.StartsWith("/metrics", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

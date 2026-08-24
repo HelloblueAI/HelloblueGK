@@ -1347,10 +1347,13 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ModelImprovement> UpdateModelsAsync(string engineId, TestFlightData flightData)
         {
             await Task.Delay(100);
+            // Fail closed: do not invent a hardcoded 12% ModelImprovement on every learn.
+            // Until real model-delta evidence exists, report unproven (zero) improvement.
+            _ = flightData;
             return new ModelImprovement
             {
                 EngineId = engineId,
-                ImprovementPercentage = 0.12,
+                ImprovementPercentage = 0.0,
                 ModelVersion = "2.1.0",
                 UpdateTimestamp = DateTime.UtcNow
             };

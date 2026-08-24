@@ -71,6 +71,20 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
             }
 
+            // Level A independence: approver must not be the baseline author.
+            var normalizedApprover = NormalizeActorName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
+
+            if (!string.IsNullOrWhiteSpace(baseline.CreatedBy) &&
+                string.Equals(NormalizeActorName(baseline.CreatedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a baseline as its creator; Level A requires an independent approver");
+            }
+
             // Atomic Draft|UnderReview → Approved claim closes load/check/SaveChanges TOCTOU
             // (concurrent empty-item races / double-approve).
             var approvedAt = DateTime.UtcNow;
@@ -79,7 +93,7 @@ namespace HB_NLP_Research_Lab.Certification
                             (b.Status == BaselineStatus.Draft || b.Status == BaselineStatus.UnderReview))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(b => b.Status, BaselineStatus.Approved)
-                    .SetProperty(b => b.ApprovedBy, approvedBy)
+                    .SetProperty(b => b.ApprovedBy, normalizedApprover)
                     .SetProperty(b => b.ApprovedAt, approvedAt));
 
             if (claimed == 0)
@@ -107,7 +121,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             baseline.Status = BaselineStatus.Approved;
-            baseline.ApprovedBy = approvedBy;
+            baseline.ApprovedBy = normalizedApprover;
             baseline.ApprovedAt = approvedAt;
 
             _logger.LogInformation("Approved baseline {BaselineName}", LogSanitizer.Sanitize(baseline.BaselineName));
@@ -220,6 +234,20 @@ namespace HB_NLP_Research_Lab.Certification
                     "only Submitted or UnderReview change requests may be approved");
             }
 
+            // Level A / CCB independence: requester cannot self-approve.
+            var normalizedApprover = NormalizeActorName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.RequestedBy) &&
+                string.Equals(NormalizeActorName(request.RequestedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a change request as its requester; Level A requires separation of duties");
+            }
+
             // Atomic Submitted|UnderReview → Approved claim closes double-approve TOCTOU.
             var approvedAt = DateTime.UtcNow;
             var claimed = await _context.ChangeRequests
@@ -228,7 +256,7 @@ namespace HB_NLP_Research_Lab.Certification
                               cr.Status == ChangeRequestStatus.UnderReview))
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(cr => cr.Status, ChangeRequestStatus.Approved)
-                    .SetProperty(cr => cr.ApprovedBy, approvedBy)
+                    .SetProperty(cr => cr.ApprovedBy, normalizedApprover)
                     .SetProperty(cr => cr.ApprovedAt, approvedAt)
                     .SetProperty(cr => cr.ApprovalNotes, approvalNotes));
 
@@ -244,14 +272,14 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 ChangeRequestId = request.Id,
-                ApprovedBy = approvedBy,
+                ApprovedBy = normalizedApprover,
                 ApprovedAt = approvedAt,
                 Notes = approvalNotes
             });
             await _context.SaveChangesAsync();
 
             request.Status = ChangeRequestStatus.Approved;
-            request.ApprovedBy = approvedBy;
+            request.ApprovedBy = normalizedApprover;
             request.ApprovedAt = approvedAt;
             request.ApprovalNotes = approvalNotes;
 
@@ -423,6 +451,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             return report;
         }
+
+        private static string NormalizeActorName(string? actorName) =>
+            string.IsNullOrWhiteSpace(actorName) ? string.Empty : actorName.Trim();
 
         private async Task<string> AllocateNextRequestNumberAsync()
         {

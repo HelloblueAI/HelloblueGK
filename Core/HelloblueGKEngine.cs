@@ -126,7 +126,8 @@ namespace HB_NLP_Research_Lab.Core
                         thermalResult?.ConvergenceIterations ?? 0,
                         structuralResult?.ConvergenceIterations ?? 0
                     }.Max();
-                    // Fail closed: never invent ConvergenceRate/Accuracy when solvers return nothing.
+                    // Fail closed: average positive solver accuracies only. Do not invent
+                    // ConvergenceRate/Accuracy (including DefaultIfEmpty(95)) when solvers return nothing.
                     var positiveAccuracies = new[]
                     {
                         cfdResult?.Accuracy ?? 0,

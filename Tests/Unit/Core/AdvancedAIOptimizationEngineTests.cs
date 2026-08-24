@@ -82,6 +82,10 @@ public class AdvancedAIOptimizationEngineTests
         result.AlgorithmType.Should().Be("Genetic");
         result.OptimizationStages.Should().ContainSingle();
         result.OptimizationStages[0].StageName.Should().Be("Genetic Algorithm");
+        // Placeholder genetic stage must not invent RNG ImprovementPercentage / efficiency gains.
+        result.OverallImprovement.Should().Be(0);
+        result.OptimizedParameters.Efficiency.Should().BeApproximately(parameters.Efficiency, 0.0001);
+        result.OptimizationStages[0].ImprovementPercentage.Should().Be(0);
     }
 
     [Fact]
