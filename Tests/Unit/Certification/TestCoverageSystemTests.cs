@@ -7,7 +7,7 @@ namespace HelloblueGK.Tests.Unit.Certification;
 public class TestCoverageSystemTests
 {
     [Fact]
-    public async Task VerifyComplianceAsync_WithNoCoverageData_IsNotCompliant()
+    public async Task VerifyComplianceAsync_WithEmptyRoster_IsNotCompliant()
     {
         await using var context = CreateContext();
         var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
@@ -19,11 +19,11 @@ public class TestCoverageSystemTests
         check.StatementCoverageCompliant.Should().BeFalse();
         check.BranchCoverageCompliant.Should().BeFalse();
         check.MCDCCoverageCompliant.Should().BeFalse();
-        check.Issues.Should().Contain(i => i.Contains("No coverage data", StringComparison.OrdinalIgnoreCase));
+        check.Issues.Should().Contain(i => i.Contains("roster is empty", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
-    public async Task GenerateCoverageReportAsync_WithNoCoverageData_DoesNotMeetLevelA()
+    public async Task GenerateCoverageReportAsync_WithEmptyRoster_DoesNotMeetLevelA()
     {
         await using var context = CreateContext();
         var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
@@ -32,6 +32,44 @@ public class TestCoverageSystemTests
 
         report.TotalFiles.Should().Be(0);
         report.MeetsDO178CLevelA.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_ClientInventedCoverageOutsideRoster_CannotForgeCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        // Perfect client-asserted coverage for a cherry-picked file, but no server roster entry.
+        await system.RecordCoverageAsync("Core/Forged.cs", new CoverageMetrics
+        {
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MCDCCoverage = 100
+        });
+        await system.MarkAsSafetyCriticalAsync("Core/Forged.cs", true);
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("roster is empty", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_RosterFileWithoutEvidence_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("Missing coverage evidence", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -124,6 +162,7 @@ public class TestCoverageSystemTests
     {
         await using var context = CreateContext();
         var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: false, registeredBy: "admin");
 
         await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
         {
@@ -142,6 +181,29 @@ public class TestCoverageSystemTests
         check.MCDCCoverageCompliant.Should().BeFalse();
         check.SafetyCriticalFiles.Should().Be(0);
         check.Issues.Should().Contain(i => i.Contains("No safety-critical", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_RosterWithLevelAEvidence_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MCDCCoverage = 100
+        });
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeTrue();
+        check.MCDCCoverageCompliant.Should().BeTrue();
     }
 
     private static TestCoverageDbContext CreateContext()

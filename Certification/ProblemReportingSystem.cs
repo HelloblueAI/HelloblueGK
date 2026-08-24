@@ -78,6 +78,8 @@ namespace HB_NLP_Research_Lab.Certification
             string? changedBy = null)
         {
             var report = await _context.ProblemReports
+                .Include(pr => pr.RequirementLinks)
+                .Include(pr => pr.TestLinks)
                 .FirstOrDefaultAsync(pr => pr.ReportNumber == reportNumber);
 
             if (report == null)
@@ -101,7 +103,22 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Problem report {reportNumber} requires a non-empty resolution before closing");
                 }
 
-                report.Resolution = resolution.Trim();
+                var normalizedResolution = resolution.Trim();
+                if (!HasSubstantiveResolution(normalizedResolution))
+                {
+                    throw new InvalidOperationException(
+                        $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
+                }
+
+                // Critical/Major closures need linked evidence — resolution text alone forges IsCompliant.
+                if (report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
+                    !HasResolutionEvidence(report))
+                {
+                    throw new InvalidOperationException(
+                        $"Problem report {reportNumber} requires a linked requirement or test case before closing");
+                }
+
+                report.Resolution = normalizedResolution;
                 report.ClosedAt = DateTime.UtcNow;
             }
 
@@ -131,6 +148,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkToRequirementAsync(string reportNumber, Guid requirementId)
         {
+            if (requirementId == Guid.Empty)
+                throw new ArgumentException("RequirementId must be a non-empty GUID", nameof(requirementId));
+
             var report = await _context.ProblemReports
                 .FirstOrDefaultAsync(pr => pr.ReportNumber == reportNumber);
 
@@ -157,6 +177,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkToTestAsync(string reportNumber, string testCaseId)
         {
+            if (string.IsNullOrWhiteSpace(testCaseId))
+                throw new ArgumentException("TestCaseId must be a non-empty identifier", nameof(testCaseId));
+
             var report = await _context.ProblemReports
                 .FirstOrDefaultAsync(pr => pr.ReportNumber == reportNumber);
 
@@ -167,7 +190,7 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 Id = Guid.NewGuid(),
                 ProblemReportId = report.Id,
-                TestCaseId = testCaseId,
+                TestCaseId = testCaseId.Trim(),
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -220,6 +243,8 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var totalReports = await _context.ProblemReports.CountAsync();
             var reports = await _context.ProblemReports
+                .Include(pr => pr.RequirementLinks)
+                .Include(pr => pr.TestLinks)
                 .Where(pr => pr.Severity == ProblemSeverity.Critical || 
                             pr.Severity == ProblemSeverity.Major)
                 .ToListAsync();
@@ -245,13 +270,16 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
-            // Closed without a recorded resolution must not satisfy certification gates.
+            // Closed without substantive resolution + evidence links must not satisfy certification gates.
             var improperlyClosed = reports.Count(r =>
                 r.Status == ProblemReportStatus.Closed &&
-                string.IsNullOrWhiteSpace(r.Resolution));
+                (string.IsNullOrWhiteSpace(r.Resolution) ||
+                 !HasSubstantiveResolution(r.Resolution) ||
+                 !HasResolutionEvidence(r)));
             if (improperlyClosed > 0)
             {
-                check.Issues.Add($"{improperlyClosed} critical/major problem report(s) are Closed without a recorded resolution");
+                check.Issues.Add(
+                    $"{improperlyClosed} critical/major problem report(s) are Closed without substantive resolution evidence");
             }
 
             var unresolvedOk = check.UnresolvedCriticalProblems == 0 &&
@@ -266,6 +294,27 @@ namespace HB_NLP_Research_Lab.Certification
 
             check.IsCompliant = unresolvedOk && improperlyClosed == 0;
             return check;
+        }
+
+        private static bool HasResolutionEvidence(ProblemReport report) =>
+            report.RequirementLinks.Count > 0 || report.TestLinks.Count > 0;
+
+        /// <summary>
+        /// Reject vacuous closure text ("done", "fixed", "ok") that previously forged IsCompliant.
+        /// </summary>
+        internal static bool HasSubstantiveResolution(string resolution)
+        {
+            if (string.IsNullOrWhiteSpace(resolution))
+                return false;
+
+            var trimmed = resolution.Trim();
+            if (trimmed.Length < 12)
+                return false;
+
+            var normalized = trimmed.ToLowerInvariant();
+            return normalized is not (
+                "done" or "fixed" or "ok" or "okay" or "closed" or "resolved" or
+                "n/a" or "na" or "none" or "complete" or "completed" or "pass" or "passed");
         }
 
         private static bool IsAllowedStatusTransition(ProblemReportStatus from, ProblemReportStatus to)
@@ -312,18 +361,21 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Resolve severity with fail-closed defaults and a keyword floor.
-        /// Unclassified impact defaults to Critical so Level A compliance cannot be forged by omitting
-        /// "critical/safety/major" keywords. Explicit severity may not under-classify below the floor.
+        /// Unclassified impact floors at Critical so Level A compliance cannot be forged by asserting
+        /// Minor/Major without supporting keywords. Explicit severity may not under-classify below the floor.
         /// </summary>
         public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
         {
-            var keywordFloor = ClassifyImpactKeywords(impact);
-            var resolved = explicitSeverity ?? keywordFloor ?? ProblemSeverity.Critical;
+            var keywordClass = ClassifyImpactKeywords(impact);
+            // Unclassified impact (no keywords) floors at Critical — clients cannot assert Minor
+            // to hide blocking issues from Critical/Major compliance gates.
+            var floor = keywordClass ?? ProblemSeverity.Critical;
+            var resolved = explicitSeverity ?? floor;
 
-            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            if ((int)resolved > (int)floor)
             {
                 // Enum order is Critical(0) < Major(1) < Minor(2); higher int = lower severity.
-                resolved = keywordFloor.Value;
+                resolved = floor;
             }
 
             return resolved;
@@ -344,16 +396,54 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(impact))
                 return null;
 
-            if (impact.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("critical", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "safety") ||
+                ContainsImpactKeyword(impact, "critical"))
                 return ProblemSeverity.Critical;
 
-            if (impact.Contains("major", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "major") ||
+                ContainsImpactKeyword(impact, "significant"))
                 return ProblemSeverity.Major;
+
+            if (ContainsImpactKeyword(impact, "minor") ||
+                ContainsImpactKeyword(impact, "cosmetic") ||
+                ContainsImpactKeyword(impact, "observation") ||
+                ContainsImpactKeyword(impact, "routine") ||
+                ContainsImpactKeyword(impact, "nit"))
+                return ProblemSeverity.Minor;
 
             return null;
         }
+
+        /// <summary>
+        /// Whole-token keyword match so short tokens like "nit" do not match inside
+        /// "nitrogen" / similar substrings.
+        /// </summary>
+        private static bool ContainsImpactKeyword(string impact, string keyword)
+        {
+            var start = 0;
+            while (start <= impact.Length - keyword.Length)
+            {
+                var index = impact.IndexOf(keyword, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    return false;
+                }
+
+                var beforeOk = index == 0 || !IsImpactTokenChar(impact[index - 1]);
+                var afterIndex = index + keyword.Length;
+                var afterOk = afterIndex >= impact.Length || !IsImpactTokenChar(impact[afterIndex]);
+                if (beforeOk && afterOk)
+                {
+                    return true;
+                }
+
+                start = index + 1;
+            }
+
+            return false;
+        }
+
+        private static bool IsImpactTokenChar(char c) => char.IsLetterOrDigit(c);
 
         private double CalculateAverageResolutionTime(List<ProblemReport> reports)
         {

@@ -549,8 +549,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Mission success uses persisted engine efficiency — not client LaunchParameters
                 // overrides — so efficiency:0.95 cannot forge a pass for a weak engine.
                 // Scenario overrides still drive the simulated design/physics above.
+                // Simulated ValidationReport.OverallAccuracy (RNG 85–100% / "Multiple Sources")
+                // is not flight evidence and must not satisfy the accuracy gate.
+                var validationReport = analysisResult.ValidationReport;
+                var hasTrustedValidation = HasTrustedValidationEvidence(validationReport);
+                var validationAccuracy = validationReport?.OverallAccuracy ?? 0;
                 var missionSuccess = launch.Engine.Efficiency > efficiencyThreshold &&
-                    (analysisResult.ValidationReport?.OverallAccuracy ?? 0) > accuracyThreshold;
+                    hasTrustedValidation &&
+                    validationAccuracy > accuracyThreshold;
 
                 var missionDuration = (DateTime.UtcNow - startTime).TotalSeconds;
                 var completedAt = DateTime.UtcNow;
@@ -572,7 +578,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     missionDuration = missionDuration,
                     engineEfficiency = launch.Engine.Efficiency,
                     simulatedEfficiency = design.Efficiency,
-                    validationAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
+                    validationAccuracy = validationAccuracy,
+                    validationTrusted = hasTrustedValidation,
+                    validationSource = validationReport?.ValidationSource,
                     simulationType = analysisResult.SimulationType,
                     appliedLaunchParameters = launchParameters
                 });
@@ -786,6 +794,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             return User.Identity?.Name
                 ?? User.FindFirst(ClaimTypes.Name)?.Value
                 ?? User.FindFirst("username")?.Value;
+        }
+
+        /// <summary>
+        /// Simulated collectors always synthesize flight/test-stand/industry rows and brand
+        /// them "Real-Time Flight Telemetry" / "Multiple Sources". Those names are not a
+        /// signed binding. Only an explicit Trusted: prefix counts as mission evidence.
+        /// </summary>
+        public const string TrustedValidationSourcePrefix = "Trusted:";
+
+        public static bool HasTrustedValidationEvidence(ValidationReport? report)
+        {
+            if (report == null || string.IsNullOrWhiteSpace(report.ValidationSource))
+            {
+                return false;
+            }
+
+            return report.ValidationSource.StartsWith(TrustedValidationSourcePrefix, StringComparison.Ordinal);
         }
     }
 

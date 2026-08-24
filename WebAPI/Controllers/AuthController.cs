@@ -126,7 +126,10 @@ public class AuthController : ControllerBase
             }
 
             // Update last login and persist rotated refresh token in one write.
+            // Bump AccessTokenVersion so previously stolen access JWTs are revoked on re-login
+            // (refresh rotation alone leaves the old access token valid until expiry).
             user.LastLoginAt = DateTime.UtcNow;
+            user.AccessTokenVersion += 1;
             var token = _jwtService.GenerateToken(user);
             var refreshToken = IssueRefreshToken(user);
             await _context.SaveChangesAsync();
@@ -200,6 +203,8 @@ public class AuthController : ControllerBase
         var rotatedExpiresAt = DateTime.UtcNow.AddSeconds(_jwtService.GetRefreshTokenExpirationSeconds());
         var updatedAt = DateTime.UtcNow;
 
+        // Rotate refresh AND bump AccessTokenVersion so any stolen access JWT
+        // minted before this refresh dies immediately (not only on logout/reuse).
         var claimed = await _context.Users
             .Where(candidate =>
                 candidate.Id == user.Id &&
@@ -210,14 +215,28 @@ public class AuthController : ControllerBase
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(candidate => candidate.RefreshTokenHash, rotatedRefreshTokenHash)
                 .SetProperty(candidate => candidate.RefreshTokenExpiresAt, rotatedExpiresAt)
+                .SetProperty(
+                    candidate => candidate.AccessTokenVersion,
+                    candidate => candidate.AccessTokenVersion + 1)
                 .SetProperty(candidate => candidate.UpdatedAt, updatedAt));
 
         if (claimed == 0)
         {
-            // Lost the race to another rotator, or the token was revoked meanwhile.
+            // Lost the race to another rotator, or refresh-token reuse after theft.
+            // OAuth-style reuse detection: revoke refresh + bump atv so any access JWT
+            // minted from the stolen refresh cannot continue to authorize.
             _logger.LogWarning(
-                "Refresh token race or reuse detected for user {Username}",
+                "Refresh token race or reuse detected for user {Username}; revoking sessions",
                 LogSanitizer.SanitizeIdentifier(user.Username));
+            await _context.Users
+                .Where(candidate => candidate.Id == user.Id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(candidate => candidate.RefreshTokenHash, (string?)null)
+                    .SetProperty(candidate => candidate.RefreshTokenExpiresAt, (DateTime?)null)
+                    .SetProperty(
+                        candidate => candidate.AccessTokenVersion,
+                        candidate => candidate.AccessTokenVersion + 1)
+                    .SetProperty(candidate => candidate.UpdatedAt, DateTime.UtcNow));
             return InvalidRefreshTokenResponse();
         }
 
