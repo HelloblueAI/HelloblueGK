@@ -282,6 +282,8 @@ public class SecurityHardeningTests
         response.RefreshToken.Should().Be("rotated-refresh-token");
         user.RefreshTokenHash.Should().Be("rotated-refresh-hash");
         user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
+        // Successful refresh must bump atv so stolen pre-refresh access JWTs die immediately.
+        user.AccessTokenVersion.Should().Be(1);
     }
 
     [Fact]

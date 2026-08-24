@@ -537,14 +537,14 @@ namespace HB_NLP_Research_Lab.Core
                 EngineId = engineId,
                 PredictionTimestamp = DateTime.UtcNow,
                 MultiPhysicsResult = multiPhysicsResult,
-                PredictionConfidence = 0.999,
+                PredictionConfidence = UnprovenPredictionAccuracy,
                 PredictedPerformance = new PredictedPerformance
                 {
                     Thrust = thrust,
                     Efficiency = efficiency,
-                    Reliability = 0.999,
+                    Reliability = UnprovenPredictionAccuracy,
                     ThermalEfficiency = Math.Clamp(efficiency * 0.92, 0.0, 1.0),
-                    StructuralSafety = 0.998
+                    StructuralSafety = UnprovenPredictionAccuracy
                 },
                 PredictedFailures = new List<PredictedFailure>
                 {
@@ -553,7 +553,7 @@ namespace HB_NLP_Research_Lab.Core
                         FailureMode = "Thermal Fatigue",
                         Probability = 0.001,
                         TimeToFailure = TimeSpan.FromHours(5000),
-                        Confidence = 0.95
+                        Confidence = UnprovenPredictionAccuracy
                     }
                 }
             };
@@ -1044,9 +1044,9 @@ namespace HB_NLP_Research_Lab.Core
             var efficiency = TryReadEngineModelParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
                 ? Math.Clamp(engineEfficiency, 0.0, 1.0)
                 : 0.92;
-            // Baseline reliability is a model prior; scenario throttle may derate it.
+            // Baseline reliability stays fail-closed/unproven until a trusted model prior exists.
             // Clients must not set PredictedMetrics.Reliability directly.
-            var reliability = 0.95;
+            var reliability = DigitalTwinEngine.UnprovenPredictionAccuracy;
             var parameters = scenario.Parameters ?? new Dictionary<string, object>();
 
             if (TryReadScenarioDouble(parameters, "thrust", out var requestedThrust) && requestedThrust > 0)

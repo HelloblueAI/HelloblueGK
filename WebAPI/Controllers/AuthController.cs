@@ -203,6 +203,8 @@ public class AuthController : ControllerBase
         var rotatedExpiresAt = DateTime.UtcNow.AddSeconds(_jwtService.GetRefreshTokenExpirationSeconds());
         var updatedAt = DateTime.UtcNow;
 
+        // Rotate refresh AND bump AccessTokenVersion so any stolen access JWT
+        // minted before this refresh dies immediately (not only on logout/reuse).
         var claimed = await _context.Users
             .Where(candidate =>
                 candidate.Id == user.Id &&
@@ -213,6 +215,9 @@ public class AuthController : ControllerBase
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(candidate => candidate.RefreshTokenHash, rotatedRefreshTokenHash)
                 .SetProperty(candidate => candidate.RefreshTokenExpiresAt, rotatedExpiresAt)
+                .SetProperty(
+                    candidate => candidate.AccessTokenVersion,
+                    candidate => candidate.AccessTokenVersion + 1)
                 .SetProperty(candidate => candidate.UpdatedAt, updatedAt));
 
         if (claimed == 0)
