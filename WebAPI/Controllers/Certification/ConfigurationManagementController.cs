@@ -38,23 +38,37 @@ public class ConfigurationManagementController : ControllerBase
     [ProducesResponseType(typeof(BaselineResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateBaseline([FromBody] CreateBaselineRequest request)
     {
-        var baseline = await _cms.CreateBaselineAsync(
-            request.BaselineName,
-            request.Version,
-            request.Description,
-            User.Identity?.Name ?? "System");
+        if (request == null
+            || string.IsNullOrWhiteSpace(request.BaselineName)
+            || string.IsNullOrWhiteSpace(request.Version))
+        {
+            return BadRequest(new { message = "Baseline name and version are required" });
+        }
 
-        return CreatedAtAction(nameof(GetBaseline), new { id = baseline.Id },
-            new BaselineResponse
-            {
-                Id = baseline.Id,
-                BaselineName = baseline.BaselineName,
-                Version = baseline.Version,
-                Description = baseline.Description,
-                Status = baseline.Status.ToString(),
-                CreatedBy = baseline.CreatedBy,
-                CreatedAt = baseline.CreatedAt
-            });
+        try
+        {
+            var baseline = await _cms.CreateBaselineAsync(
+                request.BaselineName.Trim(),
+                request.Version.Trim(),
+                request.Description,
+                User.Identity?.Name ?? "System");
+
+            return CreatedAtAction(nameof(GetBaseline), new { id = baseline.Id },
+                new BaselineResponse
+                {
+                    Id = baseline.Id,
+                    BaselineName = baseline.BaselineName,
+                    Version = baseline.Version,
+                    Description = baseline.Description,
+                    Status = baseline.Status.ToString(),
+                    CreatedBy = baseline.CreatedBy,
+                    CreatedAt = baseline.CreatedAt
+                });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -109,15 +123,28 @@ public class ConfigurationManagementController : ControllerBase
     [ProducesResponseType(typeof(ChangeRequestResponse), StatusCodes.Status201Created)]
     public async Task<IActionResult> CreateChangeRequest([FromBody] CreateChangeRequestRequest request)
     {
+        if (request == null || string.IsNullOrWhiteSpace(request.Title))
+        {
+            return BadRequest(new { message = "Change request title is required" });
+        }
+
         var changeRequest = new ChangeRequest
         {
-            Title = request.Title,
+            Title = request.Title.Trim(),
             Description = request.Description,
             Justification = request.Justification,
             RequestedBy = User.Identity?.Name ?? "System"
         };
 
-        var created = await _cms.CreateChangeRequestAsync(changeRequest);
+        ChangeRequest created;
+        try
+        {
+            created = await _cms.CreateChangeRequestAsync(changeRequest);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
 
         return CreatedAtAction(nameof(GetChangeRequest), new { requestNumber = created.RequestNumber },
             new ChangeRequestResponse

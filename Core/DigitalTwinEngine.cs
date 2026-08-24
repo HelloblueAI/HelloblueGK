@@ -97,7 +97,7 @@ namespace HB_NLP_Research_Lab.Core
                     IsReady = true,
                     ActiveSystems = new[] { "Live Learning", "Predictive Twin", "Autonomous Testing", "Real-Time Learning" },
                     LearningMode = "Continuous",
-                    PredictionAccuracy = "99.9%",
+                    PredictionAccuracy = $"{UnprovenPredictionAccuracy:P0}",
                     TwinCount = _digitalTwins.Count,
                     GateCount = _engineGates.Count
                 };
@@ -352,10 +352,18 @@ namespace HB_NLP_Research_Lab.Core
 
             var aiLearningResult = await _aiDesigner.LearnFromTestDataAsync(flightData);
             var modelImprovement = await _learningEngine.UpdateModelsAsync(engineId, flightData);
+            var priorAccuracy = twinForLearning.PredictionAccuracy;
+            if (_predictionAccuracies.TryGetValue(engineId, out var storedAccuracy) &&
+                storedAccuracy.OverallAccuracy > 0)
+            {
+                priorAccuracy = storedAccuracy.OverallAccuracy;
+            }
+
             var accuracyUpdate = await _predictiveTwin.UpdatePredictionAccuracyAsync(
                 engineId,
                 flightData,
-                twinForLearning.EngineModel);
+                twinForLearning.EngineModel,
+                priorAccuracy);
 
             // Commit the learning result only after every asynchronous stage
             // succeeds and while replacement/disposal are excluded.
@@ -529,14 +537,14 @@ namespace HB_NLP_Research_Lab.Core
                 EngineId = engineId,
                 PredictionTimestamp = DateTime.UtcNow,
                 MultiPhysicsResult = multiPhysicsResult,
-                PredictionConfidence = 0.999,
+                PredictionConfidence = UnprovenPredictionAccuracy,
                 PredictedPerformance = new PredictedPerformance
                 {
                     Thrust = thrust,
                     Efficiency = efficiency,
-                    Reliability = 0.999,
+                    Reliability = UnprovenPredictionAccuracy,
                     ThermalEfficiency = Math.Clamp(efficiency * 0.92, 0.0, 1.0),
-                    StructuralSafety = 0.998
+                    StructuralSafety = UnprovenPredictionAccuracy
                 },
                 PredictedFailures = new List<PredictedFailure>
                 {
@@ -545,7 +553,7 @@ namespace HB_NLP_Research_Lab.Core
                         FailureMode = "Thermal Fatigue",
                         Probability = 0.001,
                         TimeToFailure = TimeSpan.FromHours(5000),
-                        Confidence = 0.95
+                        Confidence = UnprovenPredictionAccuracy
                     }
                 }
             };
@@ -1036,9 +1044,9 @@ namespace HB_NLP_Research_Lab.Core
             var efficiency = TryReadEngineModelParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
                 ? Math.Clamp(engineEfficiency, 0.0, 1.0)
                 : 0.92;
-            // Baseline reliability is a model prior; scenario throttle may derate it.
+            // Baseline reliability stays fail-closed/unproven until a trusted model prior exists.
             // Clients must not set PredictedMetrics.Reliability directly.
-            var reliability = 0.95;
+            var reliability = DigitalTwinEngine.UnprovenPredictionAccuracy;
             var parameters = scenario.Parameters ?? new Dictionary<string, object>();
 
             if (TryReadScenarioDouble(parameters, "thrust", out var requestedThrust) && requestedThrust > 0)
@@ -1050,11 +1058,9 @@ namespace HB_NLP_Research_Lab.Core
                 thrust *= thrustScale;
             }
 
-            if (TryReadScenarioDouble(parameters, "efficiency", out var requestedEfficiency) && requestedEfficiency > 0)
-            {
-                efficiency = Math.Clamp(requestedEfficiency, 0.0, 1.0);
-            }
-            else if (TryReadScenarioDouble(parameters, "throttle", out var throttle) && throttle > 0)
+            // Clients must not set PredictedMetrics.Efficiency directly (Reliability parity).
+            // Throttle and ambient temperature may derate the engine-model baseline only.
+            if (TryReadScenarioDouble(parameters, "throttle", out var throttle) && throttle > 0)
             {
                 // Throttle below 1.0 reduces delivered thrust and efficiency; above 1.0 trades reliability.
                 thrust *= throttle;
@@ -1154,10 +1160,16 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
         
+        /// <summary>
+        /// Score flight residuals against the engine model.
+        /// Incomplete telemetry cannot raise overall accuracy above unproven, and a single
+        /// perfect echo is EMA-blended with the prior so Admin learn cannot forge 1.0 in one shot.
+        /// </summary>
         public async Task<PredictionAccuracy> UpdatePredictionAccuracyAsync(
             string engineId,
             TestFlightData flightData,
-            EngineModel? engineModel = null)
+            EngineModel? engineModel = null,
+            double? priorOverallAccuracy = null)
         {
             await Task.Delay(50);
 
@@ -1182,12 +1194,34 @@ namespace HB_NLP_Research_Lab.Core
                 modelKeys: new[] { "Reliability" },
                 flightKeys: new[] { "Reliability" });
 
-            var scored = new[] { thrustAccuracy, thermalAccuracy, structuralAccuracy, failureAccuracy }
-                .Where(value => !double.IsNaN(value))
-                .ToArray();
-            var overall = scored.Length > 0
-                ? scored.Average()
+            var rawScores = new[] { thrustAccuracy, thermalAccuracy, structuralAccuracy, failureAccuracy };
+            var scoredCount = rawScores.Count(value => !double.IsNaN(value));
+            // Unscored components contribute unproven (0.5) — never drop them from the average
+            // so a single matching Thrust echo cannot produce OverallAccuracy=1.0.
+            var componentScores = new[]
+            {
+                ResolveComponentAccuracy(thrustAccuracy),
+                ResolveComponentAccuracy(thermalAccuracy),
+                ResolveComponentAccuracy(structuralAccuracy),
+                ResolveComponentAccuracy(failureAccuracy)
+            };
+            var sampleOverall = componentScores.Average();
+
+            // Partial evidence cannot claim better than the unproven baseline.
+            if (scoredCount < rawScores.Length)
+            {
+                sampleOverall = Math.Min(sampleOverall, DigitalTwinEngine.UnprovenPredictionAccuracy);
+            }
+
+            var prior = priorOverallAccuracy is > 0 and <= 1.0
+                ? priorOverallAccuracy.Value
                 : DigitalTwinEngine.UnprovenPredictionAccuracy;
+            // One perfect telemetry echo moves accuracy only a fraction of the way to 1.0.
+            const double sampleWeight = 0.25;
+            var overall = Math.Clamp(
+                (sampleWeight * sampleOverall) + ((1.0 - sampleWeight) * prior),
+                0.0,
+                1.0);
 
             return new PredictionAccuracy
             {
@@ -1311,10 +1345,13 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ModelImprovement> UpdateModelsAsync(string engineId, TestFlightData flightData)
         {
             await Task.Delay(100);
+            // Fail closed: do not invent a hardcoded 12% ModelImprovement on every learn.
+            // Until real model-delta evidence exists, report unproven (zero) improvement.
+            _ = flightData;
             return new ModelImprovement
             {
                 EngineId = engineId,
-                ImprovementPercentage = 0.12,
+                ImprovementPercentage = 0.0,
                 ModelVersion = "2.1.0",
                 UpdateTimestamp = DateTime.UtcNow
             };

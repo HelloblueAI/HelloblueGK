@@ -38,6 +38,18 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_KeepsValidationOverallAccuracyFailClosed()
+    {
+        var result = await _engine.AnalyzeEngineAsync("TestEngine", "CFD");
+
+        // Solver ConvergenceRate may be high, but validation evidence stays unproven
+        // until a trusted flight/test binding exists (MissionSuccess accuracy gate).
+        result.ConvergenceRate.Should().BeGreaterThan(0);
+        result.ValidationReport.OverallAccuracy.Should().Be(RealTimeValidationEngine.UnprovenValidationAccuracy);
+        result.ValidationReport.OverallAccuracy.Should().BeLessThan(95.0);
+    }
+
+    [Fact]
     public async Task AnalyzeEngineAsync_ShouldHaveValidThrustAnalysis()
     {
         // Arrange
@@ -126,7 +138,8 @@ public class HelloblueGKEngineTests : IDisposable
             new Dictionary<string, object> { ["iterations"] = 42 });
 
         result.SimulationType.Should().Be("CFD");
-        result.Iterations.Should().Be(42);
+        // Client iterations overrides are ignored — ConvergenceIterations is solver-owned.
+        result.Iterations.Should().Be(150);
         result.ThrustAnalysis.MaxThrust.Should().BeGreaterThan(0);
         result.ThermalAnalysis.MaxTemperature.Should().Be(0);
         result.StructuralAnalysis.MaxStress.Should().Be(0);
@@ -172,11 +185,11 @@ public class HelloblueGKEngineTests : IDisposable
             });
 
         result.SimulationType.Should().Be("CFD");
-        result.Iterations.Should().Be(88);
+        result.Iterations.Should().Be(150);
         result.ThrustAnalysis.MaxThrust.Should().Be(1234567);
         result.ThrustAnalysis.Efficiency.Should().BeApproximately(0.91, 0.0001);
         result.PerformanceMetrics["ChamberPressure"].Should().Be(275.5);
-        result.PerformanceMetrics["Iterations"].Should().Be(88);
+        result.PerformanceMetrics["Iterations"].Should().Be(150);
     }
 
     [Fact]
@@ -212,14 +225,14 @@ public class HelloblueGKEngineTests : IDisposable
             });
 
         result.SimulationType.Should().Be("Thermal");
-        result.Iterations.Should().Be(55);
+        result.Iterations.Should().Be(120);
         result.ThermalAnalysis.MaxTemperature.Should().Be(4100);
         result.ThermalAnalysis.CoolingEfficiency.Should().BeApproximately(0.77, 0.0001);
         result.PerformanceMetrics["MaxTemperature"].Should().Be(4100);
     }
 
     [Fact]
-    public async Task AnalyzeEngineAsync_WithStructuralParameters_AppliesStressButNotClientSafetyFactor()
+    public async Task AnalyzeEngineAsync_WithStructuralParameters_AppliesStressButNotClientSafetyFactorOrIterations()
     {
         var baseline = HelloblueGKEngine.CreateDesignParametersFromEngine(
             thrust: 1_500_000,
@@ -243,12 +256,13 @@ public class HelloblueGKEngineTests : IDisposable
             {
                 ["maxStress"] = 650e6,
                 ["safetyFactor"] = 100.0,
-                ["iterations"] = 66
+                ["iterations"] = 1
             },
             baseline);
 
         forged.SimulationType.Should().Be("Structural");
-        forged.Iterations.Should().Be(66);
+        forged.Iterations.Should().Be(100);
+        forged.Iterations.Should().Be(honest.Iterations);
         forged.StructuralAnalysis.MaxStress.Should().Be(650e6);
         forged.StructuralAnalysis.SafetyFactor.Should().BeApproximately(
             honest.StructuralAnalysis.SafetyFactor,
@@ -342,7 +356,11 @@ public class HelloblueGKEngineTests : IDisposable
 
         forged.ThrustAnalysis.Efficiency.Should().BeApproximately(0.5, 0.0001);
         forged.ConvergenceRate.Should().BeApproximately(honest.ConvergenceRate, 0.0001);
-        forged.ConvergenceRate.Should().BeGreaterThan(0.9);
+        // Placeholder solvers report UnprovenSolverAccuracy (50%) — not hardcoded 99.x.
+        forged.ConvergenceRate.Should().BeApproximately(
+            HighPerformanceCFDSolver.UnprovenSolverAccuracy / 100.0,
+            0.0001);
+        forged.ConvergenceRate.Should().BeLessThan(0.9);
     }
 
     [Fact]
