@@ -206,6 +206,9 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("REQ-SAFETY-1", "Valve timing", "Main valve open sequence", RequirementPriority.Low, RequirementPriority.Critical)]
     [InlineData("REQ-001", "Chamber pressure limit", "critical overpressure protection", RequirementPriority.High, RequirementPriority.Critical)]
     [InlineData("REQ-001", "Routine housekeeping", "catastrophic failure containment", RequirementPriority.Medium, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Hazardous overpressure relief valve", "Routine observation of valve motion", RequirementPriority.Medium, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Valve timing", "unsafe ignition interlock bypass", RequirementPriority.Low, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Fatal overtemp interlock", "Housekeeping telemetry", RequirementPriority.High, RequirementPriority.Critical)]
     public void ResolvePriority_FailClosedAndKeywordFloor(
         string? number,
         string? title,
@@ -335,6 +338,62 @@ public class RequirementsTraceabilitySystemTests
 
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*relative*");
+    }
+
+    [Fact]
+    public async Task CreateRequirementAsync_HazardWording_CannotUnderClassifyPriority()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-HAZ-001",
+            Title = "Hazardous overpressure relief valve",
+            Description = "Routine observation of valve motion",
+            Priority = RequirementPriority.Medium,
+            CreatedBy = "alice"
+        });
+
+        requirement.Priority.Should().Be(RequirementPriority.Critical);
+        var persisted = await context.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverHazardMedium_RequiresMcdc()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirementId = Guid.NewGuid();
+        context.Requirements.Add(new Requirement
+        {
+            Id = requirementId,
+            RequirementNumber = "REQ-HAZ-LEGACY",
+            Title = "Hazardous overpressure relief valve",
+            Description = "Routine observation of valve motion",
+            Priority = RequirementPriority.Medium,
+            Status = RequirementStatus.Draft,
+            TraceabilityStatus = TraceabilityStatus.NotTraced,
+            CreatedAt = DateTime.UtcNow,
+            CreatedBy = "alice"
+        });
+        await context.SaveChangesAsync();
+
+        var design = await system.LinkToDesignAsync(requirementId, "DES-HAZ", "DesignDoc.pdf");
+        var code = await system.LinkToCodeAsync(requirementId, "Core/Valves.cs", 1, 20, "RelievePressure");
+        var test = await system.LinkToTestAsync(requirementId, "TC-HAZ", "Tests/ValvesTests.cs", TestCoverageType.Statement);
+
+        await system.RecordTestResultAsync(requirementId, test.Id, TestResult.Passed);
+        await system.VerifyLinkAsync(requirementId, design.Id, RequirementLinkKind.Design);
+        await system.VerifyLinkAsync(requirementId, code.Id, RequirementLinkKind.Code);
+        await system.VerifyLinkAsync(requirementId, test.Id, RequirementLinkKind.Test);
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
     }
 
     private static RequirementsDbContext CreateContext()

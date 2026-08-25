@@ -261,10 +261,13 @@ namespace HB_NLP_Research_Lab.Certification
                     .Average(c => c?.MCDCCoverage ?? 0);
             }
 
-            // Fail closed: empty roster / missing evidence / no safety-critical inventory.
+            // Fail closed: empty roster / missing evidence / no safety-critical inventory /
+            // leftover scheme, absolute, or outside-tree paths.
             var missingRosterFiles = roster.Count(r => !coverageByPath.ContainsKey(r.FilePath));
+            var unsafeRosterFiles = roster.Count(r => !IsStoredCoveragePathSafe(r.FilePath));
             report.MeetsDO178CLevelA = roster.Count > 0 &&
                                       missingRosterFiles == 0 &&
+                                      unsafeRosterFiles == 0 &&
                                       report.SafetyCriticalFiles > 0 &&
                                       report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
                                       report.FilesWith100PercentBranchCoverage == report.TotalFiles &&
@@ -316,9 +319,17 @@ namespace HB_NLP_Research_Lab.Certification
 
             var rosterCoverage = new List<CodeCoverage>();
             var missingFiles = new List<string>();
+            var unsafeFiles = new List<string>();
             foreach (var required in roster)
             {
-                if (!coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                if (!IsStoredCoveragePathSafe(required.FilePath))
+                {
+                    unsafeFiles.Add(required.FilePath);
+                    continue;
+                }
+
+                if (!coverageByPath.TryGetValue(required.FilePath, out var coverage)
+                    || !IsStoredCoveragePathSafe(coverage.FilePath))
                 {
                     missingFiles.Add(required.FilePath);
                     continue;
@@ -349,6 +360,21 @@ namespace HB_NLP_Research_Lab.Certification
                 check.MCDCCoverageCompliant = false;
                 check.IsCompliant = false;
                 check.Issues.Add("Required coverage roster is empty; DO-178C Level A compliance cannot be asserted");
+                return check;
+            }
+
+            if (unsafeFiles.Count > 0)
+            {
+                check.StatementCoverageCompliant = false;
+                check.BranchCoverageCompliant = false;
+                check.MCDCCoverageCompliant = false;
+                check.IsCompliant = false;
+                check.Issues.Add($"{unsafeFiles.Count} required coverage file(s) are outside the repository implementation or test trees");
+                foreach (var unsafePath in unsafeFiles)
+                {
+                    check.Issues.Add($"Unsafe coverage evidence path: {unsafePath}");
+                }
+
                 return check;
             }
 
@@ -421,29 +447,66 @@ namespace HB_NLP_Research_Lab.Certification
             return string.Join(", ", gaps);
         }
 
+        private static readonly HashSet<string> AllowedCoverageRoots = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Core", "WebAPI", "Certification", "Physics", "AI", "Models", "Aerospace", "Scripts", "Tests"
+        };
+
         private static string NormalizeFilePath(string filePath)
         {
+            if (!TryNormalizeCoveragePath(filePath, out var normalized, out var error))
+            {
+                throw new ArgumentException(error, nameof(filePath));
+            }
+
+            return normalized;
+        }
+
+        private static bool IsStoredCoveragePathSafe(string? filePath)
+        {
+            return TryNormalizeCoveragePath(filePath, out var normalized, out _)
+                && string.Equals(filePath, normalized, StringComparison.Ordinal);
+        }
+
+        private static bool TryNormalizeCoveragePath(string? filePath, out string normalized, out string error)
+        {
+            normalized = string.Empty;
+            error = string.Empty;
+
             if (string.IsNullOrWhiteSpace(filePath))
             {
-                throw new ArgumentException("Coverage file path is required.", nameof(filePath));
+                error = "Coverage file path is required.";
+                return false;
             }
 
-            var normalized = filePath.Trim().Replace('\\', '/');
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':'))
+            var trimmed = filePath.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so Level A
+            // coverage evidence cannot point outside the repository.
+            if (trimmed.StartsWith("/", StringComparison.Ordinal)
+                || trimmed.StartsWith("//", StringComparison.Ordinal)
+                || trimmed.Contains("://", StringComparison.Ordinal)
+                || trimmed.Contains(':', StringComparison.Ordinal))
             {
-                throw new ArgumentException("Coverage file path must be relative to the repository.", nameof(filePath));
+                error = "Coverage file path must be relative to the repository.";
+                return false;
             }
 
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0
                 || segments.Any(segment => segment is "." or ".."))
             {
-                throw new ArgumentException("Coverage file path must not contain traversal segments.", nameof(filePath));
+                error = "Coverage file path must not contain traversal segments.";
+                return false;
             }
 
-            return string.Join("/", segments);
+            if (segments.Length < 2 || !AllowedCoverageRoots.Contains(segments[0]))
+            {
+                error = "Coverage file path must be under an implementation or test tree (Core/, WebAPI/, Certification/, Physics/, AI/, Models/, Aerospace/, Scripts/, Tests/).";
+                return false;
+            }
+
+            normalized = string.Join("/", segments);
+            return true;
         }
 
         private static void ValidateAndNormalizeMetrics(CoverageMetrics metrics)

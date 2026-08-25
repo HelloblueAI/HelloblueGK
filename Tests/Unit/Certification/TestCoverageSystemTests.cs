@@ -206,6 +206,88 @@ public class TestCoverageSystemTests
         check.MCDCCoverageCompliant.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("http://example.test/Core/Engine.cs")]
+    [InlineData("https://example.test/Core/Engine.cs")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("tmp/forge.cs")]
+    [InlineData("phantom/coverage.cs")]
+    [InlineData("C:\\Windows\\system32\\kernel.cs")]
+    public async Task RegisterRequiredFileAsync_RejectsSchemeOrOutsideTreePaths(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.RegisterRequiredFileAsync(filePath, isSafetyCritical: true, registeredBy: "admin");
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        context.RequiredCoverageFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("http://example.test/Core/Engine.cs")]
+    [InlineData("tmp/forge.cs")]
+    public async Task RecordCoverageAsync_RejectsSchemeOrOutsideTreePaths(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.RecordCoverageAsync(filePath, new CoverageMetrics
+        {
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MCDCCoverage = 100
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        context.CodeCoverage.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverSchemePath_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        context.RequiredCoverageFiles.Add(new RequiredCoverageFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "http://example.test/Core/Engine.cs",
+            IsSafetyCritical = true,
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        context.CodeCoverage.Add(new CodeCoverage
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "http://example.test/Core/Engine.cs",
+            StatementCoverage = 100,
+            BranchCoverage = 100,
+            MCDCCoverage = 100,
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MeetsLevelARequirements = true,
+            LastUpdated = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("Unsafe coverage evidence path", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+    }
+
     private static TestCoverageDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<TestCoverageDbContext>()

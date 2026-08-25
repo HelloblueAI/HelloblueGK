@@ -610,22 +610,32 @@ namespace HB_NLP_Research_Lab.Certification
             return await BuildComplianceCheckAsync(normalizedRequired);
         }
 
+        /// <summary>
+        /// Minimum line span that may satisfy a whole-file Level A roster entry.
+        /// A one-line nit review cannot stand in for a file-covering inspection.
+        /// </summary>
+        public const int MinimumFileReviewLineCount = 10;
+
+        private static bool IsFileCoveringReviewSpan(int lineStart, int lineEnd)
+        {
+            return lineStart == 1 && lineEnd - lineStart + 1 >= MinimumFileReviewLineCount;
+        }
+
         private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
         {
             var approvedFiles = (await _context.CodeReviews
                 .Where(r => r.Status == CodeReviewStatus.Approved)
-                .Select(r => r.FilePath)
-                .Distinct()
+                .Select(r => new { r.FilePath, r.LineStart, r.LineEnd })
                 .ToListAsync())
-                .Where(f => !string.IsNullOrWhiteSpace(f))
-                .Select(NormalizeFilePath)
+                .Where(r => !string.IsNullOrWhiteSpace(r.FilePath) && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
+                .Select(r => NormalizeFilePath(r.FilePath))
                 .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
                 TotalRequiredFiles = normalizedRequired.Count,
-                // Count only required files that have an approved review — not all approved rows.
+                // Count only required files that have a file-covering approved review — not all approved rows.
                 ReviewedFiles = normalizedRequired.Count(approvedFiles.Contains),
                 UnreviewedFiles = normalizedRequired.Where(f => !approvedFiles.Contains(f)).ToList()
             };
@@ -642,10 +652,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (!check.IsCompliant)
             {
-                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed");
+                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
                 foreach (var file in check.UnreviewedFiles)
                 {
-                    check.Issues.Add($"File not reviewed: {file}");
+                    check.Issues.Add($"File not reviewed with a file-covering approved span: {file}");
                 }
             }
 
