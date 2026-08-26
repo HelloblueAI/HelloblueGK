@@ -176,7 +176,12 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
-            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            // Completed is terminal for assign as well as findings: a late assignment
+            // cannot complete (SubmitFindings rejects Completed) and would block
+            // ApproveReview (all assignments must be Completed).
+            if (review.Status is CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected
+                or CodeReviewStatus.Completed)
             {
                 throw new InvalidOperationException(
                     $"Cannot assign a reviewer to a review with status {review.Status}");
