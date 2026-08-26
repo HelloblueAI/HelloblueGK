@@ -157,9 +157,16 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task AddItemToBaselineAsync(Guid baselineId, Guid itemId, string version)
         {
+            if (string.IsNullOrWhiteSpace(version))
+                throw new ArgumentException("Configuration item version is required", nameof(version));
+
             var baseline = await _context.SoftwareBaselines.FindAsync(baselineId);
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
+
+            var item = await _context.ConfigurationItems.FindAsync(itemId);
+            if (item == null)
+                throw new ArgumentException($"Configuration item {itemId} not found", nameof(itemId));
 
             // Approved/Released/Obsolete baselines are frozen; mutations require a change request path.
             if (baseline.Status is BaselineStatus.Approved or BaselineStatus.Released or BaselineStatus.Obsolete)
@@ -173,7 +180,7 @@ namespace HB_NLP_Research_Lab.Certification
                 Id = Guid.NewGuid(),
                 BaselineId = baselineId,
                 ConfigurationItemId = itemId,
-                Version = version,
+                Version = version.Trim(),
                 AddedAt = DateTime.UtcNow
             };
 
@@ -203,8 +210,14 @@ namespace HB_NLP_Research_Lab.Certification
             ArgumentNullException.ThrowIfNull(request);
             if (string.IsNullOrWhiteSpace(request.Title))
                 throw new ArgumentException("Change request title is required", nameof(request));
-            request.Title = request.Title.Trim();
+            if (string.IsNullOrWhiteSpace(request.Description))
+                throw new ArgumentException("Change request description is required", nameof(request));
+            if (string.IsNullOrWhiteSpace(request.Justification))
+                throw new ArgumentException("Change request justification is required", nameof(request));
 
+            request.Title = request.Title.Trim();
+            request.Description = request.Description.Trim();
+            request.Justification = request.Justification.Trim();
             request.Id = Guid.NewGuid();
             request.CreatedAt = DateTime.UtcNow;
             request.Status = ChangeRequestStatus.Submitted;
@@ -235,6 +248,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task ApproveChangeRequestAsync(string requestNumber, string approvedBy, string approvalNotes)
         {
+            if (string.IsNullOrWhiteSpace(approvalNotes))
+                throw new ArgumentException("Approval notes are required for CCB approval", nameof(approvalNotes));
+
             var request = await _context.ChangeRequests
                 .FirstOrDefaultAsync(cr => cr.RequestNumber == requestNumber);
 
@@ -247,6 +263,8 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Change request {requestNumber} cannot be approved from status {request.Status}; " +
                     "only Submitted or UnderReview change requests may be approved");
             }
+
+            var notes = approvalNotes.Trim();
 
             // Level A / CCB independence: requester cannot self-approve.
             var normalizedApprover = NormalizeActorName(approvedBy);
@@ -272,7 +290,7 @@ namespace HB_NLP_Research_Lab.Certification
                     .SetProperty(cr => cr.Status, ChangeRequestStatus.Approved)
                     .SetProperty(cr => cr.ApprovedBy, normalizedApprover)
                     .SetProperty(cr => cr.ApprovedAt, approvedAt)
-                    .SetProperty(cr => cr.ApprovalNotes, approvalNotes));
+                    .SetProperty(cr => cr.ApprovalNotes, notes));
 
             if (claimed == 0)
             {
@@ -288,14 +306,14 @@ namespace HB_NLP_Research_Lab.Certification
                 ChangeRequestId = request.Id,
                 ApprovedBy = normalizedApprover,
                 ApprovedAt = approvedAt,
-                Notes = approvalNotes
+                Notes = notes
             });
             await _context.SaveChangesAsync();
 
             request.Status = ChangeRequestStatus.Approved;
             request.ApprovedBy = normalizedApprover;
             request.ApprovedAt = approvedAt;
-            request.ApprovalNotes = approvalNotes;
+            request.ApprovalNotes = notes;
 
             _logger.LogInformation("Approved change request {RequestNumber}", LogSanitizer.SanitizeIdentifier(requestNumber));
         }
@@ -305,6 +323,24 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task ImplementChangeRequestAsync(string requestNumber, string implementedBy, List<Guid> affectedItems)
         {
+            ArgumentNullException.ThrowIfNull(affectedItems);
+            if (affectedItems.Count == 0 || affectedItems.Any(id => id == Guid.Empty))
+            {
+                throw new ArgumentException(
+                    "At least one existing affected configuration item is required to implement a change request",
+                    nameof(affectedItems));
+            }
+
+            var distinctItemIds = affectedItems.Distinct().ToList();
+            var existingCount = await _context.ConfigurationItems
+                .CountAsync(item => distinctItemIds.Contains(item.Id));
+            if (existingCount != distinctItemIds.Count)
+            {
+                throw new ArgumentException(
+                    "One or more affected configuration items were not found",
+                    nameof(affectedItems));
+            }
+
             var request = await _context.ChangeRequests
                 .FirstOrDefaultAsync(cr => cr.RequestNumber == requestNumber);
 
@@ -319,7 +355,7 @@ namespace HB_NLP_Research_Lab.Certification
             request.ImplementedAt = DateTime.UtcNow;
 
             // Link to affected items
-            var links = affectedItems.Select(itemId => new ChangeRequestItemLink
+            var links = distinctItemIds.Select(itemId => new ChangeRequestItemLink
             {
                 Id = Guid.NewGuid(),
                 ChangeRequestId = request.Id,

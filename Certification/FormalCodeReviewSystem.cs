@@ -176,7 +176,12 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
-            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            // Completed is terminal for assign as well as findings: a late assignment
+            // cannot complete (SubmitFindings rejects Completed) and would block
+            // ApproveReview (all assignments must be Completed).
+            if (review.Status is CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected
+                or CodeReviewStatus.Completed)
             {
                 throw new InvalidOperationException(
                     $"Cannot assign a reviewer to a review with status {review.Status}");
@@ -226,7 +231,30 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task SubmitFindingsAsync(Guid reviewId, string reviewerName, List<ReviewFinding> findings)
         {
-            findings ??= new List<ReviewFinding>();
+            ArgumentNullException.ThrowIfNull(findings);
+            if (findings.Count == 0)
+            {
+                throw new ArgumentException(
+                    "At least one review finding is required; an empty findings list cannot complete a certified assignment",
+                    nameof(findings));
+            }
+
+            foreach (var finding in findings)
+            {
+                if (finding.LineNumber <= 0)
+                {
+                    throw new ArgumentException(
+                        "Finding line number must be a positive line in the reviewed span",
+                        nameof(findings));
+                }
+
+                if (string.IsNullOrWhiteSpace(finding.Description))
+                {
+                    throw new ArgumentException("Finding description is required", nameof(findings));
+                }
+
+                finding.Description = finding.Description.Trim();
+            }
 
             var review = await _context.CodeReviews
                 .Include(r => r.Assignments)
@@ -236,8 +264,11 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException($"Review {reviewId} not found");
 
             // Terminal statuses must not accept new findings — otherwise a late submit
-            // can clobber Approved → Completed and reopen a compliance forge window.
-            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            // can clobber Approved → Completed, or inject findings into a Completed
+            // snapshot before approve, and reopen a compliance forge window.
+            if (review.Status is CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected
+                or CodeReviewStatus.Completed)
             {
                 throw new InvalidOperationException(
                     $"Cannot submit findings for review with status {review.Status}");

@@ -188,7 +188,13 @@ public class ConfigurationManagementSystemTests
         });
 
         await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
-        await system.ImplementChangeRequestAsync(created.RequestNumber, "alice", new List<Guid>());
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/injector.c"
+        });
+        await system.ImplementChangeRequestAsync(created.RequestNumber, "alice", new List<Guid> { item.Id });
 
         var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "carol", "re-approve");
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -302,6 +308,94 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.1");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot accept new configuration items*");
+    }
+
+    [Fact]
+    public async Task CreateChangeRequestAsync_RejectsEmptyJustification()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "   ",
+            RequestedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*justification*");
+        context.ChangeRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApproveChangeRequestAsync_RejectsEmptyApprovalNotes()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "  ");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("approvalNotes");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AddItemToBaselineAsync_RejectsEmptyVersion()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-2", "1.0.0", "initial", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/core.c"
+        });
+
+        var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "   ");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("version");
+    }
+
+    [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsEmptyAffectedItems()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "alice",
+            new List<Guid>());
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("affectedItems");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Approved);
     }
 
     [Fact]

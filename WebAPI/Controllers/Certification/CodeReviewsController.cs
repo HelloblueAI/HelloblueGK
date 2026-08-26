@@ -277,8 +277,13 @@ public class CodeReviewsController : ControllerBase
     {
         try
         {
+            if (request.Findings == null || request.Findings.Count == 0)
+            {
+                return BadRequest(new { message = "At least one review finding is required" });
+            }
+
             var findings = new List<ReviewFinding>();
-            foreach (var finding in request.Findings ?? new List<ReviewFindingRequest>())
+            foreach (var finding in request.Findings)
             {
                 if (!Enum.TryParse<FindingSeverity>(finding.Severity, ignoreCase: true, out var severity))
                 {
@@ -303,12 +308,20 @@ public class CodeReviewsController : ControllerBase
             await _crs.SubmitFindingsAsync(id, User.Identity?.Name ?? "System", findings);
             return Ok(new { message = "Findings submitted successfully" });
         }
+        catch (ArgumentException ex) when (ex.ParamName == "findings")
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
                                           || ex.Message.Contains("not assigned", StringComparison.OrdinalIgnoreCase))
         {
             return NotFound();
         }
         catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
