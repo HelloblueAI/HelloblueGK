@@ -259,8 +259,11 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException($"Review {reviewId} not found");
 
             // Terminal statuses must not accept new findings — otherwise a late submit
-            // can clobber Approved → Completed and reopen a compliance forge window.
-            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            // can clobber Approved → Completed, or inject findings into a Completed
+            // snapshot before approve, and reopen a compliance forge window.
+            if (review.Status is CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected
+                or CodeReviewStatus.Completed)
             {
                 throw new InvalidOperationException(
                     $"Cannot submit findings for review with status {review.Status}");
