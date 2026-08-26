@@ -2268,18 +2268,6 @@ public class SecurityHardeningTests
         return new TestCoverageDbContext(options);
     }
 
-    private static RequirementsDbContext CreateRequirementsContext()
-    {
-        var options = new DbContextOptionsBuilder<RequirementsDbContext>()
-            .UseSqlite($"Data Source=file:requirements-sec-{Guid.NewGuid():N}?mode=memory&cache=shared")
-            .Options;
-
-        var context = new RequirementsDbContext(options);
-        context.Database.OpenConnection();
-        context.Database.EnsureCreated();
-        return context;
-    }
-
     private static CodeReviewDbContext CreateCodeReviewContext()
     {
         var options = new DbContextOptionsBuilder<CodeReviewDbContext>()
