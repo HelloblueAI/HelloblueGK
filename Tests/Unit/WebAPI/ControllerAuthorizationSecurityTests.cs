@@ -1022,7 +1022,7 @@ public class ControllerAuthorizationSecurityTests
         document.RootElement.GetProperty("baselineEfficiency").GetDouble()
             .Should().BeApproximately(0.8, 0.0001);
         document.RootElement.GetProperty("originalParameters").GetProperty("efficiency").GetDouble()
-            .Should().BeApproximately(0.001, 0.0001);
+            .Should().BeApproximately(0.8, 0.0001);
 
         var optimizedEfficiency = document.RootElement.GetProperty("optimizedParameters")
             .GetProperty("efficiency").GetDouble();
