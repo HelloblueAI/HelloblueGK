@@ -350,8 +350,26 @@ namespace HB_NLP_Research_Lab.Certification
             if (request.Status != ChangeRequestStatus.Approved)
                 throw new InvalidOperationException($"Change request {requestNumber} must be approved before implementation");
 
+            var normalizedImplementer = NormalizeActorName(implementedBy);
+            if (string.IsNullOrWhiteSpace(normalizedImplementer))
+            {
+                throw new ArgumentException("Implementer is required", nameof(implementedBy));
+            }
+
+            // Level A independence: the CCB approver cannot also implement the change.
+            // Requester-as-implementer remains allowed (developer implements after CCB).
+            if (!string.IsNullOrWhiteSpace(request.ApprovedBy) &&
+                string.Equals(
+                    NormalizeActorName(request.ApprovedBy),
+                    normalizedImplementer,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot implement a change request as its CCB approver; Level A requires separation of duties");
+            }
+
             request.Status = ChangeRequestStatus.Implemented;
-            request.ImplementedBy = implementedBy;
+            request.ImplementedBy = normalizedImplementer;
             request.ImplementedAt = DateTime.UtcNow;
 
             // Link to affected items

@@ -399,6 +399,70 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsApproverAsImplementer()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/injector.c"
+        });
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "Bob",
+            new List<Guid> { item.Id });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*CCB approver*");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Approved);
+        persisted.ImplementedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsEmptyImplementer()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/injector.c"
+        });
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "  ",
+            new List<Guid> { item.Id });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("implementedBy");
+    }
+
+    [Fact]
     public async Task AddItemToBaselineAsync_RemovesItemWhenBaselineApprovedConcurrently()
     {
         // Shared in-memory DB + two contexts: context A holds a stale Draft tracker entry while
