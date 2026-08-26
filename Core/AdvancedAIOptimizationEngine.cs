@@ -290,27 +290,29 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Genetic Algorithm] 🧬 Running genetic algorithm optimization...");
             
             await Task.Delay(200, cancellationToken); // Simulate optimization time
-            
-            // Simulate genetic algorithm optimization
-            var random = new Random();
-            var improvement = 15.0 + random.NextDouble() * 25.0; // 15-40% improvement
-            
-            var optimizedParameters = new EngineDesignParameters
-            {
-                Thrust = parameters.Thrust * (1 + improvement / 100.0),
-                SpecificImpulse = parameters.SpecificImpulse * (1 + improvement / 100.0),
-                ChamberPressure = parameters.ChamberPressure * (1 + improvement / 100.0),
-                Efficiency = Math.Min(parameters.Efficiency * (1 + improvement / 100.0), 0.95)
-            };
+
+            // Fail closed: do not invent RNG 15–40% ImprovementPercentage / efficiency gains.
+            // Until a real genetic search produces evidence-backed deltas, return the input
+            // parameters unchanged so WebAPI ImprovementPercentage cannot be forged.
+            var optimizedParameters = CopyDesignParameters(parameters);
             
             return new StageResult
             {
                 StageName = "Genetic Algorithm",
-                ImprovementPercentage = improvement,
+                ImprovementPercentage = 0.0,
                 OptimizedParameters = optimizedParameters,
                 ExecutionTime = TimeSpan.FromMilliseconds(200)
             };
         }
+
+        private static EngineDesignParameters CopyDesignParameters(EngineDesignParameters parameters) =>
+            new()
+            {
+                Thrust = parameters.Thrust,
+                SpecificImpulse = parameters.SpecificImpulse,
+                ChamberPressure = parameters.ChamberPressure,
+                Efficiency = parameters.Efficiency
+            };
     }
 
     // Neural Network Optimizer
@@ -326,22 +328,20 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Neural Network] 🧠 Running neural network optimization...");
             
             await Task.Delay(150, cancellationToken); // Simulate optimization time
-            
-            var random = new Random();
-            var improvement = 8.0 + random.NextDouble() * 15.0; // 8-23% improvement
-            
+
+            // Fail closed: no RNG-invented neural improvement percentages.
             var optimizedParameters = new EngineDesignParameters
             {
-                Thrust = parameters.Thrust * (1 + improvement / 100.0),
-                SpecificImpulse = parameters.SpecificImpulse * (1 + improvement / 100.0),
-                ChamberPressure = parameters.ChamberPressure * (1 + improvement / 100.0),
-                Efficiency = Math.Min(parameters.Efficiency * (1 + improvement / 100.0), 0.95)
+                Thrust = parameters.Thrust,
+                SpecificImpulse = parameters.SpecificImpulse,
+                ChamberPressure = parameters.ChamberPressure,
+                Efficiency = parameters.Efficiency
             };
             
             return new StageResult
             {
                 StageName = "Neural Network",
-                ImprovementPercentage = improvement,
+                ImprovementPercentage = 0.0,
                 OptimizedParameters = optimizedParameters,
                 ExecutionTime = TimeSpan.FromMilliseconds(150)
             };
@@ -361,22 +361,20 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Multi-Objective] 🎯 Running multi-objective optimization...");
             
             await Task.Delay(180, cancellationToken); // Simulate optimization time
-            
-            var random = new Random();
-            var improvement = 12.0 + random.NextDouble() * 18.0; // 12-30% improvement
-            
+
+            // Fail closed: no RNG-invented multi-objective improvement percentages.
             var optimizedParameters = new EngineDesignParameters
             {
-                Thrust = parameters.Thrust * (1 + improvement / 100.0),
-                SpecificImpulse = parameters.SpecificImpulse * (1 + improvement / 100.0),
-                ChamberPressure = parameters.ChamberPressure * (1 + improvement / 100.0),
-                Efficiency = Math.Min(parameters.Efficiency * (1 + improvement / 100.0), 0.95)
+                Thrust = parameters.Thrust,
+                SpecificImpulse = parameters.SpecificImpulse,
+                ChamberPressure = parameters.ChamberPressure,
+                Efficiency = parameters.Efficiency
             };
             
             return new StageResult
             {
                 StageName = "Multi-Objective",
-                ImprovementPercentage = improvement,
+                ImprovementPercentage = 0.0,
                 OptimizedParameters = optimizedParameters,
                 ExecutionTime = TimeSpan.FromMilliseconds(180)
             };
@@ -389,11 +387,6 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class ReinforcementLearningOptimizer
     {
-        private const int EpisodeCount = 24;
-        private const double Epsilon = 0.2;
-        private const double LearningRate = 0.3;
-        private const double DiscountFactor = 0.9;
-
         public Task<StageResult> OptimizeAsync(EngineDesignParameters parameters) =>
             OptimizeAsync(parameters, CancellationToken.None);
 
@@ -404,104 +397,23 @@ namespace HB_NLP_Research_Lab.Core
             Console.WriteLine($"[Reinforcement Learning] 🎯 Running policy-iteration optimization...");
             await Task.Delay(120, cancellationToken);
 
-            var random = new Random(HashCode.Combine(
-                parameters.Thrust.GetHashCode(),
-                parameters.SpecificImpulse.GetHashCode(),
-                parameters.ChamberPressure.GetHashCode(),
-                parameters.Efficiency.GetHashCode()));
-
-            var qValues = new double[4];
-            var bestParameters = Clone(parameters);
-            var bestReward = Score(parameters);
-
-            var current = Clone(parameters);
-            for (var episode = 0; episode < EpisodeCount; episode++)
-            {
-                var action = random.NextDouble() < Epsilon
-                    ? random.Next(qValues.Length)
-                    : ArgMax(qValues);
-
-                var candidate = ApplyAction(current, action);
-                var reward = Score(candidate) - Score(current);
-                var nextBest = qValues.Max();
-                qValues[action] += LearningRate * (reward + DiscountFactor * nextBest - qValues[action]);
-
-                current = candidate;
-                var candidateScore = Score(candidate);
-                if (candidateScore > bestReward)
-                {
-                    bestReward = candidateScore;
-                    bestParameters = candidate;
-                }
-            }
-
-            var baselineScore = Score(parameters);
-            var improvement = baselineScore <= 0
-                ? 0
-                : Math.Max(0, ((bestReward - baselineScore) / baselineScore) * 100.0);
-
-            return new StageResult
-            {
-                StageName = "Reinforcement Learning",
-                ImprovementPercentage = improvement,
-                OptimizedParameters = bestParameters,
-                ExecutionTime = TimeSpan.FromMilliseconds(120)
-            };
-        }
-
-        private static EngineDesignParameters ApplyAction(EngineDesignParameters current, int action)
-        {
-            var next = Clone(current);
-            switch (action)
-            {
-                case 0:
-                    next.Thrust *= 1.02;
-                    break;
-                case 1:
-                    next.SpecificImpulse *= 1.015;
-                    break;
-                case 2:
-                    next.ChamberPressure *= 1.01;
-                    break;
-                default:
-                    next.Efficiency = Math.Min(next.Efficiency * 1.02, 0.98);
-                    break;
-            }
-
-            return next;
-        }
-
-        private static double Score(EngineDesignParameters parameters)
-        {
-            // Prefer efficient high-Isp designs with bounded chamber pressure growth.
-            return (parameters.Thrust / 1_000_000.0) * 0.25
-                + (parameters.SpecificImpulse / 400.0) * 0.35
-                + Math.Min(parameters.ChamberPressure / 250.0, 2.0) * 0.1
-                + parameters.Efficiency * 0.3;
-        }
-
-        private static int ArgMax(IReadOnlyList<double> values)
-        {
-            var bestIndex = 0;
-            for (var i = 1; i < values.Count; i++)
-            {
-                if (values[i] > values[bestIndex])
-                {
-                    bestIndex = i;
-                }
-            }
-
-            return bestIndex;
-        }
-
-        private static EngineDesignParameters Clone(EngineDesignParameters parameters)
-        {
-            return new EngineDesignParameters
+            // Fail closed: the prior synthetic ApplyAction/Score loop invented ImprovementPercentage
+            // (and efficiency gains up to 0.98) without real policy evidence — parity with
+            // Genetic/Neural/MultiObjective fail-closed hardening.
+            var optimizedParameters = new EngineDesignParameters
             {
                 Thrust = parameters.Thrust,
                 SpecificImpulse = parameters.SpecificImpulse,
                 ChamberPressure = parameters.ChamberPressure,
                 Efficiency = parameters.Efficiency
+            };
+
+            return new StageResult
+            {
+                StageName = "Reinforcement Learning",
+                ImprovementPercentage = 0.0,
+                OptimizedParameters = optimizedParameters,
+                ExecutionTime = TimeSpan.FromMilliseconds(120)
             };
         }
     }
@@ -518,15 +430,13 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.Delay(100, cancellationToken);
             
-            var random = new Random();
-            var confidenceLevel = 85.0 + random.NextDouble() * 15.0; // 85-100% confidence
-            
+            // Fail closed: echo baseline predictions with unproven confidence — no RNG 85–100%.
             return new PerformancePrediction
             {
-                PredictedThrust = parameters.Thrust * (0.95 + random.NextDouble() * 0.1),
-                PredictedSpecificImpulse = parameters.SpecificImpulse * (0.95 + random.NextDouble() * 0.1),
-                PredictedEfficiency = parameters.Efficiency * (0.95 + random.NextDouble() * 0.1),
-                ConfidenceLevel = confidenceLevel,
+                PredictedThrust = parameters.Thrust,
+                PredictedSpecificImpulse = parameters.SpecificImpulse,
+                PredictedEfficiency = parameters.Efficiency,
+                ConfidenceLevel = 50.0,
                 PredictionDate = DateTime.UtcNow
             };
         }
@@ -535,6 +445,8 @@ namespace HB_NLP_Research_Lab.Core
     // Innovation Analyzer
     public class InnovationAnalyzer
     {
+        public const double UnprovenInnovationScore = 50.0;
+
         public Task<double> AnalyzeInnovationAsync(EngineDesignParameters parameters) =>
             AnalyzeInnovationAsync(parameters, CancellationToken.None);
 
@@ -543,9 +455,10 @@ namespace HB_NLP_Research_Lab.Core
             CancellationToken cancellationToken)
         {
             await Task.Delay(50, cancellationToken);
-            
-            var random = new Random();
-            return 75.0 + random.NextDouble() * 25.0; // 75-100% innovation score
+
+            // Fail closed: do not invent 75–100% innovation scores for compliance/reporting.
+            _ = parameters;
+            return UnprovenInnovationScore;
         }
         
         public Task<double> CalculateNoveltyScoreAsync(EngineDesignParameters parameters) =>
@@ -557,8 +470,8 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.Delay(30, cancellationToken);
 
-            var random = new Random();
-            return 70.0 + random.NextDouble() * 30.0; // 70-100% novelty score
+            _ = parameters;
+            return UnprovenInnovationScore;
         }
 
         public Task<double> CalculateFeasibilityScoreAsync(EngineDesignParameters parameters) =>
@@ -570,8 +483,8 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.Delay(30, cancellationToken);
 
-            var random = new Random();
-            return 80.0 + random.NextDouble() * 20.0; // 80-100% feasibility score
+            _ = parameters;
+            return UnprovenInnovationScore;
         }
 
         public Task<string[]> GetInnovationFactorsAsync(EngineDesignParameters parameters) =>

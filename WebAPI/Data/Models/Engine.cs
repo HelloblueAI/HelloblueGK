@@ -34,6 +34,12 @@ public class Engine
     public DateTime? UpdatedAt { get; set; }
     public bool IsActive { get; set; } = true;
 
+    /// <summary>
+    /// Validation cache key unique to this persisted engine. Name-only keys let two
+    /// engines named "Raptor" share (and inherit) each other's validation results.
+    /// </summary>
+    public string ValidationCacheKey => $"{Id}:{Name}";
+
     public Engine()
     {
         CreatedAt = DateTime.UtcNow;

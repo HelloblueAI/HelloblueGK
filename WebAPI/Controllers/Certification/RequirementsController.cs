@@ -43,16 +43,34 @@ public class RequirementsController : ControllerBase
     {
         try
         {
-            var priority = Enum.TryParse<RequirementPriority>(request.Priority, out var parsedPriority) 
-                ? parsedPriority 
-                : RequirementPriority.Medium;
+            RequirementPriority? explicitPriority = null;
+            if (!string.IsNullOrWhiteSpace(request.Priority))
+            {
+                if (!Enum.TryParse<RequirementPriority>(request.Priority, ignoreCase: true, out var parsedPriority))
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        StatusCode = StatusCodes.Status400BadRequest,
+                        Message = $"Invalid requirement priority: {request.Priority}",
+                        Timestamp = DateTime.UtcNow,
+                        Path = HttpContext.Request.Path,
+                        Method = HttpContext.Request.Method
+                    });
+                }
+
+                explicitPriority = parsedPriority;
+            }
 
             var requirement = new Requirement
             {
                 RequirementNumber = request.RequirementNumber,
                 Title = request.Title,
                 Description = request.Description,
-                Priority = priority,
+                Priority = RequirementsTraceabilitySystem.ResolvePriority(
+                    request.RequirementNumber,
+                    request.Title,
+                    request.Description,
+                    explicitPriority),
                 CreatedBy = User.Identity?.Name ?? "System"
             };
 
@@ -116,12 +134,14 @@ public class RequirementsController : ControllerBase
             TraceabilityStatus = requirement.TraceabilityStatus.ToString(),
             DesignLinks = requirement.DesignLinks.Select(d => new DesignLinkResponse
             {
+                Id = d.Id,
                 DesignElementId = d.DesignElementId,
                 DesignDocument = d.DesignDocument,
                 Verified = d.Verified
             }).ToList(),
             CodeLinks = requirement.CodeLinks.Select(c => new CodeLinkResponse
             {
+                Id = c.Id,
                 CodeFile = c.CodeFile,
                 LineRange = $"{c.LineStart}-{c.LineEnd}",
                 FunctionName = c.FunctionName,
@@ -129,6 +149,7 @@ public class RequirementsController : ControllerBase
             }).ToList(),
             TestLinks = requirement.TestLinks.Select(t => new TestLinkResponse
             {
+                Id = t.Id,
                 TestCaseId = t.TestCaseId,
                 TestFile = t.TestFile,
                 CoverageType = t.CoverageType.ToString(),
@@ -136,6 +157,29 @@ public class RequirementsController : ControllerBase
                 Verified = t.Verified
             }).ToList()
         });
+    }
+
+    /// <summary>
+    /// Link requirement to design element
+    /// </summary>
+    [HttpPost("{id}/link-design")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> LinkToDesign(Guid id, [FromBody] LinkDesignRequest request)
+    {
+        try
+        {
+            var link = await _rts.LinkToDesignAsync(id, request.DesignElementId, request.DesignDocument);
+            return Ok(new { message = "Requirement linked to design successfully", linkId = link.Id });
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
@@ -148,8 +192,8 @@ public class RequirementsController : ControllerBase
     {
         try
         {
-            await _rts.LinkToCodeAsync(id, request.CodeFile, request.LineStart, request.LineEnd, request.FunctionName);
-            return Ok(new { message = "Requirement linked to code successfully" });
+            var link = await _rts.LinkToCodeAsync(id, request.CodeFile, request.LineStart, request.LineEnd, request.FunctionName);
+            return Ok(new { message = "Requirement linked to code successfully", linkId = link.Id });
         }
         catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
         {
@@ -176,14 +220,72 @@ public class RequirementsController : ControllerBase
                 return BadRequest(new { message = $"Invalid test coverage type: {request.CoverageType}" });
             }
 
-            await _rts.LinkToTestAsync(id, request.TestCaseId, request.TestFile, coverageType);
-            return Ok(new { message = "Requirement linked to test successfully" });
+            var link = await _rts.LinkToTestAsync(id, request.TestCaseId, request.TestFile, coverageType);
+            return Ok(new { message = "Requirement linked to test successfully", linkId = link.Id });
         }
         catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
         {
             return NotFound();
         }
         catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Record a test execution result for a linked test case
+    /// </summary>
+    [HttpPost("{id}/test-links/{linkId}/result")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RecordTestResult(Guid id, Guid linkId, [FromBody] RecordTestResultRequest request)
+    {
+        try
+        {
+            if (!Enum.TryParse<TestResult>(request.TestResult, ignoreCase: true, out var testResult))
+            {
+                return BadRequest(new { message = $"Invalid test result: {request.TestResult}" });
+            }
+
+            await _rts.RecordTestResultAsync(id, linkId, testResult);
+            return Ok(new { message = "Test result recorded successfully" });
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Verify a design/code/test link after independent review. Test links must already be Passed.
+    /// </summary>
+    [HttpPost("{id}/links/{linkId}/verify")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> VerifyLink(Guid id, Guid linkId, [FromBody] VerifyRequirementLinkRequest request)
+    {
+        try
+        {
+            if (!Enum.TryParse<RequirementLinkKind>(request.LinkKind, ignoreCase: true, out var linkKind))
+            {
+                return BadRequest(new { message = $"Invalid link kind: {request.LinkKind}" });
+            }
+
+            await _rts.VerifyLinkAsync(id, linkId, linkKind);
+            return Ok(new { message = "Link verified successfully" });
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
@@ -253,6 +355,12 @@ public class CreateRequirementRequest
     public string Priority { get; set; } = "Medium";
 }
 
+public class LinkDesignRequest
+{
+    public string DesignElementId { get; set; } = string.Empty;
+    public string DesignDocument { get; set; } = string.Empty;
+}
+
 public class LinkCodeRequest
 {
     public string CodeFile { get; set; } = string.Empty;
@@ -266,6 +374,16 @@ public class LinkTestRequest
     public string TestCaseId { get; set; } = string.Empty;
     public string TestFile { get; set; } = string.Empty;
     public string CoverageType { get; set; } = "Statement";
+}
+
+public class RecordTestResultRequest
+{
+    public string TestResult { get; set; } = "Passed";
+}
+
+public class VerifyRequirementLinkRequest
+{
+    public string LinkKind { get; set; } = "Design";
 }
 
 public class RequirementResponse
@@ -284,6 +402,7 @@ public class RequirementResponse
 
 public class DesignLinkResponse
 {
+    public Guid Id { get; set; }
     public string DesignElementId { get; set; } = string.Empty;
     public string DesignDocument { get; set; } = string.Empty;
     public bool Verified { get; set; }
@@ -291,6 +410,7 @@ public class DesignLinkResponse
 
 public class CodeLinkResponse
 {
+    public Guid Id { get; set; }
     public string CodeFile { get; set; } = string.Empty;
     public string LineRange { get; set; } = string.Empty;
     public string FunctionName { get; set; } = string.Empty;
@@ -299,6 +419,7 @@ public class CodeLinkResponse
 
 public class TestLinkResponse
 {
+    public Guid Id { get; set; }
     public string TestCaseId { get; set; } = string.Empty;
     public string TestFile { get; set; } = string.Empty;
     public string CoverageType { get; set; } = string.Empty;

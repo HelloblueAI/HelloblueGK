@@ -253,6 +253,33 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetPredictions_IgnoresClientEfficiencyOverride()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
+        digitalTwin.Engine!.Efficiency = 0.88;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest
+        {
+            ScenarioName = "Efficiency forge",
+            ScenarioParameters = new Dictionary<string, double>
+            {
+                ["efficiency"] = 0.99
+            }
+        });
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(okResult.Value));
+        var predictedMetrics = document.RootElement
+            .GetProperty("predictions")
+            .GetProperty("PredictedMetrics");
+        predictedMetrics.GetProperty("Efficiency").GetDouble().Should().BeApproximately(0.88, 0.0001);
+    }
+
+    [Fact]
     public async Task UpdateDigitalTwinLearning_AfterRuntimeRestart_RestoresPersistedTwin()
     {
         await using var context = CreateContext();
@@ -554,6 +581,49 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task ScheduleLaunch_WithWhitespaceMissionName_ReturnsBadRequestWithoutCreatingLaunch()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = engine.Id,
+            MissionName = "   "
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Launches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ScheduleLaunch_WithNonFiniteLaunchParameter_ReturnsBadRequestWithoutCreatingLaunch()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = engine.Id,
+            MissionName = "Infinity Burn",
+            LaunchParameters = new Dictionary<string, object>
+            {
+                ["massRatio"] = double.PositiveInfinity
+            }
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("finite");
+        context.Launches.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ExecuteLaunch_WhenBackgroundQueueIsFull_ReturnsServiceUnavailableWithoutStartingLaunch()
     {
         await using var context = CreateContext();
@@ -782,6 +852,40 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task ExecuteLaunch_FailsMissionSuccessWhenValidationUnproven_EvenWithHighEfficiency()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var launch = await SeedLaunchAsync(context, "admin");
+        // Engine clears the efficiency floor; without trusted validation evidence the
+        // accuracy gate must fail closed (solver Accuracy must not stand in for validation).
+        launch.Engine.Efficiency = 0.95;
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateLaunchesController(
+            context,
+            CreatePrincipal("admin", isAdmin: true),
+            deferredQueue);
+
+        var executeResult = await controller.ExecuteLaunch(launch.Id);
+        executeResult.Should().BeOfType<OkObjectResult>();
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.Launches.AsNoTracking().SingleAsync(l => l.Id == launch.Id);
+        persisted.Status.Should().Be("Failed");
+        persisted.MissionSuccess.Should().BeFalse();
+        persisted.ResultsJson.Should().NotBeNullOrWhiteSpace();
+
+        using var document = JsonDocument.Parse(persisted.ResultsJson!);
+        document.RootElement.GetProperty("validationAccuracy").GetDouble()
+            .Should().Be(RealTimeValidationEngine.UnprovenValidationAccuracy);
+    }
+
+    [Fact]
     public async Task ExecuteLaunch_WhenEngineDeactivated_ReturnsBadRequestWithoutStarting()
     {
         await using var context = CreateContext();
@@ -864,7 +968,10 @@ public class ControllerAuthorizationSecurityTests
 
         using var document = JsonDocument.Parse(persisted.ResultsJson!);
         document.RootElement.GetProperty("algorithmType").GetString().Should().Be("Genetic");
+        // Improvement baseline is persisted Engine.Efficiency — not the client scenario override.
         document.RootElement.GetProperty("originalParameters").GetProperty("efficiency").GetDouble()
+            .Should().BeApproximately(0.8, 0.0001);
+        document.RootElement.GetProperty("appliedParameters").GetProperty("efficiency").GetDouble()
             .Should().BeApproximately(0.88, 0.0001);
         document.RootElement.GetProperty("stages").EnumerateArray()
             .Select(element => element.GetString())

@@ -58,7 +58,15 @@ public class ProblemReportsController : ControllerBase
             ReportedBy = User.Identity?.Name ?? "System"
         };
 
-        var created = await _prs.CreateProblemReportAsync(report, explicitSeverity);
+        ProblemReport created;
+        try
+        {
+            created = await _prs.CreateProblemReportAsync(report, explicitSeverity);
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
 
         return CreatedAtAction(nameof(GetProblemReport), new { reportNumber = created.ReportNumber },
             new ProblemReportResponse
@@ -133,6 +141,54 @@ public class ProblemReportsController : ControllerBase
     }
 
     /// <summary>
+    /// Link a problem report to a requirement (required evidence for Critical/Major closure).
+    /// </summary>
+    [HttpPost("{reportNumber}/link-requirement")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LinkToRequirement(string reportNumber, [FromBody] LinkProblemReportRequirementRequest request)
+    {
+        try
+        {
+            await _prs.LinkToRequirementAsync(reportNumber, request.RequirementId);
+            return Ok(new { message = "Problem report linked to requirement successfully" });
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
+    /// Link a problem report to a test case (required evidence for Critical/Major closure).
+    /// </summary>
+    [HttpPost("{reportNumber}/link-test")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LinkToTest(string reportNumber, [FromBody] LinkProblemReportTestRequest request)
+    {
+        try
+        {
+            await _prs.LinkToTestAsync(reportNumber, request.TestCaseId);
+            return Ok(new { message = "Problem report linked to test case successfully" });
+        }
+        catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
+        {
+            return NotFound();
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Get problem report summary
     /// </summary>
     [HttpGet("summary")]
@@ -192,6 +248,16 @@ public class UpdateProblemReportStatusRequest
 {
     public string Status { get; set; } = string.Empty;
     public string? Resolution { get; set; }
+}
+
+public class LinkProblemReportRequirementRequest
+{
+    public Guid RequirementId { get; set; }
+}
+
+public class LinkProblemReportTestRequest
+{
+    public string TestCaseId { get; set; } = string.Empty;
 }
 
 public class ProblemReportResponse
