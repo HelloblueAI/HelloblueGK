@@ -101,7 +101,7 @@ public class FormalCodeReviewSystemTests
 
         var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
         await approve.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*completed certified reviewer assignment*");
+            .WithMessage("*must be Completed*");
     }
 
     [Fact]
@@ -568,7 +568,16 @@ public class FormalCodeReviewSystemTests
             Author = "alice"
         });
         await system.AssignReviewerAsync(created.Id, "certified-bob");
-        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>());
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
 
         var approve = async () => await system.ApproveReviewAsync(created.Id, "alice");
         await approve.Should().ThrowAsync<InvalidOperationException>()
@@ -591,7 +600,16 @@ public class FormalCodeReviewSystemTests
             Author = "alice"
         });
         await system.AssignReviewerAsync(created.Id, "certified-bob");
-        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>());
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
 
         var approve = async () => await system.ApproveReviewAsync(created.Id, "certified-bob");
         await approve.Should().ThrowAsync<InvalidOperationException>()
