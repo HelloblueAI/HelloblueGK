@@ -33,6 +33,12 @@ namespace HB_NLP_Research_Lab.Certification
 
             review.FilePath = NormalizeReviewFilePath(review.FilePath);
             review.FunctionName = NormalizeRequiredText(review.FunctionName, "Function name");
+            // Placeholder authors ("System"/"unknown") previously forged SoD:
+            // create-as-System + real reviewer + real approver looks independent.
+            if (!string.IsNullOrWhiteSpace(review.Author))
+            {
+                review.Author = NormalizeActorIdentity(review.Author, "Author");
+            }
             if (review.LineStart <= 0 || review.LineEnd < review.LineStart)
             {
                 throw new ArgumentException(
@@ -103,7 +109,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(reviewerName))
                 throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
 
-            var normalized = NormalizeReviewerName(reviewerName);
+            var normalized = NormalizeActorIdentity(reviewerName, nameof(reviewerName));
             var existing = await FindCertifiedReviewerAsync(normalized);
             if (existing != null)
             {
@@ -163,7 +169,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(reviewerName))
                 throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
 
-            var normalized = NormalizeReviewerName(reviewerName);
+            var normalized = NormalizeActorIdentity(reviewerName, nameof(reviewerName));
             var rosterEntry = await FindCertifiedReviewerAsync(normalized);
             if (rosterEntry is not { IsActive: true })
             {
@@ -274,7 +280,12 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Cannot submit findings for review with status {review.Status}");
             }
 
-            var assignment = review.Assignments.FirstOrDefault(a => a.ReviewerName == reviewerName);
+            var normalizedSubmitter = NormalizeActorIdentity(reviewerName, nameof(reviewerName));
+            var assignment = review.Assignments.FirstOrDefault(a =>
+                string.Equals(
+                    NormalizeReviewerName(a.ReviewerName),
+                    normalizedSubmitter,
+                    StringComparison.OrdinalIgnoreCase));
             if (assignment == null)
                 throw new ArgumentException($"Reviewer {reviewerName} not assigned to review {reviewId}");
 
@@ -285,7 +296,7 @@ namespace HB_NLP_Research_Lab.Certification
 
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
-                finding.ReviewerName = reviewerName;
+                finding.ReviewerName = assignment.ReviewerName;
                 finding.Description = finding.Description.Trim();
                 finding.CreatedAt = DateTime.UtcNow;
                 finding.Severity = ResolveFindingSeverity(finding);
@@ -426,11 +437,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Level A independence: approver must not be the author or a completing reviewer.
-            var normalizedApprover = NormalizeReviewerName(approvedBy);
-            if (string.IsNullOrWhiteSpace(normalizedApprover))
-            {
-                throw new ArgumentException("Approver is required", nameof(approvedBy));
-            }
+            var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
 
             if (!string.IsNullOrWhiteSpace(review.Author) &&
                 string.Equals(NormalizeReviewerName(review.Author), normalizedApprover, StringComparison.OrdinalIgnoreCase))
@@ -548,9 +555,9 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
-            var normalized = NormalizeFilePath(filePath);
-            if (string.IsNullOrWhiteSpace(normalized))
-                throw new ArgumentException("File path is required", nameof(filePath));
+            // Same repository-tree gate as CreateReview — tmp/ and bare filenames
+            // must not enter the Level A required-file roster.
+            var normalized = NormalizeReviewFilePath(filePath);
 
             var matches = (await _context.RequiredReviewFiles.ToListAsync())
                 .Where(f => string.Equals(
@@ -629,10 +636,37 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReviewComplianceCheck> VerifyComplianceAsync()
         {
-            var normalizedRequired = (await _context.RequiredReviewFiles
+            var requiredRows = await _context.RequiredReviewFiles
                 .Where(f => f.IsActive)
                 .Select(f => f.FilePath)
-                .ToListAsync())
+                .ToListAsync();
+
+            var unsafeRosterPaths = requiredRows
+                .Where(f => !string.IsNullOrWhiteSpace(f) && !IsStoredReviewPathSafe(f))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            // Leftover outside-tree roster rows (tmp/, bare filenames) must not
+            // satisfy Level A even when a matching Approved review exists.
+            if (unsafeRosterPaths.Count > 0)
+            {
+                var issues = new List<string>
+                {
+                    $"{unsafeRosterPaths.Count} required review file(s) are outside the implementation or test tree"
+                };
+                issues.AddRange(unsafeRosterPaths.Select(path => $"Unsafe required review file: {path}"));
+
+                return new CodeReviewComplianceCheck
+                {
+                    CheckedAt = DateTime.UtcNow,
+                    TotalRequiredFiles = requiredRows.Count(f => !string.IsNullOrWhiteSpace(f)),
+                    IsCompliant = false,
+                    UnreviewedFiles = unsafeRosterPaths,
+                    Issues = issues
+                };
+            }
+
+            var normalizedRequired = requiredRows
                 .Where(f => !string.IsNullOrWhiteSpace(f))
                 .Select(NormalizeFilePath)
                 .Distinct(StringComparer.Ordinal)
@@ -701,37 +735,92 @@ namespace HB_NLP_Research_Lab.Certification
         /// Canonical review path: trim, forward slashes, lowercase — so case-sensitive
         /// stores cannot hold duplicate roster rows for the same logical file.
         /// </summary>
+        private static readonly HashSet<string> AllowedReviewRoots = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Core", "WebAPI", "Certification", "Physics", "AI", "Models", "Aerospace", "Scripts", "Tests"
+        };
+
         private static string NormalizeFilePath(string filePath) =>
             filePath.Trim().Replace('\\', '/').ToLowerInvariant();
 
         private static string NormalizeReviewFilePath(string? filePath)
         {
+            if (!TryNormalizeReviewFilePath(filePath, out var normalized, out var error))
+            {
+                throw new ArgumentException(error, nameof(filePath));
+            }
+
+            return normalized;
+        }
+
+        private static bool IsStoredReviewPathSafe(string? filePath)
+        {
+            return TryNormalizeReviewFilePath(filePath, out var normalized, out _)
+                && string.Equals(filePath, normalized, StringComparison.Ordinal);
+        }
+
+        private static bool TryNormalizeReviewFilePath(string? filePath, out string normalized, out string error)
+        {
+            normalized = string.Empty;
+            error = string.Empty;
+
             if (string.IsNullOrWhiteSpace(filePath))
             {
-                throw new ArgumentException("File path is required", nameof(filePath));
+                error = "File path is required";
+                return false;
             }
 
-            var normalized = NormalizeFilePath(filePath);
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || normalized.Contains("://", StringComparison.Ordinal)
-                || normalized.Contains(':', StringComparison.Ordinal))
+            var trimmed = NormalizeFilePath(filePath);
+            if (trimmed.StartsWith("/", StringComparison.Ordinal)
+                || trimmed.StartsWith("//", StringComparison.Ordinal)
+                || trimmed.Contains("://", StringComparison.Ordinal)
+                || trimmed.Contains(':', StringComparison.Ordinal))
             {
-                throw new ArgumentException(
-                    "File path must be relative to the repository.",
-                    nameof(filePath));
+                error = "File path must be relative to the repository.";
+                return false;
             }
 
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0
                 || segments.Any(segment => segment is "." or ".."))
             {
-                throw new ArgumentException(
-                    "File path must not contain traversal segments.",
-                    nameof(filePath));
+                error = "File path must not contain traversal segments.";
+                return false;
             }
 
-            return string.Join("/", segments);
+            if (segments.Length < 2 || !AllowedReviewRoots.Contains(segments[0]))
+            {
+                error =
+                    "File path must be under an implementation or test tree (Core/, WebAPI/, Certification/, Physics/, AI/, Models/, Aerospace/, Scripts/, Tests/).";
+                return false;
+            }
+
+            normalized = string.Join("/", segments);
+            return true;
+        }
+
+        private static string NormalizeActorIdentity(string? actorName, string paramName)
+        {
+            var normalized = NormalizeReviewerName(actorName ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                throw new ArgumentException($"{paramName} is required", paramName);
+            }
+
+            if (IsPlaceholderActor(normalized))
+            {
+                throw new ArgumentException(
+                    $"{paramName} must be a real actor identity, not a placeholder such as 'System'",
+                    paramName);
+            }
+
+            return normalized;
+        }
+
+        private static bool IsPlaceholderActor(string actorName)
+        {
+            var normalized = actorName.Trim().ToLowerInvariant();
+            return normalized is "system" or "unknown" or "n/a" or "na" or "none" or "anonymous";
         }
 
         private static string NormalizeRequiredText(string? value, string fieldName)

@@ -603,7 +603,7 @@ public class FormalCodeReviewSystemTests
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
         var created = await system.CreateReviewAsync(new CodeReview
         {
-            FilePath = "c.cs",
+            FilePath = "Core/c.cs",
             FunctionName = "C",
             LineStart = 1,
             LineEnd = 2,
@@ -972,6 +972,10 @@ public class FormalCodeReviewSystemTests
     [InlineData("C:\\Windows\\system32\\kernel.cs")]
     [InlineData("../secret.cs")]
     [InlineData("Core/../../secret.cs")]
+    [InlineData("tmp/forge.cs")]
+    [InlineData("src/engine.cs")]
+    [InlineData("a.cs")]
+    [InlineData("http://example.test/Core/Engine.cs")]
     public async Task CreateReviewAsync_RejectsVacuousOrUnsafeFilePath(string filePath)
     {
         await using var context = CreateContext();
@@ -1050,6 +1054,131 @@ public class FormalCodeReviewSystemTests
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*Finding description is required*");
         context.ReviewFindings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RegisterRequiredFileAsync_RejectsOutsideTreePath()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.RegisterRequiredFileAsync("tmp/forge.cs", "admin");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*implementation or test tree*");
+        context.RequiredReviewFiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverOutsideTreeRoster_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        context.RequiredReviewFiles.Add(new RequiredReviewFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "tmp/forge.cs",
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "Consider naming clarity"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("outside the implementation or test tree", StringComparison.OrdinalIgnoreCase));
+        check.UnreviewedFiles.Should().Contain("tmp/forge.cs");
+    }
+
+    [Fact]
+    public async Task RegisterCertifiedReviewerAsync_RejectsPlaceholderName()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.RegisterCertifiedReviewerAsync("System", "admin");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+        context.CertifiedReviewers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateReviewAsync_RejectsPlaceholderAuthor()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "System"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+        context.CodeReviews.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_RejectsPlaceholderApprover()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "Consider naming clarity"
+            }
+        });
+
+        var act = async () => await system.ApproveReviewAsync(created.Id, "System");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+
+        var persisted = await context.CodeReviews.SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.Completed);
+        persisted.ApprovedBy.Should().BeNull();
     }
 
     private static CodeReviewDbContext CreateContext()
