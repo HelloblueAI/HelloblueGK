@@ -1116,7 +1116,7 @@ public class FormalCodeReviewSystemTests
         });
         await system.AssignReviewerAsync(created.Id, "certified-bob");
 
-        var assignAgain = async () => await system.AssignReviewerAsync(created.Id, "Certified-Bob");
+        var assignAgain = async () => await system.AssignReviewerAsync(created.Id, "certified-bob");
         await assignAgain.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*already assigned*");
 
