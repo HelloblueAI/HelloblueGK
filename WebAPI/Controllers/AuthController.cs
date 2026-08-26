@@ -6,6 +6,7 @@ using HB_NLP_Research_Lab.WebAPI.Data;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
 using HB_NLP_Research_Lab.WebAPI.Services;
+using System.Net.Mail;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -126,7 +127,10 @@ public class AuthController : ControllerBase
             }
 
             // Update last login and persist rotated refresh token in one write.
+            // Bump AccessTokenVersion so previously stolen access JWTs are revoked on re-login
+            // (refresh rotation alone leaves the old access token valid until expiry).
             user.LastLoginAt = DateTime.UtcNow;
+            user.AccessTokenVersion += 1;
             var token = _jwtService.GenerateToken(user);
             var refreshToken = IssueRefreshToken(user);
             await _context.SaveChangesAsync();
@@ -200,6 +204,8 @@ public class AuthController : ControllerBase
         var rotatedExpiresAt = DateTime.UtcNow.AddSeconds(_jwtService.GetRefreshTokenExpirationSeconds());
         var updatedAt = DateTime.UtcNow;
 
+        // Rotate refresh AND bump AccessTokenVersion so any stolen access JWT
+        // minted before this refresh dies immediately (not only on logout/reuse).
         var claimed = await _context.Users
             .Where(candidate =>
                 candidate.Id == user.Id &&
@@ -210,14 +216,28 @@ public class AuthController : ControllerBase
             .ExecuteUpdateAsync(setters => setters
                 .SetProperty(candidate => candidate.RefreshTokenHash, rotatedRefreshTokenHash)
                 .SetProperty(candidate => candidate.RefreshTokenExpiresAt, rotatedExpiresAt)
+                .SetProperty(
+                    candidate => candidate.AccessTokenVersion,
+                    candidate => candidate.AccessTokenVersion + 1)
                 .SetProperty(candidate => candidate.UpdatedAt, updatedAt));
 
         if (claimed == 0)
         {
-            // Lost the race to another rotator, or the token was revoked meanwhile.
+            // Lost the race to another rotator, or refresh-token reuse after theft.
+            // OAuth-style reuse detection: revoke refresh + bump atv so any access JWT
+            // minted from the stolen refresh cannot continue to authorize.
             _logger.LogWarning(
-                "Refresh token race or reuse detected for user {Username}",
+                "Refresh token race or reuse detected for user {Username}; revoking sessions",
                 LogSanitizer.SanitizeIdentifier(user.Username));
+            await _context.Users
+                .Where(candidate => candidate.Id == user.Id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(candidate => candidate.RefreshTokenHash, (string?)null)
+                    .SetProperty(candidate => candidate.RefreshTokenExpiresAt, (DateTime?)null)
+                    .SetProperty(
+                        candidate => candidate.AccessTokenVersion,
+                        candidate => candidate.AccessTokenVersion + 1)
+                    .SetProperty(candidate => candidate.UpdatedAt, DateTime.UtcNow));
             return InvalidRefreshTokenResponse();
         }
 
@@ -323,6 +343,18 @@ public class AuthController : ControllerBase
             });
         }
 
+        if (password.Length < 8)
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Password must be at least 8 characters",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
         if (password.Length > MaxPasswordLength)
         {
             return BadRequest(new ErrorResponse
@@ -335,12 +367,37 @@ public class AuthController : ControllerBase
             });
         }
 
+        if (!System.Text.RegularExpressions.Regex.IsMatch(username.Trim(), "^[a-zA-Z0-9_-]+$"))
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Username can only contain letters, numbers, underscores, and hyphens",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        // Parse through MailAddress so a user-supplied character scan cannot
+        // gate HashPassword (cs/user-controlled-bypass).
+        if (!TryNormalizeRegistrationEmail(email, out var parsedEmail))
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = "Invalid email format",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
         // Normalize before persistence so case-variant usernames/emails cannot be
         // registered beside an existing account (closes ownership IDOR via casing).
         username = username.Trim();
-        email = email.Trim();
         var normalizedUsername = username.ToLowerInvariant();
-        var normalizedEmail = email.ToLowerInvariant();
+        var normalizedEmail = parsedEmail.ToLowerInvariant();
 
         if (await _context.Users.AnyAsync(u =>
                 u.Username.ToLower() == normalizedUsername ||
@@ -421,6 +478,26 @@ public class AuthController : ControllerBase
     /// Hash password using PBKDF2 with HMAC-SHA256 (secure, salted password hashing)
     /// Format: iterations:salt:hash (all base64 encoded)
     /// </summary>
+    private static bool TryNormalizeRegistrationEmail(string email, out string normalized)
+    {
+        normalized = string.Empty;
+        var trimmed = email.Trim();
+        if (!MailAddress.TryCreate(trimmed, out var parsed))
+            return false;
+
+        // Addr-spec only (reject "Name <user@host>"), non-empty local part, DNS host with a dot.
+        if (!string.Equals(parsed.Address, trimmed, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrEmpty(parsed.User)
+            || Uri.CheckHostName(parsed.Host) != UriHostNameType.Dns
+            || !parsed.Host.Contains('.', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        normalized = parsed.Address;
+        return true;
+    }
+
     private static string HashPassword(string password)
     {
         if (password.Length > MaxPasswordLength)
