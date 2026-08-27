@@ -29,8 +29,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 status = "Healthy",
                 timestamp = DateTime.UtcNow,
                 service = "HB-NLP Advanced Engine Design Platform",
-                version = "1.0.0",
-                environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Development"
+                version = "1.0.0"
             });
         }
 

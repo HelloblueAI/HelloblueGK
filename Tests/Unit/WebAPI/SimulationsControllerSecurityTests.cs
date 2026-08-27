@@ -271,6 +271,62 @@ public class SimulationsControllerSecurityTests
             .Should().BeApproximately(0.82, 0.0001);
         document.RootElement.GetProperty("thrustAnalysis").GetProperty("maxThrust").GetDouble()
             .Should().Be(0);
+        document.RootElement.TryGetProperty("validationReport", out _).Should().BeFalse();
+        document.RootElement.TryGetProperty("overallAccuracy", out _).Should().BeFalse();
+        document.RootElement.TryGetProperty("validationSource", out var validationSource).Should().BeTrue();
+        validationSource.GetString().Should().NotBeNull();
+        (validationSource.GetString() ?? string.Empty)
+            .Should().NotStartWith("Trusted:");
+    }
+
+    [Fact]
+    public async Task RunSimulation_DoesNotPersistRngValidationReportAsResultsEvidence()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = new Engine
+        {
+            Name = "Validation Report Engine",
+            EngineType = "Test",
+            CreatedBy = null,
+            Thrust = 1,
+            SpecificImpulse = 1,
+            ChamberPressure = 1,
+            Efficiency = 0.9,
+            ExpansionRatio = 1,
+            MassFlowRate = 1
+        };
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateController(context, CreatePrincipal("alice"), deferredQueue);
+
+        var createResult = await controller.RunSimulation(new RunSimulationRequest
+        {
+            EngineId = engine.Id,
+            SimulationType = "CFD"
+        });
+
+        var created = createResult.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<EngineSimulationResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var simulation = await workerContext.EngineSimulations
+            .AsNoTracking()
+            .SingleAsync(candidate => candidate.Id == response.Id);
+
+        simulation.Status.Should().Be("Completed");
+        simulation.ResultsJson.Should().NotBeNullOrWhiteSpace();
+        using var document = JsonDocument.Parse(simulation.ResultsJson!);
+        document.RootElement.TryGetProperty("validationReport", out _).Should().BeFalse();
+        document.RootElement.TryGetProperty("overallAccuracy", out _).Should().BeFalse();
+        document.RootElement.TryGetProperty("confidenceLevel", out _).Should().BeFalse();
+        document.RootElement.GetProperty("validationSource").GetString()
+            .Should().NotStartWith("Trusted:");
     }
 
     [Fact]
@@ -514,7 +570,7 @@ public class SimulationsControllerSecurityTests
     {
         var engine = new Engine
         {
-            Name = $"{createdBy}-engine",
+            Name = $"{createdBy}-engine-{Guid.NewGuid():N}",
             EngineType = "Test",
             CreatedBy = createdBy
         };

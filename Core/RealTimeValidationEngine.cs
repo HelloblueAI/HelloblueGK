@@ -18,6 +18,12 @@ namespace HB_NLP_Research_Lab.Core
     {
         public const int MaxCachedValidations = 256;
 
+        /// <summary>
+        /// Unproven confidence on the 0–1 scale. Must stay fail-closed until
+        /// validation is bound to trusted flight/test evidence (Accuracy parity).
+        /// </summary>
+        public const double UnprovenValidationConfidence = 0.5;
+
         private readonly HttpClient _httpClient;
         private readonly ValidationDatabase _validationDatabase;
         private readonly RealTimeDataCollector _dataCollector;
@@ -242,7 +248,7 @@ namespace HB_NLP_Research_Lab.Core
                         Accuracy = accuracy,
                         DataSource = "Real-Time Flight Telemetry",
                         ValidationDate = DateTime.UtcNow,
-                        ConfidenceLevel = 0.95
+                        ConfidenceLevel = UnprovenValidationConfidence
                     };
                 }
             }
@@ -292,7 +298,7 @@ namespace HB_NLP_Research_Lab.Core
                         Accuracy = accuracy,
                         DataSource = "Real-Time Test Stand Telemetry",
                         ValidationDate = DateTime.UtcNow,
-                        ConfidenceLevel = 0.92
+                        ConfidenceLevel = UnprovenValidationConfidence
                     };
                 }
             }
@@ -342,7 +348,7 @@ namespace HB_NLP_Research_Lab.Core
                         Accuracy = accuracy,
                         DataSource = "Industry Database",
                         ValidationDate = DateTime.UtcNow,
-                        ConfidenceLevel = 0.88
+                        ConfidenceLevel = UnprovenValidationConfidence
                     };
                 }
             }
@@ -392,7 +398,7 @@ namespace HB_NLP_Research_Lab.Core
                         Accuracy = accuracy,
                         DataSource = "Internal Simulation Database",
                         ValidationDate = DateTime.UtcNow,
-                        ConfidenceLevel = 0.85
+                        ConfidenceLevel = UnprovenValidationConfidence
                     };
                 }
             }

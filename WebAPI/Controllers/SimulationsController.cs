@@ -462,7 +462,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     engine.ChamberPressure,
                     engine.Efficiency);
                 var analysisResult = await _engine.AnalyzeEngineAsync(
-                    engine.Name,
+                    engine.ValidationCacheKey,
                     request.SimulationType,
                     request.Parameters,
                     baselineDesign,
@@ -506,11 +506,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         maxStress = analysisResult.StructuralAnalysis?.MaxStress,
                         safetyFactor = analysisResult.StructuralAnalysis?.SafetyFactor
                     },
-                    validationReport = new
-                    {
-                        overallAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
-                        confidenceLevel = analysisResult.ValidationReport?.ConfidenceLevel
-                    }
+                    // Persist ValidationSource only. OverallAccuracy / ConfidenceLevel are
+                    // untrusted RNG until a Trusted: source exists — do not embed them as
+                    // ResultsJson evidence (dual-channel bypass of solver ConvergenceRate).
+                    validationSource = analysisResult.ValidationReport?.ValidationSource
                 });
 
                 // Only complete if still Running so a concurrent cancel is preserved.

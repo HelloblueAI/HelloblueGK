@@ -29,6 +29,17 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReview> CreateReviewAsync(CodeReview review)
         {
+            ArgumentNullException.ThrowIfNull(review);
+
+            review.FilePath = NormalizeReviewFilePath(review.FilePath);
+            review.FunctionName = NormalizeRequiredText(review.FunctionName, "Function name");
+            if (review.LineStart <= 0 || review.LineEnd < review.LineStart)
+            {
+                throw new ArgumentException(
+                    "Code review line range must be a positive, ordered span",
+                    nameof(review));
+            }
+
             review.Id = Guid.NewGuid();
             review.CreatedAt = DateTime.UtcNow;
             review.Status = CodeReviewStatus.Pending;
@@ -165,6 +176,17 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
+            // Completed reviews are frozen pending approve/reject. A late assignment
+            // would leave Status=Completed with an Assigned reviewer and reopen
+            // SubmitFindings after the review was already ready for approval.
+            if (review.Status is CodeReviewStatus.Completed
+                or CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot assign a reviewer to a review with status {review.Status}");
+            }
+
             var assignment = new CodeReviewAssignment
             {
                 Id = Guid.NewGuid(),
@@ -209,6 +231,31 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task SubmitFindingsAsync(Guid reviewId, string reviewerName, List<ReviewFinding> findings)
         {
+            ArgumentNullException.ThrowIfNull(findings);
+            if (findings.Count == 0)
+            {
+                throw new ArgumentException(
+                    "At least one review finding is required; an empty findings list cannot complete a certified assignment",
+                    nameof(findings));
+            }
+
+            foreach (var finding in findings)
+            {
+                if (finding.LineNumber <= 0)
+                {
+                    throw new ArgumentException(
+                        "Finding line number must be a positive line in the reviewed span",
+                        nameof(findings));
+                }
+
+                if (string.IsNullOrWhiteSpace(finding.Description))
+                {
+                    throw new ArgumentException("Finding description is required", nameof(findings));
+                }
+
+                finding.Description = finding.Description.Trim();
+            }
+
             var review = await _context.CodeReviews
                 .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
@@ -217,8 +264,11 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException($"Review {reviewId} not found");
 
             // Terminal statuses must not accept new findings — otherwise a late submit
-            // can clobber Approved → Completed and reopen a compliance forge window.
-            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            // can clobber Approved → Completed, or inject findings into a Completed
+            // snapshot before approve, and reopen a compliance forge window.
+            if (review.Status is CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected
+                or CodeReviewStatus.Completed)
             {
                 throw new InvalidOperationException(
                     $"Cannot submit findings for review with status {review.Status}");
@@ -230,9 +280,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             foreach (var finding in findings)
             {
+                if (string.IsNullOrWhiteSpace(finding.Description))
+                    throw new ArgumentException("Finding description is required", nameof(findings));
+
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
                 finding.ReviewerName = reviewerName;
+                finding.Description = finding.Description.Trim();
                 finding.CreatedAt = DateTime.UtcNow;
                 finding.Severity = ResolveFindingSeverity(finding);
 
@@ -306,27 +360,88 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Disposition (resolve) a finding so Major/Critical no longer block approval.
+        /// Requires a recorded resolver and substantive resolution notes — a bare
+        /// <c>Resolved=true</c> flip is not Level A evidence.
         /// </summary>
-        public async Task ResolveFindingAsync(Guid reviewId, Guid findingId, string resolvedBy)
+        public async Task ResolveFindingAsync(
+            Guid reviewId,
+            Guid findingId,
+            string resolvedBy,
+            string? resolution)
         {
             if (string.IsNullOrWhiteSpace(resolvedBy))
                 throw new ArgumentException("Resolver is required", nameof(resolvedBy));
+
+            if (!HasSubstantiveResolution(resolution))
+            {
+                throw new ArgumentException(
+                    "Finding resolution requires substantive notes (not empty, 'done', 'fixed', or 'ok')",
+                    nameof(resolution));
+            }
+
+            var review = await _context.CodeReviews
+                .FirstOrDefaultAsync(r => r.Id == reviewId);
+            if (review == null)
+                throw new ArgumentException($"Review {reviewId} not found");
+
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot resolve findings for review with status {review.Status}");
+            }
 
             var finding = await _context.ReviewFindings
                 .FirstOrDefaultAsync(f => f.Id == findingId && f.ReviewId == reviewId);
             if (finding == null)
                 throw new ArgumentException($"Finding {findingId} not found for review {reviewId}");
 
+            // A bare Resolved=true (or vacuous Resolution) is not a completed disposition.
+            // Allow notes so those rows can leave the blocking set; reject only a real
+            // double-resolve that already has substantive notes.
+            if (IsDispositioned(finding))
+            {
+                throw new InvalidOperationException($"Finding {findingId} is already resolved");
+            }
+
+            var normalizedResolver = NormalizeReviewerName(resolvedBy);
             finding.Resolved = true;
             finding.ResolvedAt = DateTime.UtcNow;
+            finding.ResolvedBy = normalizedResolver;
+            finding.Resolution = resolution!.Trim();
             await _context.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Resolved finding {FindingId} on review {ReviewId} by {ResolvedBy}",
                 findingId,
                 reviewId,
-                LogSanitizer.SanitizeIdentifier(resolvedBy));
+                LogSanitizer.SanitizeIdentifier(normalizedResolver));
         }
+
+        /// <summary>
+        /// Reject vacuous disposition text ("done", "fixed", "ok") that previously
+        /// forged an Approved review after a note-free resolve.
+        /// </summary>
+        internal static bool HasSubstantiveResolution(string? resolution)
+        {
+            if (string.IsNullOrWhiteSpace(resolution))
+                return false;
+
+            var trimmed = resolution.Trim();
+            if (trimmed.Length < 12)
+                return false;
+
+            var normalized = trimmed.ToLowerInvariant();
+            return normalized is not (
+                "done" or "fixed" or "ok" or "okay" or "closed" or "resolved" or
+                "n/a" or "na" or "none" or "complete" or "completed" or "pass" or "passed");
+        }
+
+        private static bool IsDispositioned(ReviewFinding finding) =>
+            finding.Resolved && HasSubstantiveResolution(finding.Resolution);
+
+        private static bool IsBlockingFinding(ReviewFinding finding) =>
+            (finding.Severity == FindingSeverity.Critical || finding.Severity == FindingSeverity.Major) &&
+            !IsDispositioned(finding);
 
         /// <summary>
         /// Approve code review
@@ -371,6 +486,12 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve review until all assigned reviewers have completed their findings");
             }
 
+            if (review.Findings.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve review with no findings; empty submissions cannot complete Level A evidence");
+            }
+
             // Level A independence: approver must not be the author or a completing reviewer.
             var normalizedApprover = NormalizeReviewerName(approvedBy);
             if (string.IsNullOrWhiteSpace(normalizedApprover))
@@ -397,13 +518,9 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve a code review as one of its completing reviewers; Level A requires separation of duties");
             }
 
-            // Critical and Major findings block approval until dispositioned (Resolved).
-            // SubmitFindingsAsync applies Safety elevation + description keyword floors so
-            // clients cannot under-classify blocking findings to Minor/Info.
-            var blockingFindings = review.Findings
-                .Where(f => !f.Resolved &&
-                            (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major))
-                .ToList();
+            // Critical and Major findings block approval until dispositioned with notes.
+            // Resolved=true without substantive resolution is still a blocking finding.
+            var blockingFindings = review.Findings.Where(IsBlockingFinding).ToList();
             if (blockingFindings.Count > 0)
             {
                 var criticalCount = blockingFindings.Count(f => f.Severity == FindingSeverity.Critical);
@@ -431,10 +548,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Re-check blocking findings after the claim. If a concurrent submit raced in,
             // revert the approval so Approved never coexists with unresolved Critical/Major.
-            var blockingAfterClaim = await _context.ReviewFindings
-                .CountAsync(f => f.ReviewId == reviewId
-                    && !f.Resolved
-                    && (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major));
+            var findingsAfterClaim = await _context.ReviewFindings
+                .Where(f => f.ReviewId == reviewId)
+                .ToListAsync();
+            var blockingAfterClaim = findingsAfterClaim.Count(IsBlockingFinding);
             if (blockingAfterClaim > 0)
             {
                 await _context.CodeReviews
@@ -494,9 +611,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
-            var normalized = NormalizeFilePath(filePath);
-            if (string.IsNullOrWhiteSpace(normalized))
-                throw new ArgumentException("File path is required", nameof(filePath));
+            var normalized = NormalizeAndValidateFilePath(filePath);
 
             var matches = (await _context.RequiredReviewFiles.ToListAsync())
                 .Where(f => string.Equals(
@@ -557,6 +672,8 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
+            // Lookup by canonical form only — leftover traversal/absolute rows must
+            // still be revocable. Register remains the path that rejects unsafe paths.
             var existing = await FindRequiredReviewFileAsync(NormalizeFilePath(filePath));
             if (existing == null)
                 throw new ArgumentException($"Required review file '{filePath.Trim()}' not found", nameof(filePath));
@@ -596,6 +713,7 @@ namespace HB_NLP_Research_Lab.Certification
                 .ToListAsync())
                 .Where(f => !string.IsNullOrWhiteSpace(f))
                 .Select(NormalizeFilePath)
+                .Where(IsSafeRelativeRepositoryPath)
                 .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
@@ -615,6 +733,7 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
+            // Traversal / absolute roster rows never match a safe approved review.
             check.IsCompliant = check.UnreviewedFiles.Count == 0;
 
             if (!check.IsCompliant)
@@ -649,6 +768,62 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         private static string NormalizeFilePath(string filePath) =>
             filePath.Trim().Replace('\\', '/').ToLowerInvariant();
+
+        private static string NormalizeAndValidateFilePath(string filePath) =>
+            NormalizeReviewFilePath(filePath);
+
+        private static string NormalizeReviewFilePath(string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                throw new ArgumentException("File path is required", nameof(filePath));
+            }
+
+            var normalized = NormalizeFilePath(filePath);
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Any(segment => segment is "." or ".."))
+            {
+                throw new ArgumentException(
+                    "File path must not contain traversal segments.",
+                    nameof(filePath));
+            }
+
+            if (!IsSafeRelativeRepositoryPath(normalized))
+            {
+                throw new ArgumentException(
+                    "Review file path must be relative to the repository and must not contain traversal segments.",
+                    nameof(filePath));
+            }
+
+            return string.Join("/", segments);
+        }
+
+        private static bool IsSafeRelativeRepositoryPath(string normalizedPath)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+                return false;
+
+            if (normalizedPath.StartsWith("/", StringComparison.Ordinal)
+                || normalizedPath.StartsWith("//", StringComparison.Ordinal)
+                || normalizedPath.Contains("://", StringComparison.Ordinal)
+                || normalizedPath.Contains(':', StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var segments = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return segments.Length > 0 && segments.All(segment => segment is not ("." or ".."));
+        }
+
+        private static string NormalizeRequiredText(string? value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{fieldName} is required", fieldName);
+            }
+
+            return value.Trim();
+        }
     }
 
     // Data Models
@@ -719,6 +894,8 @@ namespace HB_NLP_Research_Lab.Certification
         public DateTime CreatedAt { get; set; }
         public bool Resolved { get; set; }
         public DateTime? ResolvedAt { get; set; }
+        public string? ResolvedBy { get; set; }
+        public string? Resolution { get; set; }
     }
 
     public enum CodeReviewStatus

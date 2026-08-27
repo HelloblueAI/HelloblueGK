@@ -26,7 +26,18 @@ public class RealTimeValidationEngineTests : IDisposable
         report.OverallAccuracy.Should().Be(RealTimeValidationEngine.UnprovenValidationAccuracy);
         // Must stay below MissionSuccess accuracy floor (95) so placeholder RNG cannot forge passes.
         report.OverallAccuracy.Should().BeLessThan(95.0);
-        report.ConfidenceLevel.Should().BeGreaterThanOrEqualTo(0).And.BeLessThanOrEqualTo(100);
+        // Confidence must stay fail-closed/unproven — no invented 0.85–0.95 trust evidence.
+        report.ConfidenceLevel.Should().Be(RealTimeValidationEngine.UnprovenValidationConfidence);
+    }
+
+    [Fact]
+    public async Task ValidateEngineAsync_FailsClosedConfidenceWithoutTrustedEvidence()
+    {
+        var result = await _validationEngine.ValidateEngineAsync("ConfidenceFailClosed_001");
+
+        result.Should().NotBeNull();
+        result.ConfidenceLevel.Should().Be(RealTimeValidationEngine.UnprovenValidationConfidence);
+        result.ConfidenceLevel.Should().BeLessThan(0.85);
     }
 
     [Fact]

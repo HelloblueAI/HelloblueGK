@@ -348,7 +348,33 @@ public class RateLimitingServiceTests
     {
         RateLimitingService.IsAuthRateLimitIdentifier("Auth:ip:1.1.1.1").Should().BeTrue();
         RateLimitingService.IsAuthRateLimitIdentifier("AuthUsername:alice").Should().BeTrue();
+        RateLimitingService.IsAuthRateLimitIdentifier("PreAuth:ip:1.1.1.1").Should().BeTrue();
         RateLimitingService.IsAuthRateLimitIdentifier("API:user:alice").Should().BeFalse();
         RateLimitingService.IsAuthRateLimitIdentifier("Default:ip:1.1.1.1").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task CheckRateLimitAsync_PreAuthIpSpray_DoesNotExhaustApiBucketCapacity()
+    {
+        using var cappedService = new RateLimitingService(
+            _mockLogger.Object,
+            maxTrackedIdentifiers: 1,
+            maxTestIdentifiers: 2,
+            maxAuthTrackedIdentifiers: 2);
+        var policy = new RateLimitPolicy
+        {
+            RequestsPerWindow = 10,
+            WindowSize = TimeSpan.FromMinutes(1),
+            Algorithm = RateLimitAlgorithm.SlidingWindow
+        };
+
+        await cappedService.CheckRateLimitAsync("PreAuth:ip:1.1.1.1", policy);
+        await cappedService.CheckRateLimitAsync("PreAuth:ip:2.2.2.2", policy);
+        var preAuthCapacityBlocked = await cappedService.CheckRateLimitAsync("PreAuth:ip:3.3.3.3", policy);
+        var apiClient = await cappedService.CheckRateLimitAsync("API:user:alice", policy);
+
+        preAuthCapacityBlocked.IsAllowed.Should().BeFalse();
+        preAuthCapacityBlocked.Message.Should().Be("Rate limit capacity reached");
+        apiClient.IsAllowed.Should().BeTrue();
     }
 }

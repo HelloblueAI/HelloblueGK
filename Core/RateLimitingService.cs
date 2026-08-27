@@ -14,6 +14,7 @@ namespace HB_NLP_Research_Lab.Core
         private const string TestBucketPrefix = "test:";
         private const string AuthBucketPrefix = "Auth:";
         private const string AuthUsernameBucketPrefix = "AuthUsername:";
+        private const string PreAuthBucketPrefix = "PreAuth:";
 
         private readonly ILogger<RateLimitingService> _logger;
         private readonly ConcurrentDictionary<string, RateLimitBucket> _buckets;
@@ -241,7 +242,8 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             return identifier.StartsWith(AuthBucketPrefix, StringComparison.OrdinalIgnoreCase)
-                || identifier.StartsWith(AuthUsernameBucketPrefix, StringComparison.OrdinalIgnoreCase);
+                || identifier.StartsWith(AuthUsernameBucketPrefix, StringComparison.OrdinalIgnoreCase)
+                || identifier.StartsWith(PreAuthBucketPrefix, StringComparison.OrdinalIgnoreCase);
         }
 
         private bool TryGetTrackedBucket(string identifier, out RateLimitBucket? bucket)
