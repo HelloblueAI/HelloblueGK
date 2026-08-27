@@ -1015,6 +1015,14 @@ public class FormalCodeReviewSystemTests
 
         check.IsCompliant.Should().BeFalse();
         check.UnreviewedFiles.Should().Contain("../secrets/core.c");
+
+        await system.RevokeRequiredFileAsync("../Secrets/core.c");
+        context.RequiredReviewFiles.Single().IsActive.Should().BeFalse();
+
+        var afterRevoke = await system.VerifyComplianceAsync();
+        afterRevoke.IsCompliant.Should().BeFalse();
+        afterRevoke.Issues.Should().Contain(i =>
+            i.Contains("Required file roster is empty", StringComparison.Ordinal));
     }
 
     [Fact]

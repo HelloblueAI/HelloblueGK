@@ -672,7 +672,9 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
-            var existing = await FindRequiredReviewFileAsync(NormalizeAndValidateFilePath(filePath));
+            // Lookup by canonical form only — leftover traversal/absolute rows must
+            // still be revocable. Register remains the path that rejects unsafe paths.
+            var existing = await FindRequiredReviewFileAsync(NormalizeFilePath(filePath));
             if (existing == null)
                 throw new ArgumentException($"Required review file '{filePath.Trim()}' not found", nameof(filePath));
 
