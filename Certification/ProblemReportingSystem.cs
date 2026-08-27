@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -573,24 +574,26 @@ namespace HB_NLP_Research_Lab.Certification
             return value.Trim();
         }
 
+        // Same stems/inflections as FormalCodeReviewSystem so "hazardous" / "critically"
+        // still elevate when paired with routine/observation. "non-critical" stays out.
+        private static readonly Regex CriticalElevationPattern = new(
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|fail(?:ure|ures|ed)?|loss(?:es)?|lost|unsafe(?:ly)?|fatal(?:ly|ity|ities)?)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex MajorElevationPattern = new(
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(major(?:ly)?|significant(?:ly)?|significance)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
         private static ProblemSeverity? ClassifyReportKeywords(string? title, string? description, string? impact)
         {
             var elevationText = $"{title} {description} {impact}";
 
-            if (ContainsElevationKeyword(elevationText, "safety") ||
-                ContainsElevationKeyword(elevationText, "critical") ||
-                ContainsElevationKeyword(elevationText, "catastrophic") ||
-                ContainsElevationKeyword(elevationText, "hazard") ||
-                ContainsElevationKeyword(elevationText, "failure") ||
-                ContainsElevationKeyword(elevationText, "loss") ||
-                ContainsElevationKeyword(elevationText, "unsafe") ||
-                ContainsElevationKeyword(elevationText, "fatal"))
+            if (!string.IsNullOrWhiteSpace(elevationText) && CriticalElevationPattern.IsMatch(elevationText))
             {
                 return ProblemSeverity.Critical;
             }
 
-            if (ContainsElevationKeyword(elevationText, "major") ||
-                ContainsElevationKeyword(elevationText, "significant"))
+            if (!string.IsNullOrWhiteSpace(elevationText) && MajorElevationPattern.IsMatch(elevationText))
             {
                 return ProblemSeverity.Major;
             }
@@ -616,12 +619,6 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         private static bool ContainsImpactKeyword(string impact, string keyword) =>
             ContainsKeyword(impact, keyword, skipNegated: false);
-
-        /// <summary>
-        /// Elevation tokens ignore "non-critical" / "non safety" so negation cannot force a Critical floor.
-        /// </summary>
-        private static bool ContainsElevationKeyword(string text, string keyword) =>
-            ContainsKeyword(text, keyword, skipNegated: true);
 
         private static bool ContainsKeyword(string text, string keyword, bool skipNegated)
         {

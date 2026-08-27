@@ -792,6 +792,9 @@ public class ProblemReportingSystemTests
     [InlineData("minor cosmetic hazard in flight software", null, ProblemSeverity.Critical)]
     [InlineData("non-critical routine observation", null, ProblemSeverity.Minor)]
     [InlineData("engine failure during max-Q ascent", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation of hazardous ascent condition", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation of critically unsafe abort path", ProblemSeverity.Minor, ProblemSeverity.Critical)]
+    [InlineData("stand notes after the engine failed catastrophically", null, ProblemSeverity.Critical)]
     public void ResolveSeverity_FailClosedAndKeywordFloor(
         string? impact,
         ProblemSeverity? explicitSeverity,
