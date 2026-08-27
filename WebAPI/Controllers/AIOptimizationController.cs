@@ -417,6 +417,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     Efficiency = baselineEfficiency
                 };
                 HelloblueGKEngine.ApplyDesignParameterOverrides(parameters, request.Parameters);
+                // Client efficiency overrides may shape other design fields, but the optimizer
+                // must start from persisted engine efficiency. Otherwise a high override
+                // (capped at 0.95) invents ImprovementPercentage vs the real baseline.
+                parameters.Efficiency = baselineEfficiency;
 
                 // Run the requested algorithm (defaults to full multi-stage when unset).
                 var result = await _optimizationEngine.OptimizeEngineDesignAsync(

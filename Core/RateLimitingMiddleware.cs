@@ -13,6 +13,7 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class RateLimitingMiddleware
     {
+        public const int MaxRequestBodyBytes = 256 * 1024;
         private const int MaxAuthUsernameBodyBytes = 64 * 1024;
 
         // AuthController / Metrics / Certification use api/v{version:apiVersion} which substitutes "1.0".
@@ -43,6 +44,12 @@ namespace HB_NLP_Research_Lab.Core
             if (ShouldSkipRateLimiting(endpoint))
             {
                 await _next(context);
+                return;
+            }
+
+            if (context.Request.ContentLength is > MaxRequestBodyBytes)
+            {
+                await WritePayloadTooLargeResponseAsync(context, MaxRequestBodyBytes);
                 return;
             }
 
@@ -82,7 +89,7 @@ namespace HB_NLP_Research_Lab.Core
                 var authBodyInspection = await InspectAuthRequestBodyAsync(context);
                 if (authBodyInspection.IsPayloadTooLarge)
                 {
-                    await WritePayloadTooLargeResponseAsync(context);
+                    await WritePayloadTooLargeResponseAsync(context, MaxAuthUsernameBodyBytes);
                     return;
                 }
 
@@ -160,17 +167,14 @@ namespace HB_NLP_Research_Lab.Core
 
         private bool ShouldSkipRateLimiting(string endpoint)
         {
-            // Only skip anonymous probe/docs paths. Do not prefix-skip /metrics or
-            // authenticated health APIs — those still pay JWT validation cost and must
-            // remain capacity-protected (pre-auth IP cap + post-auth user/IP policies).
-            var skipEndpoints = new[]
+            // Only skip the anonymous liveness probe and docs/favicon. Prefix-matching
+            // "/health" previously also skipped Admin /health/detailed and /health/engine.
+            if (IsEndpoint(endpoint, "/health") || IsEndpoint(endpoint, "/favicon.ico"))
             {
-                "/health",
-                "/swagger",
-                "/favicon.ico"
-            };
+                return true;
+            }
 
-            return skipEndpoints.Any(skip => endpoint.StartsWith(skip, StringComparison.OrdinalIgnoreCase));
+            return endpoint.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -190,10 +194,7 @@ namespace HB_NLP_Research_Lab.Core
         private string GetPolicyNameForEndpoint(string endpoint, string method)
         {
             // API endpoint policies
-            if (endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
-                || endpoint.StartsWith("/api/v1/auth/register", StringComparison.OrdinalIgnoreCase)
-                || endpoint.StartsWith("/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase)
-                || endpoint.StartsWith("/api/v1/account/login", StringComparison.OrdinalIgnoreCase))
+            if (IsAuthenticationEntrypoint(endpoint))
             {
                 return "Auth";
             }
@@ -333,7 +334,22 @@ namespace HB_NLP_Research_Lab.Core
             await WriteRateLimitingUnavailableResponseAsync(context);
         }
 
-        private static async Task WritePayloadTooLargeResponseAsync(HttpContext context)
+        /// <summary>
+        /// Auth-budget endpoints: login/register/refresh plus SSO handshake callbacks.
+        /// Callbacks previously fell through to Default/API (10–20× the auth budget).
+        /// </summary>
+        public static bool IsAuthenticationEntrypoint(string endpoint)
+        {
+            return endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/auth/register", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/login", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/logout", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/sso-callback", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/sso-signout-callback", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static async Task WritePayloadTooLargeResponseAsync(HttpContext context, int maxBytes)
         {
             if (context.Response.HasStarted)
             {
@@ -346,7 +362,7 @@ namespace HB_NLP_Research_Lab.Core
             var errorResponse = new
             {
                 error = "Payload too large",
-                message = "Authentication request payloads must be 64 KB or smaller."
+                message = $"Request payloads must be {maxBytes / 1024} KB or smaller."
             };
 
             var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
