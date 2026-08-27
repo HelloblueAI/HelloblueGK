@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
@@ -46,6 +47,13 @@ public static class RequestPayloadLimits
             return false;
         }
 
+        var nonFiniteKey = values.FirstOrDefault(pair => IsNonFiniteNumber(pair.Value)).Key;
+        if (nonFiniteKey != null)
+        {
+            validationMessage = $"{fieldName} value for '{nonFiniteKey}' must be a finite number.";
+            return false;
+        }
+
         try
         {
             var serializedSize = JsonSerializer.SerializeToUtf8Bytes(values).Length;
@@ -67,6 +75,35 @@ public static class RequestPayloadLimits
     public static bool IsSensitiveKey(string? key)
     {
         return !string.IsNullOrWhiteSpace(key) && SensitiveKeyPattern.IsMatch(key);
+    }
+
+    public static bool IsNonFiniteNumber<TValue>(TValue? value)
+    {
+        switch (value)
+        {
+            case double d:
+                return double.IsNaN(d) || double.IsInfinity(d);
+            case float f:
+                return float.IsNaN(f) || float.IsInfinity(f);
+            case JsonElement element when element.ValueKind == JsonValueKind.Number &&
+                                          element.TryGetDouble(out var jsonNumber):
+                return double.IsNaN(jsonNumber) || double.IsInfinity(jsonNumber);
+            case JsonElement element when element.ValueKind == JsonValueKind.String &&
+                                          double.TryParse(
+                                              element.GetString(),
+                                              NumberStyles.Float,
+                                              CultureInfo.InvariantCulture,
+                                              out var jsonStringNumber):
+                return double.IsNaN(jsonStringNumber) || double.IsInfinity(jsonStringNumber);
+            case string text when double.TryParse(
+                text,
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out var parsed):
+                return double.IsNaN(parsed) || double.IsInfinity(parsed);
+            default:
+                return false;
+        }
     }
 
     public static bool TryValidateOptionalText(

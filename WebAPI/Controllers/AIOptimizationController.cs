@@ -405,13 +405,16 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var startTime = DateTime.UtcNow;
 
-                // Start from engine baselines, then apply request parameter overrides.
+                // Persisted engine characteristics are the trust baseline for improvement %.
+                // Request parameter overrides may shape the optimization scenario, but must not
+                // redefine "original" efficiency (tiny client efficiency → forged ImprovementPercentage).
+                var baselineEfficiency = engine.Efficiency;
                 var parameters = new EngineDesignParameters
                 {
                     Thrust = engine.Thrust,
                     SpecificImpulse = engine.SpecificImpulse,
                     ChamberPressure = engine.ChamberPressure,
-                    Efficiency = engine.Efficiency
+                    Efficiency = baselineEfficiency
                 };
                 HelloblueGKEngine.ApplyDesignParameterOverrides(parameters, request.Parameters);
 
@@ -427,11 +430,12 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
 
-                // Calculate improvement
-                var originalEfficiency = parameters.Efficiency;
-                var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? originalEfficiency;
-                var improvement = originalEfficiency > 0 
-                    ? ((optimizedEfficiency - originalEfficiency) / originalEfficiency) * 100 
+                // Improvement is always versus the persisted engine baseline.
+                // Client parameter overrides may change the starting design for the
+                // optimizer, but they cannot inflate ImprovementPercentage.
+                var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? baselineEfficiency;
+                var improvement = baselineEfficiency > 0
+                    ? ((optimizedEfficiency - baselineEfficiency) / baselineEfficiency) * 100
                     : 0.0;
 
                 var generations = result.OptimizationStages?.Length ?? 100;
@@ -439,12 +443,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 {
                     algorithmType = result.AlgorithmType ?? request.AlgorithmType,
                     appliedParameters = request.Parameters ?? new Dictionary<string, object>(),
+                    baselineEfficiency,
                     originalParameters = new
                     {
-                        thrust = parameters.Thrust,
-                        specificImpulse = parameters.SpecificImpulse,
-                        chamberPressure = parameters.ChamberPressure,
-                        efficiency = parameters.Efficiency
+                        thrust = engine.Thrust,
+                        specificImpulse = engine.SpecificImpulse,
+                        chamberPressure = engine.ChamberPressure,
+                        efficiency = baselineEfficiency
                     },
                     optimizedParameters = new
                     {
@@ -468,7 +473,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         .SetProperty(o => o.ExecutionTimeSeconds, executionTime)
                         .SetProperty(o => o.ImprovementPercentage, improvement)
                         .SetProperty(o => o.Generations, generations)
-                        .SetProperty(o => o.BestFitness, result.OverallImprovement)
+                        // Persist the efficiency-delta fitness, not RNG stage OverallImprovement.
+                        .SetProperty(o => o.BestFitness, improvement)
                         .SetProperty(o => o.ResultsJson, resultsJson));
 
                 if (completed == 0)

@@ -28,11 +28,16 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<SoftwareBaseline> CreateBaselineAsync(string baselineName, string version, string description, string createdBy)
         {
+            if (string.IsNullOrWhiteSpace(baselineName))
+                throw new ArgumentException("Baseline name is required", nameof(baselineName));
+            if (string.IsNullOrWhiteSpace(version))
+                throw new ArgumentException("Baseline version is required", nameof(version));
+
             var baseline = new SoftwareBaseline
             {
                 Id = Guid.NewGuid(),
-                BaselineName = baselineName,
-                Version = version,
+                BaselineName = baselineName.Trim(),
+                Version = version.Trim(),
                 Description = description,
                 Status = BaselineStatus.Draft,
                 CreatedBy = createdBy,
@@ -71,11 +76,59 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
             }
 
-            baseline.Status = BaselineStatus.Approved;
-            baseline.ApprovedBy = approvedBy;
-            baseline.ApprovedAt = DateTime.UtcNow;
+            // Level A independence: approver must not be the baseline author.
+            var normalizedApprover = NormalizeActorName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
 
-            await _context.SaveChangesAsync();
+            if (!string.IsNullOrWhiteSpace(baseline.CreatedBy) &&
+                string.Equals(NormalizeActorName(baseline.CreatedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a baseline as its creator; Level A requires an independent approver");
+            }
+
+            // Atomic Draft|UnderReview → Approved claim closes load/check/SaveChanges TOCTOU
+            // (concurrent empty-item races / double-approve).
+            var approvedAt = DateTime.UtcNow;
+            var claimed = await _context.SoftwareBaselines
+                .Where(b => b.Id == baselineId &&
+                            (b.Status == BaselineStatus.Draft || b.Status == BaselineStatus.UnderReview))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(b => b.Status, BaselineStatus.Approved)
+                    .SetProperty(b => b.ApprovedBy, normalizedApprover)
+                    .SetProperty(b => b.ApprovedAt, approvedAt));
+
+            if (claimed == 0)
+            {
+                await _context.Entry(baseline).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved from status {baseline.Status}; " +
+                    "concurrent status change detected");
+            }
+
+            // Re-check item count after claim — a concurrent empty baseline must not stay Approved.
+            var itemCount = await _context.BaselineConfigurationItems
+                .CountAsync(i => i.BaselineId == baselineId);
+            if (itemCount == 0)
+            {
+                await _context.SoftwareBaselines
+                    .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(b => b.Status, BaselineStatus.Draft)
+                        .SetProperty(b => b.ApprovedBy, (string?)null)
+                        .SetProperty(b => b.ApprovedAt, (DateTime?)null));
+
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved");
+            }
+
+            baseline.Status = BaselineStatus.Approved;
+            baseline.ApprovedBy = normalizedApprover;
+            baseline.ApprovedAt = approvedAt;
+
             _logger.LogInformation("Approved baseline {BaselineName}", LogSanitizer.Sanitize(baseline.BaselineName));
         }
 
@@ -84,6 +137,10 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ConfigurationItem> CreateConfigurationItemAsync(ConfigurationItem item)
         {
+            ArgumentNullException.ThrowIfNull(item);
+            item.ItemName = NormalizeRequiredText(item.ItemName, nameof(item.ItemName));
+            item.FilePath = NormalizeEvidencePath(item.FilePath);
+
             item.Id = Guid.NewGuid();
             item.CreatedAt = DateTime.UtcNow;
             item.Status = ConfigurationItemStatus.UnderDevelopment;
@@ -100,9 +157,16 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task AddItemToBaselineAsync(Guid baselineId, Guid itemId, string version)
         {
+            if (string.IsNullOrWhiteSpace(version))
+                throw new ArgumentException("Configuration item version is required", nameof(version));
+
             var baseline = await _context.SoftwareBaselines.FindAsync(baselineId);
             if (baseline == null)
                 throw new ArgumentException($"Baseline {baselineId} not found");
+
+            var item = await _context.ConfigurationItems.FindAsync(itemId);
+            if (item == null)
+                throw new ArgumentException($"Configuration item {itemId} not found", nameof(itemId));
 
             // Approved/Released/Obsolete baselines are frozen; mutations require a change request path.
             if (baseline.Status is BaselineStatus.Approved or BaselineStatus.Released or BaselineStatus.Obsolete)
@@ -116,12 +180,24 @@ namespace HB_NLP_Research_Lab.Certification
                 Id = Guid.NewGuid(),
                 BaselineId = baselineId,
                 ConfigurationItemId = itemId,
-                Version = version,
+                Version = version.Trim(),
                 AddedAt = DateTime.UtcNow
             };
 
             _context.BaselineConfigurationItems.Add(baselineItem);
             await _context.SaveChangesAsync();
+
+            // Post-save recheck closes the race where ApproveBaseline claims Approved after the
+            // pre-insert Draft/UnderReview check but before this insert commits — without this,
+            // items can land on a frozen Approved baseline.
+            await _context.Entry(baseline).ReloadAsync();
+            if (baseline.Status is BaselineStatus.Approved or BaselineStatus.Released or BaselineStatus.Obsolete)
+            {
+                _context.BaselineConfigurationItems.Remove(baselineItem);
+                await _context.SaveChangesAsync();
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} is {baseline.Status} and cannot accept new configuration items");
+            }
 
             _logger.LogInformation("Added configuration item {ItemId} to baseline {BaselineId}", itemId, baselineId);
         }
@@ -131,6 +207,17 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ChangeRequest> CreateChangeRequestAsync(ChangeRequest request)
         {
+            ArgumentNullException.ThrowIfNull(request);
+            if (string.IsNullOrWhiteSpace(request.Title))
+                throw new ArgumentException("Change request title is required", nameof(request));
+            if (string.IsNullOrWhiteSpace(request.Description))
+                throw new ArgumentException("Change request description is required", nameof(request));
+            if (string.IsNullOrWhiteSpace(request.Justification))
+                throw new ArgumentException("Change request justification is required", nameof(request));
+
+            request.Title = request.Title.Trim();
+            request.Description = request.Description.Trim();
+            request.Justification = request.Justification.Trim();
             request.Id = Guid.NewGuid();
             request.CreatedAt = DateTime.UtcNow;
             request.Status = ChangeRequestStatus.Submitted;
@@ -161,6 +248,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task ApproveChangeRequestAsync(string requestNumber, string approvedBy, string approvalNotes)
         {
+            if (string.IsNullOrWhiteSpace(approvalNotes))
+                throw new ArgumentException("Approval notes are required for CCB approval", nameof(approvalNotes));
+
             var request = await _context.ChangeRequests
                 .FirstOrDefaultAsync(cr => cr.RequestNumber == requestNumber);
 
@@ -174,23 +264,56 @@ namespace HB_NLP_Research_Lab.Certification
                     "only Submitted or UnderReview change requests may be approved");
             }
 
-            request.Status = ChangeRequestStatus.Approved;
-            request.ApprovedBy = approvedBy;
-            request.ApprovedAt = DateTime.UtcNow;
-            request.ApprovalNotes = approvalNotes;
+            var notes = approvalNotes.Trim();
 
-            // Track approval
-            var approval = new ChangeRequestApproval
+            // Level A / CCB independence: requester cannot self-approve.
+            var normalizedApprover = NormalizeActorName(approvedBy);
+            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            {
+                throw new ArgumentException("Approver is required", nameof(approvedBy));
+            }
+
+            if (!string.IsNullOrWhiteSpace(request.RequestedBy) &&
+                string.Equals(NormalizeActorName(request.RequestedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a change request as its requester; Level A requires separation of duties");
+            }
+
+            // Atomic Submitted|UnderReview → Approved claim closes double-approve TOCTOU.
+            var approvedAt = DateTime.UtcNow;
+            var claimed = await _context.ChangeRequests
+                .Where(cr => cr.Id == request.Id &&
+                             (cr.Status == ChangeRequestStatus.Submitted ||
+                              cr.Status == ChangeRequestStatus.UnderReview))
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(cr => cr.Status, ChangeRequestStatus.Approved)
+                    .SetProperty(cr => cr.ApprovedBy, normalizedApprover)
+                    .SetProperty(cr => cr.ApprovedAt, approvedAt)
+                    .SetProperty(cr => cr.ApprovalNotes, notes));
+
+            if (claimed == 0)
+            {
+                await _context.Entry(request).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Change request {requestNumber} cannot be approved from status {request.Status}; " +
+                    "concurrent status change detected");
+            }
+
+            _context.ChangeRequestApprovals.Add(new ChangeRequestApproval
             {
                 Id = Guid.NewGuid(),
                 ChangeRequestId = request.Id,
-                ApprovedBy = approvedBy,
-                ApprovedAt = DateTime.UtcNow,
-                Notes = approvalNotes
-            };
-
-            _context.ChangeRequestApprovals.Add(approval);
+                ApprovedBy = normalizedApprover,
+                ApprovedAt = approvedAt,
+                Notes = notes
+            });
             await _context.SaveChangesAsync();
+
+            request.Status = ChangeRequestStatus.Approved;
+            request.ApprovedBy = normalizedApprover;
+            request.ApprovedAt = approvedAt;
+            request.ApprovalNotes = notes;
 
             _logger.LogInformation("Approved change request {RequestNumber}", LogSanitizer.SanitizeIdentifier(requestNumber));
         }
@@ -200,6 +323,24 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task ImplementChangeRequestAsync(string requestNumber, string implementedBy, List<Guid> affectedItems)
         {
+            ArgumentNullException.ThrowIfNull(affectedItems);
+            if (affectedItems.Count == 0 || affectedItems.Any(id => id == Guid.Empty))
+            {
+                throw new ArgumentException(
+                    "At least one existing affected configuration item is required to implement a change request",
+                    nameof(affectedItems));
+            }
+
+            var distinctItemIds = affectedItems.Distinct().ToList();
+            var existingCount = await _context.ConfigurationItems
+                .CountAsync(item => distinctItemIds.Contains(item.Id));
+            if (existingCount != distinctItemIds.Count)
+            {
+                throw new ArgumentException(
+                    "One or more affected configuration items were not found",
+                    nameof(affectedItems));
+            }
+
             var request = await _context.ChangeRequests
                 .FirstOrDefaultAsync(cr => cr.RequestNumber == requestNumber);
 
@@ -214,7 +355,7 @@ namespace HB_NLP_Research_Lab.Certification
             request.ImplementedAt = DateTime.UtcNow;
 
             // Link to affected items
-            var links = affectedItems.Select(itemId => new ChangeRequestItemLink
+            var links = distinctItemIds.Select(itemId => new ChangeRequestItemLink
             {
                 Id = Guid.NewGuid(),
                 ChangeRequestId = request.Id,
@@ -225,6 +366,48 @@ namespace HB_NLP_Research_Lab.Certification
 
             await _context.SaveChangesAsync();
             _logger.LogInformation("Implemented change request {RequestNumber}", requestNumber);
+        }
+
+        private static string NormalizeRequiredText(string? value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{fieldName} is required", fieldName);
+            }
+
+            return value.Trim();
+        }
+
+        private static string NormalizeEvidencePath(string? filePath)
+        {
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                throw new ArgumentException("Configuration item file path is required.", nameof(filePath));
+            }
+
+            var normalized = filePath.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so SCI
+            // evidence cannot point outside the repository (parity with RTM).
+            if (normalized.StartsWith("/", StringComparison.Ordinal)
+                || normalized.StartsWith("//", StringComparison.Ordinal)
+                || normalized.Contains("://", StringComparison.Ordinal)
+                || normalized.Contains(':', StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Configuration item file path must be relative to the repository.",
+                    nameof(filePath));
+            }
+
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0
+                || segments.Any(segment => segment is "." or ".."))
+            {
+                throw new ArgumentException(
+                    "Configuration item file path must not contain traversal segments.",
+                    nameof(filePath));
+            }
+
+            return string.Join("/", segments);
         }
 
         /// <summary>
@@ -360,6 +543,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             return report;
         }
+
+        private static string NormalizeActorName(string? actorName) =>
+            string.IsNullOrWhiteSpace(actorName) ? string.Empty : actorName.Trim();
 
         private async Task<string> AllocateNextRequestNumberAsync()
         {

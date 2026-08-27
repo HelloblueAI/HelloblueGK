@@ -5,6 +5,7 @@ using HB_NLP_Research_Lab.WebAPI.Data.Repositories;
 using HB_NLP_Research_Lab.WebAPI.Data.Models;
 using HB_NLP_Research_Lab.WebAPI.Models;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using System.Security.Claims;
 
@@ -186,6 +187,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(ModelState);
                 }
 
+                if (!request.TryValidatePhysicalCharacteristics(out var characteristicsMessage))
+                {
+                    return BadRequest(new { message = characteristicsMessage });
+                }
+
                 var currentUsername = GetCurrentUsername();
                 if (string.IsNullOrWhiteSpace(currentUsername))
                 {
@@ -195,6 +201,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var engine = request.ToEngine(currentUsername);
                 var createdEngine = await _engineRepository.CreateAsync(engine);
                 return CreatedAtAction(nameof(GetEngineById), new { id = createdEngine.Id }, createdEngine);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogWarning(ex, "Engine name unique constraint violated on create");
+                return Conflict(new { message = $"An engine named '{request?.Name}' already exists." });
             }
             catch (Exception ex)
             {
@@ -233,6 +252,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(ModelState);
                 }
 
+                if (!request.TryValidatePhysicalCharacteristics(out var characteristicsMessage))
+                {
+                    return BadRequest(new { message = characteristicsMessage });
+                }
+
                 var engine = await _engineRepository.GetByIdAsync(id);
                 if (engine == null)
                 {
@@ -242,6 +266,19 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 request.ApplyTo(engine);
                 var updatedEngine = await _engineRepository.UpdateAsync(engine);
                 return Ok(updatedEngine);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Conflict(new { message = ex.Message });
+            }
+            catch (DbUpdateException ex)
+            {
+                _logger.LogWarning(ex, "Engine name unique constraint violated on update {EngineId}", id);
+                return Conflict(new { message = $"An engine named '{request?.Name}' already exists." });
             }
             catch (Exception ex)
             {
@@ -324,10 +361,20 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
         public Engine ToEngine(string createdBy)
         {
+            if (string.IsNullOrWhiteSpace(Name))
+            {
+                throw new ArgumentException("Engine name is required", nameof(Name));
+            }
+
+            if (string.IsNullOrWhiteSpace(EngineType))
+            {
+                throw new ArgumentException("Engine type is required", nameof(EngineType));
+            }
+
             return new Engine
             {
-                Name = Name,
-                EngineType = EngineType,
+                Name = Name.Trim(),
+                EngineType = EngineType.Trim(),
                 Thrust = Thrust,
                 SpecificImpulse = SpecificImpulse,
                 ChamberPressure = ChamberPressure,
@@ -340,6 +387,25 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 CreatedBy = createdBy,
                 IsActive = true
             };
+        }
+
+        internal bool TryValidatePhysicalCharacteristics(out string? message)
+        {
+            if (string.IsNullOrWhiteSpace(Name) || string.IsNullOrWhiteSpace(EngineType))
+            {
+                message = "Engine name and type are required.";
+                return false;
+            }
+
+            return EnginePhysicalCharacteristics.TryValidate(
+                Thrust,
+                SpecificImpulse,
+                ChamberPressure,
+                ExpansionRatio,
+                Efficiency,
+                MixtureRatio,
+                MassFlowRate,
+                out message);
         }
     }
 
@@ -372,16 +438,51 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         public string? Description { get; set; }
         public bool? IsActive { get; set; }
 
+        internal bool TryValidatePhysicalCharacteristics(out string? message)
+        {
+            if (Name != null && string.IsNullOrWhiteSpace(Name))
+            {
+                message = "Engine name cannot be empty.";
+                return false;
+            }
+
+            if (EngineType != null && string.IsNullOrWhiteSpace(EngineType))
+            {
+                message = "Engine type cannot be empty.";
+                return false;
+            }
+
+            return EnginePhysicalCharacteristics.TryValidateOptional(
+                Thrust,
+                SpecificImpulse,
+                ChamberPressure,
+                ExpansionRatio,
+                Efficiency,
+                MixtureRatio,
+                MassFlowRate,
+                out message);
+        }
+
         public void ApplyTo(Engine engine)
         {
             if (Name != null)
             {
-                engine.Name = Name;
+                if (string.IsNullOrWhiteSpace(Name))
+                {
+                    throw new ArgumentException("Engine name is required", nameof(Name));
+                }
+
+                engine.Name = Name.Trim();
             }
 
             if (EngineType != null)
             {
-                engine.EngineType = EngineType;
+                if (string.IsNullOrWhiteSpace(EngineType))
+                {
+                    throw new ArgumentException("Engine type is required", nameof(EngineType));
+                }
+
+                engine.EngineType = EngineType.Trim();
             }
 
             if (Thrust.HasValue)
@@ -433,6 +534,72 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             {
                 engine.IsActive = IsActive.Value;
             }
+        }
+    }
+
+    internal static class EnginePhysicalCharacteristics
+    {
+        internal static bool TryValidate(
+            double thrust,
+            double specificImpulse,
+            double chamberPressure,
+            double expansionRatio,
+            double efficiency,
+            double mixtureRatio,
+            double massFlowRate,
+            out string? message)
+        {
+            return TryValidateValue("Thrust", thrust, min: 0, max: null, out message)
+                && TryValidateValue("SpecificImpulse", specificImpulse, min: 0, max: null, out message)
+                && TryValidateValue("ChamberPressure", chamberPressure, min: 0, max: null, out message)
+                && TryValidateValue("ExpansionRatio", expansionRatio, min: 0, max: null, out message)
+                && TryValidateValue("Efficiency", efficiency, min: 0, max: 1, out message)
+                && TryValidateValue("MixtureRatio", mixtureRatio, min: 0, max: null, out message)
+                && TryValidateValue("MassFlowRate", massFlowRate, min: 0, max: null, out message);
+        }
+
+        internal static bool TryValidateOptional(
+            double? thrust,
+            double? specificImpulse,
+            double? chamberPressure,
+            double? expansionRatio,
+            double? efficiency,
+            double? mixtureRatio,
+            double? massFlowRate,
+            out string? message)
+        {
+            message = null;
+            return (!thrust.HasValue || TryValidateValue("Thrust", thrust.Value, min: 0, max: null, out message))
+                && (!specificImpulse.HasValue || TryValidateValue("SpecificImpulse", specificImpulse.Value, min: 0, max: null, out message))
+                && (!chamberPressure.HasValue || TryValidateValue("ChamberPressure", chamberPressure.Value, min: 0, max: null, out message))
+                && (!expansionRatio.HasValue || TryValidateValue("ExpansionRatio", expansionRatio.Value, min: 0, max: null, out message))
+                && (!efficiency.HasValue || TryValidateValue("Efficiency", efficiency.Value, min: 0, max: 1, out message))
+                && (!mixtureRatio.HasValue || TryValidateValue("MixtureRatio", mixtureRatio.Value, min: 0, max: null, out message))
+                && (!massFlowRate.HasValue || TryValidateValue("MassFlowRate", massFlowRate.Value, min: 0, max: null, out message));
+        }
+
+        private static bool TryValidateValue(string name, double value, double min, double? max, out string? message)
+        {
+            if (double.IsNaN(value) || double.IsInfinity(value))
+            {
+                message = $"{name} must be a finite number.";
+                return false;
+            }
+
+            if (value < min)
+            {
+                message = $"{name} cannot be negative.";
+                return false;
+            }
+
+            if (max.HasValue && value > max.Value)
+            {
+                message = $"{name} must be between {min} and {max.Value}.";
+                return false;
+            }
+
+            message = null;
+            return true;
         }
     }
 }

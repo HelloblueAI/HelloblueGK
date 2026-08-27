@@ -114,13 +114,140 @@ public class ProblemReportingSystemTests
             ReportedBy = "alice"
         });
 
+        await system.LinkToTestAsync(created.ReportNumber, "TC-SENSOR-001");
         await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
         await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
-        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Closed, resolution: "verified on stand", changedBy: "bob");
+        await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified on stand with TC-SENSOR-001",
+            changedBy: "bob");
 
         var check = await system.VerifyComplianceAsync();
         check.IsCompliant.Should().BeTrue();
         check.UnresolvedCriticalProblems.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task CreateProblemReportAsync_RejectsEmptyTitleAndDescription()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var missingTitle = async () => await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "  ",
+            Description = "Observed unexpected pressure oscillation",
+            Impact = "major performance impact",
+            ReportedBy = "alice"
+        });
+        await missingTitle.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Title is required*");
+
+        var missingDescription = async () => await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Injector anomaly",
+            Description = " ",
+            Impact = "major performance impact",
+            ReportedBy = "alice"
+        });
+        await missingDescription.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Description is required*");
+
+        context.ProblemReports.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_RejectsVacuousResolutionText()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToTestAsync(created.ReportNumber, "TC-SENSOR-001");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "done",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*substantive resolution*");
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_RejectsClosedCriticalWithoutEvidenceLink()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified on stand with replacement hardware",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*linked requirement or test case*");
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_RejectsEmptyRequirementId()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToRequirementAsync(created.ReportNumber, Guid.Empty);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*non-empty GUID*");
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsWhitespaceTestCaseId()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(created.ReportNumber, "   ");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*non-empty identifier*");
     }
 
     [Fact]
@@ -184,9 +311,14 @@ public class ProblemReportingSystemTests
             Impact = "critical safety instrumentation fault",
             ReportedBy = "alice"
         });
+        await system.LinkToTestAsync(critical.ReportNumber, "TC-SENSOR-001");
         await system.UpdateStatusAsync(critical.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
         await system.UpdateStatusAsync(critical.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
-        await system.UpdateStatusAsync(critical.ReportNumber, ProblemReportStatus.Closed, resolution: "verified on stand", changedBy: "bob");
+        await system.UpdateStatusAsync(
+            critical.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified on stand with TC-SENSOR-001",
+            changedBy: "bob");
 
         await system.CreateProblemReportAsync(
             new ProblemReport
@@ -204,6 +336,36 @@ public class ProblemReportingSystemTests
         check.UnresolvedCriticalProblems.Should().Be(0);
         check.Issues.Should().Contain(i =>
             i.Contains("Unresolved minor problem reports", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithoutEvidence_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        context.ProblemReports.Add(new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9001",
+            Title = "Legacy closed critical",
+            Description = "Closed before evidence links were required",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified on stand with replacement hardware",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -270,10 +432,14 @@ public class ProblemReportingSystemTests
 
     [Theory]
     [InlineData(null, null, ProblemSeverity.Critical)]
-    [InlineData("routine observation", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation", null, ProblemSeverity.Minor)]
     [InlineData("major performance impact", null, ProblemSeverity.Major)]
     [InlineData("critical safety fault", ProblemSeverity.Minor, ProblemSeverity.Critical)]
     [InlineData("routine observation", ProblemSeverity.Minor, ProblemSeverity.Minor)]
+    [InlineData("blocks certification gate", ProblemSeverity.Minor, ProblemSeverity.Critical)]
+    [InlineData("unclassified blocking issue", ProblemSeverity.Major, ProblemSeverity.Critical)]
+    [InlineData("nitrogen tank pressure anomaly", null, ProblemSeverity.Critical)]
+    [InlineData("reviewer nit only", null, ProblemSeverity.Minor)]
     public void ResolveSeverity_FailClosedAndKeywordFloor(
         string? impact,
         ProblemSeverity? explicitSeverity,
