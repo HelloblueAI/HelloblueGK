@@ -23,6 +23,19 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Fail closed before JSON model binding — Kestrel's default (~30 MB) is far above
+// RequestPayloadLimits / Auth 64 KB guards. RateLimitingMiddleware also rejects
+// Content-Length above this value so TestServer and non-Kestrel hosts match.
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = RateLimitingMiddleware.MaxRequestBodyBytes;
+});
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = RateLimitingMiddleware.MaxRequestBodyBytes;
+    options.ValueLengthLimit = RateLimitingMiddleware.MaxRequestBodyBytes;
+});
+
 // Render/Railway terminate TLS at the edge and forward HTTP to the container.
 // Only trust forwarded headers from configured proxies/networks to prevent client IP spoofing.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
