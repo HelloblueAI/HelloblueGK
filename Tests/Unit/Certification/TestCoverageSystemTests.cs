@@ -206,6 +206,38 @@ public class TestCoverageSystemTests
         check.MCDCCoverageCompliant.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task LinkTestCaseAsync_RejectsWhitespaceTestCaseId()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            "   ",
+            "Tests/EngineTests.cs",
+            CoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Test case id is required*");
+    }
+
+    [Fact]
+    public async Task LinkTestCaseAsync_RejectsWhitespaceTestFile()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            "TC-ENGINE-001",
+            " ",
+            CoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Test file is required*");
+    }
+
     private static TestCoverageDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<TestCoverageDbContext>()

@@ -15,12 +15,20 @@ namespace HB_NLP_Research_Lab.Certification
     public class ProblemReportingSystem
     {
         private readonly ProblemReportDbContext _context;
+        private readonly RequirementsDbContext _requirementsContext;
+        private readonly TestCoverageDbContext? _coverageContext;
         private readonly ILogger<ProblemReportingSystem> _logger;
 
-        public ProblemReportingSystem(ProblemReportDbContext context, ILogger<ProblemReportingSystem> logger)
+        public ProblemReportingSystem(
+            ProblemReportDbContext context,
+            ILogger<ProblemReportingSystem> logger,
+            RequirementsDbContext requirementsContext,
+            TestCoverageDbContext? coverageContext = null)
         {
             _context = context;
             _logger = logger;
+            _requirementsContext = requirementsContext;
+            _coverageContext = coverageContext;
         }
 
         /// <summary>
@@ -95,6 +103,8 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Problem report {reportNumber} cannot transition from {oldStatus} to {newStatus}");
             }
 
+            string? resolutionToPersist = report.Resolution;
+            DateTime? closedAtToPersist = report.ClosedAt;
             if (newStatus == ProblemReportStatus.Closed)
             {
                 if (string.IsNullOrWhiteSpace(resolution))
@@ -110,35 +120,59 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
                 }
 
-                // Critical/Major closures need linked evidence — resolution text alone forges IsCompliant.
+                // Critical/Major closures need linked evidence that exists in RTM/coverage
+                // stores — a phantom GUID or invented test id forges IsCompliant.
                 if (report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
-                    !HasResolutionEvidence(report))
+                    !await HasValidResolutionEvidenceAsync(report))
                 {
                     throw new InvalidOperationException(
                         $"Problem report {reportNumber} requires a linked requirement or test case before closing");
                 }
 
-                report.Resolution = normalizedResolution;
-                report.ClosedAt = DateTime.UtcNow;
+                resolutionToPersist = normalizedResolution;
+                closedAtToPersist = DateTime.UtcNow;
             }
 
-            report.Status = newStatus;
-            report.UpdatedAt = DateTime.UtcNow;
+            // Atomic expected-status claim closes load/check/SaveChanges TOCTOU
+            // (concurrent Open→UnderInvestigation vs Open→Rejected last-writer-wins).
+            // Claim + audit insert share one transaction so a failed audit save does not
+            // leave a claimed status without a trail. Do not assign Status/etc. and
+            // SaveChanges the ProblemReport after the claim — that rewrite can revert a
+            // later allowed transition that committed between claim and reload.
+            var updatedAt = DateTime.UtcNow;
+            await using var transaction = await _context.Database.BeginTransactionAsync();
 
-            // Track status changes — capture OldStatus before mutation for an accurate audit trail.
+            var claimed = await _context.ProblemReports
+                .Where(pr => pr.Id == report.Id && pr.Status == oldStatus)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(pr => pr.Status, newStatus)
+                    .SetProperty(pr => pr.UpdatedAt, updatedAt)
+                    .SetProperty(pr => pr.Resolution, resolutionToPersist)
+                    .SetProperty(pr => pr.ClosedAt, closedAtToPersist));
+
+            if (claimed == 0)
+            {
+                await _context.Entry(report).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Problem report {reportNumber} cannot transition from {oldStatus} to {newStatus}; concurrent status change detected");
+            }
+
+            await _context.Entry(report).ReloadAsync();
+
             var statusChange = new ProblemReportStatusChange
             {
                 Id = Guid.NewGuid(),
                 ProblemReportId = report.Id,
                 OldStatus = oldStatus,
                 NewStatus = newStatus,
-                ChangedAt = DateTime.UtcNow,
+                ChangedAt = updatedAt,
                 ChangedBy = string.IsNullOrWhiteSpace(changedBy) ? "System" : changedBy.Trim(),
                 Reason = resolution
             };
 
             _context.ProblemReportStatusChanges.Add(statusChange);
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             _logger.LogInformation("Updated problem report {ReportNumber} status to {Status}", LogSanitizer.SanitizeIdentifier(reportNumber), newStatus);
         }
@@ -156,6 +190,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (report == null)
                 throw new ArgumentException($"Problem report {reportNumber} not found");
+
+            if (!await RequirementExistsAsync(requirementId))
+                throw new ArgumentException($"Requirement {requirementId} not found", nameof(requirementId));
 
             var link = new ProblemReportRequirementLink
             {
@@ -186,11 +223,15 @@ namespace HB_NLP_Research_Lab.Certification
             if (report == null)
                 throw new ArgumentException($"Problem report {reportNumber} not found");
 
+            var normalizedTestCaseId = testCaseId.Trim();
+            if (!await TestCaseExistsAsync(normalizedTestCaseId))
+                throw new ArgumentException($"Test case {normalizedTestCaseId} not found", nameof(testCaseId));
+
             var link = new ProblemReportTestLink
             {
                 Id = Guid.NewGuid(),
                 ProblemReportId = report.Id,
-                TestCaseId = testCaseId.Trim(),
+                TestCaseId = normalizedTestCaseId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -276,8 +317,14 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Minor-only stores are not Level A evidence. Explicit Minor + "routine observation"
             // previously forged IsCompliant=true while leaving tickets Open. Rejected-only
-            // Critical/Major rows are also not a completed lifecycle.
-            var closedSafetyClass = safetyClassReports.Count(IsProperlyClosedSafetyClass);
+            // Critical/Major rows are also not a completed lifecycle. Closures need
+            // substantive notes AND real (non-phantom) requirement/test evidence.
+            var closedSafetyClass = 0;
+            foreach (var report in safetyClassReports)
+            {
+                if (await IsProperlyClosedSafetyClassAsync(report))
+                    closedSafetyClass++;
+            }
             if (closedSafetyClass == 0)
             {
                 check.IsCompliant = false;
@@ -289,11 +336,16 @@ namespace HB_NLP_Research_Lab.Certification
             // Closed without a recorded resolution must not satisfy certification gates.
             // Include every non-Rejected severity so a Closed Critical cannot hide an
             // Open or blank-resolution Minor. Safety-class closures also need
-            // substantive text + evidence links (leftover rows that skipped UpdateStatus).
+            // substantive text + verified evidence (leftover rows that skipped UpdateStatus).
             var blockingReports = allReports
                 .Where(r => r.Status != ProblemReportStatus.Rejected)
                 .ToList();
-            var improperlyClosed = blockingReports.Count(IsImproperlyClosed);
+            var improperlyClosed = 0;
+            foreach (var report in blockingReports)
+            {
+                if (await IsImproperlyClosedAsync(report))
+                    improperlyClosed++;
+            }
             if (improperlyClosed > 0)
             {
                 check.Issues.Add(
@@ -315,30 +367,97 @@ namespace HB_NLP_Research_Lab.Certification
             return check;
         }
 
-        private static bool IsProperlyClosedSafetyClass(ProblemReport report) =>
+        private async Task<bool> IsProperlyClosedSafetyClassAsync(ProblemReport report) =>
             report.Status == ProblemReportStatus.Closed &&
             !string.IsNullOrWhiteSpace(report.Resolution) &&
             HasSubstantiveResolution(report.Resolution) &&
-            HasResolutionEvidence(report);
+            await HasValidResolutionEvidenceAsync(report);
 
-        private static bool IsImproperlyClosed(ProblemReport report)
+        private async Task<bool> IsImproperlyClosedAsync(ProblemReport report)
         {
             if (report.Status != ProblemReportStatus.Closed)
-            {
                 return false;
-            }
 
             if (string.IsNullOrWhiteSpace(report.Resolution) || !HasSubstantiveResolution(report.Resolution))
+                return true;
+
+            return report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
+                   !await HasValidResolutionEvidenceAsync(report);
+        }
+
+        /// <summary>
+        /// Evidence rows must resolve to a real requirement or recorded test case.
+        /// Phantom GUIDs / invented test ids previously forged IsCompliant.
+        /// </summary>
+        private async Task<bool> HasValidResolutionEvidenceAsync(ProblemReport report)
+        {
+            var requirementIds = report.RequirementLinks
+                .Select(l => l.RequirementId)
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+            if (requirementIds.Count > 0 &&
+                await _requirementsContext.Requirements
+                    .AsNoTracking()
+                    .AnyAsync(r => requirementIds.Contains(r.Id)))
             {
                 return true;
             }
 
-            return report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
-                   !HasResolutionEvidence(report);
+            var testCaseIds = report.TestLinks
+                .Select(l => l.TestCaseId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (testCaseIds.Count == 0)
+                return false;
+
+            var recorded = await LoadRecordedTestCaseIdsAsync();
+            return testCaseIds.Any(recorded.Contains);
         }
 
-        private static bool HasResolutionEvidence(ProblemReport report) =>
-            report.RequirementLinks.Count > 0 || report.TestLinks.Count > 0;
+        private async Task<bool> RequirementExistsAsync(Guid requirementId)
+        {
+            if (requirementId == Guid.Empty)
+                return false;
+
+            return await _requirementsContext.Requirements
+                .AsNoTracking()
+                .AnyAsync(r => r.Id == requirementId);
+        }
+
+        private async Task<bool> TestCaseExistsAsync(string testCaseId)
+        {
+            if (string.IsNullOrWhiteSpace(testCaseId))
+                return false;
+
+            var recorded = await LoadRecordedTestCaseIdsAsync();
+            return recorded.Contains(testCaseId.Trim());
+        }
+
+        private async Task<HashSet<string>> LoadRecordedTestCaseIdsAsync()
+        {
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var rtmIds = await _requirementsContext.RequirementTestLinks
+                .AsNoTracking()
+                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
+                .Select(t => t.TestCaseId)
+                .ToListAsync();
+            ids.UnionWith(rtmIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
+
+            if (_coverageContext == null)
+                return ids;
+
+            var coverageIds = await _coverageContext.CoverageTestCaseLinks
+                .AsNoTracking()
+                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
+                .Select(t => t.TestCaseId)
+                .ToListAsync();
+            ids.UnionWith(coverageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
+            return ids;
+        }
 
         /// <summary>
         /// Reject vacuous closure text ("done", "fixed", "ok") that previously forged IsCompliant.

@@ -112,7 +112,14 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task LinkTestCaseAsync(string filePath, string testCaseId, string testFile, CoverageType coverageType)
         {
+            if (string.IsNullOrWhiteSpace(testCaseId))
+                throw new ArgumentException("Test case id is required", nameof(testCaseId));
+            if (string.IsNullOrWhiteSpace(testFile))
+                throw new ArgumentException("Test file is required", nameof(testFile));
+
             filePath = NormalizeFilePath(filePath);
+            testCaseId = testCaseId.Trim();
+            testFile = testFile.Trim();
 
             var coverage = await _context.CodeCoverage
                 .FirstOrDefaultAsync(c => c.FilePath == filePath);
