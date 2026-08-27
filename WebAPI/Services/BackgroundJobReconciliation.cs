@@ -9,7 +9,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Services;
 /// crash or restart would otherwise leave Pending/Running/InProgress rows stranded forever.
 /// </summary>
 /// <remarks>
-/// Default <paramref name="minimumAge"/> is <see cref="TimeSpan.Zero"/> so a single-instance
+/// Default <c>minimumAge</c> is <see cref="TimeSpan.Zero"/> so a single-instance
 /// restart immediately fail-closes work that can never resume. Multi-replica deployments that
 /// share a database must set <c>BackgroundWork:InterruptedJobMinimumAge</c> (e.g. 30 minutes)
 /// so a rolling deploy cannot kill jobs still executing on peer replicas.

@@ -462,7 +462,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     engine.ChamberPressure,
                     engine.Efficiency);
                 var analysisResult = await _engine.AnalyzeEngineAsync(
-                    engine.Name,
+                    engine.ValidationCacheKey,
                     request.SimulationType,
                     request.Parameters,
                     baselineDesign,
@@ -470,8 +470,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 cancellationToken.ThrowIfCancellationRequested();
 
                 var executionTime = (DateTime.UtcNow - startedAt).TotalSeconds;
-                var accuracy = analysisResult.ValidationReport?.OverallAccuracy / 100.0
-                    ?? analysisResult.ConvergenceRate;
+                // Solver-owned ConvergenceRate is the Accuracy trust signal. ValidationReport
+                // stays fail-closed/unproven without trusted evidence and must not be treated
+                // as a solver accuracy substitute (or MissionSuccess forge via overwrite).
+                var accuracy = analysisResult.ConvergenceRate;
                 var convergenceRate = analysisResult.ConvergenceRate;
                 // Fail closed: never invent optimistic Accuracy / ConvergenceRate trust metrics.
                 if (accuracy <= 0 || convergenceRate <= 0)
@@ -504,11 +506,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                         maxStress = analysisResult.StructuralAnalysis?.MaxStress,
                         safetyFactor = analysisResult.StructuralAnalysis?.SafetyFactor
                     },
-                    validationReport = new
-                    {
-                        overallAccuracy = analysisResult.ValidationReport?.OverallAccuracy,
-                        confidenceLevel = analysisResult.ValidationReport?.ConfidenceLevel
-                    }
+                    // Persist ValidationSource only. OverallAccuracy / ConfidenceLevel are
+                    // untrusted RNG until a Trusted: source exists — do not embed them as
+                    // ResultsJson evidence (dual-channel bypass of solver ConvergenceRate).
+                    validationSource = analysisResult.ValidationReport?.ValidationSource
                 });
 
                 // Only complete if still Running so a concurrent cancel is preserved.

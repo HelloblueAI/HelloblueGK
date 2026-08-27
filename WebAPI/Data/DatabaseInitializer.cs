@@ -163,6 +163,15 @@ public static class DatabaseInitializer
             WHERE "IsActive" = 1 AND "CreatedBy" IS NOT NULL
             """,
             cancellationToken);
+
+        await dbContext.Database.ExecuteSqlRawAsync(
+            """
+            DROP INDEX IF EXISTS "IX_Engines_Name_Unique";
+            DROP INDEX IF EXISTS "IX_Engines_Name";
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Engines_Name_Unique"
+            ON "Engines" (LOWER("Name"))
+            """,
+            cancellationToken);
     }
 
     private static async Task EnsurePostgresCompatibilityAsync(
@@ -187,6 +196,10 @@ public static class DatabaseInitializer
             CREATE UNIQUE INDEX IF NOT EXISTS "IX_DigitalTwins_EngineId_CreatedBy_Active"
             ON "DigitalTwins" ("EngineId", "CreatedBy")
             WHERE "IsActive" = TRUE AND "CreatedBy" IS NOT NULL;
+            DROP INDEX IF EXISTS "IX_Engines_Name_Unique";
+            DROP INDEX IF EXISTS "IX_Engines_Name";
+            CREATE UNIQUE INDEX IF NOT EXISTS "IX_Engines_Name_Unique"
+            ON "Engines" (LOWER("Name"));
             """,
             cancellationToken);
     }
@@ -227,6 +240,17 @@ public static class DatabaseInitializer
                 ON [DigitalTwins] ([EngineId], [CreatedBy])
                 WHERE [IsActive] = 1 AND [CreatedBy] IS NOT NULL;
             END
+
+            IF EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE name = N'IX_Engines_Name_Unique' AND object_id = OBJECT_ID(N'Engines'))
+                DROP INDEX [IX_Engines_Name_Unique] ON [Engines];
+            IF EXISTS (
+                SELECT 1 FROM sys.indexes
+                WHERE name = N'IX_Engines_Name' AND object_id = OBJECT_ID(N'Engines'))
+                DROP INDEX [IX_Engines_Name] ON [Engines];
+            CREATE UNIQUE INDEX [IX_Engines_Name_Unique]
+            ON [Engines] ([Name] COLLATE Latin1_General_CI_AS);
             """,
             cancellationToken);
     }

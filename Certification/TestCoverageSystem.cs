@@ -108,11 +108,19 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Link test case to code coverage
+        /// Link test case to code coverage. Links are official Level A execution evidence —
+        /// empty IDs, traversal paths, or files outside Tests/ cannot satisfy compliance.
         /// </summary>
         public async Task LinkTestCaseAsync(string filePath, string testCaseId, string testFile, CoverageType coverageType)
         {
+            if (string.IsNullOrWhiteSpace(testCaseId))
+                throw new ArgumentException("Test case id is required", nameof(testCaseId));
+            if (string.IsNullOrWhiteSpace(testFile))
+                throw new ArgumentException("Test file is required", nameof(testFile));
+
             filePath = NormalizeFilePath(filePath);
+            testCaseId = NormalizeTestCaseId(testCaseId);
+            testFile = NormalizeTestFilePath(testFile);
 
             var coverage = await _context.CodeCoverage
                 .FirstOrDefaultAsync(c => c.FilePath == filePath);
@@ -261,14 +269,20 @@ namespace HB_NLP_Research_Lab.Certification
                     .Average(c => c?.MCDCCoverage ?? 0);
             }
 
-            // Fail closed: empty roster / missing evidence / no safety-critical inventory.
+            // Fail closed: empty roster / missing evidence / no safety-critical inventory /
+            // count-only records with no linked test execution evidence.
             var missingRosterFiles = roster.Count(r => !coverageByPath.ContainsKey(r.FilePath));
+            report.FilesWithTestEvidence = rosterCoverage.Count(HasValidTestEvidence);
+            report.SafetyCriticalFilesWithMcdcTestEvidence = rosterCoverage.Count(c =>
+                c.IsSafetyCritical && HasValidMcdcTestEvidence(c));
             report.MeetsDO178CLevelA = roster.Count > 0 &&
                                       missingRosterFiles == 0 &&
                                       report.SafetyCriticalFiles > 0 &&
                                       report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
                                       report.FilesWith100PercentBranchCoverage == report.TotalFiles &&
-                                      report.SafetyCriticalFilesWithMCDC == report.SafetyCriticalFiles;
+                                      report.SafetyCriticalFilesWithMCDC == report.SafetyCriticalFiles &&
+                                      report.FilesWithTestEvidence == report.TotalFiles &&
+                                      report.SafetyCriticalFilesWithMcdcTestEvidence == report.SafetyCriticalFiles;
 
             report.CoverageGaps = roster
                 .Select(required =>
@@ -283,17 +297,21 @@ namespace HB_NLP_Research_Lab.Certification
                         };
                     }
 
-                    return coverage.MeetsLevelARequirements
-                        ? null
-                        : new CoverageGap
-                        {
-                            FilePath = coverage.FilePath,
-                            StatementCoverage = coverage.StatementCoverage,
-                            BranchCoverage = coverage.BranchCoverage,
-                            MCDCCoverage = coverage.MCDCCoverage,
-                            IsSafetyCritical = coverage.IsSafetyCritical,
-                            GapDescription = GenerateGapDescription(coverage)
-                        };
+                    var description = GenerateGapDescription(coverage);
+                    if (string.IsNullOrEmpty(description))
+                    {
+                        return null;
+                    }
+
+                    return new CoverageGap
+                    {
+                        FilePath = coverage.FilePath,
+                        StatementCoverage = coverage.StatementCoverage,
+                        BranchCoverage = coverage.BranchCoverage,
+                        MCDCCoverage = coverage.MCDCCoverage,
+                        IsSafetyCritical = coverage.IsSafetyCritical,
+                        GapDescription = description
+                    };
                 })
                 .Where(gap => gap != null)
                 .Select(gap => gap!)
@@ -311,7 +329,9 @@ namespace HB_NLP_Research_Lab.Certification
             var roster = await _context.RequiredCoverageFiles
                 .Where(f => f.IsActive)
                 .ToListAsync();
-            var coverageByPath = (await _context.CodeCoverage.ToListAsync())
+            var coverageByPath = (await _context.CodeCoverage
+                .Include(c => c.TestCaseLinks)
+                .ToListAsync())
                 .ToDictionary(c => c.FilePath, StringComparer.Ordinal);
 
             var rosterCoverage = new List<CodeCoverage>();
@@ -338,7 +358,10 @@ namespace HB_NLP_Research_Lab.Certification
                 FilesWith100PercentStatementCoverage = rosterCoverage.Count(c => c.StatementCoverage >= 100.0),
                 FilesWith100PercentBranchCoverage = rosterCoverage.Count(c => c.BranchCoverage >= 100.0),
                 SafetyCriticalFiles = roster.Count(r => r.IsSafetyCritical),
-                SafetyCriticalFilesWithMCDC = rosterCoverage.Count(c => c.IsSafetyCritical && c.MCDCCoverage >= 100.0)
+                SafetyCriticalFilesWithMCDC = rosterCoverage.Count(c => c.IsSafetyCritical && c.MCDCCoverage >= 100.0),
+                FilesWithTestEvidence = rosterCoverage.Count(HasValidTestEvidence),
+                SafetyCriticalFilesWithMcdcTestEvidence = rosterCoverage.Count(c =>
+                    c.IsSafetyCritical && HasValidMcdcTestEvidence(c))
             };
 
             // Fail closed when the server roster is empty — cherry-picked client files must not imply compliance.
@@ -371,10 +394,14 @@ namespace HB_NLP_Research_Lab.Certification
             check.BranchCoverageCompliant = check.FilesWith100PercentBranchCoverage == check.TotalFiles;
             check.MCDCCoverageCompliant = check.SafetyCriticalFiles > 0 &&
                                          check.SafetyCriticalFilesWithMCDC == check.SafetyCriticalFiles;
+            check.TestEvidenceCompliant = check.FilesWithTestEvidence == check.TotalFiles &&
+                                         check.SafetyCriticalFiles > 0 &&
+                                         check.SafetyCriticalFilesWithMcdcTestEvidence == check.SafetyCriticalFiles;
 
             check.IsCompliant = check.StatementCoverageCompliant &&
                                check.BranchCoverageCompliant &&
-                               check.MCDCCoverageCompliant;
+                               check.MCDCCoverageCompliant &&
+                               check.TestEvidenceCompliant;
 
             if (!check.IsCompliant)
             {
@@ -388,6 +415,12 @@ namespace HB_NLP_Research_Lab.Certification
                     check.Issues.Add("No safety-critical files on the required coverage roster; MC/DC compliance cannot be asserted");
                 else if (!check.MCDCCoverageCompliant)
                     check.Issues.Add($"Not all safety-critical required files have 100% MC/DC coverage ({check.SafetyCriticalFilesWithMCDC}/{check.SafetyCriticalFiles})");
+
+                if (check.FilesWithTestEvidence < check.TotalFiles)
+                    check.Issues.Add($"Not all required files have linked test-case evidence ({check.FilesWithTestEvidence}/{check.TotalFiles})");
+                else if (check.SafetyCriticalFiles > 0 &&
+                         check.SafetyCriticalFilesWithMcdcTestEvidence < check.SafetyCriticalFiles)
+                    check.Issues.Add($"Not all safety-critical required files have an MC/DC test-case link ({check.SafetyCriticalFilesWithMcdcTestEvidence}/{check.SafetyCriticalFiles})");
             }
 
             return check;
@@ -418,7 +451,69 @@ namespace HB_NLP_Research_Lab.Certification
             if (coverage.IsSafetyCritical && coverage.MCDCCoverage < 100.0)
                 gaps.Add($"{100.0 - coverage.MCDCCoverage:F1}% MC/DC coverage missing (CRITICAL for safety-critical code)");
 
+            if (!HasValidTestEvidence(coverage))
+                gaps.Add("No linked test-case evidence for required file");
+            else if (coverage.IsSafetyCritical && !HasValidMcdcTestEvidence(coverage))
+                gaps.Add("Safety-critical file has no MC/DC test-case link");
+
             return string.Join(", ", gaps);
+        }
+
+        private static bool HasValidTestEvidence(CodeCoverage coverage) =>
+            coverage.TestCaseLinks.Any(IsValidTestCaseLink);
+
+        private static bool HasValidMcdcTestEvidence(CodeCoverage coverage) =>
+            coverage.TestCaseLinks.Any(link =>
+                IsValidTestCaseLink(link) && link.CoverageType == CoverageType.MCDC);
+
+        private static bool IsValidTestCaseLink(CoverageTestCaseLink link)
+        {
+            if (string.IsNullOrWhiteSpace(link.TestCaseId) || string.IsNullOrWhiteSpace(link.TestFile))
+            {
+                return false;
+            }
+
+            try
+            {
+                var normalized = NormalizeFilePath(link.TestFile);
+                return normalized.StartsWith("Tests/", StringComparison.Ordinal);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        private static string NormalizeTestCaseId(string testCaseId)
+        {
+            if (string.IsNullOrWhiteSpace(testCaseId))
+            {
+                throw new ArgumentException("Test case id is required.", nameof(testCaseId));
+            }
+
+            return testCaseId.Trim();
+        }
+
+        private static string NormalizeTestFilePath(string testFile)
+        {
+            string normalized;
+            try
+            {
+                normalized = NormalizeFilePath(testFile);
+            }
+            catch (ArgumentException ex)
+            {
+                throw new ArgumentException(ex.Message, nameof(testFile), ex);
+            }
+
+            if (!normalized.StartsWith("Tests/", StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "Coverage test file must be a repository-relative path under Tests/.",
+                    nameof(testFile));
+            }
+
+            return normalized;
         }
 
         private static string NormalizeFilePath(string filePath)
@@ -586,6 +681,8 @@ namespace HB_NLP_Research_Lab.Certification
         public int FilesWith100PercentBranchCoverage { get; set; }
         public int SafetyCriticalFiles { get; set; }
         public int SafetyCriticalFilesWithMCDC { get; set; }
+        public int FilesWithTestEvidence { get; set; }
+        public int SafetyCriticalFilesWithMcdcTestEvidence { get; set; }
         public double OverallStatementCoverage { get; set; }
         public double OverallBranchCoverage { get; set; }
         public double OverallMCDCCoverage { get; set; }
@@ -624,9 +721,12 @@ namespace HB_NLP_Research_Lab.Certification
         public int FilesWith100PercentBranchCoverage { get; set; }
         public int SafetyCriticalFiles { get; set; }
         public int SafetyCriticalFilesWithMCDC { get; set; }
+        public int FilesWithTestEvidence { get; set; }
+        public int SafetyCriticalFilesWithMcdcTestEvidence { get; set; }
         public bool StatementCoverageCompliant { get; set; }
         public bool BranchCoverageCompliant { get; set; }
         public bool MCDCCoverageCompliant { get; set; }
+        public bool TestEvidenceCompliant { get; set; }
         public bool IsCompliant { get; set; }
         public List<string> Issues { get; set; } = new();
     }
