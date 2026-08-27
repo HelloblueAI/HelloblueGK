@@ -381,6 +381,18 @@ public class TestCoverageSystemTests
         check.IsCompliant.Should().BeFalse();
         check.Issues.Should().Contain(i => i.Contains("Unsafe coverage evidence path", StringComparison.OrdinalIgnoreCase));
         report.MeetsDO178CLevelA.Should().BeFalse();
+        report.Files.Should().BeEmpty();
+        report.OverallStatementCoverage.Should().Be(0);
+        report.CoverageGaps.Should().Contain(g =>
+            g.FilePath == "http://example.test/Core/Engine.cs"
+            && g.GapDescription.Contains("Unsafe coverage evidence path", StringComparison.OrdinalIgnoreCase));
+
+        await system.RevokeRequiredFileAsync("HTTP://example.test/Core/Engine.cs");
+        context.RequiredCoverageFiles.Single().IsActive.Should().BeFalse();
+
+        var afterRevoke = await system.VerifyComplianceAsync();
+        afterRevoke.IsCompliant.Should().BeFalse();
+        afterRevoke.Issues.Should().Contain(i => i.Contains("roster is empty", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

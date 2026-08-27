@@ -199,7 +199,12 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task RevokeRequiredFileAsync(string filePath)
         {
-            var existing = await FindRequiredCoverageFileAsync(NormalizeFilePath(filePath));
+            if (string.IsNullOrWhiteSpace(filePath))
+                throw new ArgumentException("File path is required", nameof(filePath));
+
+            // Lookup by canonical form only — leftover scheme/outside-tree rows must
+            // still be revocable. Register remains the path that rejects unsafe paths.
+            var existing = await FindRequiredCoverageFileAsync(CanonicalizeStoredCoveragePath(filePath));
             if (existing == null)
                 throw new ArgumentException($"Required coverage file '{filePath.Trim()}' not found", nameof(filePath));
 
@@ -227,7 +232,11 @@ namespace HB_NLP_Research_Lab.Certification
             var rosterCoverage = new List<CodeCoverage>();
             foreach (var required in roster)
             {
-                if (coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                if (!IsStoredCoveragePathSafe(required.FilePath))
+                    continue;
+
+                if (coverageByPath.TryGetValue(required.FilePath, out var coverage)
+                    && IsStoredCoveragePathSafe(coverage.FilePath))
                 {
                     // Roster owns the safety-critical flag for Level A MC/DC scope.
                     coverage.IsSafetyCritical = required.IsSafetyCritical;
@@ -290,7 +299,19 @@ namespace HB_NLP_Research_Lab.Certification
             report.CoverageGaps = roster
                 .Select(required =>
                 {
-                    if (!coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                    coverageByPath.TryGetValue(required.FilePath, out var coverage);
+                    if (!IsStoredCoveragePathSafe(required.FilePath)
+                        || (coverage != null && !IsStoredCoveragePathSafe(coverage.FilePath)))
+                    {
+                        return new CoverageGap
+                        {
+                            FilePath = required.FilePath,
+                            IsSafetyCritical = required.IsSafetyCritical,
+                            GapDescription = "Unsafe coverage evidence path"
+                        };
+                    }
+
+                    if (coverage == null)
                     {
                         return new CoverageGap
                         {
@@ -452,16 +473,18 @@ namespace HB_NLP_Research_Lab.Certification
             return check;
         }
 
-        private async Task<RequiredCoverageFile?> FindRequiredCoverageFileAsync(string normalizedFilePath)
+        private async Task<RequiredCoverageFile?> FindRequiredCoverageFileAsync(string lookupPath)
         {
-            var candidates = await _context.RequiredCoverageFiles
-                .Where(f => f.FilePath == normalizedFilePath)
-                .ToListAsync();
-
-            return candidates.FirstOrDefault(f =>
-                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.Ordinal))
-                   ?? candidates.FirstOrDefault(f =>
-                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.OrdinalIgnoreCase));
+            var canonical = CanonicalizeStoredCoveragePath(lookupPath);
+            var candidates = await _context.RequiredCoverageFiles.ToListAsync();
+            return candidates
+                .OrderByDescending(f => f.IsActive)
+                .ThenByDescending(f => f.RegisteredAt)
+                .FirstOrDefault(f =>
+                    string.Equals(
+                        CanonicalizeStoredCoveragePath(f.FilePath),
+                        canonical,
+                        StringComparison.OrdinalIgnoreCase));
         }
 
         private string GenerateGapDescription(CodeCoverage coverage)
@@ -556,6 +579,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             return normalized;
         }
+
+        private static string CanonicalizeStoredCoveragePath(string? filePath) =>
+            (filePath ?? string.Empty).Trim().Replace('\\', '/');
 
         private static bool IsStoredCoveragePathSafe(string? filePath)
         {
