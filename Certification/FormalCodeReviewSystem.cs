@@ -466,6 +466,12 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve review until all assigned reviewers have completed their findings");
             }
 
+            if (review.Findings.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve review with no findings; empty submissions cannot complete Level A evidence");
+            }
+
             // Level A independence: approver must not be the author or a completing reviewer.
             var normalizedApprover = NormalizeReviewerName(approvedBy);
             if (string.IsNullOrWhiteSpace(normalizedApprover))

@@ -277,12 +277,12 @@ public class CodeReviewsController : ControllerBase
     {
         try
         {
-            if (request.Findings == null || request.Findings.Count == 0)
+            if (request?.Findings == null || request.Findings.Count == 0)
             {
                 return BadRequest(new { message = "At least one review finding is required" });
             }
 
-            var findings = new List<ReviewFinding>();
+            var findings = new List<ReviewFinding>(request.Findings.Count);
             foreach (var finding in request.Findings)
             {
                 if (!Enum.TryParse<FindingSeverity>(finding.Severity, ignoreCase: true, out var severity))
