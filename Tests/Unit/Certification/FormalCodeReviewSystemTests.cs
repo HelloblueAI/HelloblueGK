@@ -982,9 +982,8 @@ public class FormalCodeReviewSystemTests
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
-        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
 
-        context.RequiredReviewFiles.Add(new RequiredReviewFile
+        context.RequiredReviewFiles.Add(new RequiredReviewFile)
         {
             Id = Guid.NewGuid(),
             FilePath = "../secrets/core.c",
@@ -994,26 +993,23 @@ public class FormalCodeReviewSystemTests
         });
         await context.SaveChangesAsync();
 
-        var created = await system.CreateReviewAsync(new CodeReview
+        // Leftover rows (pre-path-hardening) can already be Approved. CreateReviewAsync
+        // now rejects traversal, so forge the review the same way the roster was forged.
+        context.CodeReviews.Add(new CodeReview
         {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9001",
             FilePath = "../secrets/core.c",
             FunctionName = "Leak",
             LineStart = 1,
             LineEnd = 2,
-            Author = "alice"
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
         });
-        await system.AssignReviewerAsync(created.Id, "certified-bob");
-        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
-        {
-            new()
-            {
-                LineNumber = 1,
-                Severity = FindingSeverity.Minor,
-                Category = FindingCategory.Standards,
-                Description = "nit"
-            }
-        });
-        await system.ApproveReviewAsync(created.Id, "admin");
+        await context.SaveChangesAsync();
 
         var check = await system.VerifyComplianceAsync();
 
