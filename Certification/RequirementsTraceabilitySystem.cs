@@ -49,7 +49,6 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Requirement number '{requirement.RequirementNumber}' is already in use",
                     nameof(requirement));
             }
-
             requirement.Id = Guid.NewGuid();
             requirement.CreatedAt = DateTime.UtcNow;
             requirement.Status = RequirementStatus.Draft;
@@ -127,7 +126,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(designDocument))
                 throw new ArgumentException("Design document is required", nameof(designDocument));
 
-            var normalizedDesignDocument = NormalizeEvidencePath(designDocument, nameof(designDocument));
+            var normalizedDesignDocument = NormalizeEvidencePath(
+                designDocument,
+                nameof(designDocument),
+                EvidencePathKind.Design);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -163,7 +165,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (lineStart <= 0 || lineEnd < lineStart)
                 throw new ArgumentException("Code line range must be a positive, ordered span");
 
-            var normalizedCodeFile = NormalizeEvidencePath(codeFile, nameof(codeFile));
+            var normalizedCodeFile = NormalizeEvidencePath(
+                codeFile,
+                nameof(codeFile),
+                EvidencePathKind.Code);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -200,7 +205,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(testFile))
                 throw new ArgumentException("Test file is required", nameof(testFile));
 
-            var normalizedTestFile = NormalizeEvidencePath(testFile, nameof(testFile));
+            var normalizedTestFile = NormalizeEvidencePath(
+                testFile,
+                nameof(testFile),
+                EvidencePathKind.Test);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -394,8 +402,7 @@ namespace HB_NLP_Research_Lab.Certification
                         t.CoverageType == TestCoverageType.MCDC &&
                         t.Verified &&
                         t.TestResult == TestResult.Passed &&
-                        !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-                        !string.IsNullOrWhiteSpace(t.TestFile)))
+                        HasMeaningfulTestLink(t)))
                 {
                     report.Issues.Add(new TraceabilityIssue
                     {
@@ -570,17 +577,17 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
             !string.IsNullOrWhiteSpace(d.DesignElementId) &&
-            !string.IsNullOrWhiteSpace(d.DesignDocument);
+            HasAllowedEvidencePrefix(d.DesignDocument, EvidencePathKind.Design);
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
-            !string.IsNullOrWhiteSpace(c.CodeFile) &&
+            HasAllowedEvidencePrefix(c.CodeFile, EvidencePathKind.Code) &&
             !string.IsNullOrWhiteSpace(c.FunctionName) &&
             c.LineStart > 0 &&
             c.LineEnd >= c.LineStart;
 
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
             !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-            !string.IsNullOrWhiteSpace(t.TestFile);
+            HasAllowedEvidencePrefix(t.TestFile, EvidencePathKind.Test);
 
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {
@@ -612,7 +619,45 @@ namespace HB_NLP_Research_Lab.Certification
             return trimmed;
         }
 
-        private static string NormalizeEvidencePath(string path, string paramName)
+        private enum EvidencePathKind
+        {
+            Design,
+            Code,
+            Test
+        }
+
+        // Design evidence must live under Docs/; code under implementation trees;
+        // tests under Tests/. Relative-but-arbitrary paths (phantom/forge.cs) previously
+        // satisfied HasMeaningful* and forged Level A IsCompliant.
+        private static readonly string[] DesignEvidencePrefixes = ["Docs/"];
+        private static readonly string[] CodeEvidencePrefixes =
+        [
+            "Core/", "WebAPI/", "Certification/", "Physics/", "AI/", "Models/", "Aerospace/", "Scripts/"
+        ];
+        private static readonly string[] TestEvidencePrefixes = ["Tests/"];
+
+        private static string[] PrefixesFor(EvidencePathKind kind) => kind switch
+        {
+            EvidencePathKind.Design => DesignEvidencePrefixes,
+            EvidencePathKind.Code => CodeEvidencePrefixes,
+            EvidencePathKind.Test => TestEvidencePrefixes,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind))
+        };
+
+        private static bool HasAllowedEvidencePrefix(string? path, EvidencePathKind kind)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            var prefixes = PrefixesFor(kind);
+            return prefixes.Any(prefix =>
+                path.StartsWith(prefix, StringComparison.Ordinal) &&
+                path.Length > prefix.Length);
+        }
+
+        private static string NormalizeEvidencePath(string path, string paramName, EvidencePathKind kind)
         {
             var normalized = path.Trim().Replace('\\', '/');
             // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so RTM
@@ -632,7 +677,16 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Evidence path must not contain traversal segments.", paramName);
             }
 
-            return string.Join("/", segments);
+            normalized = string.Join("/", segments);
+            if (!HasAllowedEvidencePrefix(normalized, kind))
+            {
+                var allowed = string.Join(", ", PrefixesFor(kind));
+                throw new ArgumentException(
+                    $"Evidence path must be under an allowed {kind.ToString().ToLowerInvariant()} prefix ({allowed}).",
+                    paramName);
+            }
+
+            return normalized;
         }
 
         private static bool IsUniqueConstraintViolation(DbUpdateException exception)

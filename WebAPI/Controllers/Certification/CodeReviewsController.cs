@@ -100,7 +100,9 @@ public class CodeReviewsController : ControllerBase
                 Category = f.Category.ToString(),
                 Description = f.Description,
                 Recommendation = f.Recommendation,
-                Resolved = f.Resolved
+                Resolved = f.Resolved,
+                ResolvedBy = f.ResolvedBy,
+                Resolution = f.Resolution
             }).ToList()
         });
     }
@@ -277,8 +279,13 @@ public class CodeReviewsController : ControllerBase
     {
         try
         {
-            var findings = new List<ReviewFinding>();
-            foreach (var finding in request.Findings ?? new List<ReviewFindingRequest>())
+            if (request?.Findings == null || request.Findings.Count == 0)
+            {
+                return BadRequest(new { message = "At least one review finding is required" });
+            }
+
+            var findings = new List<ReviewFinding>(request.Findings.Count);
+            foreach (var finding in request.Findings)
             {
                 if (!Enum.TryParse<FindingSeverity>(finding.Severity, ignoreCase: true, out var severity))
                 {
@@ -303,6 +310,10 @@ public class CodeReviewsController : ControllerBase
             await _crs.SubmitFindingsAsync(id, User.Identity?.Name ?? "System", findings);
             return Ok(new { message = "Findings submitted successfully" });
         }
+        catch (ArgumentException ex) when (ex.ParamName == "findings")
+        {
+            return BadRequest(new { message = ex.Message });
+        }
         catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase)
                                           || ex.Message.Contains("not assigned", StringComparison.OrdinalIgnoreCase))
         {
@@ -312,18 +323,35 @@ public class CodeReviewsController : ControllerBase
         {
             return BadRequest(new { message = ex.Message });
         }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     /// <summary>
-    /// Resolve (disposition) a review finding so it no longer blocks approval
+    /// Resolve (disposition) a review finding so it no longer blocks approval.
+    /// Requires substantive resolution notes — a bare resolve is not Level A evidence.
     /// </summary>
     [HttpPost("{id}/findings/{findingId}/resolve")]
     [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> ResolveFinding(Guid id, Guid findingId)
+    public async Task<IActionResult> ResolveFinding(
+        Guid id,
+        Guid findingId,
+        [FromBody] ResolveFindingRequest request)
     {
         try
         {
-            await _crs.ResolveFindingAsync(id, findingId, User.Identity?.Name ?? "System");
+            if (request is null)
+            {
+                return BadRequest(new { message = "Finding resolution requires substantive notes" });
+            }
+
+            await _crs.ResolveFindingAsync(
+                id,
+                findingId,
+                User.Identity?.Name ?? "System",
+                request.Resolution);
             return Ok(new { message = "Finding resolved successfully" });
         }
         catch (ArgumentException ex) when (ex.Message.Contains("not found", StringComparison.OrdinalIgnoreCase))
@@ -331,6 +359,10 @@ public class CodeReviewsController : ControllerBase
             return NotFound();
         }
         catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
@@ -457,6 +489,11 @@ public class SubmitFindingsRequest
     public List<ReviewFindingRequest> Findings { get; set; } = new();
 }
 
+public class ResolveFindingRequest
+{
+    public string Resolution { get; set; } = string.Empty;
+}
+
 public class ReviewFindingRequest
 {
     public int LineNumber { get; set; }
@@ -495,6 +532,8 @@ public class ReviewFindingResponse
     public string Description { get; set; } = string.Empty;
     public string? Recommendation { get; set; }
     public bool Resolved { get; set; }
+    public string? ResolvedBy { get; set; }
+    public string? Resolution { get; set; }
 }
 
 public class CodeReviewSummaryResponse

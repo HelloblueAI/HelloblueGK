@@ -8,12 +8,6 @@ namespace HB_NLP_Research_Lab.WebAPI.Services;
 /// Simulations/optimizations/launches are executed via in-process queue workers only, so a
 /// crash or restart would otherwise leave Pending/Running/InProgress rows stranded forever.
 /// </summary>
-/// <remarks>
-/// Default <c>minimumAge</c> is <see cref="TimeSpan.Zero"/> so a single-instance
-/// restart immediately fail-closes work that can never resume. Multi-replica deployments that
-/// share a database must set <c>BackgroundWork:InterruptedJobMinimumAge</c> (e.g. 30 minutes)
-/// so a rolling deploy cannot kill jobs still executing on peer replicas.
-/// </remarks>
 public static class BackgroundJobReconciliation
 {
     public const string InterruptedMessage = "Interrupted by process restart";
@@ -23,6 +17,18 @@ public static class BackgroundJobReconciliation
     /// </summary>
     public static readonly TimeSpan SharedDatabaseInterruptedJobMinimumAge = TimeSpan.FromMinutes(30);
 
+    /// <summary>
+    /// Marks stranded in-flight jobs as failed.
+    /// </summary>
+    /// <param name="context">Application database context.</param>
+    /// <param name="logger">Logger for reconciliation diagnostics.</param>
+    /// <param name="minimumAge">
+    /// Default is <see cref="TimeSpan.Zero"/> so a single-instance restart immediately
+    /// fail-closes work that can never resume. Multi-replica deployments that share a
+    /// database must set <c>BackgroundWork:InterruptedJobMinimumAge</c> (e.g. 30 minutes)
+    /// so a rolling deploy cannot kill jobs still executing on peer replicas.
+    /// </param>
+    /// <param name="cancellationToken">Token used to cancel the reconciliation scan.</param>
     public static async Task<BackgroundJobReconciliationResult> ReconcileInterruptedJobsAsync(
         HelloblueGKDbContext context,
         ILogger logger,
