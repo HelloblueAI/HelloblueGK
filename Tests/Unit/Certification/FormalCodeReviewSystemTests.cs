@@ -983,7 +983,7 @@ public class FormalCodeReviewSystemTests
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
 
-        context.RequiredReviewFiles.Add(new RequiredReviewFile)
+        context.RequiredReviewFiles.Add(new RequiredReviewFile
         {
             Id = Guid.NewGuid(),
             FilePath = "../secrets/core.c",
