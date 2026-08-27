@@ -38,6 +38,18 @@ public class HelloblueGKEngineTests : IDisposable
     }
 
     [Fact]
+    public async Task AnalyzeEngineAsync_KeepsValidationOverallAccuracyFailClosed()
+    {
+        var result = await _engine.AnalyzeEngineAsync("TestEngine", "CFD");
+
+        // Solver ConvergenceRate may be high, but validation evidence stays unproven
+        // until a trusted flight/test binding exists (MissionSuccess accuracy gate).
+        result.ConvergenceRate.Should().BeGreaterThan(0);
+        result.ValidationReport.OverallAccuracy.Should().Be(RealTimeValidationEngine.UnprovenValidationAccuracy);
+        result.ValidationReport.OverallAccuracy.Should().BeLessThan(95.0);
+    }
+
+    [Fact]
     public async Task AnalyzeEngineAsync_ShouldHaveValidThrustAnalysis()
     {
         // Arrange
@@ -87,9 +99,22 @@ public class HelloblueGKEngineTests : IDisposable
 
         // Assert
         summary.Should().NotBeNull();
-        summary.ValidationScore.Should().BeGreaterThanOrEqualTo(0).And.BeLessThanOrEqualTo(1);
+        summary.IsValid.Should().BeFalse();
+        summary.ValidationSource.Should().Be("Unproven");
+        summary.ValidationScore.Should().BeApproximately(0.5, 0.0001);
+        summary.ConfidenceLevel.Should().BeApproximately(0.5, 0.0001);
         summary.CriticalIssues.Should().BeGreaterThanOrEqualTo(0);
         summary.Warnings.Should().BeGreaterThanOrEqualTo(0);
+    }
+
+    [Fact]
+    public async Task GenerateValidationSummaryAsync_ForNamedModelWithoutTrustedSource_IsFailClosed()
+    {
+        var summary = await _engine.GenerateValidationSummaryAsync("HB-NLP-REV-001");
+
+        summary.IsValid.Should().BeFalse();
+        summary.ValidationSource.Should().Be("Unproven");
+        summary.ValidationScore.Should().BeApproximately(0.5, 0.0001);
     }
 
     [Fact]
@@ -344,7 +369,11 @@ public class HelloblueGKEngineTests : IDisposable
 
         forged.ThrustAnalysis.Efficiency.Should().BeApproximately(0.5, 0.0001);
         forged.ConvergenceRate.Should().BeApproximately(honest.ConvergenceRate, 0.0001);
-        forged.ConvergenceRate.Should().BeGreaterThan(0.9);
+        // Placeholder solvers report UnprovenSolverAccuracy (50%) — not hardcoded 99.x.
+        forged.ConvergenceRate.Should().BeApproximately(
+            HighPerformanceCFDSolver.UnprovenSolverAccuracy / 100.0,
+            0.0001);
+        forged.ConvergenceRate.Should().BeLessThan(0.9);
     }
 
     [Fact]

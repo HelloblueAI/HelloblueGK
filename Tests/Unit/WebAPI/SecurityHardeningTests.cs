@@ -221,6 +221,8 @@ public class SecurityHardeningTests
         user.PasswordHash.Split(':').Should().HaveCount(3);
         user.LastLoginAt.Should().NotBeNull();
         user.UpdatedAt.Should().NotBeNull();
+        // Re-login must bump atv so previously stolen access JWTs fail validation.
+        user.AccessTokenVersion.Should().Be(1);
         user.RefreshTokenHash.Should().Be("refresh-token-hash");
         user.RefreshTokenExpiresAt.Should().NotBeNull();
         user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
@@ -280,6 +282,8 @@ public class SecurityHardeningTests
         response.RefreshToken.Should().Be("rotated-refresh-token");
         user.RefreshTokenHash.Should().Be("rotated-refresh-hash");
         user.RefreshTokenExpiresAt.Should().BeCloseTo(DateTime.UtcNow.AddDays(7), TimeSpan.FromSeconds(10));
+        // Successful refresh must bump atv so stolen pre-refresh access JWTs die immediately.
+        user.AccessTokenVersion.Should().Be(1);
     }
 
     [Fact]
@@ -642,6 +646,132 @@ public class SecurityHardeningTests
         var stored = context.Users.Single();
         stored.Username.Should().Be("alice");
         stored.Email.Should().Be("alice@example.com");
+    }
+
+    [Fact]
+    public async Task Register_WithShortPassword_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateRegisterController(context);
+
+        var result = await controller.Register(new RegisterRequest
+        {
+            Username = "newuser",
+            Email = "newuser@example.com",
+            Password = "short"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Register_WithInvalidUsernameOrEmail_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateRegisterController(context);
+
+        var invalidUsername = await controller.Register(new RegisterRequest
+        {
+            Username = "bad user/../admin",
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        invalidUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var invalidEmail = await controller.Register(new RegisterRequest
+        {
+            Username = "ok_user",
+            Email = "not-an-email",
+            Password = "Password123!"
+        });
+        invalidEmail.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateRequirement_InvalidPriority_ReturnsBadRequest()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-PRI-001",
+            Title = "Valve timing",
+            Description = "Main valve open sequence",
+            Priority = "not-a-priority"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        requirementsContext.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateRequirement_LowercaseCritical_IsAcceptedAndFloored()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-PRI-002",
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            Priority = "critical"
+        });
+
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var persisted = await requirementsContext.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
     }
 
     [Fact]
@@ -1065,6 +1195,22 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public void BasicHealthAction_DoesNotLeakHostingEnvironment()
+    {
+        var controller = new HealthController(engine: null!);
+        var result = controller.Get();
+
+        var payload = result.Should().BeOfType<OkObjectResult>().Subject.Value;
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+
+        json.Should().Contain("Healthy");
+        json.Should().NotContain("environment");
+        json.Should().NotContain("Development");
+        json.Should().NotContain("Production");
+        json.Should().NotContain("Staging");
+    }
+
+    [Fact]
     public async Task GlobalExceptionHandler_InProduction_DoesNotExposeArgumentExceptionDetails()
     {
         const string sensitiveMessage = "database shard secret detail";
@@ -1130,6 +1276,123 @@ public class SecurityHardeningTests
         });
 
         AssertObjectResultDoesNotExpose(result, "Object reference");
+    }
+
+    [Fact]
+    public async Task CreateRequirement_WithEmptyTitle_ReturnsBadRequest()
+    {
+        await using var context = CreateRequirementsContext();
+        var controller = new RequirementsController(
+            new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance),
+            context,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.Name, "admin"), new Claim(ClaimTypes.Role, "Admin") },
+                        "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-EMPTY",
+            Title = "  ",
+            Description = "Real description"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LinkToTest_WithInvalidCoverageType_ReturnsBadRequestNotNotFound()
+    {
+        await using var context = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-LINK-001",
+            Title = "Igniter interlock",
+            Description = "Must inhibit igniter without propellant flow",
+            CreatedBy = "admin"
+        });
+
+        var controller = new RequirementsController(
+            system,
+            context,
+            NullLogger<RequirementsController>.Instance);
+
+        var result = await controller.LinkToTest(requirement.Id, new LinkTestRequest
+        {
+            TestCaseId = "TC-1",
+            TestFile = "Tests/IgniterTests.cs",
+            CoverageType = "NotACoverageType"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.RequirementTestLinks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubmitFindings_WithEmptyListOrInvalidSeverity_ReturnsBadRequest()
+    {
+        await using var context = CreateCodeReviewContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        var review = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(review.Id, "certified-bob");
+
+        var controller = new CodeReviewsController(
+            system,
+            context,
+            NullLogger<CodeReviewsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.Name, "certified-bob"), new Claim(ClaimTypes.Role, "Admin") },
+                        "Test"))
+                }
+            }
+        };
+
+        var empty = await controller.SubmitFindings(review.Id, new SubmitFindingsRequest
+        {
+            Findings = new List<ReviewFindingRequest>()
+        });
+        empty.Should().BeOfType<BadRequestObjectResult>();
+
+        var invalidSeverity = await controller.SubmitFindings(review.Id, new SubmitFindingsRequest
+        {
+            Findings = new List<ReviewFindingRequest>
+            {
+                new()
+                {
+                    LineNumber = 5,
+                    Severity = "NotASeverity",
+                    Category = "Standards",
+                    Description = "Consider naming clarity"
+                }
+            }
+        });
+        invalidSeverity.Should().BeOfType<BadRequestObjectResult>();
+
+        context.ReviewFindings.Should().BeEmpty();
+        (await context.CodeReviewAssignments.SingleAsync()).Status.Should().Be(ReviewAssignmentStatus.Assigned);
     }
 
     [Fact]
@@ -1530,6 +1793,25 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public void RequestPayloadLimits_RejectsNonFiniteNumericValues()
+    {
+        var values = new Dictionary<string, object>
+        {
+            ["thrust"] = double.PositiveInfinity,
+            ["efficiency"] = 0.95
+        };
+
+        var ok = RequestPayloadLimits.TryValidateDictionary(
+            values,
+            "LaunchParameters",
+            out var message);
+
+        ok.Should().BeFalse();
+        message.Should().Contain("thrust");
+        message.Should().Contain("finite");
+    }
+
+    [Fact]
     public async Task Swagger_InDevelopment_AllowsPublicAccessWhenConfigured()
     {
         using var factory = new TestWebApiFactory(Environments.Development, new Dictionary<string, string?>
@@ -1848,6 +2130,55 @@ public class SecurityHardeningTests
         return modelData.RootElement.GetProperty("EngineId").GetString();
     }
 
+    private static AuthController CreateRegisterController(HelloblueGKDbContext context)
+    {
+        var jwtService = new Mock<IJwtService>();
+        jwtService.Setup(service => service.GenerateToken(It.IsAny<User>())).Returns("token");
+        jwtService.Setup(service => service.GenerateRefreshToken()).Returns("refresh-token");
+        jwtService.Setup(service => service.HashRefreshToken(It.IsAny<string>())).Returns("refresh-hash");
+        jwtService.Setup(service => service.GetTokenExpirationSeconds()).Returns(3600);
+        jwtService.Setup(service => service.GetRefreshTokenExpirationSeconds()).Returns(604800);
+
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Auth:AllowPublicRegistration"] = "true"
+            })
+            .Build();
+
+        return new AuthController(
+            context,
+            jwtService.Object,
+            NullLogger<AuthController>.Instance,
+            new TestWebHostEnvironment { EnvironmentName = Environments.Production },
+            configuration)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/auth/register"
+                    }
+                }
+            }
+        };
+    }
+
+    private static RequirementsDbContext CreateRequirementsContext()
+    {
+        var options = new DbContextOptionsBuilder<RequirementsDbContext>()
+            .UseSqlite($"Data Source=file:requirements-ctrl-{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .Options;
+
+        var context = new RequirementsDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
+    }
+
     private static AuthController CreateAuthController(
         HelloblueGKDbContext context,
         IJwtService jwtService,
@@ -1981,11 +2312,13 @@ public class SecurityHardeningTests
         responseJson.Should().NotContain(sensitiveText);
     }
 
-    private static HelloblueGKDbContext CreateContext()
+    private static HelloblueGKDbContext CreateContext() => CreateSharedContext(Guid.NewGuid().ToString("N"));
+
+    private static HelloblueGKDbContext CreateSharedContext(string sharedName)
     {
         // Use SQLite so ExecuteUpdate-based refresh-token rotation can be exercised.
         var options = new DbContextOptionsBuilder<HelloblueGKDbContext>()
-            .UseSqlite($"Data Source=file:{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .UseSqlite($"Data Source=file:{sharedName}?mode=memory&cache=shared")
             .Options;
 
         var context = new HelloblueGKDbContext(options);
@@ -2001,6 +2334,18 @@ public class SecurityHardeningTests
             .Options;
 
         return new TestCoverageDbContext(options);
+    }
+
+    private static CodeReviewDbContext CreateCodeReviewContext()
+    {
+        var options = new DbContextOptionsBuilder<CodeReviewDbContext>()
+            .UseSqlite($"Data Source=file:code-reviews-sec-{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .Options;
+
+        var context = new CodeReviewDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static TestCoverageController CreateTestCoverageController(TestCoverageDbContext context)

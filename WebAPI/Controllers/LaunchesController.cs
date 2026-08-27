@@ -144,6 +144,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     return BadRequest(new { message = "Request body is required" });
                 }
 
+                if (string.IsNullOrWhiteSpace(request.MissionName))
+                {
+                    return BadRequest(new { message = "Mission name is required" });
+                }
+
                 if (!RequestPayloadLimits.TryValidateDictionary(
                     request.LaunchParameters,
                     nameof(request.LaunchParameters),
@@ -173,7 +178,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Create launch record
                 var launch = new Launch
                 {
-                    MissionName = request.MissionName,
+                    MissionName = request.MissionName.Trim(),
                     Description = request.Description,
                     EngineId = request.EngineId,
                     EngineCount = request.EngineCount,
@@ -512,7 +517,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
                 // Simulate launch using engine analysis with stored mission parameters.
                 var analysisResult = await _engine.AnalyzeEngineAsync(
-                    launch.Engine.Name,
+                    launch.Engine.ValidationCacheKey,
                     simulationType,
                     launchParameters,
                     design,
@@ -544,8 +549,14 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 // Mission success uses persisted engine efficiency — not client LaunchParameters
                 // overrides — so efficiency:0.95 cannot forge a pass for a weak engine.
                 // Scenario overrides still drive the simulated design/physics above.
+                // Simulated ValidationReport.OverallAccuracy (RNG 85–100% / "Multiple Sources")
+                // is not flight evidence and must not satisfy the accuracy gate.
+                var validationReport = analysisResult.ValidationReport;
+                var hasTrustedValidation = HasTrustedValidationEvidence(validationReport);
+                var validationAccuracy = validationReport?.OverallAccuracy ?? 0;
                 var missionSuccess = launch.Engine.Efficiency > efficiencyThreshold &&
-                    (analysisResult.ValidationReport?.OverallAccuracy ?? 0) > accuracyThreshold;
+                    hasTrustedValidation &&
+                    validationAccuracy > accuracyThreshold;
 
                 var missionDuration = (DateTime.UtcNow - startTime).TotalSeconds;
                 var completedAt = DateTime.UtcNow;
@@ -569,7 +580,9 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     simulatedEfficiency = design.Efficiency,
                     // Persist provenance only — RealTimeValidationEngine OverallAccuracy is
                     // synthetic RNG (85–100) and must not become stored mission evidence.
-                    validationSource = analysisResult.ValidationReport?.ValidationSource,
+                    validationTrusted = hasTrustedValidation,
+                    validationSource = analysisResult.ValidationReport?.ValidationSource ??
+                                       validationReport?.ValidationSource,
                     simulationType = analysisResult.SimulationType,
                     appliedLaunchParameters = launchParameters
                 });
@@ -783,6 +796,23 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
             return User.Identity?.Name
                 ?? User.FindFirst(ClaimTypes.Name)?.Value
                 ?? User.FindFirst("username")?.Value;
+        }
+
+        /// <summary>
+        /// Simulated collectors always synthesize flight/test-stand/industry rows and brand
+        /// them "Real-Time Flight Telemetry" / "Multiple Sources". Those names are not a
+        /// signed binding. Only an explicit Trusted: prefix counts as mission evidence.
+        /// </summary>
+        public const string TrustedValidationSourcePrefix = "Trusted:";
+
+        public static bool HasTrustedValidationEvidence(ValidationReport? report)
+        {
+            if (report == null || string.IsNullOrWhiteSpace(report.ValidationSource))
+            {
+                return false;
+            }
+
+            return report.ValidationSource.StartsWith(TrustedValidationSourcePrefix, StringComparison.Ordinal);
         }
     }
 

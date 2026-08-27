@@ -556,11 +556,13 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     BuildEngineModel(digitalTwin.Engine),
                     digitalTwin.PredictionAccuracy);
                 
-                // Create prediction scenario from parameters
+                // Create prediction scenario from parameters.
+                // Efficiency is engine-model owned — drop client efficiency keys (Reliability parity).
                 var scenario = new PredictionScenario
                 {
                     Name = request.ScenarioName ?? "Default Prediction",
                     Parameters = (request.ScenarioParameters ?? new Dictionary<string, double>())
+                        .Where(kvp => !string.Equals(kvp.Key, "efficiency", StringComparison.OrdinalIgnoreCase))
                         .ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value)
                 };
                 
