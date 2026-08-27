@@ -451,6 +451,43 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task AssignReviewerAsync_AfterCompleted_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterCertifiedReviewerAsync("certified-carol", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+
+        var assign = async () => await system.AssignReviewerAsync(created.Id, "certified-carol");
+        await assign.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Completed*");
+
+        var persisted = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == created.Id);
+        persisted.Status.Should().Be(CodeReviewStatus.Completed);
+        context.CodeReviewAssignments.Should().HaveCount(1);
+    }
+
+    [Fact]
     public async Task SubmitFindingsAsync_RejectsAfterRejection()
     {
         await using var context = CreateContext();
@@ -487,6 +524,42 @@ public class FormalCodeReviewSystemTests
         var persisted = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == created.Id);
         persisted.Status.Should().Be(CodeReviewStatus.Rejected);
         context.ReviewFindings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AssignReviewerAsync_AfterApproved_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterCertifiedReviewerAsync("certified-carol", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var assign = async () => await system.AssignReviewerAsync(created.Id, "certified-carol");
+        await assign.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Approved*");
+
+        context.CodeReviewAssignments.Should().HaveCount(1);
     }
 
     [Fact]

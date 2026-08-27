@@ -163,6 +163,38 @@ public class TestCoverageController : ControllerBase
     }
 
     /// <summary>
+    /// Link a test case to recorded coverage. Required for Level A compliance.
+    /// </summary>
+    [HttpPost("link-test-case")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> LinkTestCase([FromBody] LinkCoverageTestCaseRequest request)
+    {
+        if (!Enum.TryParse<CoverageType>(request.CoverageType, ignoreCase: true, out var coverageType)
+            || !Enum.IsDefined(coverageType))
+        {
+            return BadRequest(new { message = "Coverage type must be Statement, Branch, Condition, MCDC, or Path." });
+        }
+
+        try
+        {
+            await _tcs.LinkTestCaseAsync(request.FilePath, request.TestCaseId, request.TestFile, coverageType);
+            return Ok(new { message = "Test case linked to coverage successfully" });
+        }
+        catch (ArgumentException ex) when (
+            string.Equals(ex.ParamName, "filePath", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ex.ParamName, "testFile", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(ex.ParamName, "testCaseId", StringComparison.OrdinalIgnoreCase))
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Get coverage report
     /// </summary>
     [HttpGet("report")]
@@ -178,6 +210,8 @@ public class TestCoverageController : ControllerBase
             FilesWith100PercentBranchCoverage = report.FilesWith100PercentBranchCoverage,
             SafetyCriticalFiles = report.SafetyCriticalFiles,
             SafetyCriticalFilesWithMCDC = report.SafetyCriticalFilesWithMCDC,
+            FilesWithTestEvidence = report.FilesWithTestEvidence,
+            SafetyCriticalFilesWithMcdcTestEvidence = report.SafetyCriticalFilesWithMcdcTestEvidence,
             OverallStatementCoverage = report.OverallStatementCoverage,
             OverallBranchCoverage = report.OverallBranchCoverage,
             OverallMCDCCoverage = report.OverallMCDCCoverage,
@@ -210,9 +244,12 @@ public class TestCoverageController : ControllerBase
             FilesWith100PercentBranchCoverage = check.FilesWith100PercentBranchCoverage,
             SafetyCriticalFiles = check.SafetyCriticalFiles,
             SafetyCriticalFilesWithMCDC = check.SafetyCriticalFilesWithMCDC,
+            FilesWithTestEvidence = check.FilesWithTestEvidence,
+            SafetyCriticalFilesWithMcdcTestEvidence = check.SafetyCriticalFilesWithMcdcTestEvidence,
             StatementCoverageCompliant = check.StatementCoverageCompliant,
             BranchCoverageCompliant = check.BranchCoverageCompliant,
             MCDCCoverageCompliant = check.MCDCCoverageCompliant,
+            TestEvidenceCompliant = check.TestEvidenceCompliant,
             IsCompliant = check.IsCompliant,
             Issues = check.Issues
         });
@@ -260,6 +297,14 @@ public class SafetyCriticalRequest
     public bool IsSafetyCritical { get; set; }
 }
 
+public class LinkCoverageTestCaseRequest
+{
+    public string FilePath { get; set; } = string.Empty;
+    public string TestCaseId { get; set; } = string.Empty;
+    public string TestFile { get; set; } = string.Empty;
+    public string CoverageType { get; set; } = string.Empty;
+}
+
 public class CoverageReportResponse
 {
     public DateTime GeneratedAt { get; set; }
@@ -268,6 +313,8 @@ public class CoverageReportResponse
     public int FilesWith100PercentBranchCoverage { get; set; }
     public int SafetyCriticalFiles { get; set; }
     public int SafetyCriticalFilesWithMCDC { get; set; }
+    public int FilesWithTestEvidence { get; set; }
+    public int SafetyCriticalFilesWithMcdcTestEvidence { get; set; }
     public double OverallStatementCoverage { get; set; }
     public double OverallBranchCoverage { get; set; }
     public double OverallMCDCCoverage { get; set; }
@@ -293,9 +340,12 @@ public class CoverageComplianceResponse
     public int FilesWith100PercentBranchCoverage { get; set; }
     public int SafetyCriticalFiles { get; set; }
     public int SafetyCriticalFilesWithMCDC { get; set; }
+    public int FilesWithTestEvidence { get; set; }
+    public int SafetyCriticalFilesWithMcdcTestEvidence { get; set; }
     public bool StatementCoverageCompliant { get; set; }
     public bool BranchCoverageCompliant { get; set; }
     public bool MCDCCoverageCompliant { get; set; }
+    public bool TestEvidenceCompliant { get; set; }
     public bool IsCompliant { get; set; }
     public List<string> Issues { get; set; } = new();
 }

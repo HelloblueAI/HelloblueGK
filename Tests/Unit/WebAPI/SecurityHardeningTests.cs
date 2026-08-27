@@ -2072,6 +2072,58 @@ public class SecurityHardeningTests
         context.CodeCoverage.Single().FilePath.Should().Be("Core/Control/EngineController.cs");
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("/etc/passwd")]
+    [InlineData("C:\\temp\\coverage.cs")]
+    [InlineData("../Tests/Unit/Core/EngineTests.cs")]
+    [InlineData("Core/Engine.cs")]
+    public async Task LinkTestCase_WithUnsafeTestFile_ReturnsBadRequestAndDoesNotPersist(string testFile)
+    {
+        await using var context = CreateTestCoverageContext();
+        var controller = CreateTestCoverageController(context);
+        await controller.RecordCoverage(new RecordCoverageRequest
+        {
+            FilePath = "Core/Engine.cs",
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MCDCCoverage = 100
+        });
+
+        var result = await controller.LinkTestCase(new LinkCoverageTestCaseRequest
+        {
+            FilePath = "Core/Engine.cs",
+            TestCaseId = "TC-ENGINE-001",
+            TestFile = testFile,
+            CoverageType = "MCDC"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LinkTestCase_WithInvalidCoverageType_ReturnsBadRequest()
+    {
+        await using var context = CreateTestCoverageContext();
+        var controller = CreateTestCoverageController(context);
+
+        var result = await controller.LinkTestCase(new LinkCoverageTestCaseRequest
+        {
+            FilePath = "Core/Engine.cs",
+            TestCaseId = "TC-ENGINE-001",
+            TestFile = "Tests/Unit/Core/EngineTests.cs",
+            CoverageType = "not-a-type"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
     private static string? ReadStoredEngineKey(string modelDataJson)
     {
         using var modelData = JsonDocument.Parse(modelDataJson);
