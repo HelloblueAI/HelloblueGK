@@ -808,6 +808,104 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task CreateRequirement_OmittedPriority_FailClosesToCritical()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-PRI-003",
+            Title = "Valve timing",
+            Description = "Main valve open sequence"
+            // Priority omitted — DTO default must not silently become Medium.
+        });
+
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var persisted = await requirementsContext.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Fact]
+    public async Task RecordTestResult_OmittedResult_ReturnsBadRequest()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PRI-004",
+            Title = "Sensor validity",
+            Description = "Must reject stale sensor frames",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "admin"
+        });
+        var test = await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-004",
+            "Tests/SensorsTests.cs",
+            TestCoverageType.MCDC);
+
+        var result = await controller.RecordTestResult(
+            requirement.Id,
+            test.Id,
+            new RecordTestResultRequest());
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        var persisted = await requirementsContext.RequirementTestLinks.SingleAsync();
+        persisted.TestResult.Should().Be(TestResult.NotRun);
+        persisted.Verified.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task BackgroundJobReconciliation_FailsInterruptedPendingAndRunningJobs_LeavesScheduledLaunches()
     {
         await using var context = CreateContext();

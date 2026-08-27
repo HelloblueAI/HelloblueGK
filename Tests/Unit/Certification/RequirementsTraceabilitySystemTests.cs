@@ -117,7 +117,7 @@ public class RequirementsTraceabilitySystemTests
             CreatedBy = "alice"
         });
 
-        await system.LinkToDesignAsync(requirement.Id, "DES-004", "DesignDoc.pdf");
+        await system.LinkToDesignAsync(requirement.Id, "DES-004", "Docs/DesignDoc.pdf");
         await system.LinkToCodeAsync(requirement.Id, "Core/Valves.cs", 10, 40, "CloseMainValves");
         await system.LinkToTestAsync(requirement.Id, "TC-004", "Tests/ValvesTests.cs", TestCoverageType.MCDC);
 
@@ -149,7 +149,7 @@ public class RequirementsTraceabilitySystemTests
             CreatedBy = "alice"
         });
 
-        var design = await system.LinkToDesignAsync(requirement.Id, "DES-005", "DesignDoc.pdf");
+        var design = await system.LinkToDesignAsync(requirement.Id, "DES-005", "Docs/DesignDoc.pdf");
         var code = await system.LinkToCodeAsync(requirement.Id, "Core/Sensors.cs", 1, 20, "ValidateSensor");
         var test = await system.LinkToTestAsync(requirement.Id, "TC-005", "Tests/SensorsTests.cs", TestCoverageType.MCDC);
 
@@ -374,6 +374,137 @@ public class RequirementsTraceabilitySystemTests
 
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*relative*");
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsNonTestsPrefix()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-014",
+            Title = "Test namespace",
+            Description = "Test links must live under Tests/",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-FORGE",
+            "phantom/forge.cs",
+            TestCoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Tests/*");
+    }
+
+    [Fact]
+    public async Task LinkToCodeAsync_RejectsNonImplementationPrefix()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-015",
+            Title = "Code namespace",
+            Description = "Code links must live under an implementation tree",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToCodeAsync(
+            requirement.Id,
+            "docs/readme.md",
+            1,
+            20,
+            "Forge");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*code prefix*");
+    }
+
+    [Fact]
+    public async Task LinkToDesignAsync_RejectsNonDocsPrefix()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-016",
+            Title = "Design namespace",
+            Description = "Design links must live under Docs/",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToDesignAsync(
+            requirement.Id,
+            "DE-FORGE",
+            "tmp/design.pdf");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Docs/*");
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_PhantomNamespaceLinks_AreNotCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-017",
+            Title = "Legacy phantom evidence",
+            Description = "Relative paths outside allowed prefixes must fail closed",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        // Persist pre-gate rows that look "meaningful" (non-whitespace) but point
+        // at invented files — the previous HasMeaningful* contract.
+        context.RequirementDesignLinks.Add(new RequirementDesignLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            DesignElementId = "DE-PHANTOM",
+            DesignDocument = "tmp/design.pdf",
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementCodeLinks.Add(new RequirementCodeLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            CodeFile = "phantom/forge.cs",
+            FunctionName = "Forge",
+            LineStart = 1,
+            LineEnd = 99,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementTestLinks.Add(new RequirementTestLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            TestCaseId = "TC-PHANTOM",
+            TestFile = "phantom/forgeTests.cs",
+            CoverageType = TestCoverageType.MCDC,
+            TestResult = TestResult.Passed,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingDesignLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingCodeLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
     }
 
     private static RequirementsDbContext CreateContext()
