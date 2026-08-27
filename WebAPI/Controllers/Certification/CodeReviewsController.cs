@@ -96,7 +96,7 @@ public class CodeReviewsController : ControllerBase
             {
                 Id = f.Id,
                 LineNumber = f.LineNumber,
-                Severity = f.Severity.ToString(),
+                Severity = FormalCodeReviewSystem.ResolveFindingSeverity(f).ToString(),
                 Category = f.Category.ToString(),
                 Description = f.Description,
                 Recommendation = f.Recommendation,
