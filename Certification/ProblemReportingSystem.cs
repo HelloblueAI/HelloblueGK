@@ -135,7 +135,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Atomic expected-status claim closes load/check/SaveChanges TOCTOU
             // (concurrent Open→UnderInvestigation vs Open→Rejected last-writer-wins).
+            // Claim + audit insert share one transaction so a failed audit save does not
+            // leave a claimed status without a trail. Do not assign Status/etc. and
+            // SaveChanges the ProblemReport after the claim — that rewrite can revert a
+            // later allowed transition that committed between claim and reload.
             var updatedAt = DateTime.UtcNow;
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+
             var claimed = await _context.ProblemReports
                 .Where(pr => pr.Id == report.Id && pr.Status == oldStatus)
                 .ExecuteUpdateAsync(setters => setters
@@ -151,16 +157,8 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Problem report {reportNumber} cannot transition from {oldStatus} to {newStatus}; concurrent status change detected");
             }
 
-            // Reload so the change tracker matches the claimed row. Setting State=Unchanged
-            // after ExecuteUpdate reverts to the pre-claim snapshot (Open) and later
-            // reads/updates on the same context see a stale status.
             await _context.Entry(report).ReloadAsync();
-            report.Status = newStatus;
-            report.UpdatedAt = updatedAt;
-            report.Resolution = resolutionToPersist;
-            report.ClosedAt = closedAtToPersist;
 
-            // Track status changes — capture OldStatus before mutation for an accurate audit trail.
             var statusChange = new ProblemReportStatusChange
             {
                 Id = Guid.NewGuid(),
@@ -174,6 +172,7 @@ namespace HB_NLP_Research_Lab.Certification
 
             _context.ProblemReportStatusChanges.Add(statusChange);
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
 
             _logger.LogInformation("Updated problem report {ReportNumber} status to {Status}", LogSanitizer.SanitizeIdentifier(reportNumber), newStatus);
         }
@@ -392,19 +391,16 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         private async Task<bool> HasValidResolutionEvidenceAsync(ProblemReport report)
         {
-            foreach (var link in report.RequirementLinks)
+            foreach (var link in report.RequirementLinks.Where(l => l.RequirementId != Guid.Empty))
             {
                 if (await RequirementExistsAsync(link.RequirementId))
                     return true;
             }
 
-            foreach (var link in report.TestLinks)
+            foreach (var link in report.TestLinks.Where(l => !string.IsNullOrWhiteSpace(l.TestCaseId)))
             {
-                if (!string.IsNullOrWhiteSpace(link.TestCaseId) &&
-                    await TestCaseExistsAsync(link.TestCaseId))
-                {
+                if (await TestCaseExistsAsync(link.TestCaseId))
                     return true;
-                }
             }
 
             return false;

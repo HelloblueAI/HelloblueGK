@@ -691,6 +691,9 @@ public class ProblemReportingSystemTests
         {
             changes[i].OldStatus.Should().Be(changes[i - 1].NewStatus);
         }
+
+        var persisted = await audit.ProblemReports.AsNoTracking().SingleAsync();
+        persisted.Status.Should().Be(changes[^1].NewStatus);
     }
 
     private static async Task<Exception?> RecordAsync(Task task)
@@ -700,7 +703,15 @@ public class ProblemReportingSystemTests
             await task;
             return null;
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
+        {
+            return ex;
+        }
+        catch (DbUpdateConcurrencyException ex)
+        {
+            return ex;
+        }
+        catch (DbUpdateException ex)
         {
             return ex;
         }
