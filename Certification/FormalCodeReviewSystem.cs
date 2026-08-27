@@ -283,6 +283,14 @@ namespace HB_NLP_Research_Lab.Certification
                 if (string.IsNullOrWhiteSpace(finding.Description))
                     throw new ArgumentException("Finding description is required", nameof(findings));
 
+                if (finding.LineNumber < review.LineStart || finding.LineNumber > review.LineEnd)
+                {
+                    throw new ArgumentException(
+                        $"Finding line number must fall within the review line range {review.LineStart}-{review.LineEnd}",
+                        nameof(findings));
+                }
+
+
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
                 finding.ReviewerName = reviewerName;
@@ -608,10 +616,13 @@ namespace HB_NLP_Research_Lab.Certification
             string filePath,
             string? registeredBy = null)
         {
+            // Same repository-relative gate as CreateReview — roster rows with `..` or
+            // absolute paths can never be satisfied (CreateReview rejects them) and
+            // must not enter the Level A required-file inventory.
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
-            var normalized = NormalizeAndValidateFilePath(filePath);
+            var normalized = NormalizeReviewFilePath(filePath);
 
             var matches = (await _context.RequiredReviewFiles.ToListAsync())
                 .Where(f => string.Equals(
@@ -780,8 +791,19 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var normalized = NormalizeFilePath(filePath);
+            if (normalized.StartsWith("/", StringComparison.Ordinal)
+                || normalized.StartsWith("//", StringComparison.Ordinal)
+                || normalized.Contains("://", StringComparison.Ordinal)
+                || normalized.Contains(':', StringComparison.Ordinal))
+            {
+                throw new ArgumentException(
+                    "File path must be relative to the repository.",
+                    nameof(filePath));
+            }
+
             var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Any(segment => segment is "." or ".."))
+            if (segments.Length == 0
+                || segments.Any(segment => segment is "." or ".."))
             {
                 throw new ArgumentException(
                     "File path must not contain traversal segments.",
