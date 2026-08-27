@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using System.Data.Common;
 using System.Linq;
 using HB_NLP_Research_Lab.Certification;
 
@@ -180,7 +181,11 @@ public static class CertificationDatabaseInitializer
                 logger.LogInformation("Ensured ReviewFindings disposition columns exist (PostgreSQL).");
             }
         }
-        catch (Exception ex)
+        catch (DbUpdateException ex)
+        {
+            logger.LogWarning(ex, "Could not patch ReviewFindings disposition columns.");
+        }
+        catch (DbException ex)
         {
             logger.LogWarning(ex, "Could not patch ReviewFindings disposition columns.");
         }

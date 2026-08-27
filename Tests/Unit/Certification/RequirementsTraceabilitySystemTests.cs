@@ -44,6 +44,45 @@ public class RequirementsTraceabilitySystemTests
     }
 
     [Fact]
+    public async Task CreateRequirementAsync_RejectsVacuousNumberTitleOrDescription()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var missingNumber = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "  ",
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+        await missingNumber.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*number*");
+
+        var missingTitle = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-EMPTY-TITLE",
+            Title = "",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+        await missingTitle.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*title*");
+
+        var missingDescription = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-EMPTY-DESC",
+            Title = "Chamber pressure limit",
+            Description = "\t",
+            CreatedBy = "alice"
+        });
+        await missingDescription.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*description*");
+
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task LinkToDesignAsync_RejectsVacuousDesignElement()
     {
         await using var context = CreateContext();
@@ -178,6 +217,163 @@ public class RequirementsTraceabilitySystemTests
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingCodeLink);
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
+    [Fact]
+    public async Task CreateRequirementAsync_SafetyWording_CannotUnderClassifyPriority()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-SAFE-001",
+            Title = "Safety-critical igniter interlock",
+            Description = "Must inhibit igniter without propellant flow",
+            Priority = RequirementPriority.Medium,
+            CreatedBy = "alice"
+        });
+
+        requirement.Priority.Should().Be(RequirementPriority.Critical);
+        var persisted = await context.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Theory]
+    [InlineData(null, "Valve timing", "Main valve open sequence", null, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Valve timing", "Main valve open sequence", RequirementPriority.Medium, RequirementPriority.Medium)]
+    [InlineData("REQ-SAFETY-1", "Valve timing", "Main valve open sequence", RequirementPriority.Low, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Chamber pressure limit", "critical overpressure protection", RequirementPriority.High, RequirementPriority.Critical)]
+    [InlineData("REQ-001", "Routine housekeeping", "catastrophic failure containment", RequirementPriority.Medium, RequirementPriority.Critical)]
+    public void ResolvePriority_FailClosedAndKeywordFloor(
+        string? number,
+        string? title,
+        string? description,
+        RequirementPriority? explicitPriority,
+        RequirementPriority expected)
+    {
+        RequirementsTraceabilitySystem.ResolvePriority(number, title, description, explicitPriority)
+            .Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task CreateRequirementAsync_RejectsEmptyNumberAndTitle()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "   ",
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*RequirementNumber is required*");
+    }
+
+    [Fact]
+    public async Task CreateRequirementAsync_RejectsDuplicateRequirementNumber()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-010",
+            Title = "First",
+            Description = "Original requirement",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-010",
+            Title = "Duplicate",
+            Description = "Same number",
+            CreatedBy = "bob"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*already in use*");
+    }
+
+    [Fact]
+    public async Task LinkToCodeAsync_RejectsParentDirectoryTraversal()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-011",
+            Title = "Path integrity",
+            Description = "Code links must stay in-repo",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToCodeAsync(
+            requirement.Id,
+            "../Secrets/keys.cs",
+            1,
+            10,
+            "Forge");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*traversal*");
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsAbsoluteEvidencePath()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-012",
+            Title = "Test path integrity",
+            Description = "Test links must stay in-repo",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-1",
+            "/etc/passwd",
+            TestCoverageType.Statement);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
+    }
+
+    [Theory]
+    [InlineData("http://example.test/design.md")]
+    [InlineData("https://example.test/design.md")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("file:C:/secrets/keys.cs")]
+    public async Task LinkToDesignAsync_RejectsSchemeUriEvidencePath(string designDocument)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-013",
+            Title = "URI integrity",
+            Description = "Design links must stay in-repo",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToDesignAsync(
+            requirement.Id,
+            "DE-1",
+            designDocument);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
     }
 
     private static RequirementsDbContext CreateContext()

@@ -258,7 +258,8 @@ public class SimulationsControllerSecurityTests
             .SingleAsync(candidate => candidate.Id == response.Id);
 
         simulation.Status.Should().Be("Completed");
-        // Request parameters may still echo iterations=77, but persisted trust metric is solver-owned.
+        // Requested iterations may be echoed in ResultsJson parameters, but persisted
+        // Iterations must remain solver-owned (Thermal ConvergenceIterations = 120).
         simulation.Iterations.Should().Be(120);
         simulation.ResultsJson.Should().NotBeNullOrWhiteSpace();
         using var document = JsonDocument.Parse(simulation.ResultsJson!);
@@ -513,7 +514,7 @@ public class SimulationsControllerSecurityTests
     {
         var engine = new Engine
         {
-            Name = $"{createdBy}-engine",
+            Name = $"{createdBy}-engine-{Guid.NewGuid():N}",
             EngineType = "Test",
             CreatedBy = createdBy
         };

@@ -43,16 +43,34 @@ public class RequirementsController : ControllerBase
     {
         try
         {
-            var priority = Enum.TryParse<RequirementPriority>(request.Priority, out var parsedPriority) 
-                ? parsedPriority 
-                : RequirementPriority.Medium;
+            RequirementPriority? explicitPriority = null;
+            if (!string.IsNullOrWhiteSpace(request.Priority))
+            {
+                if (!Enum.TryParse<RequirementPriority>(request.Priority, ignoreCase: true, out var parsedPriority))
+                {
+                    return BadRequest(new ErrorResponse
+                    {
+                        StatusCode = StatusCodes.Status400BadRequest,
+                        Message = $"Invalid requirement priority: {request.Priority}",
+                        Timestamp = DateTime.UtcNow,
+                        Path = HttpContext.Request.Path,
+                        Method = HttpContext.Request.Method
+                    });
+                }
+
+                explicitPriority = parsedPriority;
+            }
 
             var requirement = new Requirement
             {
                 RequirementNumber = request.RequirementNumber,
                 Title = request.Title,
                 Description = request.Description,
-                Priority = priority,
+                Priority = RequirementsTraceabilitySystem.ResolvePriority(
+                    request.RequirementNumber,
+                    request.Title,
+                    request.Description,
+                    explicitPriority),
                 CreatedBy = User.Identity?.Name ?? "System"
             };
 
@@ -69,6 +87,10 @@ public class RequirementsController : ControllerBase
                     Status = created.Status.ToString(),
                     TraceabilityStatus = created.TraceabilityStatus.ToString()
                 });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (Exception ex)
         {
@@ -195,7 +217,7 @@ public class RequirementsController : ControllerBase
         {
             if (!Enum.TryParse<TestCoverageType>(request.CoverageType, ignoreCase: true, out var coverageType))
             {
-                return BadRequest(new { message = $"Invalid coverage type: {request.CoverageType}" });
+                return BadRequest(new { message = $"Invalid test coverage type: {request.CoverageType}" });
             }
 
             var link = await _rts.LinkToTestAsync(id, request.TestCaseId, request.TestFile, coverageType);

@@ -253,6 +253,33 @@ public class ControllerAuthorizationSecurityTests
     }
 
     [Fact]
+    public async Task GetPredictions_IgnoresClientEfficiencyOverride()
+    {
+        await using var context = CreateContext();
+        var digitalTwin = await SeedDigitalTwinAsync(context, "alice");
+        digitalTwin.Engine!.Efficiency = 0.88;
+        await context.SaveChangesAsync();
+
+        var controller = CreateDigitalTwinController(context, CreatePrincipal("alice"));
+
+        var result = await controller.GetPredictions(digitalTwin.Id, new PredictionRequest
+        {
+            ScenarioName = "Efficiency forge",
+            ScenarioParameters = new Dictionary<string, double>
+            {
+                ["efficiency"] = 0.99
+            }
+        });
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(okResult.Value));
+        var predictedMetrics = document.RootElement
+            .GetProperty("predictions")
+            .GetProperty("PredictedMetrics");
+        predictedMetrics.GetProperty("Efficiency").GetDouble().Should().BeApproximately(0.88, 0.0001);
+    }
+
+    [Fact]
     public async Task UpdateDigitalTwinLearning_AfterRuntimeRestart_RestoresPersistedTwin()
     {
         await using var context = CreateContext();
@@ -550,6 +577,49 @@ public class ControllerAuthorizationSecurityTests
 
         var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
         JsonSerializer.Serialize(badRequest.Value).Should().Contain("LaunchParameters");
+        context.Launches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ScheduleLaunch_WithWhitespaceMissionName_ReturnsBadRequestWithoutCreatingLaunch()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = engine.Id,
+            MissionName = "   "
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Launches.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ScheduleLaunch_WithNonFiniteLaunchParameter_ReturnsBadRequestWithoutCreatingLaunch()
+    {
+        await using var context = CreateContext();
+        var engine = CreateEngine("admin");
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+        var controller = CreateLaunchesController(context, CreatePrincipal("admin", isAdmin: true));
+
+        var result = await controller.ScheduleLaunch(new ScheduleLaunchRequest
+        {
+            EngineId = engine.Id,
+            MissionName = "Infinity Burn",
+            LaunchParameters = new Dictionary<string, object>
+            {
+                ["massRatio"] = double.PositiveInfinity
+            }
+        });
+
+        var badRequest = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        JsonSerializer.Serialize(badRequest.Value).Should().Contain("finite");
         context.Launches.Should().BeEmpty();
     }
 
@@ -906,6 +976,60 @@ public class ControllerAuthorizationSecurityTests
         document.RootElement.GetProperty("stages").EnumerateArray()
             .Select(element => element.GetString())
             .Should().Equal("Genetic Algorithm");
+    }
+
+    [Fact]
+    public async Task StartOptimization_ImprovementPercentage_UsesPersistedEngineBaseline()
+    {
+        var databaseName = Guid.NewGuid().ToString("N");
+        await using var context = CreateContext(databaseName);
+        var engine = CreateEngine("alice");
+        engine.CreatedBy = null;
+        engine.Thrust = 1_000_000;
+        engine.SpecificImpulse = 300;
+        engine.ChamberPressure = 10_000_000;
+        engine.Efficiency = 0.8;
+        context.Engines.Add(engine);
+        await context.SaveChangesAsync();
+
+        var deferredQueue = new DeferredBackgroundWorkQueue();
+        var controller = CreateOptimizationController(
+            context,
+            CreatePrincipal("alice"),
+            deferredQueue);
+
+        // A tiny client efficiency override used to inflate ImprovementPercentage
+        // against the overridden baseline instead of the persisted engine.
+        var result = await controller.StartOptimization(new StartOptimizationRequest
+        {
+            EngineId = engine.Id,
+            AlgorithmType = "Genetic",
+            Parameters = new Dictionary<string, object> { ["efficiency"] = 0.001 }
+        });
+
+        var created = result.Should().BeOfType<CreatedAtActionResult>().Subject;
+        var response = created.Value.Should().BeOfType<AIOptimizationRunResponse>().Subject;
+        deferredQueue.PendingWork.Should().ContainSingle();
+
+        await using var workerContext = CreateContext(databaseName);
+        await deferredQueue.PendingWork[0].Work(new SingleServiceProvider(workerContext), CancellationToken.None);
+
+        var persisted = await workerContext.AIOptimizationRuns.AsNoTracking()
+            .SingleAsync(o => o.Id == response.Id);
+        persisted.Status.Should().Be("Completed");
+
+        using var document = JsonDocument.Parse(persisted.ResultsJson!);
+        document.RootElement.GetProperty("baselineEfficiency").GetDouble()
+            .Should().BeApproximately(0.8, 0.0001);
+        document.RootElement.GetProperty("originalParameters").GetProperty("efficiency").GetDouble()
+            .Should().BeApproximately(0.8, 0.0001);
+
+        var optimizedEfficiency = document.RootElement.GetProperty("optimizedParameters")
+            .GetProperty("efficiency").GetDouble();
+        var expectedImprovement = ((optimizedEfficiency - 0.8) / 0.8) * 100;
+        persisted.ImprovementPercentage.Should().BeApproximately(expectedImprovement, 0.0001);
+        // Client 0.001 → 0.95 would be a ~95,000% forge if the override were the baseline.
+        persisted.ImprovementPercentage.Should().BeLessThan(100);
     }
 
     [Fact]

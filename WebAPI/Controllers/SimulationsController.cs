@@ -462,7 +462,7 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                     engine.ChamberPressure,
                     engine.Efficiency);
                 var analysisResult = await _engine.AnalyzeEngineAsync(
-                    engine.Name,
+                    engine.ValidationCacheKey,
                     request.SimulationType,
                     request.Parameters,
                     baselineDesign,

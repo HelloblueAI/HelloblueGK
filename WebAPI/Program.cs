@@ -23,6 +23,19 @@ using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Fail closed before JSON model binding — Kestrel's default (~30 MB) is far above
+// RequestPayloadLimits / Auth 64 KB guards. RateLimitingMiddleware also rejects
+// Content-Length above this value so TestServer and non-Kestrel hosts match.
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = RateLimitingMiddleware.MaxRequestBodyBytes;
+});
+builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = RateLimitingMiddleware.MaxRequestBodyBytes;
+    options.ValueLengthLimit = RateLimitingMiddleware.MaxRequestBodyBytes;
+});
+
 // Render/Railway terminate TLS at the edge and forward HTTP to the container.
 // Only trust forwarded headers from configured proxies/networks to prevent client IP spoofing.
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
@@ -407,13 +420,22 @@ app.UseHttpMetrics();
 
 app.UseCors();
 
+// IP-only pre-auth cap for Authorization-bearing and /metrics requests so
+// JWT OnTokenValidated DB lookups cannot be sprayed. Full policies run after
+// authentication so ExpensiveMutation / API buckets can key on user:… .
+if (builder.Configuration.GetValue("EnableRateLimiting", true))
+{
+    app.UsePreAuthRateLimiting();
+}
+
 // Authentication and Authorization
 app.UseAuthentication();
+app.UseAuthorization();
+
 if (builder.Configuration.GetValue("EnableRateLimiting", true))
 {
     app.UseRateLimiting();
 }
-app.UseAuthorization();
 
 // Swagger/OpenAPI documentation — internal-only in production (aerospace-style).
 // Production: SSO via /api/v1/Account/login when OpenIdConnect is enabled, otherwise JWT Bearer.

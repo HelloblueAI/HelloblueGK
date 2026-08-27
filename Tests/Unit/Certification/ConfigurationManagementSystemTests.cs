@@ -7,6 +7,90 @@ namespace HelloblueGK.Tests.Unit.Certification;
 public class ConfigurationManagementSystemTests
 {
     [Fact]
+    public async Task CreateBaselineAsync_RejectsEmptyNameOrVersion()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var missingName = async () => await system.CreateBaselineAsync("  ", "1.0.0", "initial", "alice");
+        await missingName.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Baseline name is required*");
+
+        var missingVersion = async () => await system.CreateBaselineAsync("SCI-1", " ", "initial", "alice");
+        await missingVersion.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Baseline version is required*");
+
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateConfigurationItemAsync_RejectsEmptyNameAndTraversalPath()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var missingName = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "  ",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/core.c"
+        });
+        await missingName.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*ItemName is required*");
+
+        var traversal = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "../secrets/core.c"
+        });
+        await traversal.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*traversal*");
+
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("http://example.test/core.c")]
+    [InlineData("https://example.test/core.c")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("file:C:/secrets/core.c")]
+    public async Task CreateConfigurationItemAsync_RejectsSchemeUriEvidencePath(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = filePath
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*relative*");
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateChangeRequestAsync_RejectsEmptyTitle()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = " ",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*title is required*");
+    }
+
+    [Fact]
     public async Task ApproveBaselineAsync_RejectsNonDraftOrUnderReviewStatus()
     {
         await using var context = CreateContext();
@@ -57,6 +141,39 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task ApproveBaselineAsync_RejectsCreatorAsApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SoD-Baseline", "1.0.0", "independence", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "sod.c");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "alice");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent approver*");
+    }
+
+    [Fact]
+    public async Task ApproveChangeRequestAsync_RejectsRequesterAsApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "SoD CR",
+            Description = "self-approve forge",
+            Justification = "test",
+            RequestedBy = "alice"
+        });
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "Alice", "CCB ok");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*separation of duties*");
+    }
+
+    [Fact]
     public async Task ApproveChangeRequestAsync_RejectsRejectedOrImplementedStatus()
     {
         await using var context = CreateContext();
@@ -71,7 +188,13 @@ public class ConfigurationManagementSystemTests
         });
 
         await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
-        await system.ImplementChangeRequestAsync(created.RequestNumber, "alice", new List<Guid>());
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/injector.c"
+        });
+        await system.ImplementChangeRequestAsync(created.RequestNumber, "alice", new List<Guid> { item.Id });
 
         var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "carol", "re-approve");
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -185,6 +308,94 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.1");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot accept new configuration items*");
+    }
+
+    [Fact]
+    public async Task CreateChangeRequestAsync_RejectsEmptyJustification()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "   ",
+            RequestedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*justification*");
+        context.ChangeRequests.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApproveChangeRequestAsync_RejectsEmptyApprovalNotes()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "  ");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("approvalNotes");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AddItemToBaselineAsync_RejectsEmptyVersion()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-2", "1.0.0", "initial", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/core.c"
+        });
+
+        var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "   ");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("version");
+    }
+
+    [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsEmptyAffectedItems()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "alice",
+            new List<Guid>());
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("affectedItems");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Approved);
     }
 
     [Fact]

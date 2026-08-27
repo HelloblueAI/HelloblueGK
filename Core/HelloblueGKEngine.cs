@@ -126,7 +126,8 @@ namespace HB_NLP_Research_Lab.Core
                         thermalResult?.ConvergenceIterations ?? 0,
                         structuralResult?.ConvergenceIterations ?? 0
                     }.Max();
-                    // Fail closed: never invent ConvergenceRate/Accuracy when solvers return nothing.
+                    // Fail closed: average positive solver accuracies only. Do not invent
+                    // ConvergenceRate/Accuracy (including DefaultIfEmpty(95)) when solvers return nothing.
                     var positiveAccuracies = new[]
                     {
                         cfdResult?.Accuracy ?? 0,
@@ -154,8 +155,7 @@ namespace HB_NLP_Research_Lab.Core
                 parameters,
                 cfdResult,
                 thermalResult,
-                structuralResult,
-                ref iterations);
+                structuralResult);
 
             // Keep ValidationReport.OverallAccuracy as the validation engine's fail-closed
             // evidence score (unproven=50 without trusted flight/test binding). Do NOT overwrite
@@ -258,21 +258,45 @@ namespace HB_NLP_Research_Lab.Core
         /// <summary>
         /// Generates comprehensive validation summary with real-time data
         /// </summary>
-        public async Task<ValidationSummary> GenerateValidationSummaryAsync()
+        public Task<ValidationSummary> GenerateValidationSummaryAsync()
         {
-            Console.WriteLine("[HelloblueGK] ✅ Generating validation summary with real-time data...");
-            
-            // Get real-time validation data
-            var validationReport = await _validationEngine.ValidateEngineModelAsync("HB-NLP-REV-001");
-            
+            return GenerateValidationSummaryAsync(engineModel: null);
+        }
+
+        /// <summary>
+        /// Generates a validation summary for a specific engine model.
+        /// Validity is fail-closed unless the report carries an explicit Trusted: source.
+        /// </summary>
+        public async Task<ValidationSummary> GenerateValidationSummaryAsync(string? engineModel)
+        {
+            const double unproven = 0.5;
+            Console.WriteLine("[HelloblueGK] Generating validation summary...");
+
+            if (string.IsNullOrWhiteSpace(engineModel))
+            {
+                return new ValidationSummary
+                {
+                    IsValid = false,
+                    ValidationScore = unproven,
+                    CriticalIssues = 1,
+                    Warnings = 1,
+                    ValidationSource = "Unproven",
+                    ConfidenceLevel = unproven
+                };
+            }
+
+            var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel.Trim());
+            var trusted = !string.IsNullOrWhiteSpace(validationReport.ValidationSource)
+                && validationReport.ValidationSource.StartsWith("Trusted:", StringComparison.Ordinal);
+
             return new ValidationSummary
             {
-                IsValid = true,
-                ValidationScore = validationReport.OverallAccuracy / 100.0,
-                CriticalIssues = 0,
-                Warnings = 2,
-                ValidationSource = validationReport.ValidationSource,
-                ConfidenceLevel = validationReport.ConfidenceLevel
+                IsValid = trusted,
+                ValidationScore = trusted ? validationReport.OverallAccuracy / 100.0 : unproven,
+                CriticalIssues = trusted ? 0 : 1,
+                Warnings = trusted ? 0 : 1,
+                ValidationSource = trusted ? validationReport.ValidationSource! : "Unproven",
+                ConfidenceLevel = trusted ? validationReport.ConfidenceLevel : unproven
             };
         }
 
@@ -489,17 +513,15 @@ namespace HB_NLP_Research_Lab.Core
             IReadOnlyDictionary<string, object>? parameters,
             CfdAnalysisResult? cfdResult,
             ThermalAnalysisResult? thermalResult,
-            StructuralAnalysisResult? structuralResult,
-            ref int iterations)
+            StructuralAnalysisResult? structuralResult)
         {
             if (parameters == null)
             {
                 return;
             }
 
-            // Client "iterations" overrides are ignored — ConvergenceIterations stay solver-owned
-            // (parity with Accuracy / ConvergenceRate / SafetyFactor trust policy).
-            _ = iterations;
+            // Client "iterations" overrides are intentionally ignored — ConvergenceIterations
+            // is solver-owned evidence and must not be forgeable via request parameters.
 
             if (cfdResult != null)
             {
@@ -627,21 +649,6 @@ namespace HB_NLP_Research_Lab.Core
             }
 
             return value > 1.0 ? Math.Clamp(value / 100.0, 0.0, 1.0) : Math.Clamp(value, 0.0, 1.0);
-        }
-
-        private static bool TryReadIntParameter(
-            IReadOnlyDictionary<string, object>? parameters,
-            string key,
-            out int value)
-        {
-            value = 0;
-            if (!TryReadDoubleParameter(parameters, key, out var numeric))
-            {
-                return false;
-            }
-
-            value = (int)Math.Round(numeric, MidpointRounding.AwayFromZero);
-            return true;
         }
 
         private static bool TryReadDoubleParameter(

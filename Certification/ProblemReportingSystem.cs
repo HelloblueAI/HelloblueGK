@@ -35,6 +35,10 @@ namespace HB_NLP_Research_Lab.Certification
             ProblemReport report,
             ProblemSeverity? explicitSeverity = null)
         {
+            ArgumentNullException.ThrowIfNull(report);
+            report.Title = NormalizeRequiredText(report.Title, nameof(report.Title));
+            report.Description = NormalizeRequiredText(report.Description, nameof(report.Description));
+
             report.Id = Guid.NewGuid();
             report.CreatedAt = DateTime.UtcNow;
             report.Status = ProblemReportStatus.Open;
@@ -237,59 +241,100 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<ProblemReportComplianceCheck> VerifyComplianceAsync()
         {
-            var totalReports = await _context.ProblemReports.CountAsync();
-            var reports = await _context.ProblemReports
+            var allReports = await _context.ProblemReports
                 .Include(pr => pr.RequirementLinks)
                 .Include(pr => pr.TestLinks)
-                .Where(pr => pr.Severity == ProblemSeverity.Critical || 
-                            pr.Severity == ProblemSeverity.Major)
                 .ToListAsync();
+            var safetyClassReports = allReports
+                .Where(pr => pr.Severity == ProblemSeverity.Critical ||
+                             pr.Severity == ProblemSeverity.Major)
+                .ToList();
 
             var check = new ProblemReportComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
-                TotalCriticalProblems = reports.Count(r => r.Severity == ProblemSeverity.Critical),
-                UnresolvedCriticalProblems = reports.Count(r => 
-                    r.Severity == ProblemSeverity.Critical && 
-                    r.Status != ProblemReportStatus.Closed),
-                TotalMajorProblems = reports.Count(r => r.Severity == ProblemSeverity.Major),
-                UnresolvedMajorProblems = reports.Count(r => 
-                    r.Severity == ProblemSeverity.Major && 
-                    r.Status != ProblemReportStatus.Closed)
+                TotalCriticalProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Critical),
+                // Rejected is a completed disposition, not an open defect. Counting it as
+                // unresolved made IsCompliant=true coexist with UnresolvedCriticalProblems>0
+                // when a Closed Critical sat beside a Rejected Critical.
+                UnresolvedCriticalProblems = safetyClassReports.Count(r =>
+                    r.Severity == ProblemSeverity.Critical &&
+                    r.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected)),
+                TotalMajorProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Major),
+                UnresolvedMajorProblems = safetyClassReports.Count(r =>
+                    r.Severity == ProblemSeverity.Major &&
+                    r.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected))
             };
 
             // Empty problem-report store must fail closed — 0 unresolved on 0 reports is not evidence.
-            if (totalReports == 0)
+            if (allReports.Count == 0)
             {
                 check.IsCompliant = false;
                 check.Issues.Add("No problem reports recorded; DO-178C Level A problem-reporting compliance cannot be asserted");
                 return check;
             }
 
-            // Closed without substantive resolution + evidence links must not satisfy certification gates.
-            var improperlyClosed = reports.Count(r =>
-                r.Status == ProblemReportStatus.Closed &&
-                (string.IsNullOrWhiteSpace(r.Resolution) ||
-                 !HasSubstantiveResolution(r.Resolution) ||
-                 !HasResolutionEvidence(r)));
+            // Minor-only stores are not Level A evidence. Explicit Minor + "routine observation"
+            // previously forged IsCompliant=true while leaving tickets Open. Rejected-only
+            // Critical/Major rows are also not a completed lifecycle.
+            var closedSafetyClass = safetyClassReports.Count(IsProperlyClosedSafetyClass);
+            if (closedSafetyClass == 0)
+            {
+                check.IsCompliant = false;
+                check.Issues.Add(
+                    "No closed critical or major problem reports with a recorded resolution; DO-178C Level A problem-reporting compliance cannot be asserted");
+                return check;
+            }
+
+            // Closed without a recorded resolution must not satisfy certification gates.
+            // Include every non-Rejected severity so a Closed Critical cannot hide an
+            // Open or blank-resolution Minor. Safety-class closures also need
+            // substantive text + evidence links (leftover rows that skipped UpdateStatus).
+            var blockingReports = allReports
+                .Where(r => r.Status != ProblemReportStatus.Rejected)
+                .ToList();
+            var improperlyClosed = blockingReports.Count(IsImproperlyClosed);
             if (improperlyClosed > 0)
             {
                 check.Issues.Add(
-                    $"{improperlyClosed} critical/major problem report(s) are Closed without substantive resolution evidence");
+                    $"{improperlyClosed} problem report(s) are Closed without substantive resolution evidence");
             }
 
-            var unresolvedOk = check.UnresolvedCriticalProblems == 0 &&
-                               check.UnresolvedMajorProblems == 0;
-            if (!unresolvedOk)
+            var unresolvedAny = blockingReports.Count(r => r.Status != ProblemReportStatus.Closed);
+            if (unresolvedAny > 0)
             {
                 if (check.UnresolvedCriticalProblems > 0)
                     check.Issues.Add("Critical problems must be resolved before certification");
                 if (check.UnresolvedMajorProblems > 0)
                     check.Issues.Add("Major problems must be resolved before certification");
+                if (unresolvedAny > check.UnresolvedCriticalProblems + check.UnresolvedMajorProblems)
+                    check.Issues.Add("Unresolved minor problem reports block certification");
             }
 
-            check.IsCompliant = unresolvedOk && improperlyClosed == 0;
+            check.IsCompliant = unresolvedAny == 0 && improperlyClosed == 0;
             return check;
+        }
+
+        private static bool IsProperlyClosedSafetyClass(ProblemReport report) =>
+            report.Status == ProblemReportStatus.Closed &&
+            !string.IsNullOrWhiteSpace(report.Resolution) &&
+            HasSubstantiveResolution(report.Resolution) &&
+            HasResolutionEvidence(report);
+
+        private static bool IsImproperlyClosed(ProblemReport report)
+        {
+            if (report.Status != ProblemReportStatus.Closed)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(report.Resolution) || !HasSubstantiveResolution(report.Resolution))
+            {
+                return true;
+            }
+
+            return report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
+                   !HasResolutionEvidence(report);
         }
 
         private static bool HasResolutionEvidence(ProblemReport report) =>
@@ -357,21 +402,34 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Resolve severity with fail-closed defaults and a keyword floor.
-        /// Unclassified impact defaults to Critical so Level A compliance cannot be forged by omitting
-        /// "critical/safety/major" keywords. Explicit severity may not under-classify below the floor.
+        /// Unclassified impact floors at Critical so Level A compliance cannot be forged by asserting
+        /// Minor/Major without supporting keywords. Explicit severity may not under-classify below the floor.
         /// </summary>
         public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
         {
-            var keywordFloor = ClassifyImpactKeywords(impact);
-            var resolved = explicitSeverity ?? keywordFloor ?? ProblemSeverity.Critical;
+            var keywordClass = ClassifyImpactKeywords(impact);
+            // Unclassified impact (no keywords) floors at Critical — clients cannot assert Minor
+            // to hide blocking issues from Critical/Major compliance gates.
+            var floor = keywordClass ?? ProblemSeverity.Critical;
+            var resolved = explicitSeverity ?? floor;
 
-            if (keywordFloor.HasValue && (int)resolved > (int)keywordFloor.Value)
+            if ((int)resolved > (int)floor)
             {
                 // Enum order is Critical(0) < Major(1) < Minor(2); higher int = lower severity.
-                resolved = keywordFloor.Value;
+                resolved = floor;
             }
 
             return resolved;
+        }
+
+        private static string NormalizeRequiredText(string? value, string fieldName)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"{fieldName} is required", fieldName);
+            }
+
+            return value.Trim();
         }
 
         private static ProblemSeverity? ClassifyImpactKeywords(string? impact)
@@ -379,16 +437,54 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(impact))
                 return null;
 
-            if (impact.Contains("safety", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("critical", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "safety") ||
+                ContainsImpactKeyword(impact, "critical"))
                 return ProblemSeverity.Critical;
 
-            if (impact.Contains("major", StringComparison.OrdinalIgnoreCase) ||
-                impact.Contains("significant", StringComparison.OrdinalIgnoreCase))
+            if (ContainsImpactKeyword(impact, "major") ||
+                ContainsImpactKeyword(impact, "significant"))
                 return ProblemSeverity.Major;
+
+            if (ContainsImpactKeyword(impact, "minor") ||
+                ContainsImpactKeyword(impact, "cosmetic") ||
+                ContainsImpactKeyword(impact, "observation") ||
+                ContainsImpactKeyword(impact, "routine") ||
+                ContainsImpactKeyword(impact, "nit"))
+                return ProblemSeverity.Minor;
 
             return null;
         }
+
+        /// <summary>
+        /// Whole-token keyword match so short tokens like "nit" do not match inside
+        /// "nitrogen" / similar substrings.
+        /// </summary>
+        private static bool ContainsImpactKeyword(string impact, string keyword)
+        {
+            var start = 0;
+            while (start <= impact.Length - keyword.Length)
+            {
+                var index = impact.IndexOf(keyword, start, StringComparison.OrdinalIgnoreCase);
+                if (index < 0)
+                {
+                    return false;
+                }
+
+                var beforeOk = index == 0 || !IsImpactTokenChar(impact[index - 1]);
+                var afterIndex = index + keyword.Length;
+                var afterOk = afterIndex >= impact.Length || !IsImpactTokenChar(impact[afterIndex]);
+                if (beforeOk && afterOk)
+                {
+                    return true;
+                }
+
+                start = index + 1;
+            }
+
+            return false;
+        }
+
+        private static bool IsImpactTokenChar(char c) => char.IsLetterOrDigit(c);
 
         private double CalculateAverageResolutionTime(List<ProblemReport> reports)
         {
