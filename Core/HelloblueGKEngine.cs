@@ -258,21 +258,45 @@ namespace HB_NLP_Research_Lab.Core
         /// <summary>
         /// Generates comprehensive validation summary with real-time data
         /// </summary>
-        public async Task<ValidationSummary> GenerateValidationSummaryAsync()
+        public Task<ValidationSummary> GenerateValidationSummaryAsync()
         {
-            Console.WriteLine("[HelloblueGK] ✅ Generating validation summary with real-time data...");
-            
-            // Get real-time validation data
-            var validationReport = await _validationEngine.ValidateEngineModelAsync("HB-NLP-REV-001");
-            
+            return GenerateValidationSummaryAsync(engineModel: null);
+        }
+
+        /// <summary>
+        /// Generates a validation summary for a specific engine model.
+        /// Validity is fail-closed unless the report carries an explicit Trusted: source.
+        /// </summary>
+        public async Task<ValidationSummary> GenerateValidationSummaryAsync(string? engineModel)
+        {
+            const double unproven = 0.5;
+            Console.WriteLine("[HelloblueGK] Generating validation summary...");
+
+            if (string.IsNullOrWhiteSpace(engineModel))
+            {
+                return new ValidationSummary
+                {
+                    IsValid = false,
+                    ValidationScore = unproven,
+                    CriticalIssues = 1,
+                    Warnings = 1,
+                    ValidationSource = "Unproven",
+                    ConfidenceLevel = unproven
+                };
+            }
+
+            var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel.Trim());
+            var trusted = !string.IsNullOrWhiteSpace(validationReport.ValidationSource)
+                && validationReport.ValidationSource.StartsWith("Trusted:", StringComparison.Ordinal);
+
             return new ValidationSummary
             {
-                IsValid = true,
-                ValidationScore = validationReport.OverallAccuracy / 100.0,
-                CriticalIssues = 0,
-                Warnings = 2,
-                ValidationSource = validationReport.ValidationSource,
-                ConfidenceLevel = validationReport.ConfidenceLevel
+                IsValid = trusted,
+                ValidationScore = trusted ? validationReport.OverallAccuracy / 100.0 : unproven,
+                CriticalIssues = trusted ? 0 : 1,
+                Warnings = trusted ? 0 : 1,
+                ValidationSource = trusted ? validationReport.ValidationSource! : "Unproven",
+                ConfidenceLevel = trusted ? validationReport.ConfidenceLevel : unproven
             };
         }
 

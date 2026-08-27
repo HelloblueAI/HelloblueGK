@@ -361,10 +361,20 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
 
         public Engine ToEngine(string createdBy)
         {
+            if (string.IsNullOrWhiteSpace(Name))
+            {
+                throw new ArgumentException("Engine name is required", nameof(Name));
+            }
+
+            if (string.IsNullOrWhiteSpace(EngineType))
+            {
+                throw new ArgumentException("Engine type is required", nameof(EngineType));
+            }
+
             return new Engine
             {
-                Name = Name?.Trim() ?? string.Empty,
-                EngineType = EngineType?.Trim() ?? string.Empty,
+                Name = Name.Trim(),
+                EngineType = EngineType.Trim(),
                 Thrust = Thrust,
                 SpecificImpulse = SpecificImpulse,
                 ChamberPressure = ChamberPressure,
@@ -457,11 +467,21 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         {
             if (Name != null)
             {
+                if (string.IsNullOrWhiteSpace(Name))
+                {
+                    throw new ArgumentException("Engine name is required", nameof(Name));
+                }
+
                 engine.Name = Name.Trim();
             }
 
             if (EngineType != null)
             {
+                if (string.IsNullOrWhiteSpace(EngineType))
+                {
+                    throw new ArgumentException("Engine type is required", nameof(EngineType));
+                }
+
                 engine.EngineType = EngineType.Trim();
             }
 

@@ -136,26 +136,24 @@ public class ConfigurationManagementController : ControllerBase
             RequestedBy = User.Identity?.Name ?? "System"
         };
 
-        ChangeRequest created;
         try
         {
-            created = await _cms.CreateChangeRequestAsync(changeRequest);
+            var created = await _cms.CreateChangeRequestAsync(changeRequest);
+            return CreatedAtAction(nameof(GetChangeRequest), new { requestNumber = created.RequestNumber },
+                new ChangeRequestResponse
+                {
+                    RequestNumber = created.RequestNumber,
+                    Title = created.Title,
+                    Description = created.Description,
+                    Status = created.Status.ToString(),
+                    RequestedBy = created.RequestedBy,
+                    CreatedAt = created.CreatedAt
+                });
         }
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
-
-        return CreatedAtAction(nameof(GetChangeRequest), new { requestNumber = created.RequestNumber },
-            new ChangeRequestResponse
-            {
-                RequestNumber = created.RequestNumber,
-                Title = created.Title,
-                Description = created.Description,
-                Status = created.Status.ToString(),
-                RequestedBy = created.RequestedBy,
-                CreatedAt = created.CreatedAt
-            });
     }
 
     /// <summary>
@@ -194,6 +192,10 @@ public class ConfigurationManagementController : ControllerBase
         {
             await _cms.ApproveChangeRequestAsync(requestNumber, User.Identity?.Name ?? "System", request.ApprovalNotes ?? string.Empty);
             return Ok(new { message = "Change request approved successfully" });
+        }
+        catch (ArgumentException ex) when (ex.ParamName == "approvalNotes")
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (ArgumentException)
         {
