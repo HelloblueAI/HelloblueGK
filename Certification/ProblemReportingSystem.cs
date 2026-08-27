@@ -391,19 +391,30 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         private async Task<bool> HasValidResolutionEvidenceAsync(ProblemReport report)
         {
-            foreach (var link in report.RequirementLinks.Where(l => l.RequirementId != Guid.Empty))
+            var requirementIds = report.RequirementLinks
+                .Select(l => l.RequirementId)
+                .Where(id => id != Guid.Empty)
+                .Distinct()
+                .ToList();
+            if (requirementIds.Count > 0 &&
+                await _requirementsContext.Requirements
+                    .AsNoTracking()
+                    .AnyAsync(r => requirementIds.Contains(r.Id)))
             {
-                if (await RequirementExistsAsync(link.RequirementId))
-                    return true;
+                return true;
             }
 
-            foreach (var link in report.TestLinks.Where(l => !string.IsNullOrWhiteSpace(l.TestCaseId)))
-            {
-                if (await TestCaseExistsAsync(link.TestCaseId))
-                    return true;
-            }
+            var testCaseIds = report.TestLinks
+                .Select(l => l.TestCaseId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (testCaseIds.Count == 0)
+                return false;
 
-            return false;
+            var recorded = await LoadRecordedTestCaseIdsAsync();
+            return testCaseIds.Any(recorded.Contains);
         }
 
         private async Task<bool> RequirementExistsAsync(Guid requirementId)
@@ -421,28 +432,31 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(testCaseId))
                 return false;
 
-            var normalized = testCaseId.Trim();
-            var rtmLinks = await _requirementsContext.RequirementTestLinks
+            var recorded = await LoadRecordedTestCaseIdsAsync();
+            return recorded.Contains(testCaseId.Trim());
+        }
+
+        private async Task<HashSet<string>> LoadRecordedTestCaseIdsAsync()
+        {
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var rtmIds = await _requirementsContext.RequirementTestLinks
                 .AsNoTracking()
-                .Select(t => new { t.TestCaseId, t.TestFile })
+                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
+                .Select(t => t.TestCaseId)
                 .ToListAsync();
-            if (rtmLinks.Any(t =>
-                    string.Equals(t.TestCaseId, normalized, StringComparison.OrdinalIgnoreCase) &&
-                    !string.IsNullOrWhiteSpace(t.TestFile)))
-            {
-                return true;
-            }
+            ids.UnionWith(rtmIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
 
             if (_coverageContext == null)
-                return false;
+                return ids;
 
-            var coverageLinks = await _coverageContext.CoverageTestCaseLinks
+            var coverageIds = await _coverageContext.CoverageTestCaseLinks
                 .AsNoTracking()
-                .Select(t => new { t.TestCaseId, t.TestFile })
+                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
+                .Select(t => t.TestCaseId)
                 .ToListAsync();
-            return coverageLinks.Any(t =>
-                string.Equals(t.TestCaseId, normalized, StringComparison.OrdinalIgnoreCase) &&
-                !string.IsNullOrWhiteSpace(t.TestFile));
+            ids.UnionWith(coverageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
+            return ids;
         }
 
         /// <summary>
