@@ -1263,6 +1263,123 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task CreateRequirement_WithEmptyTitle_ReturnsBadRequest()
+    {
+        await using var context = CreateRequirementsContext();
+        var controller = new RequirementsController(
+            new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance),
+            context,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.Name, "admin"), new Claim(ClaimTypes.Role, "Admin") },
+                        "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-EMPTY",
+            Title = "  ",
+            Description = "Real description"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LinkToTest_WithInvalidCoverageType_ReturnsBadRequestNotNotFound()
+    {
+        await using var context = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-LINK-001",
+            Title = "Igniter interlock",
+            Description = "Must inhibit igniter without propellant flow",
+            CreatedBy = "admin"
+        });
+
+        var controller = new RequirementsController(
+            system,
+            context,
+            NullLogger<RequirementsController>.Instance);
+
+        var result = await controller.LinkToTest(requirement.Id, new LinkTestRequest
+        {
+            TestCaseId = "TC-1",
+            TestFile = "Tests/IgniterTests.cs",
+            CoverageType = "NotACoverageType"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.RequirementTestLinks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubmitFindings_WithEmptyListOrInvalidSeverity_ReturnsBadRequest()
+    {
+        await using var context = CreateCodeReviewContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        var review = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(review.Id, "certified-bob");
+
+        var controller = new CodeReviewsController(
+            system,
+            context,
+            NullLogger<CodeReviewsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.Name, "certified-bob"), new Claim(ClaimTypes.Role, "Admin") },
+                        "Test"))
+                }
+            }
+        };
+
+        var empty = await controller.SubmitFindings(review.Id, new SubmitFindingsRequest
+        {
+            Findings = new List<ReviewFindingRequest>()
+        });
+        empty.Should().BeOfType<BadRequestObjectResult>();
+
+        var invalidSeverity = await controller.SubmitFindings(review.Id, new SubmitFindingsRequest
+        {
+            Findings = new List<ReviewFindingRequest>
+            {
+                new()
+                {
+                    LineNumber = 5,
+                    Severity = "NotASeverity",
+                    Category = "Standards",
+                    Description = "Consider naming clarity"
+                }
+            }
+        });
+        invalidSeverity.Should().BeOfType<BadRequestObjectResult>();
+
+        context.ReviewFindings.Should().BeEmpty();
+        (await context.CodeReviewAssignments.SingleAsync()).Status.Should().Be(ReviewAssignmentStatus.Assigned);
+    }
+
+    [Fact]
     public void AddHelloblueGKAuthentication_WhenOidcEnabledWithoutAudience_Throws()
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -2149,6 +2266,18 @@ public class SecurityHardeningTests
             .Options;
 
         return new TestCoverageDbContext(options);
+    }
+
+    private static CodeReviewDbContext CreateCodeReviewContext()
+    {
+        var options = new DbContextOptionsBuilder<CodeReviewDbContext>()
+            .UseSqlite($"Data Source=file:code-reviews-sec-{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .Options;
+
+        var context = new CodeReviewDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static TestCoverageController CreateTestCoverageController(TestCoverageDbContext context)

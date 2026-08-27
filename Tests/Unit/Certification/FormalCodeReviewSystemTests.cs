@@ -155,6 +155,38 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task ApproveReviewAsync_WithNoFindings_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var assignment = await context.CodeReviewAssignments.SingleAsync();
+        assignment.Status = ReviewAssignmentStatus.Completed;
+        assignment.CompletedAt = DateTime.UtcNow;
+        created.Status = CodeReviewStatus.Completed;
+        await context.SaveChangesAsync();
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*no findings*");
+
+        var persisted = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == created.Id);
+        persisted.Status.Should().Be(CodeReviewStatus.Completed);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
     public async Task CreateReviewAsync_WithEmptyFilePath_ThrowsArgumentException()
     {
         await using var context = CreateContext();
@@ -357,7 +389,6 @@ public class FormalCodeReviewSystemTests
         });
 
         await system.AssignReviewerAsync(created.Id, "certified-bob");
-        // Assignment completed but review left InProgress — approve must require Completed claim.
         var assignment = await context.CodeReviewAssignments.SingleAsync();
         assignment.Status = ReviewAssignmentStatus.Completed;
         assignment.CompletedAt = DateTime.UtcNow;
