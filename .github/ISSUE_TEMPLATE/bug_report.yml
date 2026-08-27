@@ -6,7 +6,9 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for helping improve HelloblueGK. Please search [existing issues](https://github.com/HelloblueAI/HelloblueGK/issues) first.
+        Thanks for helping improve HelloblueGK. Search [existing issues](https://github.com/HelloblueAI/HelloblueGK/issues) first.
+
+        First contribution? Read [CONTRIBUTING.md](../../CONTRIBUTING.md) — docs and small tests are welcome.
 
         **Do not report security vulnerabilities here.** See [SECURITY.md](../../SECURITY.md).
 
