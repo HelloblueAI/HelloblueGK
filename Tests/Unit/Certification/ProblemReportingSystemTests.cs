@@ -787,12 +787,150 @@ public class ProblemReportingSystemTests
     [InlineData("unclassified blocking issue", ProblemSeverity.Major, ProblemSeverity.Critical)]
     [InlineData("nitrogen tank pressure anomaly", null, ProblemSeverity.Critical)]
     [InlineData("reviewer nit only", null, ProblemSeverity.Minor)]
+    [InlineData("routine observation of catastrophic engine failure", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation of loss of vehicle", ProblemSeverity.Minor, ProblemSeverity.Critical)]
+    [InlineData("minor cosmetic hazard in flight software", null, ProblemSeverity.Critical)]
+    [InlineData("non-critical routine observation", null, ProblemSeverity.Minor)]
+    [InlineData("non critical routine observation", null, ProblemSeverity.Minor)]
+    [InlineData("cannon critical abort path", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation of a phenomenon hazardous to the vehicle", null, ProblemSeverity.Critical)]
+    [InlineData("engine failure during max-Q ascent", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation of hazardous ascent condition", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation of critically unsafe abort path", ProblemSeverity.Minor, ProblemSeverity.Critical)]
+    [InlineData("stand notes after the engine failed catastrophically", null, ProblemSeverity.Critical)]
     public void ResolveSeverity_FailClosedAndKeywordFloor(
         string? impact,
         ProblemSeverity? explicitSeverity,
         ProblemSeverity expected)
     {
         ProblemReportingSystem.ResolveSeverity(impact, explicitSeverity).Should().Be(expected);
+    }
+
+    [Fact]
+    public void ResolveSeverity_TitleCatastrophicLanguage_ElevatesRoutineImpact()
+    {
+        ProblemReportingSystem.ResolveSeverity(
+                title: "Catastrophic engine failure during ascent",
+                description: "Loss of vehicle after max-Q",
+                impact: "routine observation",
+                explicitSeverity: ProblemSeverity.Minor)
+            .Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public void ResolveSeverity_WordEndingInNon_DoesNotNegateFollowingElevationToken()
+    {
+        ProblemReportingSystem.ResolveSeverity(
+                title: "Cannon critical abort",
+                description: "Stand notes",
+                impact: "routine observation",
+                explicitSeverity: ProblemSeverity.Minor)
+            .Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public void ResolveSeverity_RoutineTitle_DoesNotDowngradeUnclassifiedImpact()
+    {
+        ProblemReportingSystem.ResolveSeverity(
+                title: "Routine stand checkout",
+                description: "Observed unexpected telemetry drift during soak-back",
+                impact: "Observed unexpected telemetry drift during soak-back",
+                explicitSeverity: null)
+            .Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public async Task CreateProblemReportAsync_RoutineObservationOfCatastrophicFailure_IsCritical()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+
+        var created = await system.CreateProblemReportAsync(
+            new ProblemReport
+            {
+                Title = "Ascent anomaly",
+                Description = "Engine behavior during max-Q",
+                Impact = "routine observation of catastrophic engine failure during max-Q ascent",
+                ReportedBy = "alice"
+            },
+            explicitSeverity: ProblemSeverity.Minor);
+
+        created.Severity.Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public async Task CreateProblemReportAsync_CatastrophicTitleWithRoutineImpact_IsCritical()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Catastrophic engine failure",
+            Description = "Loss of thrust after MECO",
+            Impact = "routine observation",
+            ReportedBy = "alice"
+        });
+
+        created.Severity.Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_RejectsClosedCatastrophicReportWithoutEvidence()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Ascent anomaly",
+            Description = "Engine behavior during max-Q",
+            Impact = "routine observation of catastrophic engine failure during max-Q ascent",
+            ReportedBy = "alice"
+        });
+
+        created.Severity.Should().Be(ProblemSeverity.Critical);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "inspected hardware", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "closed after stand inspection notes were recorded",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*linked requirement or test case*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverMinorWithCatastrophicLanguage_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+
+        fixture.Reports.ProblemReports.Add(new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = "PR-2026-0099",
+            Title = "Ascent anomaly",
+            Description = "Engine behavior during max-Q",
+            Impact = "routine observation of catastrophic engine failure during max-Q ascent",
+            Severity = ProblemSeverity.Minor,
+            Status = ProblemReportStatus.Closed,
+            Resolution = "closed after stand inspection notes were recorded",
+            ReportedBy = "legacy",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.TotalCriticalProblems.Should().Be(1);
+        check.Issues.Should().Contain(i => i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+        check.Issues.Should().Contain(i => i.Contains("elevated safety language", StringComparison.Ordinal));
     }
 
     private static ProblemReportFixture CreateFixture(string? sharedReportsName = null)
