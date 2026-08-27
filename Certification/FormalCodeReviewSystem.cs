@@ -395,7 +395,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (finding == null)
                 throw new ArgumentException($"Finding {findingId} not found for review {reviewId}");
 
-            if (finding.Resolved)
+            // A bare Resolved=true (or vacuous Resolution) is not a completed disposition.
+            // Allow notes so those rows can leave the blocking set; reject only a real
+            // double-resolve that already has substantive notes.
+            if (IsDispositioned(finding))
             {
                 throw new InvalidOperationException($"Finding {findingId} is already resolved");
             }

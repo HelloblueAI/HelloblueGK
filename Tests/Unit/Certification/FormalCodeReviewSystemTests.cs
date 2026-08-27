@@ -1072,6 +1072,35 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task ResolveFindingAsync_CanAttachNotesToVacuousResolvedFlag()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        var (reviewId, findingId) = await SeedCompletedReviewWithCriticalFindingAsync(system, context);
+
+        var forged = await context.ReviewFindings.SingleAsync(f => f.Id == findingId);
+        forged.Resolved = true;
+        forged.ResolvedAt = DateTime.UtcNow;
+        forged.Resolution = "ok";
+        await context.SaveChangesAsync();
+
+        await system.ResolveFindingAsync(
+            reviewId,
+            findingId,
+            "admin",
+            "Mitigated by adding the missing interlock and retesting the abort path.");
+
+        var finding = await context.ReviewFindings.AsNoTracking().SingleAsync(f => f.Id == findingId);
+        finding.Resolved.Should().BeTrue();
+        finding.ResolvedBy.Should().Be("admin");
+        finding.Resolution.Should().Contain("interlock");
+
+        await system.ApproveReviewAsync(reviewId, "admin");
+        var persisted = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == reviewId);
+        persisted.Status.Should().Be(CodeReviewStatus.Approved);
+    }
+
+    [Fact]
     public async Task ResolveFindingAsync_AfterApproval_Throws()
     {
         await using var context = CreateContext();
