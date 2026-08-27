@@ -575,13 +575,16 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         // Same stems/inflections as FormalCodeReviewSystem so "hazardous" / "critically"
-        // still elevate when paired with routine/observation. "non-critical" stays out.
+        // still elevate when paired with routine/observation. Only the standalone word
+        // "non" (non-critical / non critical) suppresses elevation — not "cannon critical".
+        private const string StandaloneNonPrefix = @"(?<!(?<![A-Za-z0-9])non[- ]?)";
+
         private static readonly Regex CriticalElevationPattern = new(
-            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|fail(?:ure|ures|ed)?|loss(?:es)?|lost|unsafe(?:ly)?|fatal(?:ly|ity|ities)?)(?![A-Za-z0-9])",
+            StandaloneNonPrefix + @"(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|fail(?:ure|ures|ed)?|loss(?:es)?|lost|unsafe(?:ly)?|fatal(?:ly|ity|ities)?)(?![A-Za-z0-9])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static readonly Regex MajorElevationPattern = new(
-            @"(?<!non[- ]?)(?<![A-Za-z0-9])(major(?:ly)?|significant(?:ly)?|significance)(?![A-Za-z0-9])",
+            StandaloneNonPrefix + @"(?<![A-Za-z0-9])(major(?:ly)?|significant(?:ly)?|significance)(?![A-Za-z0-9])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static ProblemSeverity? ClassifyReportKeywords(string? title, string? description, string? impact)

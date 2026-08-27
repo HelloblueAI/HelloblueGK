@@ -791,6 +791,9 @@ public class ProblemReportingSystemTests
     [InlineData("routine observation of loss of vehicle", ProblemSeverity.Minor, ProblemSeverity.Critical)]
     [InlineData("minor cosmetic hazard in flight software", null, ProblemSeverity.Critical)]
     [InlineData("non-critical routine observation", null, ProblemSeverity.Minor)]
+    [InlineData("non critical routine observation", null, ProblemSeverity.Minor)]
+    [InlineData("cannon critical abort path", null, ProblemSeverity.Critical)]
+    [InlineData("routine observation of a phenomenon hazardous to the vehicle", null, ProblemSeverity.Critical)]
     [InlineData("engine failure during max-Q ascent", null, ProblemSeverity.Critical)]
     [InlineData("routine observation of hazardous ascent condition", null, ProblemSeverity.Critical)]
     [InlineData("routine observation of critically unsafe abort path", ProblemSeverity.Minor, ProblemSeverity.Critical)]
@@ -809,6 +812,18 @@ public class ProblemReportingSystemTests
         ProblemReportingSystem.ResolveSeverity(
                 title: "Catastrophic engine failure during ascent",
                 description: "Loss of vehicle after max-Q",
+                impact: "routine observation",
+                explicitSeverity: ProblemSeverity.Minor)
+            .Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    [Fact]
+    public void ResolveSeverity_WordEndingInNon_DoesNotNegateFollowingElevationToken()
+    {
+        ProblemReportingSystem.ResolveSeverity(
+                title: "Cannon critical abort",
+                description: "Stand notes",
                 impact: "routine observation",
                 explicitSeverity: ProblemSeverity.Minor)
             .Should().Be(ProblemSeverity.Critical);
