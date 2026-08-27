@@ -161,16 +161,26 @@ namespace HB_NLP_Research_Lab.Certification
             string? registeredBy = null)
         {
             var normalized = NormalizeFilePath(filePath);
-            var existing = await FindRequiredCoverageFileAsync(normalized);
+            var rosterRows = await _context.RequiredCoverageFiles.ToListAsync();
+            var matches = MatchingStoredCoveragePaths(rosterRows, normalized);
+            var existing = matches.FirstOrDefault(f =>
+                               string.Equals(f.FilePath, normalized, StringComparison.Ordinal))
+                           ?? matches
+                               .OrderByDescending(f => f.IsActive)
+                               .ThenByDescending(f => f.RegisteredAt)
+                               .FirstOrDefault();
             if (existing != null)
             {
                 existing.IsActive = true;
-                existing.FilePath = normalized;
+                // Keep the stored path. Recasing a leftover case-variant hits the unique
+                // FilePath index and desynchronizes exact CodeCoverage lookups.
                 existing.IsSafetyCritical = isSafetyCritical;
                 existing.RegisteredBy = string.IsNullOrWhiteSpace(registeredBy)
                     ? existing.RegisteredBy
                     : registeredBy.Trim();
                 existing.RegisteredAt = DateTime.UtcNow;
+                foreach (var duplicate in matches.Where(f => f.Id != existing.Id))
+                    duplicate.IsActive = false;
                 await _context.SaveChangesAsync();
                 return existing;
             }
@@ -204,16 +214,19 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Lookup by canonical form only — leftover scheme/outside-tree rows must
             // still be revocable. Register remains the path that rejects unsafe paths.
-            var existing = await FindRequiredCoverageFileAsync(CanonicalizeStoredCoveragePath(filePath));
-            if (existing == null)
+            var matches = MatchingStoredCoveragePaths(
+                await _context.RequiredCoverageFiles.ToListAsync(),
+                filePath);
+            if (matches.Count == 0)
                 throw new ArgumentException($"Required coverage file '{filePath.Trim()}' not found", nameof(filePath));
 
-            existing.IsActive = false;
+            foreach (var existing in matches)
+                existing.IsActive = false;
             await _context.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Revoked required coverage file {FilePath}",
-                LogSanitizer.Sanitize(existing.FilePath));
+                LogSanitizer.Sanitize(matches[0].FilePath));
         }
 
         /// <summary>
@@ -224,10 +237,9 @@ namespace HB_NLP_Research_Lab.Certification
             var roster = await _context.RequiredCoverageFiles
                 .Where(f => f.IsActive)
                 .ToListAsync();
-            var coverageByPath = (await _context.CodeCoverage
+            var coverageRows = await _context.CodeCoverage
                 .Include(c => c.TestCaseLinks)
-                .ToListAsync())
-                .ToDictionary(c => c.FilePath, StringComparer.Ordinal);
+                .ToListAsync();
 
             var rosterCoverage = new List<CodeCoverage>();
             foreach (var required in roster)
@@ -235,7 +247,8 @@ namespace HB_NLP_Research_Lab.Certification
                 if (!IsStoredCoveragePathSafe(required.FilePath))
                     continue;
 
-                if (coverageByPath.TryGetValue(required.FilePath, out var coverage)
+                if (TryGetCoverageForRoster(coverageRows, required.FilePath, out var coverage)
+                    && coverage != null
                     && IsStoredCoveragePathSafe(coverage.FilePath))
                 {
                     // Roster owns the safety-critical flag for Level A MC/DC scope.
@@ -281,7 +294,8 @@ namespace HB_NLP_Research_Lab.Certification
             // Fail closed: empty roster / missing evidence / no safety-critical inventory /
             // leftover scheme, absolute, or outside-tree paths / count-only records
             // with no linked test execution evidence.
-            var missingRosterFiles = roster.Count(r => !coverageByPath.ContainsKey(r.FilePath));
+            var missingRosterFiles = roster.Count(r =>
+                !TryGetCoverageForRoster(coverageRows, r.FilePath, out _));
             var unsafeRosterFiles = roster.Count(r => !IsStoredCoveragePathSafe(r.FilePath));
             report.FilesWithTestEvidence = rosterCoverage.Count(HasValidTestEvidence);
             report.SafetyCriticalFilesWithMcdcTestEvidence = rosterCoverage.Count(c =>
@@ -299,7 +313,7 @@ namespace HB_NLP_Research_Lab.Certification
             report.CoverageGaps = roster
                 .Select(required =>
                 {
-                    coverageByPath.TryGetValue(required.FilePath, out var coverage);
+                    TryGetCoverageForRoster(coverageRows, required.FilePath, out var coverage);
                     if (!IsStoredCoveragePathSafe(required.FilePath)
                         || (coverage != null && !IsStoredCoveragePathSafe(coverage.FilePath)))
                     {
@@ -353,10 +367,9 @@ namespace HB_NLP_Research_Lab.Certification
             var roster = await _context.RequiredCoverageFiles
                 .Where(f => f.IsActive)
                 .ToListAsync();
-            var coverageByPath = (await _context.CodeCoverage
+            var coverageRows = await _context.CodeCoverage
                 .Include(c => c.TestCaseLinks)
-                .ToListAsync())
-                .ToDictionary(c => c.FilePath, StringComparer.Ordinal);
+                .ToListAsync();
 
             var rosterCoverage = new List<CodeCoverage>();
             var missingFiles = new List<string>();
@@ -369,7 +382,8 @@ namespace HB_NLP_Research_Lab.Certification
                     continue;
                 }
 
-                if (!coverageByPath.TryGetValue(required.FilePath, out var coverage)
+                if (!TryGetCoverageForRoster(coverageRows, required.FilePath, out var coverage)
+                    || coverage == null
                     || !IsStoredCoveragePathSafe(coverage.FilePath))
                 {
                     missingFiles.Add(required.FilePath);
@@ -473,19 +487,34 @@ namespace HB_NLP_Research_Lab.Certification
             return check;
         }
 
-        private async Task<RequiredCoverageFile?> FindRequiredCoverageFileAsync(string lookupPath)
+        private static List<RequiredCoverageFile> MatchingStoredCoveragePaths(
+            IEnumerable<RequiredCoverageFile> rows,
+            string lookupPath)
         {
-            var canonical = CanonicalizeStoredCoveragePath(lookupPath);
-            var candidates = await _context.RequiredCoverageFiles.ToListAsync();
-            return candidates
-                .OrderByDescending(f => f.IsActive)
-                .ThenByDescending(f => f.RegisteredAt)
-                .FirstOrDefault(f =>
-                    string.Equals(
-                        CanonicalizeStoredCoveragePath(f.FilePath),
-                        canonical,
-                        StringComparison.OrdinalIgnoreCase));
+            return rows
+                .Where(f => StoredCoveragePathsMatch(f.FilePath, lookupPath))
+                .ToList();
         }
+
+        private static bool TryGetCoverageForRoster(
+            IReadOnlyCollection<CodeCoverage> coverageRows,
+            string rosterPath,
+            out CodeCoverage? coverage)
+        {
+            var matches = coverageRows
+                .Where(c => StoredCoveragePathsMatch(c.FilePath, rosterPath))
+                .ToList();
+            coverage = matches.FirstOrDefault(c =>
+                           string.Equals(c.FilePath, rosterPath, StringComparison.Ordinal))
+                       ?? matches.FirstOrDefault();
+            return coverage != null;
+        }
+
+        private static bool StoredCoveragePathsMatch(string? left, string? right) =>
+            string.Equals(
+                CanonicalizeStoredCoveragePath(left),
+                CanonicalizeStoredCoveragePath(right),
+                StringComparison.OrdinalIgnoreCase);
 
         private string GenerateGapDescription(CodeCoverage coverage)
         {
