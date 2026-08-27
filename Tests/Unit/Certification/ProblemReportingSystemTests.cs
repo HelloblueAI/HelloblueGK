@@ -293,7 +293,7 @@ public class ProblemReportingSystemTests
         var check = await system.VerifyComplianceAsync();
 
         check.IsCompliant.Should().BeFalse();
-        check.UnresolvedCriticalProblems.Should().Be(1);
+        check.UnresolvedCriticalProblems.Should().Be(0);
         check.Issues.Should().Contain(i =>
             i.Contains("No closed critical or major problem reports", StringComparison.Ordinal));
     }
@@ -336,6 +336,95 @@ public class ProblemReportingSystemTests
         check.UnresolvedCriticalProblems.Should().Be(0);
         check.Issues.Should().Contain(i =>
             i.Contains("Unresolved minor problem reports", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_ClosedCriticalBesideRejectedCritical_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var closed = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+        await system.LinkToTestAsync(closed.ReportNumber, "TC-SENSOR-001");
+        await system.UpdateStatusAsync(closed.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(closed.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+        await system.UpdateStatusAsync(
+            closed.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified on stand with TC-SENSOR-001",
+            changedBy: "bob");
+
+        var rejected = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Spurious trip",
+            Description = "Sensor glitch during soak-back",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+        await system.UpdateStatusAsync(rejected.ReportNumber, ProblemReportStatus.Rejected, changedBy: "bob");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeTrue();
+        check.UnresolvedCriticalProblems.Should().Be(0);
+        check.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_OpenMinorBesideRejectedCritical_ReportsMinorIssue()
+    {
+        await using var context = CreateContext();
+        var system = new ProblemReportingSystem(context, NullLogger<ProblemReportingSystem>.Instance);
+
+        var closed = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+        await system.LinkToTestAsync(closed.ReportNumber, "TC-SENSOR-001");
+        await system.UpdateStatusAsync(closed.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(closed.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+        await system.UpdateStatusAsync(
+            closed.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified on stand with TC-SENSOR-001",
+            changedBy: "bob");
+
+        var rejected = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Spurious trip",
+            Description = "Sensor glitch during soak-back",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+        await system.UpdateStatusAsync(rejected.ReportNumber, ProblemReportStatus.Rejected, changedBy: "bob");
+
+        await system.CreateProblemReportAsync(
+            new ProblemReport
+            {
+                Title = "Open minor observation",
+                Description = "Log line formatting",
+                Impact = "routine observation",
+                ReportedBy = "alice"
+            },
+            explicitSeverity: ProblemSeverity.Minor);
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.UnresolvedCriticalProblems.Should().Be(0);
+        check.Issues.Should().Contain(i =>
+            i.Contains("Unresolved minor problem reports", StringComparison.Ordinal));
+        check.Issues.Should().NotContain(i =>
+            i.Contains("Critical problems must be resolved", StringComparison.Ordinal));
     }
 
     [Fact]

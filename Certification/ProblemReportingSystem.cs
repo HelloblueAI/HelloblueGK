@@ -254,13 +254,16 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 CheckedAt = DateTime.UtcNow,
                 TotalCriticalProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Critical),
+                // Rejected is a completed disposition, not an open defect. Counting it as
+                // unresolved made IsCompliant=true coexist with UnresolvedCriticalProblems>0
+                // when a Closed Critical sat beside a Rejected Critical.
                 UnresolvedCriticalProblems = safetyClassReports.Count(r =>
                     r.Severity == ProblemSeverity.Critical &&
-                    r.Status != ProblemReportStatus.Closed),
+                    r.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected)),
                 TotalMajorProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Major),
                 UnresolvedMajorProblems = safetyClassReports.Count(r =>
                     r.Severity == ProblemSeverity.Major &&
-                    r.Status != ProblemReportStatus.Closed)
+                    r.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected))
             };
 
             // Empty problem-report store must fail closed — 0 unresolved on 0 reports is not evidence.
