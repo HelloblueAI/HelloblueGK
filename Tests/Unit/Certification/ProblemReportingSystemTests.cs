@@ -818,7 +818,6 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
-    [Fact]
     public void ResolveSeverity_WordEndingInNon_DoesNotNegateFollowingElevationToken()
     {
         ProblemReportingSystem.ResolveSeverity(
