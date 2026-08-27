@@ -23,8 +23,20 @@ public class EngineRepository : IEngineRepository
 
     public async Task<Engine?> GetByNameAsync(string name)
     {
-        return await _context.Engines
-            .FirstOrDefaultAsync(e => e.Name == name);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var trimmed = name.Trim();
+        var normalized = trimmed.ToLowerInvariant();
+        var candidates = await _context.Engines
+            .Where(e => e.Name.ToLower() == normalized)
+            .ToListAsync();
+
+        return candidates.FirstOrDefault(e =>
+                   string.Equals(e.Name, trimmed, StringComparison.Ordinal))
+               ?? candidates.FirstOrDefault();
     }
 
     public async Task<IEnumerable<Engine>> GetAllAsync(string? currentUsername, bool isAdmin, int skip, int take)
@@ -48,17 +60,21 @@ public class EngineRepository : IEngineRepository
 
     public async Task<Engine> CreateAsync(Engine engine)
     {
+        engine.Name = NormalizeUniqueName(engine.Name);
+        await EnsureNameIsUniqueAsync(engine.Name);
         engine.CreatedAt = DateTime.UtcNow;
         _context.Engines.Add(engine);
-        await _context.SaveChangesAsync();
+        await SaveUniqueNameAsync(engine);
         return engine;
     }
 
     public async Task<Engine> UpdateAsync(Engine engine)
     {
+        engine.Name = NormalizeUniqueName(engine.Name);
+        await EnsureNameIsUniqueAsync(engine.Name, engine.Id);
         engine.UpdatedAt = DateTime.UtcNow;
         _context.Engines.Update(engine);
-        await _context.SaveChangesAsync();
+        await SaveUniqueNameAsync(engine);
         return engine;
     }
 
@@ -94,6 +110,59 @@ public class EngineRepository : IEngineRepository
         }
 
         return query.Where(e => e.CreatedBy == null || e.CreatedBy == string.Empty || e.CreatedBy == currentUsername);
+    }
+
+    private static string NormalizeUniqueName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new ArgumentException("Engine name is required.", nameof(name));
+        }
+
+        return name.Trim();
+    }
+
+    private async Task EnsureNameIsUniqueAsync(string name, int? excludeId = null)
+    {
+        var normalized = name.ToLowerInvariant();
+        var taken = await _context.Engines.AnyAsync(engine =>
+            engine.Name.ToLower() == normalized &&
+            (!excludeId.HasValue || engine.Id != excludeId.Value));
+
+        if (taken)
+        {
+            throw new InvalidOperationException($"An engine named '{name}' already exists.");
+        }
+    }
+
+    private async Task SaveUniqueNameAsync(Engine engine)
+    {
+        try
+        {
+            await _context.SaveChangesAsync();
+        }
+        catch (DbUpdateException ex) when (IsUniqueConstraintViolation(ex))
+        {
+            _context.Entry(engine).State = EntityState.Detached;
+            throw new InvalidOperationException($"An engine named '{engine.Name}' already exists.", ex);
+        }
+    }
+
+    private static bool IsUniqueConstraintViolation(DbUpdateException exception)
+    {
+        for (var inner = exception.InnerException; inner != null; inner = inner.InnerException)
+        {
+            var message = inner.Message;
+            if (message.Contains("UNIQUE constraint failed", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("unique constraint", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("duplicate key", StringComparison.OrdinalIgnoreCase)
+                || message.Contains("IX_Engines_Name", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 

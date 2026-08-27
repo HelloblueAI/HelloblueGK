@@ -97,7 +97,7 @@ namespace HB_NLP_Research_Lab.Core
                     IsReady = true,
                     ActiveSystems = new[] { "Live Learning", "Predictive Twin", "Autonomous Testing", "Real-Time Learning" },
                     LearningMode = "Continuous",
-                    PredictionAccuracy = "99.9%",
+                    PredictionAccuracy = $"{UnprovenPredictionAccuracy:P0}",
                     TwinCount = _digitalTwins.Count,
                     GateCount = _engineGates.Count
                 };
@@ -537,14 +537,14 @@ namespace HB_NLP_Research_Lab.Core
                 EngineId = engineId,
                 PredictionTimestamp = DateTime.UtcNow,
                 MultiPhysicsResult = multiPhysicsResult,
-                PredictionConfidence = 0.999,
+                PredictionConfidence = UnprovenPredictionAccuracy,
                 PredictedPerformance = new PredictedPerformance
                 {
                     Thrust = thrust,
                     Efficiency = efficiency,
-                    Reliability = 0.999,
+                    Reliability = UnprovenPredictionAccuracy,
                     ThermalEfficiency = Math.Clamp(efficiency * 0.92, 0.0, 1.0),
-                    StructuralSafety = 0.998
+                    StructuralSafety = UnprovenPredictionAccuracy
                 },
                 PredictedFailures = new List<PredictedFailure>
                 {
@@ -553,7 +553,7 @@ namespace HB_NLP_Research_Lab.Core
                         FailureMode = "Thermal Fatigue",
                         Probability = 0.001,
                         TimeToFailure = TimeSpan.FromHours(5000),
-                        Confidence = 0.95
+                        Confidence = UnprovenPredictionAccuracy
                     }
                 }
             };
@@ -1044,9 +1044,9 @@ namespace HB_NLP_Research_Lab.Core
             var efficiency = TryReadEngineModelParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
                 ? Math.Clamp(engineEfficiency, 0.0, 1.0)
                 : 0.92;
-            // Baseline reliability is a model prior; scenario throttle may derate it.
+            // Baseline reliability stays fail-closed/unproven until a trusted model prior exists.
             // Clients must not set PredictedMetrics.Reliability directly.
-            var reliability = 0.95;
+            var reliability = DigitalTwinEngine.UnprovenPredictionAccuracy;
             var parameters = scenario.Parameters ?? new Dictionary<string, object>();
 
             if (TryReadScenarioDouble(parameters, "thrust", out var requestedThrust) && requestedThrust > 0)
@@ -1058,11 +1058,9 @@ namespace HB_NLP_Research_Lab.Core
                 thrust *= thrustScale;
             }
 
-            if (TryReadScenarioDouble(parameters, "efficiency", out var requestedEfficiency) && requestedEfficiency > 0)
-            {
-                efficiency = Math.Clamp(requestedEfficiency, 0.0, 1.0);
-            }
-            else if (TryReadScenarioDouble(parameters, "throttle", out var throttle) && throttle > 0)
+            // Clients must not set PredictedMetrics.Efficiency directly (Reliability parity).
+            // Throttle and ambient temperature may derate the engine-model baseline only.
+            if (TryReadScenarioDouble(parameters, "throttle", out var throttle) && throttle > 0)
             {
                 // Throttle below 1.0 reduces delivered thrust and efficiency; above 1.0 trades reliability.
                 thrust *= throttle;
@@ -1347,10 +1345,13 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ModelImprovement> UpdateModelsAsync(string engineId, TestFlightData flightData)
         {
             await Task.Delay(100);
+            // Fail closed: do not invent a hardcoded 12% ModelImprovement on every learn.
+            // Until real model-delta evidence exists, report unproven (zero) improvement.
+            _ = flightData;
             return new ModelImprovement
             {
                 EngineId = engineId,
-                ImprovementPercentage = 0.12,
+                ImprovementPercentage = 0.0,
                 ModelVersion = "2.1.0",
                 UpdateTimestamp = DateTime.UtcNow
             };

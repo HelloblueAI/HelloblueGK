@@ -13,6 +13,7 @@ namespace HB_NLP_Research_Lab.Core
     /// </summary>
     public class RateLimitingMiddleware
     {
+        public const int MaxRequestBodyBytes = 256 * 1024;
         private const int MaxAuthUsernameBodyBytes = 64 * 1024;
 
         // AuthController / Metrics / Certification use api/v{version:apiVersion} which substitutes "1.0".
@@ -37,12 +38,18 @@ namespace HB_NLP_Research_Lab.Core
         public async Task InvokeAsync(HttpContext context)
         {
             var endpoint = NormalizeEndpointPath(context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty);
-            var clientIdentifier = GetClientIdentifier(context);
+            var clientIdentifier = ResolveClientIdentifier(context);
 
             // Skip rate limiting for health checks and metrics endpoints
             if (ShouldSkipRateLimiting(endpoint))
             {
                 await _next(context);
+                return;
+            }
+
+            if (context.Request.ContentLength is > MaxRequestBodyBytes)
+            {
+                await WritePayloadTooLargeResponseAsync(context, MaxRequestBodyBytes);
                 return;
             }
 
@@ -82,7 +89,7 @@ namespace HB_NLP_Research_Lab.Core
                 var authBodyInspection = await InspectAuthRequestBodyAsync(context);
                 if (authBodyInspection.IsPayloadTooLarge)
                 {
-                    await WritePayloadTooLargeResponseAsync(context);
+                    await WritePayloadTooLargeResponseAsync(context, MaxAuthUsernameBodyBytes);
                     return;
                 }
 
@@ -134,7 +141,7 @@ namespace HB_NLP_Research_Lab.Core
             await _next(context);
         }
 
-        private string GetClientIdentifier(HttpContext context)
+        internal static string ResolveClientIdentifier(HttpContext context)
         {
             // Try to get client IP address
             var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -142,10 +149,13 @@ namespace HB_NLP_Research_Lab.Core
             // Do not trust forwarded IP headers unless ASP.NET Core ForwardedHeaders
             // middleware has been explicitly configured with known proxies/networks.
 
-            // For authenticated users, use user ID instead of IP
+            // For authenticated users, use user ID instead of IP so NAT/proxy
+            // clients do not share ExpensiveMutation / API quotas.
             if (context.User.Identity?.IsAuthenticated == true)
             {
-                var userId = context.User.Identity.Name ?? context.User.FindFirst("sub")?.Value;
+                var userId = context.User.Identity.Name
+                    ?? context.User.FindFirst("sub")?.Value
+                    ?? context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                 if (!string.IsNullOrEmpty(userId))
                 {
                     return $"user:{userId}";
@@ -157,16 +167,14 @@ namespace HB_NLP_Research_Lab.Core
 
         private bool ShouldSkipRateLimiting(string endpoint)
         {
-            var skipEndpoints = new[]
+            // Only skip the anonymous liveness probe and docs/favicon. Prefix-matching
+            // "/health" previously also skipped Admin /health/detailed and /health/engine.
+            if (IsEndpoint(endpoint, "/health") || IsEndpoint(endpoint, "/favicon.ico"))
             {
-                "/health",
-                "/metrics",
-                "/api/v1/performance/health",
-                "/swagger",
-                "/favicon.ico"
-            };
+                return true;
+            }
 
-            return skipEndpoints.Any(skip => endpoint.StartsWith(skip, StringComparison.OrdinalIgnoreCase));
+            return endpoint.StartsWith("/swagger", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -186,10 +194,7 @@ namespace HB_NLP_Research_Lab.Core
         private string GetPolicyNameForEndpoint(string endpoint, string method)
         {
             // API endpoint policies
-            if (endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
-                || endpoint.StartsWith("/api/v1/auth/register", StringComparison.OrdinalIgnoreCase)
-                || endpoint.StartsWith("/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase)
-                || endpoint.StartsWith("/api/v1/account/login", StringComparison.OrdinalIgnoreCase))
+            if (IsAuthenticationEntrypoint(endpoint))
             {
                 return "Auth";
             }
@@ -329,7 +334,22 @@ namespace HB_NLP_Research_Lab.Core
             await WriteRateLimitingUnavailableResponseAsync(context);
         }
 
-        private static async Task WritePayloadTooLargeResponseAsync(HttpContext context)
+        /// <summary>
+        /// Auth-budget endpoints: login/register/refresh plus SSO handshake callbacks.
+        /// Callbacks previously fell through to Default/API (10–20× the auth budget).
+        /// </summary>
+        public static bool IsAuthenticationEntrypoint(string endpoint)
+        {
+            return endpoint.StartsWith("/api/v1/auth/login", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/auth/register", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/auth/refresh", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/login", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/logout", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/sso-callback", StringComparison.OrdinalIgnoreCase)
+                || endpoint.StartsWith("/api/v1/account/sso-signout-callback", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static async Task WritePayloadTooLargeResponseAsync(HttpContext context, int maxBytes)
         {
             if (context.Response.HasStarted)
             {
@@ -342,7 +362,7 @@ namespace HB_NLP_Research_Lab.Core
             var errorResponse = new
             {
                 error = "Payload too large",
-                message = "Authentication request payloads must be 64 KB or smaller."
+                message = $"Request payloads must be {maxBytes / 1024} KB or smaller."
             };
 
             var jsonResponse = JsonSerializer.Serialize(errorResponse, new JsonSerializerOptions
@@ -560,6 +580,118 @@ namespace HB_NLP_Research_Lab.Core
         public static IApplicationBuilder UseRateLimiting(this IApplicationBuilder app)
         {
             return app.UseMiddleware<RateLimitingMiddleware>();
+        }
+
+        public static IApplicationBuilder UsePreAuthRateLimiting(this IApplicationBuilder app)
+        {
+            return app.UseMiddleware<PreAuthRateLimitingMiddleware>();
+        }
+    }
+
+    /// <summary>
+    /// Coarse IP cap before JWT authentication. Bounds OnTokenValidated DB lookups
+    /// for Bearer and /metrics sprays without applying ExpensiveMutation (those
+    /// policies key on the authenticated user after <see cref="RateLimitingMiddleware"/>).
+    /// </summary>
+    public sealed class PreAuthRateLimitingMiddleware
+    {
+        private readonly RequestDelegate _next;
+        private readonly ILogger<PreAuthRateLimitingMiddleware> _logger;
+        private readonly RateLimitingService _rateLimitingService;
+        private readonly RateLimitPolicy _policy;
+
+        public PreAuthRateLimitingMiddleware(
+            RequestDelegate next,
+            ILogger<PreAuthRateLimitingMiddleware> logger,
+            RateLimitingService rateLimitingService)
+        {
+            _next = next;
+            _logger = logger;
+            _rateLimitingService = rateLimitingService;
+            _policy = new RateLimitPolicy
+            {
+                RequestsPerWindow = 200,
+                WindowSize = TimeSpan.FromMinutes(1),
+                Algorithm = RateLimitAlgorithm.SlidingWindow
+            };
+        }
+
+        public async Task InvokeAsync(HttpContext context)
+        {
+            if (!ShouldApply(context))
+            {
+                await _next(context);
+                return;
+            }
+
+            var clientIp = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var identifier = $"PreAuth:ip:{clientIp}";
+
+            RateLimitResult rateLimitResult;
+            try
+            {
+                rateLimitResult = await _rateLimitingService.CheckRateLimitAsync(identifier, _policy);
+            }
+            catch (TimeoutException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (OperationCanceledException ex) when (!context.RequestAborted.IsCancellationRequested)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (CryptographicException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (JsonException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+            catch (InvalidOperationException ex)
+            {
+                await WriteUnavailableAsync(ex);
+                return;
+            }
+
+            async Task WriteUnavailableAsync(Exception ex)
+            {
+                _logger.LogError(ex, "Error in pre-auth rate limiting for {ClientIdentifier}", identifier);
+                context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+                context.Response.ContentType = "application/json";
+                await context.Response.WriteAsync(
+                    """{"error":"Rate limiting unavailable","message":"Rate limiting is temporarily unavailable. Please try again later."}""");
+            }
+
+            if (!rateLimitResult.IsAllowed)
+            {
+                context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+                context.Response.ContentType = "application/json";
+                context.Response.Headers["Retry-After"] = Math.Max(
+                    0,
+                    (int)(rateLimitResult.ResetTime - DateTime.UtcNow).TotalSeconds).ToString();
+                await context.Response.WriteAsync(
+                    """{"error":"Rate limit exceeded","message":"Rate limit exceeded."}""");
+                return;
+            }
+
+            await _next(context);
+        }
+
+        public static bool ShouldApply(HttpContext context)
+        {
+            if (context.Request.Headers.ContainsKey("Authorization"))
+            {
+                return true;
+            }
+
+            var path = RateLimitingMiddleware.NormalizeEndpointPath(
+                context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty);
+            return path.StartsWith("/metrics", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

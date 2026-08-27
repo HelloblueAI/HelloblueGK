@@ -126,12 +126,15 @@ namespace HB_NLP_Research_Lab.Core
                         thermalResult?.ConvergenceIterations ?? 0,
                         structuralResult?.ConvergenceIterations ?? 0
                     }.Max();
-                    solverAccuracy = new[]
+                    // Fail closed: average positive solver accuracies only. Do not invent
+                    // ConvergenceRate/Accuracy (including DefaultIfEmpty(95)) when solvers return nothing.
+                    var positiveAccuracies = new[]
                     {
                         cfdResult?.Accuracy ?? 0,
                         thermalResult?.Accuracy ?? 0,
                         structuralResult?.Accuracy ?? 0
-                    }.Where(value => value > 0).DefaultIfEmpty(95.0).Average();
+                    }.Where(value => value > 0).ToArray();
+                    solverAccuracy = positiveAccuracies.Length > 0 ? positiveAccuracies.Average() : 0;
                     break;
             }
 
@@ -154,7 +157,10 @@ namespace HB_NLP_Research_Lab.Core
                 thermalResult,
                 structuralResult);
 
-            // Real-time validation
+            // Keep ValidationReport.OverallAccuracy as the validation engine's fail-closed
+            // evidence score (unproven=50 without trusted flight/test binding). Do NOT overwrite
+            // it with hardcoded solver Accuracy (~99%) — that made MissionSuccess's validation
+            // accuracy gate vacuous while Simulation.Accuracy should use ConvergenceRate instead.
             var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel);
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -252,21 +258,45 @@ namespace HB_NLP_Research_Lab.Core
         /// <summary>
         /// Generates comprehensive validation summary with real-time data
         /// </summary>
-        public async Task<ValidationSummary> GenerateValidationSummaryAsync()
+        public Task<ValidationSummary> GenerateValidationSummaryAsync()
         {
-            Console.WriteLine("[HelloblueGK] ✅ Generating validation summary with real-time data...");
-            
-            // Get real-time validation data
-            var validationReport = await _validationEngine.ValidateEngineModelAsync("HB-NLP-REV-001");
-            
+            return GenerateValidationSummaryAsync(engineModel: null);
+        }
+
+        /// <summary>
+        /// Generates a validation summary for a specific engine model.
+        /// Validity is fail-closed unless the report carries an explicit Trusted: source.
+        /// </summary>
+        public async Task<ValidationSummary> GenerateValidationSummaryAsync(string? engineModel)
+        {
+            const double unproven = 0.5;
+            Console.WriteLine("[HelloblueGK] Generating validation summary...");
+
+            if (string.IsNullOrWhiteSpace(engineModel))
+            {
+                return new ValidationSummary
+                {
+                    IsValid = false,
+                    ValidationScore = unproven,
+                    CriticalIssues = 1,
+                    Warnings = 1,
+                    ValidationSource = "Unproven",
+                    ConfidenceLevel = unproven
+                };
+            }
+
+            var validationReport = await _validationEngine.ValidateEngineModelAsync(engineModel.Trim());
+            var trusted = !string.IsNullOrWhiteSpace(validationReport.ValidationSource)
+                && validationReport.ValidationSource.StartsWith("Trusted:", StringComparison.Ordinal);
+
             return new ValidationSummary
             {
-                IsValid = true,
-                ValidationScore = validationReport.OverallAccuracy / 100.0,
-                CriticalIssues = 0,
-                Warnings = 2,
-                ValidationSource = validationReport.ValidationSource,
-                ConfidenceLevel = validationReport.ConfidenceLevel
+                IsValid = trusted,
+                ValidationScore = trusted ? validationReport.OverallAccuracy / 100.0 : unproven,
+                CriticalIssues = trusted ? 0 : 1,
+                Warnings = trusted ? 0 : 1,
+                ValidationSource = trusted ? validationReport.ValidationSource! : "Unproven",
+                ConfidenceLevel = trusted ? validationReport.ConfidenceLevel : unproven
             };
         }
 
@@ -473,10 +503,9 @@ namespace HB_NLP_Research_Lab.Core
                 structuralResult.MaxStress = maxStress;
                 structuralResult.StressDistribution["chamber"] = maxStress;
                 structuralResult.StressDistribution["nozzle"] = maxStress * 0.75;
-                if (baseline.Efficiency > 0)
-                {
-                    structuralResult.SafetyFactor = Math.Clamp(1.2 + (baseline.Efficiency * 0.5), 1.2, 2.0);
-                }
+                // Do not re-seed SafetyFactor from baseline.Efficiency — launch/request paths can
+                // mutate baselineDesign.Efficiency via ApplyDesignParameterOverrides, which would
+                // forge the solver-owned SafetyFactor trust signal.
             }
         }
 
