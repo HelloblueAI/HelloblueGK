@@ -386,8 +386,9 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Evidence rows must resolve to a real requirement or recorded test case.
-        /// Phantom GUIDs / invented test ids previously forged IsCompliant.
+        /// Evidence rows must resolve to a real requirement or coverage-recorded test case.
+        /// Phantom GUIDs / invented test ids previously forged IsCompliant. RTM
+        /// RequirementTestLinks are planning assertions and must not bootstrap inventory.
         /// </summary>
         private async Task<bool> HasValidResolutionEvidenceAsync(ProblemReport report)
         {
@@ -440,13 +441,9 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var rtmIds = await _requirementsContext.RequirementTestLinks
-                .AsNoTracking()
-                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
-                .Select(t => t.TestCaseId)
-                .ToListAsync();
-            ids.UnionWith(rtmIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
-
+            // Coverage is the execution inventory. RTM RequirementTestLinks are
+            // planning rows — treating them as recorded tests let an invented
+            // Tests/*.cs link close Critical/Major reports and stamp IsCompliant.
             if (_coverageContext == null)
                 return ids;
 
