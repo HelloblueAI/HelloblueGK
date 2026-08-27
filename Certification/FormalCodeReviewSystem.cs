@@ -176,12 +176,12 @@ namespace HB_NLP_Research_Lab.Certification
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
 
-            // Completed is terminal for assign as well as findings: a late assignment
-            // cannot complete (SubmitFindings rejects Completed) and would block
-            // ApproveReview (all assignments must be Completed).
-            if (review.Status is CodeReviewStatus.Approved
-                or CodeReviewStatus.Rejected
-                or CodeReviewStatus.Completed)
+            // Completed reviews are frozen pending approve/reject. A late assignment
+            // would leave Status=Completed with an Assigned reviewer and reopen
+            // SubmitFindings after the review was already ready for approval.
+            if (review.Status is CodeReviewStatus.Completed
+                or CodeReviewStatus.Approved
+                or CodeReviewStatus.Rejected)
             {
                 throw new InvalidOperationException(
                     $"Cannot assign a reviewer to a review with status {review.Status}");
@@ -282,6 +282,14 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 if (string.IsNullOrWhiteSpace(finding.Description))
                     throw new ArgumentException("Finding description is required", nameof(findings));
+
+                if (finding.LineNumber < review.LineStart || finding.LineNumber > review.LineEnd)
+                {
+                    throw new ArgumentException(
+                        $"Finding line number must fall within the review line range {review.LineStart}-{review.LineEnd}",
+                        nameof(findings));
+                }
+
 
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
@@ -608,12 +616,13 @@ namespace HB_NLP_Research_Lab.Certification
             string filePath,
             string? registeredBy = null)
         {
+            // Same repository-relative gate as CreateReview — roster rows with `..` or
+            // absolute paths can never be satisfied (CreateReview rejects them) and
+            // must not enter the Level A required-file inventory.
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
-            var normalized = NormalizeFilePath(filePath);
-            if (string.IsNullOrWhiteSpace(normalized))
-                throw new ArgumentException("File path is required", nameof(filePath));
+            var normalized = NormalizeReviewFilePath(filePath);
 
             var matches = (await _context.RequiredReviewFiles.ToListAsync())
                 .Where(f => string.Equals(
@@ -674,6 +683,8 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
+            // Lookup by canonical form only — leftover traversal/absolute rows must
+            // still be revocable. Register remains the path that rejects unsafe paths.
             var existing = await FindRequiredReviewFileAsync(NormalizeFilePath(filePath));
             if (existing == null)
                 throw new ArgumentException($"Required review file '{filePath.Trim()}' not found", nameof(filePath));
@@ -704,22 +715,33 @@ namespace HB_NLP_Research_Lab.Certification
             return await BuildComplianceCheckAsync(normalizedRequired);
         }
 
+        /// <summary>
+        /// Minimum line span that may satisfy a whole-file Level A roster entry.
+        /// A one-line nit review cannot stand in for a file-covering inspection.
+        /// </summary>
+        public const int MinimumFileReviewLineCount = 10;
+
+        private static bool IsFileCoveringReviewSpan(int lineStart, int lineEnd)
+        {
+            return lineStart == 1 && lineEnd - lineStart + 1 >= MinimumFileReviewLineCount;
+        }
+
         private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
         {
             var approvedFiles = (await _context.CodeReviews
                 .Where(r => r.Status == CodeReviewStatus.Approved)
-                .Select(r => r.FilePath)
-                .Distinct()
+                .Select(r => new { r.FilePath, r.LineStart, r.LineEnd })
                 .ToListAsync())
-                .Where(f => !string.IsNullOrWhiteSpace(f))
-                .Select(NormalizeFilePath)
+                .Where(r => !string.IsNullOrWhiteSpace(r.FilePath) && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
+                .Select(r => NormalizeFilePath(r.FilePath))
+                .Where(IsSafeRelativeRepositoryPath)
                 .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
                 TotalRequiredFiles = normalizedRequired.Count,
-                // Count only required files that have an approved review — not all approved rows.
+                // Count only required files that have a file-covering approved review — not all approved rows.
                 ReviewedFiles = normalizedRequired.Count(approvedFiles.Contains),
                 UnreviewedFiles = normalizedRequired.Where(f => !approvedFiles.Contains(f)).ToList()
             };
@@ -732,14 +754,15 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
+            // Traversal / absolute roster rows never match a safe approved review.
             check.IsCompliant = check.UnreviewedFiles.Count == 0;
 
             if (!check.IsCompliant)
             {
-                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed");
+                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
                 foreach (var file in check.UnreviewedFiles)
                 {
-                    check.Issues.Add($"File not reviewed: {file}");
+                    check.Issues.Add($"File not reviewed with a file-covering approved span: {file}");
                 }
             }
 
@@ -766,6 +789,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         private static string NormalizeFilePath(string filePath) =>
             filePath.Trim().Replace('\\', '/').ToLowerInvariant();
+
+        private static string NormalizeAndValidateFilePath(string filePath) =>
+            NormalizeReviewFilePath(filePath);
 
         private static string NormalizeReviewFilePath(string? filePath)
         {
@@ -794,7 +820,31 @@ namespace HB_NLP_Research_Lab.Certification
                     nameof(filePath));
             }
 
+            if (!IsSafeRelativeRepositoryPath(normalized))
+            {
+                throw new ArgumentException(
+                    "Review file path must be relative to the repository and must not contain traversal segments.",
+                    nameof(filePath));
+            }
+
             return string.Join("/", segments);
+        }
+
+        private static bool IsSafeRelativeRepositoryPath(string normalizedPath)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+                return false;
+
+            if (normalizedPath.StartsWith("/", StringComparison.Ordinal)
+                || normalizedPath.StartsWith("//", StringComparison.Ordinal)
+                || normalizedPath.Contains("://", StringComparison.Ordinal)
+                || normalizedPath.Contains(':', StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var segments = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return segments.Length > 0 && segments.All(segment => segment is not ("." or ".."));
         }
 
         private static string NormalizeRequiredText(string? value, string fieldName)
