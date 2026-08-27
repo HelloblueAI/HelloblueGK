@@ -217,7 +217,7 @@ public class RequirementsController : ControllerBase
         {
             if (!Enum.TryParse<TestCoverageType>(request.CoverageType, ignoreCase: true, out var coverageType))
             {
-                return BadRequest(new { message = $"Invalid coverage type: {request.CoverageType}" });
+                return BadRequest(new { message = $"Invalid test coverage type: {request.CoverageType}" });
             }
 
             var link = await _rts.LinkToTestAsync(id, request.TestCaseId, request.TestFile, coverageType);

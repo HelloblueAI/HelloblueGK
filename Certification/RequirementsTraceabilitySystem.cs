@@ -49,7 +49,6 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Requirement number '{requirement.RequirementNumber}' is already in use",
                     nameof(requirement));
             }
-
             requirement.Id = Guid.NewGuid();
             requirement.CreatedAt = DateTime.UtcNow;
             requirement.Status = RequirementStatus.Draft;

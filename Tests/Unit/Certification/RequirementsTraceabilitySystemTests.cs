@@ -44,6 +44,45 @@ public class RequirementsTraceabilitySystemTests
     }
 
     [Fact]
+    public async Task CreateRequirementAsync_RejectsVacuousNumberTitleOrDescription()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var missingNumber = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "  ",
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+        await missingNumber.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*number*");
+
+        var missingTitle = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-EMPTY-TITLE",
+            Title = "",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+        await missingTitle.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*title*");
+
+        var missingDescription = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-EMPTY-DESC",
+            Title = "Chamber pressure limit",
+            Description = "\t",
+            CreatedBy = "alice"
+        });
+        await missingDescription.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*description*");
+
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task LinkToDesignAsync_RejectsVacuousDesignElement()
     {
         await using var context = CreateContext();
