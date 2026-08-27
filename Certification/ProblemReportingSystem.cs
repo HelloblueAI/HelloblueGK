@@ -120,13 +120,13 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
                 }
 
-                // Critical/Major closures need linked evidence that exists in RTM/coverage
-                // stores — a phantom GUID or invented test id forges IsCompliant.
+                // Critical/Major closures need verified implementation evidence — a
+                // Draft/NotTraced shell requirement or invented test id forges IsCompliant.
                 if (report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
                     !await HasValidResolutionEvidenceAsync(report))
                 {
                     throw new InvalidOperationException(
-                        $"Problem report {reportNumber} requires a linked requirement or test case before closing");
+                        $"Problem report {reportNumber} requires a linked requirement with verified implementation evidence or a recorded test case before closing");
                 }
 
                 resolutionToPersist = normalizedResolution;
@@ -318,7 +318,7 @@ namespace HB_NLP_Research_Lab.Certification
             // Minor-only stores are not Level A evidence. Explicit Minor + "routine observation"
             // previously forged IsCompliant=true while leaving tickets Open. Rejected-only
             // Critical/Major rows are also not a completed lifecycle. Closures need
-            // substantive notes AND real (non-phantom) requirement/test evidence.
+            // substantive notes AND verified implementation evidence (not a Draft shell).
             var closedSafetyClass = 0;
             foreach (var report in safetyClassReports)
             {
@@ -386,8 +386,9 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Evidence rows must resolve to a real requirement or recorded test case.
-        /// Phantom GUIDs / invented test ids previously forged IsCompliant.
+        /// Evidence rows must resolve to a requirement with verified implementation
+        /// (code or passed test) or a recorded test case. Phantom GUIDs, Draft shells,
+        /// and invented test ids previously forged IsCompliant.
         /// </summary>
         private async Task<bool> HasValidResolutionEvidenceAsync(ProblemReport report)
         {
@@ -396,12 +397,16 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(id => id != Guid.Empty)
                 .Distinct()
                 .ToList();
-            if (requirementIds.Count > 0 &&
-                await _requirementsContext.Requirements
-                    .AsNoTracking()
-                    .AnyAsync(r => requirementIds.Contains(r.Id)))
+            if (requirementIds.Count > 0)
             {
-                return true;
+                var requirements = await _requirementsContext.Requirements
+                    .AsNoTracking()
+                    .Include(r => r.CodeLinks)
+                    .Include(r => r.TestLinks)
+                    .Where(r => requirementIds.Contains(r.Id))
+                    .ToListAsync();
+                if (requirements.Any(HasVerifiedImplementationEvidence))
+                    return true;
             }
 
             var testCaseIds = report.TestLinks
@@ -415,6 +420,30 @@ namespace HB_NLP_Research_Lab.Certification
 
             var recorded = await LoadRecordedTestCaseIdsAsync();
             return testCaseIds.Any(recorded.Contains);
+        }
+
+        /// <summary>
+        /// A requirement counts as problem-report closure evidence only when it
+        /// already has verified code or a verified passing test. Existence of a
+        /// Draft/NotTraced row (or unverified planning links) is not a fix.
+        /// </summary>
+        private static bool HasVerifiedImplementationEvidence(Requirement requirement)
+        {
+            if (requirement.CodeLinks.Any(c =>
+                    !string.IsNullOrWhiteSpace(c.CodeFile) &&
+                    !string.IsNullOrWhiteSpace(c.FunctionName) &&
+                    c.LineStart > 0 &&
+                    c.LineEnd >= c.LineStart &&
+                    c.Verified))
+            {
+                return true;
+            }
+
+            return requirement.TestLinks.Any(t =>
+                !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+                !string.IsNullOrWhiteSpace(t.TestFile) &&
+                t.Verified &&
+                t.TestResult == TestResult.Passed);
         }
 
         private async Task<bool> RequirementExistsAsync(Guid requirementId)
