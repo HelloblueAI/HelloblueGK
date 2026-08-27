@@ -611,9 +611,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
-            var normalized = NormalizeFilePath(filePath);
-            if (string.IsNullOrWhiteSpace(normalized))
-                throw new ArgumentException("File path is required", nameof(filePath));
+            var normalized = NormalizeAndValidateFilePath(filePath);
 
             var matches = (await _context.RequiredReviewFiles.ToListAsync())
                 .Where(f => string.Equals(
@@ -674,6 +672,8 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
+            // Lookup by canonical form only — leftover traversal/absolute rows must
+            // still be revocable. Register remains the path that rejects unsafe paths.
             var existing = await FindRequiredReviewFileAsync(NormalizeFilePath(filePath));
             if (existing == null)
                 throw new ArgumentException($"Required review file '{filePath.Trim()}' not found", nameof(filePath));
@@ -713,6 +713,7 @@ namespace HB_NLP_Research_Lab.Certification
                 .ToListAsync())
                 .Where(f => !string.IsNullOrWhiteSpace(f))
                 .Select(NormalizeFilePath)
+                .Where(IsSafeRelativeRepositoryPath)
                 .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
@@ -732,6 +733,7 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
+            // Traversal / absolute roster rows never match a safe approved review.
             check.IsCompliant = check.UnreviewedFiles.Count == 0;
 
             if (!check.IsCompliant)
@@ -767,6 +769,9 @@ namespace HB_NLP_Research_Lab.Certification
         private static string NormalizeFilePath(string filePath) =>
             filePath.Trim().Replace('\\', '/').ToLowerInvariant();
 
+        private static string NormalizeAndValidateFilePath(string filePath) =>
+            NormalizeReviewFilePath(filePath);
+
         private static string NormalizeReviewFilePath(string? filePath)
         {
             if (string.IsNullOrWhiteSpace(filePath))
@@ -775,26 +780,39 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var normalized = NormalizeFilePath(filePath);
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || normalized.Contains("://", StringComparison.Ordinal)
-                || normalized.Contains(':', StringComparison.Ordinal))
-            {
-                throw new ArgumentException(
-                    "File path must be relative to the repository.",
-                    nameof(filePath));
-            }
-
             var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length == 0
-                || segments.Any(segment => segment is "." or ".."))
+            if (segments.Any(segment => segment is "." or ".."))
             {
                 throw new ArgumentException(
                     "File path must not contain traversal segments.",
                     nameof(filePath));
             }
 
+            if (!IsSafeRelativeRepositoryPath(normalized))
+            {
+                throw new ArgumentException(
+                    "Review file path must be relative to the repository and must not contain traversal segments.",
+                    nameof(filePath));
+            }
+
             return string.Join("/", segments);
+        }
+
+        private static bool IsSafeRelativeRepositoryPath(string normalizedPath)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+                return false;
+
+            if (normalizedPath.StartsWith("/", StringComparison.Ordinal)
+                || normalizedPath.StartsWith("//", StringComparison.Ordinal)
+                || normalizedPath.Contains("://", StringComparison.Ordinal)
+                || normalizedPath.Contains(':', StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var segments = normalizedPath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return segments.Length > 0 && segments.All(segment => segment is not ("." or ".."));
         }
 
         private static string NormalizeRequiredText(string? value, string fieldName)

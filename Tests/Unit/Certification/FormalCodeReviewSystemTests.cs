@@ -961,6 +961,71 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task RegisterRequiredFileAsync_RejectsTraversalAndAbsolutePaths()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var traversal = async () => await system.RegisterRequiredFileAsync("../secrets/core.c", "admin");
+        await traversal.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("filePath");
+
+        var absolute = async () => await system.RegisterRequiredFileAsync("/etc/passwd", "admin");
+        await absolute.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("filePath");
+
+        context.RequiredReviewFiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LegacyTraversalRosterAndApproval_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        context.RequiredReviewFiles.Add(new RequiredReviewFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "../secrets/core.c",
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        // Leftover rows (pre-path-hardening) can already be Approved. CreateReviewAsync
+        // now rejects traversal, so forge the review the same way the roster was forged.
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9001",
+            FilePath = "../secrets/core.c",
+            FunctionName = "Leak",
+            LineStart = 1,
+            LineEnd = 2,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.UnreviewedFiles.Should().Contain("../secrets/core.c");
+
+        await system.RevokeRequiredFileAsync("../Secrets/core.c");
+        context.RequiredReviewFiles.Single().IsActive.Should().BeFalse();
+
+        var afterRevoke = await system.VerifyComplianceAsync();
+        afterRevoke.IsCompliant.Should().BeFalse();
+        afterRevoke.Issues.Should().Contain(i =>
+            i.Contains("Required file roster is empty", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_NormalizesPathSeparatorsBeforeMatching()
     {
         await using var context = CreateContext();
