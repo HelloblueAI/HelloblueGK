@@ -360,27 +360,88 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Disposition (resolve) a finding so Major/Critical no longer block approval.
+        /// Requires a recorded resolver and substantive resolution notes — a bare
+        /// <c>Resolved=true</c> flip is not Level A evidence.
         /// </summary>
-        public async Task ResolveFindingAsync(Guid reviewId, Guid findingId, string resolvedBy)
+        public async Task ResolveFindingAsync(
+            Guid reviewId,
+            Guid findingId,
+            string resolvedBy,
+            string? resolution)
         {
             if (string.IsNullOrWhiteSpace(resolvedBy))
                 throw new ArgumentException("Resolver is required", nameof(resolvedBy));
+
+            if (!HasSubstantiveResolution(resolution))
+            {
+                throw new ArgumentException(
+                    "Finding resolution requires substantive notes (not empty, 'done', 'fixed', or 'ok')",
+                    nameof(resolution));
+            }
+
+            var review = await _context.CodeReviews
+                .FirstOrDefaultAsync(r => r.Id == reviewId);
+            if (review == null)
+                throw new ArgumentException($"Review {reviewId} not found");
+
+            if (review.Status is CodeReviewStatus.Approved or CodeReviewStatus.Rejected)
+            {
+                throw new InvalidOperationException(
+                    $"Cannot resolve findings for review with status {review.Status}");
+            }
 
             var finding = await _context.ReviewFindings
                 .FirstOrDefaultAsync(f => f.Id == findingId && f.ReviewId == reviewId);
             if (finding == null)
                 throw new ArgumentException($"Finding {findingId} not found for review {reviewId}");
 
+            // A bare Resolved=true (or vacuous Resolution) is not a completed disposition.
+            // Allow notes so those rows can leave the blocking set; reject only a real
+            // double-resolve that already has substantive notes.
+            if (IsDispositioned(finding))
+            {
+                throw new InvalidOperationException($"Finding {findingId} is already resolved");
+            }
+
+            var normalizedResolver = NormalizeReviewerName(resolvedBy);
             finding.Resolved = true;
             finding.ResolvedAt = DateTime.UtcNow;
+            finding.ResolvedBy = normalizedResolver;
+            finding.Resolution = resolution!.Trim();
             await _context.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Resolved finding {FindingId} on review {ReviewId} by {ResolvedBy}",
                 findingId,
                 reviewId,
-                LogSanitizer.SanitizeIdentifier(resolvedBy));
+                LogSanitizer.SanitizeIdentifier(normalizedResolver));
         }
+
+        /// <summary>
+        /// Reject vacuous disposition text ("done", "fixed", "ok") that previously
+        /// forged an Approved review after a note-free resolve.
+        /// </summary>
+        internal static bool HasSubstantiveResolution(string? resolution)
+        {
+            if (string.IsNullOrWhiteSpace(resolution))
+                return false;
+
+            var trimmed = resolution.Trim();
+            if (trimmed.Length < 12)
+                return false;
+
+            var normalized = trimmed.ToLowerInvariant();
+            return normalized is not (
+                "done" or "fixed" or "ok" or "okay" or "closed" or "resolved" or
+                "n/a" or "na" or "none" or "complete" or "completed" or "pass" or "passed");
+        }
+
+        private static bool IsDispositioned(ReviewFinding finding) =>
+            finding.Resolved && HasSubstantiveResolution(finding.Resolution);
+
+        private static bool IsBlockingFinding(ReviewFinding finding) =>
+            (finding.Severity == FindingSeverity.Critical || finding.Severity == FindingSeverity.Major) &&
+            !IsDispositioned(finding);
 
         /// <summary>
         /// Approve code review
@@ -457,13 +518,9 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve a code review as one of its completing reviewers; Level A requires separation of duties");
             }
 
-            // Critical and Major findings block approval until dispositioned (Resolved).
-            // SubmitFindingsAsync applies Safety elevation + description keyword floors so
-            // clients cannot under-classify blocking findings to Minor/Info.
-            var blockingFindings = review.Findings
-                .Where(f => !f.Resolved &&
-                            (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major))
-                .ToList();
+            // Critical and Major findings block approval until dispositioned with notes.
+            // Resolved=true without substantive resolution is still a blocking finding.
+            var blockingFindings = review.Findings.Where(IsBlockingFinding).ToList();
             if (blockingFindings.Count > 0)
             {
                 var criticalCount = blockingFindings.Count(f => f.Severity == FindingSeverity.Critical);
@@ -491,10 +548,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Re-check blocking findings after the claim. If a concurrent submit raced in,
             // revert the approval so Approved never coexists with unresolved Critical/Major.
-            var blockingAfterClaim = await _context.ReviewFindings
-                .CountAsync(f => f.ReviewId == reviewId
-                    && !f.Resolved
-                    && (f.Severity == FindingSeverity.Critical || f.Severity == FindingSeverity.Major));
+            var findingsAfterClaim = await _context.ReviewFindings
+                .Where(f => f.ReviewId == reviewId)
+                .ToListAsync();
+            var blockingAfterClaim = findingsAfterClaim.Count(IsBlockingFinding);
             if (blockingAfterClaim > 0)
             {
                 await _context.CodeReviews
@@ -819,6 +876,8 @@ namespace HB_NLP_Research_Lab.Certification
         public DateTime CreatedAt { get; set; }
         public bool Resolved { get; set; }
         public DateTime? ResolvedAt { get; set; }
+        public string? ResolvedBy { get; set; }
+        public string? Resolution { get; set; }
     }
 
     public enum CodeReviewStatus
