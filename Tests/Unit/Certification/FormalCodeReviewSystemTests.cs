@@ -1404,6 +1404,79 @@ public class FormalCodeReviewSystemTests
         persisted.Assignments.Single().Status.Should().Be(ReviewAssignmentStatus.Assigned);
     }
 
+    [Fact]
+    public async Task VerifyComplianceAsync_OneLineApprovedReview_DoesNotSatisfyRoster()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = "noop",
+            LineStart = 1,
+            LineEnd = 1,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 1,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/flightcontrol.cs");
+        check.Issues.Should().Contain(i => i.Contains("file-covering", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_InteriorSpanApprovedReview_DoesNotSatisfyRoster()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = "HandleTick",
+            LineStart = 90,
+            LineEnd = 99,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 92,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("file-covering approved span", StringComparison.OrdinalIgnoreCase));
+    }
+
     private static async Task<(Guid ReviewId, Guid FindingId)> SeedCompletedReviewWithCriticalFindingAsync(
         FormalCodeReviewSystem system,
         CodeReviewDbContext context)

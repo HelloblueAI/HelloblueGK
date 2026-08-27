@@ -34,7 +34,7 @@ namespace HB_NLP_Research_Lab.Certification
             requirement.Description = NormalizeRequiredText(requirement.Description, "Description");
 
             // Priority is fail-closed: unclassified defaults to Critical (MC/DC required),
-            // and safety/critical keywords cannot be under-classified to skip Level A gates.
+            // and safety/critical/hazard keywords cannot be under-classified to skip Level A gates.
             requirement.Priority = ResolvePriority(
                 requirement.RequirementNumber,
                 requirement.Title,
@@ -74,7 +74,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Resolve requirement priority with a keyword floor.
         /// Unclassified priority defaults to Critical so MC/DC cannot be skipped by omission.
-        /// Explicit Medium/Low may not under-classify safety/critical wording.
+        /// Explicit Medium/Low may not under-classify safety/critical/hazard wording.
         /// </summary>
         public static RequirementPriority ResolvePriority(
             string? requirementNumber,
@@ -100,7 +100,7 @@ namespace HB_NLP_Research_Lab.Certification
             string? description)
         {
             if (ContainsPriorityKeyword(requirementNumber, title, description,
-                    "safety", "critical", "catastrophic"))
+                    "safety", "critical", "catastrophic", "hazard", "unsafe", "fatal"))
             {
                 return RequirementPriority.Critical;
             }
@@ -311,6 +311,14 @@ namespace HB_NLP_Research_Lab.Certification
 
             foreach (var req in requirements)
             {
+                // Re-score leftover Medium/Low rows whose title/description hid hazard language.
+                var effectivePriority = ResolvePriority(
+                    req.RequirementNumber,
+                    req.Title,
+                    req.Description,
+                    req.Priority);
+                var isCritical = effectivePriority == RequirementPriority.Critical;
+
                 var hasDesign = HasMeaningfulDesignLinks(req);
                 var hasCode = HasMeaningfulCodeLinks(req);
                 var hasTest = HasMeaningfulTestLinks(req);
@@ -323,7 +331,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingDesignLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no design link"
                     });
                 }
@@ -334,7 +342,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingDesignLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no verified design link"
                     });
                 }
@@ -347,7 +355,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingCodeLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no code implementation"
                     });
                 }
@@ -358,7 +366,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingCodeLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no verified code link"
                     });
                 }
@@ -389,7 +397,7 @@ namespace HB_NLP_Research_Lab.Certification
 
                 // Check for MC/DC coverage for safety-critical requirements.
                 // CoverageType alone is client-asserted — require verified Passed MC/DC evidence.
-                if (req.Priority == RequirementPriority.Critical &&
+                if (isCritical &&
                     !req.TestLinks.Any(t =>
                         t.CoverageType == TestCoverageType.MCDC &&
                         t.Verified &&
