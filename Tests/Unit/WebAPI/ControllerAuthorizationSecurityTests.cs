@@ -777,6 +777,9 @@ public class ControllerAuthorizationSecurityTests
         document.RootElement.GetProperty("appliedLaunchParameters").ValueKind.Should().Be(JsonValueKind.Object);
         document.RootElement.GetProperty("deltaV").GetDouble().Should().BeGreaterThan(
             launch.Engine.SpecificImpulse * 9.81 * Math.Log(2.0));
+        document.RootElement.TryGetProperty("validationAccuracy", out _).Should().BeFalse();
+        document.RootElement.TryGetProperty("validationSource", out var validationSource).Should().BeTrue();
+        validationSource.GetString().Should().NotBeNullOrWhiteSpace();
     }
 
     [Fact]
@@ -881,8 +884,9 @@ public class ControllerAuthorizationSecurityTests
         persisted.ResultsJson.Should().NotBeNullOrWhiteSpace();
 
         using var document = JsonDocument.Parse(persisted.ResultsJson!);
-        document.RootElement.GetProperty("validationAccuracy").GetDouble()
-            .Should().Be(RealTimeValidationEngine.UnprovenValidationAccuracy);
+        document.RootElement.TryGetProperty("validationAccuracy", out _).Should().BeFalse();
+        document.RootElement.GetProperty("validationTrusted").GetBoolean().Should().BeFalse();
+        document.RootElement.TryGetProperty("validationSource", out _).Should().BeTrue();
     }
 
     [Fact]

@@ -352,7 +352,9 @@ public class CreateRequirementRequest
     public string RequirementNumber { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public string Priority { get; set; } = "Medium";
+    // Empty (omitted) is unclassified and fail-closes to Critical. An explicit
+    // "Medium" default previously skipped MC/DC for clients that omitted Priority.
+    public string Priority { get; set; } = string.Empty;
 }
 
 public class LinkDesignRequest
@@ -378,7 +380,8 @@ public class LinkTestRequest
 
 public class RecordTestResultRequest
 {
-    public string TestResult { get; set; } = "Passed";
+    // Empty (omitted) must not parse as Passed — callers have to assert a result.
+    public string TestResult { get; set; } = string.Empty;
 }
 
 public class VerifyRequirementLinkRequest
