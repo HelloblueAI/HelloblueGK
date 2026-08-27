@@ -818,7 +818,6 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
-    [Fact]
     public void ResolveSeverity_WordEndingInNon_DoesNotNegateFollowingElevationToken()
     {
         ProblemReportingSystem.ResolveSeverity(
@@ -932,6 +931,139 @@ public class ProblemReportingSystemTests
         check.TotalCriticalProblems.Should().Be(1);
         check.Issues.Should().Contain(i => i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
         check.Issues.Should().Contain(i => i.Contains("elevated safety language", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_LeftoverMinorWithCatastrophicLanguage_RequiresEvidenceToClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+
+        var leftover = SeedLeftoverMinorCatastrophic(
+            fixture,
+            reportNumber: "PR-2026-0201",
+            status: ProblemReportStatus.Resolved,
+            resolution: "inspected hardware on the stand");
+        await fixture.Reports.SaveChangesAsync();
+
+        leftover.Severity.Should().Be(ProblemSeverity.Minor);
+
+        var act = async () => await system.UpdateStatusAsync(
+            leftover.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "closed after stand inspection notes were recorded",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*linked requirement or test case*");
+
+        var stored = await fixture.Reports.ProblemReports.SingleAsync(r => r.ReportNumber == leftover.ReportNumber);
+        stored.Status.Should().Be(ProblemReportStatus.Resolved);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_LeftoverMinorWithCatastrophicLanguage_PersistsEffectiveSeverity()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+
+        var leftover = SeedLeftoverMinorCatastrophic(
+            fixture,
+            reportNumber: "PR-2026-0202",
+            status: ProblemReportStatus.Open);
+        await fixture.Reports.SaveChangesAsync();
+
+        await system.UpdateStatusAsync(
+            leftover.ReportNumber,
+            ProblemReportStatus.UnderInvestigation,
+            changedBy: "bob");
+
+        var stored = await fixture.Reports.ProblemReports.SingleAsync(r => r.ReportNumber == leftover.ReportNumber);
+        stored.Status.Should().Be(ProblemReportStatus.UnderInvestigation);
+        stored.Severity.Should().Be(ProblemSeverity.Critical);
+    }
+
+    [Fact]
+    public async Task UpdateStatusAsync_LeftoverMinorWithCatastrophicLanguage_ClosesWithEvidence()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-LEFTOVER-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
+
+        var leftover = SeedLeftoverMinorCatastrophic(
+            fixture,
+            reportNumber: "PR-2026-0203",
+            status: ProblemReportStatus.Resolved,
+            resolution: "inspected hardware on the stand");
+        leftover.TestLinks.Add(new ProblemReportTestLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            TestCaseId = "TC-LEFTOVER-001",
+            CreatedAt = DateTime.UtcNow
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        await system.UpdateStatusAsync(
+            leftover.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified on stand with TC-LEFTOVER-001",
+            changedBy: "bob");
+
+        var stored = await fixture.Reports.ProblemReports.SingleAsync(r => r.ReportNumber == leftover.ReportNumber);
+        stored.Status.Should().Be(ProblemReportStatus.Closed);
+        stored.Severity.Should().Be(ProblemSeverity.Critical);
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeTrue();
+        check.TotalCriticalProblems.Should().Be(1);
+        check.UnresolvedCriticalProblems.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task GenerateSummaryAsync_LeftoverMinorWithCatastrophicLanguage_CountsAsCritical()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+
+        SeedLeftoverMinorCatastrophic(
+            fixture,
+            reportNumber: "PR-2026-0204",
+            status: ProblemReportStatus.Open);
+        await fixture.Reports.SaveChangesAsync();
+
+        var summary = await system.GenerateSummaryAsync();
+
+        summary.TotalReports.Should().Be(1);
+        summary.CriticalSeverity.Should().Be(1);
+        summary.MajorSeverity.Should().Be(0);
+        summary.MinorSeverity.Should().Be(0);
+        summary.Reports.Should().ContainSingle(r =>
+            r.ReportNumber == "PR-2026-0204" && r.Severity == ProblemSeverity.Critical);
+    }
+
+    private static ProblemReport SeedLeftoverMinorCatastrophic(
+        ProblemReportFixture fixture,
+        string reportNumber,
+        ProblemReportStatus status,
+        string? resolution = null)
+    {
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = reportNumber,
+            Title = "Ascent anomaly",
+            Description = "Engine behavior during max-Q",
+            Impact = "routine observation of catastrophic engine failure during max-Q ascent",
+            Severity = ProblemSeverity.Minor,
+            Status = status,
+            Resolution = resolution,
+            ReportedBy = "legacy",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = status == ProblemReportStatus.Closed ? DateTime.UtcNow.AddDays(-1) : null
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        return leftover;
     }
 
     private static ProblemReportFixture CreateFixture(string? sharedReportsName = null)
