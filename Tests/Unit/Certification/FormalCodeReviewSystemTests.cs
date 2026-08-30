@@ -1442,6 +1442,160 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task VerifyComplianceAsync_LeftoverAuthorAsApprover_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+
+        // Approve already rejects author-as-approver. A leftover Approved row with
+        // Author == ApprovedBy (case-insensitive) previously stamped IsCompliant.
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9101",
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "Alice",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/hellobluegkengine.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverCompletingReviewerAsApprover_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+
+        var reviewId = Guid.NewGuid();
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = reviewId,
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9102",
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "bob",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.CodeReviewAssignments.Add(new CodeReviewAssignment
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "bob",
+            IsCertified = true,
+            Status = ReviewAssignmentStatus.Completed,
+            AssignedAt = DateTime.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/hellobluegkengine.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithoutApprover_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9103",
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = null,
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverIndependentlyApprovedFileCoveringReview_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+
+        var reviewId = Guid.NewGuid();
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = reviewId,
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9104",
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.CodeReviewAssignments.Add(new CodeReviewAssignment
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            IsCertified = true,
+            Status = ReviewAssignmentStatus.Completed,
+            AssignedAt = DateTime.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        context.ReviewFindings.Add(new ReviewFinding
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            LineNumber = 5,
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Standards,
+            Description = "Consider naming clarity",
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeTrue();
+        check.ReviewedFiles.Should().Be(1);
+        check.UnreviewedFiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_InteriorSpanApprovedReview_DoesNotSatisfyRoster()
     {
         await using var context = CreateContext();
