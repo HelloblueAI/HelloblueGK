@@ -386,9 +386,11 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot implement a change request as its CCB approver; Level A requires separation of duties");
             }
 
-            // Atomic Approved → Implemented claim closes load/check/SaveChanges TOCTOU
-            // (concurrent double-implement).
+            // Claim and item links share one transaction so a failure after the
+            // Approved → Implemented update cannot leave an Implemented row with
+            // no ChangeRequestItemLink evidence (retry would then be rejected).
             var implementedAt = DateTime.UtcNow;
+            await using var transaction = await _context.Database.BeginTransactionAsync();
             var claimed = await _context.ChangeRequests
                 .Where(cr => cr.Id == request.Id && cr.Status == ChangeRequestStatus.Approved)
                 .ExecuteUpdateAsync(setters => setters
@@ -398,6 +400,7 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (claimed == 0)
             {
+                await transaction.RollbackAsync();
                 await _context.Entry(request).ReloadAsync();
                 throw new InvalidOperationException(
                     $"Change request {requestNumber} cannot be implemented from status {request.Status}; " +
@@ -408,7 +411,6 @@ namespace HB_NLP_Research_Lab.Certification
             request.ImplementedBy = normalizedImplementer;
             request.ImplementedAt = implementedAt;
 
-            // Link to affected items
             var links = distinctItemIds.Select(itemId => new ChangeRequestItemLink
             {
                 Id = Guid.NewGuid(),
@@ -418,7 +420,17 @@ namespace HB_NLP_Research_Lab.Certification
             }).ToList();
             _context.ChangeRequestItemLinks.AddRange(links);
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+
             _logger.LogInformation("Implemented change request {RequestNumber}", requestNumber);
         }
 

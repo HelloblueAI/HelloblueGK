@@ -196,6 +196,14 @@ public class ConfigurationManagementSystemTests
         });
         await system.ImplementChangeRequestAsync(created.RequestNumber, "alice", new List<Guid> { item.Id });
 
+        var implemented = await context.ChangeRequests
+            .Include(cr => cr.AffectedItems)
+            .SingleAsync(cr => cr.Id == created.Id);
+        implemented.Status.Should().Be(ChangeRequestStatus.Implemented);
+        implemented.ImplementedBy.Should().Be("alice");
+        implemented.AffectedItems.Should().ContainSingle()
+            .Which.ConfigurationItemId.Should().Be(item.Id);
+
         var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "carol", "CCB re-approve after implement");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be approved from status Implemented*");
