@@ -1159,7 +1159,7 @@ public class FormalCodeReviewSystemTests
         context.CodeReviews.Add(new CodeReview
         {
             Id = Guid.NewGuid(),
-            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9001",
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-legacy-traversal",
             FilePath = "../secrets/core.c",
             FunctionName = "Leak",
             LineStart = 1,

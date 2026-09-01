@@ -104,7 +104,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var created = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -231,7 +231,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var created = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -439,7 +439,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var critical = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -480,7 +480,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var closed = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -519,7 +519,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var closed = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -614,6 +614,60 @@ public class ProblemReportingSystemTests
         var act = async () => await system.LinkToTestAsync(created.ReportNumber, "TC-EMPTY-FILE");
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*Test case*not found*");
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsRtmOnlyBootstrap()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedRequirementWithTestAsync("TC-RTM-ONLY", "Tests/Unit/Sensors/ForgeTests.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(created.ReportNumber, "TC-RTM-ONLY");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Test case*not found*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithRtmOnlyTest_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedRequirementWithTestAsync("TC-RTM-ONLY", "Tests/Unit/Sensors/ForgeTests.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        created.Status = ProblemReportStatus.Closed;
+        created.Resolution = "verified on stand with rtm-only planning link";
+        created.ClosedAt = DateTime.UtcNow;
+        fixture.Reports.ProblemReportTestLinks.Add(new ProblemReportTestLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = created.Id,
+            TestCaseId = "TC-RTM-ONLY",
+            CreatedAt = DateTime.UtcNow
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
     }
 
     [Fact]
