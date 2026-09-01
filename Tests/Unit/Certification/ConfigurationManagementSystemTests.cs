@@ -255,7 +255,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c"
+            FilePath = "Core/core.c"
         });
         var item = context.ConfigurationItems.Single();
         await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
@@ -280,7 +280,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c"
+            FilePath = "Core/core.c"
         });
         await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
         baseline.Status = BaselineStatus.Approved;
@@ -460,12 +460,12 @@ public class ConfigurationManagementSystemTests
             Justification = "Stability",
             RequestedBy = "alice"
         });
-        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
         var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
         {
             ItemName = "injector.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/injector.c"
+            FilePath = "Core/injector.c"
         });
 
         var act = async () => await system.ImplementChangeRequestAsync(
@@ -494,12 +494,12 @@ public class ConfigurationManagementSystemTests
             Justification = "Stability",
             RequestedBy = "alice"
         });
-        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
         var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
         {
             ItemName = "injector.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/injector.c"
+            FilePath = "Core/injector.c"
         });
 
         var act = async () => await system.ImplementChangeRequestAsync(
@@ -619,6 +619,33 @@ public class ConfigurationManagementSystemTests
         var persisted = await context.ChangeRequests.SingleAsync();
         persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
         persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("............")]
+    [InlineData("123456789012")]
+    public async Task ApproveChangeRequestAsync_RejectsPunctuationOrDigitOnlyNotes(string notes)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", notes);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*substantive*")
+            .WithParameterName("approvalNotes");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
+        persisted.ApprovedBy.Should().BeNull();
+        persisted.ApprovalNotes.Should().BeNull();
     }
 
     [Fact]
