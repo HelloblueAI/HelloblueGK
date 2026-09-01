@@ -690,6 +690,39 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Register_WithOversizedUsernameOrName_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateRegisterController(context);
+
+        var shortUsername = await controller.Register(new RegisterRequest
+        {
+            Username = "ab",
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        shortUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var longUsername = await controller.Register(new RegisterRequest
+        {
+            Username = new string('a', 101),
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        longUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var longFirstName = await controller.Register(new RegisterRequest
+        {
+            Username = "ok_user",
+            Email = "ok@example.com",
+            Password = "Password123!",
+            FirstName = new string('A', 101)
+        });
+        longFirstName.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CreateRequirement_InvalidPriority_ReturnsBadRequest()
     {
         await using var requirementsContext = CreateRequirementsContext();
@@ -772,6 +805,104 @@ public class SecurityHardeningTests
         result.Should().BeOfType<CreatedAtActionResult>();
         var persisted = await requirementsContext.Requirements.SingleAsync();
         persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Fact]
+    public async Task CreateRequirement_OmittedPriority_FailClosesToCritical()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-PRI-003",
+            Title = "Valve timing",
+            Description = "Main valve open sequence"
+            // Priority omitted — DTO default must not silently become Medium.
+        });
+
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var persisted = await requirementsContext.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Fact]
+    public async Task RecordTestResult_OmittedResult_ReturnsBadRequest()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PRI-004",
+            Title = "Sensor validity",
+            Description = "Must reject stale sensor frames",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "admin"
+        });
+        var test = await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-004",
+            "Tests/SensorsTests.cs",
+            TestCoverageType.MCDC);
+
+        var result = await controller.RecordTestResult(
+            requirement.Id,
+            test.Id,
+            new RecordTestResultRequest());
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        var persisted = await requirementsContext.RequirementTestLinks.SingleAsync();
+        persisted.TestResult.Should().Be(TestResult.NotRun);
+        persisted.Verified.Should().BeFalse();
     }
 
     [Fact]
@@ -1195,6 +1326,22 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public void BasicHealthAction_DoesNotLeakHostingEnvironment()
+    {
+        var controller = new HealthController(engine: null!);
+        var result = controller.Get();
+
+        var payload = result.Should().BeOfType<OkObjectResult>().Subject.Value;
+        var json = System.Text.Json.JsonSerializer.Serialize(payload);
+
+        json.Should().Contain("Healthy");
+        json.Should().NotContain("environment");
+        json.Should().NotContain("Development");
+        json.Should().NotContain("Production");
+        json.Should().NotContain("Staging");
+    }
+
+    [Fact]
     public async Task GlobalExceptionHandler_InProduction_DoesNotExposeArgumentExceptionDetails()
     {
         const string sensitiveMessage = "database shard secret detail";
@@ -1260,6 +1407,123 @@ public class SecurityHardeningTests
         });
 
         AssertObjectResultDoesNotExpose(result, "Object reference");
+    }
+
+    [Fact]
+    public async Task CreateRequirement_WithEmptyTitle_ReturnsBadRequest()
+    {
+        await using var context = CreateRequirementsContext();
+        var controller = new RequirementsController(
+            new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance),
+            context,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.Name, "admin"), new Claim(ClaimTypes.Role, "Admin") },
+                        "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-EMPTY",
+            Title = "  ",
+            Description = "Real description"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LinkToTest_WithInvalidCoverageType_ReturnsBadRequestNotNotFound()
+    {
+        await using var context = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-LINK-001",
+            Title = "Igniter interlock",
+            Description = "Must inhibit igniter without propellant flow",
+            CreatedBy = "admin"
+        });
+
+        var controller = new RequirementsController(
+            system,
+            context,
+            NullLogger<RequirementsController>.Instance);
+
+        var result = await controller.LinkToTest(requirement.Id, new LinkTestRequest
+        {
+            TestCaseId = "TC-1",
+            TestFile = "Tests/IgniterTests.cs",
+            CoverageType = "NotACoverageType"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.RequirementTestLinks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubmitFindings_WithEmptyListOrInvalidSeverity_ReturnsBadRequest()
+    {
+        await using var context = CreateCodeReviewContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        var review = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(review.Id, "certified-bob");
+
+        var controller = new CodeReviewsController(
+            system,
+            context,
+            NullLogger<CodeReviewsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        new[] { new Claim(ClaimTypes.Name, "certified-bob"), new Claim(ClaimTypes.Role, "Admin") },
+                        "Test"))
+                }
+            }
+        };
+
+        var empty = await controller.SubmitFindings(review.Id, new SubmitFindingsRequest
+        {
+            Findings = new List<ReviewFindingRequest>()
+        });
+        empty.Should().BeOfType<BadRequestObjectResult>();
+
+        var invalidSeverity = await controller.SubmitFindings(review.Id, new SubmitFindingsRequest
+        {
+            Findings = new List<ReviewFindingRequest>
+            {
+                new()
+                {
+                    LineNumber = 5,
+                    Severity = "NotASeverity",
+                    Category = "Standards",
+                    Description = "Consider naming clarity"
+                }
+            }
+        });
+        invalidSeverity.Should().BeOfType<BadRequestObjectResult>();
+
+        context.ReviewFindings.Should().BeEmpty();
+        (await context.CodeReviewAssignments.SingleAsync()).Status.Should().Be(ReviewAssignmentStatus.Assigned);
     }
 
     [Fact]
@@ -1462,6 +1726,35 @@ public class SecurityHardeningTests
         unauthenticatedResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         userResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         adminResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task UnauthenticatedExpensiveMutation_IsRateLimitedBeforeAuthorization()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production, new Dictionary<string, string?>
+        {
+            ["EnableRateLimiting"] = "true"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        HttpResponseMessage lastAllowed = default!;
+        for (var i = 0; i < 10; i++)
+        {
+            using var allowedContent = new StringContent("{}", Encoding.UTF8, "application/json");
+            lastAllowed = await client.PostAsync("/api/v1/simulations", allowedContent);
+        }
+
+        using var blockedContent = new StringContent("{}", Encoding.UTF8, "application/json");
+        var blocked = await client.PostAsync("/api/v1/simulations", blockedContent);
+
+        lastAllowed.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        lastAllowed.Headers.Should().ContainKey("X-RateLimit-Limit");
+        lastAllowed.Headers.GetValues("X-RateLimit-Limit").Should().Contain("10");
+        blocked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        blocked.Headers.Should().ContainKey("Retry-After");
     }
 
     [Fact]
@@ -1939,6 +2232,58 @@ public class SecurityHardeningTests
         context.CodeCoverage.Single().FilePath.Should().Be("Core/Control/EngineController.cs");
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("/etc/passwd")]
+    [InlineData("C:\\temp\\coverage.cs")]
+    [InlineData("../Tests/Unit/Core/EngineTests.cs")]
+    [InlineData("Core/Engine.cs")]
+    public async Task LinkTestCase_WithUnsafeTestFile_ReturnsBadRequestAndDoesNotPersist(string testFile)
+    {
+        await using var context = CreateTestCoverageContext();
+        var controller = CreateTestCoverageController(context);
+        await controller.RecordCoverage(new RecordCoverageRequest
+        {
+            FilePath = "Core/Engine.cs",
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MCDCCoverage = 100
+        });
+
+        var result = await controller.LinkTestCase(new LinkCoverageTestCaseRequest
+        {
+            FilePath = "Core/Engine.cs",
+            TestCaseId = "TC-ENGINE-001",
+            TestFile = testFile,
+            CoverageType = "MCDC"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LinkTestCase_WithInvalidCoverageType_ReturnsBadRequest()
+    {
+        await using var context = CreateTestCoverageContext();
+        var controller = CreateTestCoverageController(context);
+
+        var result = await controller.LinkTestCase(new LinkCoverageTestCaseRequest
+        {
+            FilePath = "Core/Engine.cs",
+            TestCaseId = "TC-ENGINE-001",
+            TestFile = "Tests/Unit/Core/EngineTests.cs",
+            CoverageType = "not-a-type"
+        });
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
     private static string? ReadStoredEngineKey(string modelDataJson)
     {
         using var modelData = JsonDocument.Parse(modelDataJson);
@@ -2149,6 +2494,18 @@ public class SecurityHardeningTests
             .Options;
 
         return new TestCoverageDbContext(options);
+    }
+
+    private static CodeReviewDbContext CreateCodeReviewContext()
+    {
+        var options = new DbContextOptionsBuilder<CodeReviewDbContext>()
+            .UseSqlite($"Data Source=file:code-reviews-sec-{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .Options;
+
+        var context = new CodeReviewDbContext(options);
+        context.Database.OpenConnection();
+        context.Database.EnsureCreated();
+        return context;
     }
 
     private static TestCoverageController CreateTestCoverageController(TestCoverageDbContext context)

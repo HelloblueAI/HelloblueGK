@@ -119,13 +119,18 @@ See [Docs/internal/github-runbooks/TEST_LOCALLY.md](Docs/internal/github-runbook
 
 ## Where to contribute
 
-| If you want to… | Start here |
-|-----------------|------------|
-| Fix API endpoints | `WebAPI/Controllers/` |
-| Add physics logic | `Physics/`, `Core/` |
-| Improve tests | `Tests/Unit/` |
-| Certification features | `Certification/`, `WebAPI/Controllers/Certification/` |
-| Documentation | `Docs/`, `README.md`, `API_DOCUMENTATION.md` |
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) if this is your first PR.
+
+| If you want to… | Start here | Notes |
+|-----------------|------------|--------|
+| Documentation | `Docs/README.md`, `Docs/Project/DEMO.md`, `DEVELOPERS.md` | Skip `Docs/archive/historical/` |
+| Public API docs | `API_DOCUMENTATION.md`, XML comments on one non-certification controller | `HealthController` is a good first file |
+| Isolated tests | `Tests/Unit/WebAPI/`, `Tests/Unit/Core/` | Extend an existing class; do not rewrite suites |
+| Fix API endpoints | `WebAPI/Controllers/` | Avoid `Controllers/Certification/` at first |
+| Physics / solvers | `Physics/`, `Core/` | Open an issue first if the change is large |
+| Certification workflows | `Certification/` | High conflict — ask before starting |
+
+If `dotnet test` is slow or the machine runs out of memory, run a filter (`--filter "FullyQualifiedName~YourTestClass"`). CI still runs the full suite on your PR.
 
 ## Getting help
 

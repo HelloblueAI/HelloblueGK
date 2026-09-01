@@ -245,6 +245,55 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task ApproveBaselineAsync_RejectsUnreleasedItemsWithoutChecksum()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Items", "0.1.0", "unreleased", "alice");
+        await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/core.c"
+        });
+        var item = context.ConfigurationItems.Single();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Released with a checksum*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_RejectsApprovedBaselineWithUnreleasedItems()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Unreleased-SCI", "1.0.0", "legacy unreleased", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/core.c"
+        });
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Released with a checksum*");
+    }
+
+    [Fact]
     public async Task GenerateSCIAsync_RejectsApprovedBaselineWithZeroItems()
     {
         await using var context = CreateContext();
@@ -396,6 +445,70 @@ public class ConfigurationManagementSystemTests
 
         var persisted = await context.ChangeRequests.SingleAsync();
         persisted.Status.Should().Be(ChangeRequestStatus.Approved);
+    }
+
+    [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsApproverAsImplementer()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/injector.c"
+        });
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "Bob",
+            new List<Guid> { item.Id });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*CCB approver*");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Approved);
+        persisted.ImplementedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsEmptyImplementer()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "src/injector.c"
+        });
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "  ",
+            new List<Guid> { item.Id });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("implementedBy");
     }
 
     [Fact]

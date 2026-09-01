@@ -54,6 +54,11 @@ public class RateLimitingMiddlewareSecurityTests
     [InlineData("/api/v1/auth/refresh")]
     [InlineData("/api/v1.0/auth/refresh")]
     [InlineData("/api/v1/account/login")]
+    [InlineData("/api/v1/account/logout")]
+    [InlineData("/api/v1/account/sso-callback")]
+    [InlineData("/api/v1.0/account/sso-callback")]
+    [InlineData("/api/v1/account/sso-signout-callback")]
+    [InlineData("/api/v1.0/account/sso-signout-callback")]
     public async Task InvokeAsync_ForAuthenticationEntrypoints_ShouldUseAuthPolicy(string path)
     {
         // Arrange
@@ -329,6 +334,25 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_ForNonAuthApi_WithOversizedContentLength_ShouldRejectPayload()
+    {
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+        var requestBody = new string('x', 1024);
+
+        var result = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/api/v1/engines",
+            HttpMethods.Post,
+            requestBody: requestBody,
+            includeContentLength: true,
+            contentLengthOverride: RateLimitingMiddleware.MaxRequestBodyBytes + 1);
+
+        result.StatusCode.Should().Be(StatusCodes.Status413PayloadTooLarge);
+        result.NextCalled.Should().BeFalse();
+        result.ResponseBody.Should().Contain("256 KB");
+    }
+
+    [Fact]
     public async Task InvokeAsync_AuthenticatedUsersOnSameIp_DoNotShareExpensiveMutationQuota()
     {
         using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
@@ -384,6 +408,52 @@ public class RateLimitingMiddlewareSecurityTests
     }
 
     [Fact]
+    public async Task InvokeAsync_AnonymousHealthProbe_SkipsRateLimiting()
+    {
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+
+        var result = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            "/health",
+            HttpMethods.Get);
+
+        result.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        result.NextCalled.Should().BeTrue();
+        result.Headers.Should().NotContainKey("X-RateLimit-Limit");
+    }
+
+    [Theory]
+    [InlineData("/health/detailed")]
+    [InlineData("/health/engine")]
+    [InlineData("/Health/detailed")]
+    public async Task InvokeAsync_AuthenticatedHealthApis_AreRateLimited(string path)
+    {
+        using var rateLimitingService = new RateLimitingService(NullLogger<RateLimitingService>.Instance);
+
+        MiddlewareInvocationResult lastAllowed = default!;
+        for (var i = 0; i < 100; i++)
+        {
+            lastAllowed = await InvokeMiddlewareAsync(
+                rateLimitingService,
+                path,
+                HttpMethods.Get,
+                user: CreateAuthenticatedUser("admin"));
+        }
+
+        var blocked = await InvokeMiddlewareAsync(
+            rateLimitingService,
+            path,
+            HttpMethods.Get,
+            user: CreateAuthenticatedUser("admin"));
+
+        lastAllowed.StatusCode.Should().Be(StatusCodes.Status204NoContent);
+        lastAllowed.NextCalled.Should().BeTrue();
+        lastAllowed.Headers["X-RateLimit-Limit"].Should().Be("100");
+        blocked.StatusCode.Should().Be(StatusCodes.Status429TooManyRequests);
+        blocked.NextCalled.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task InvokeAsync_ForAiOptimizationReadEndpoint_ShouldUseAiPolicy()
     {
         // Arrange
@@ -408,6 +478,7 @@ public class RateLimitingMiddlewareSecurityTests
         IPAddress? remoteIpAddress = null,
         string? requestBody = null,
         bool includeContentLength = true,
+        long? contentLengthOverride = null,
         ClaimsPrincipal? user = null)
     {
         var nextCalled = false;
@@ -437,7 +508,7 @@ public class RateLimitingMiddlewareSecurityTests
             context.Request.Body = new MemoryStream(bodyBytes);
             if (includeContentLength)
             {
-                context.Request.ContentLength = bodyBytes.Length;
+                context.Request.ContentLength = contentLengthOverride ?? bodyBytes.Length;
             }
 
             context.Request.ContentType = "application/json";
