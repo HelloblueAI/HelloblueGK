@@ -255,7 +255,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c"
+            FilePath = "Core/core.c"
         });
         var item = context.ConfigurationItems.Single();
         await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
@@ -280,7 +280,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c"
+            FilePath = "Core/core.c"
         });
         await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
         baseline.Status = BaselineStatus.Approved;
@@ -460,12 +460,12 @@ public class ConfigurationManagementSystemTests
             Justification = "Stability",
             RequestedBy = "alice"
         });
-        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
         var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
         {
             ItemName = "injector.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/injector.c"
+            FilePath = "Core/injector.c"
         });
 
         var act = async () => await system.ImplementChangeRequestAsync(
@@ -494,12 +494,12 @@ public class ConfigurationManagementSystemTests
             Justification = "Stability",
             RequestedBy = "alice"
         });
-        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
         var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
         {
             ItemName = "injector.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/injector.c"
+            FilePath = "Core/injector.c"
         });
 
         var act = async () => await system.ImplementChangeRequestAsync(
