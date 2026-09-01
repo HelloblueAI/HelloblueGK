@@ -33,6 +33,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             review.FilePath = NormalizeReviewFilePath(review.FilePath);
             review.FunctionName = NormalizeRequiredText(review.FunctionName, "Function name");
+            // Author is the SoD identity for assign/approve. Empty author previously
+            // skipped "reviewer != author" and "approver != author" gates.
+            review.Author = NormalizeRequiredText(review.Author, "Author");
             if (review.LineStart <= 0 || review.LineEnd < review.LineStart)
             {
                 throw new ArgumentException(
@@ -172,6 +175,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var review = await _context.CodeReviews
+                .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
@@ -185,6 +189,28 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new InvalidOperationException(
                     $"Cannot assign a reviewer to a review with status {review.Status}");
+            }
+
+            // Level A independence: the author cannot satisfy the certified-reviewer
+            // assignment. Approve already blocks author-as-approver; without this
+            // gate, author-as-reviewer + a third-party approve forges independent review.
+            if (string.Equals(
+                    NormalizeReviewerName(review.Author),
+                    normalized,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot assign a code review to its author; Level A requires an independent reviewer");
+            }
+
+            if (review.Assignments.Any(a =>
+                    string.Equals(
+                        NormalizeReviewerName(a.ReviewerName),
+                        normalized,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"Reviewer {normalized} is already assigned to this review");
             }
 
             var assignment = new CodeReviewAssignment
@@ -253,6 +279,13 @@ namespace HB_NLP_Research_Lab.Certification
                     throw new ArgumentException("Finding description is required", nameof(findings));
                 }
 
+                if (!HasSubstantiveFindingDescription(finding.Description))
+                {
+                    throw new ArgumentException(
+                        "Finding description must be substantive; vacuous text such as 'ok'/'lgtm' cannot complete a certified assignment",
+                        nameof(findings));
+                }
+
                 finding.Description = finding.Description.Trim();
             }
 
@@ -274,7 +307,15 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Cannot submit findings for review with status {review.Status}");
             }
 
-            var assignment = review.Assignments.FirstOrDefault(a => a.ReviewerName == reviewerName);
+            var normalizedSubmitter = NormalizeReviewerName(reviewerName);
+            if (string.IsNullOrWhiteSpace(normalizedSubmitter))
+                throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
+
+            var assignment = review.Assignments.FirstOrDefault(a =>
+                string.Equals(
+                    NormalizeReviewerName(a.ReviewerName),
+                    normalizedSubmitter,
+                    StringComparison.OrdinalIgnoreCase));
             if (assignment == null)
                 throw new ArgumentException($"Reviewer {reviewerName} not assigned to review {reviewId}");
 
@@ -293,7 +334,7 @@ namespace HB_NLP_Research_Lab.Certification
 
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
-                finding.ReviewerName = reviewerName;
+                finding.ReviewerName = assignment.ReviewerName;
                 finding.Description = finding.Description.Trim();
                 finding.CreatedAt = DateTime.UtcNow;
                 finding.Severity = ResolveFindingSeverity(finding);
@@ -757,11 +798,16 @@ namespace HB_NLP_Research_Lab.Certification
 
         private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
         {
+            // Leftover Approved rows (status stamped without certified completion or
+            // findings) must not satisfy Level A roster compliance.
             var approvedFiles = (await _context.CodeReviews
+                .Include(r => r.Assignments)
+                .Include(r => r.Findings)
                 .Where(r => r.Status == CodeReviewStatus.Approved)
-                .Select(r => new { r.FilePath, r.LineStart, r.LineEnd })
                 .ToListAsync())
-                .Where(r => !string.IsNullOrWhiteSpace(r.FilePath) && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
+                .Where(r => SatisfiesIndependentReviewEvidence(r)
+                    && !string.IsNullOrWhiteSpace(r.FilePath)
+                    && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
                 .Select(r => NormalizeFilePath(r.FilePath))
                 .Where(IsSafeRelativeRepositoryPath)
                 .ToHashSet(StringComparer.Ordinal);
@@ -857,6 +903,33 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return string.Join("/", segments);
+        }
+
+        private static bool SatisfiesIndependentReviewEvidence(CodeReview review)
+        {
+            var hasCertifiedCompletion = review.Assignments.Any(a =>
+                a.IsCertified && a.Status == ReviewAssignmentStatus.Completed);
+            var hasSubstantiveFinding = review.Findings.Any(f =>
+                HasSubstantiveFindingDescription(f.Description));
+            return hasCertifiedCompletion && hasSubstantiveFinding;
+        }
+
+        /// <summary>
+        /// Reject vacuous finding text ("ok", "lgtm", "fine") that previously completed
+        /// a certified assignment and forged Level A approve/compliance.
+        /// Short real comments such as "nit" remain valid.
+        /// </summary>
+        internal static bool HasSubstantiveFindingDescription(string? description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+                return false;
+
+            var normalized = description.Trim().ToLowerInvariant();
+            return normalized is not (
+                "ok" or "okay" or "lgtm" or "fine" or "pass" or "passed" or
+                "n/a" or "na" or "none" or "done" or "fixed" or "good" or
+                "approved" or "looks good" or "no issues" or "none found" or
+                "ship it" or "complete" or "completed");
         }
 
         private static bool IsSafeRelativeRepositoryPath(string normalizedPath)
