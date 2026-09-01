@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -50,7 +51,7 @@ namespace HB_NLP_Research_Lab.Certification
             report.Id = Guid.NewGuid();
             report.CreatedAt = DateTime.UtcNow;
             report.Status = ProblemReportStatus.Open;
-            report.Severity = ResolveSeverity(report.Impact, explicitSeverity);
+            report.Severity = ResolveSeverity(report.Title, report.Description, report.Impact, explicitSeverity);
 
             const int maxAttempts = 8;
             for (var attempt = 0; attempt < maxAttempts; attempt++)
@@ -286,25 +287,26 @@ namespace HB_NLP_Research_Lab.Certification
                 .Include(pr => pr.RequirementLinks)
                 .Include(pr => pr.TestLinks)
                 .ToListAsync();
+
+            // Re-score leftover rows so "routine observation of catastrophic failure"
+            // stored as Minor cannot skip Critical/Major closure + evidence gates.
             var safetyClassReports = allReports
-                .Where(pr => pr.Severity == ProblemSeverity.Critical ||
-                             pr.Severity == ProblemSeverity.Major)
+                .Select(r => (Report: r, Severity: EffectiveSeverity(r)))
+                .Where(x => x.Severity is ProblemSeverity.Critical or ProblemSeverity.Major)
                 .ToList();
 
             var check = new ProblemReportComplianceCheck
             {
                 CheckedAt = DateTime.UtcNow,
                 TotalCriticalProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Critical),
-                // Rejected is a completed disposition, not an open defect. Counting it as
-                // unresolved made IsCompliant=true coexist with UnresolvedCriticalProblems>0
-                // when a Closed Critical sat beside a Rejected Critical.
+                // Rejected is a completed disposition, not an open defect.
                 UnresolvedCriticalProblems = safetyClassReports.Count(r =>
                     r.Severity == ProblemSeverity.Critical &&
-                    r.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected)),
+                    r.Report.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected)),
                 TotalMajorProblems = safetyClassReports.Count(r => r.Severity == ProblemSeverity.Major),
                 UnresolvedMajorProblems = safetyClassReports.Count(r =>
                     r.Severity == ProblemSeverity.Major &&
-                    r.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected))
+                    r.Report.Status is not (ProblemReportStatus.Closed or ProblemReportStatus.Rejected))
             };
 
             // Empty problem-report store must fail closed — 0 unresolved on 0 reports is not evidence.
@@ -315,28 +317,27 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
-            // Minor-only stores are not Level A evidence. Explicit Minor + "routine observation"
-            // previously forged IsCompliant=true while leaving tickets Open. Rejected-only
-            // Critical/Major rows are also not a completed lifecycle. Closures need
-            // substantive notes AND real (non-phantom) requirement/test evidence.
-            var closedSafetyClass = 0;
-            foreach (var report in safetyClassReports)
+            var underclassified = allReports.Count(r =>
+                r.Severity == ProblemSeverity.Minor &&
+                EffectiveSeverity(r) is ProblemSeverity.Critical or ProblemSeverity.Major);
+            if (underclassified > 0)
             {
-                if (await IsProperlyClosedSafetyClassAsync(report))
+                check.Issues.Add(
+                    $"{underclassified} problem report(s) store Minor severity while title/description/impact contain elevated safety language");
+            }
+
+            var closedSafetyClass = 0;
+            foreach (var item in safetyClassReports)
+            {
+                if (await IsProperlyClosedSafetyClassAsync(item.Report))
                     closedSafetyClass++;
             }
             if (closedSafetyClass == 0)
             {
-                check.IsCompliant = false;
                 check.Issues.Add(
                     "No closed critical or major problem reports with a recorded resolution; DO-178C Level A problem-reporting compliance cannot be asserted");
-                return check;
             }
 
-            // Closed without a recorded resolution must not satisfy certification gates.
-            // Include every non-Rejected severity so a Closed Critical cannot hide an
-            // Open or blank-resolution Minor. Safety-class closures also need
-            // substantive text + verified evidence (leftover rows that skipped UpdateStatus).
             var blockingReports = allReports
                 .Where(r => r.Status != ProblemReportStatus.Rejected)
                 .ToList();
@@ -363,7 +364,10 @@ namespace HB_NLP_Research_Lab.Certification
                     check.Issues.Add("Unresolved minor problem reports block certification");
             }
 
-            check.IsCompliant = unresolvedAny == 0 && improperlyClosed == 0;
+            check.IsCompliant = closedSafetyClass > 0 &&
+                                unresolvedAny == 0 &&
+                                improperlyClosed == 0 &&
+                                underclassified == 0;
             return check;
         }
 
@@ -381,7 +385,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(report.Resolution) || !HasSubstantiveResolution(report.Resolution))
                 return true;
 
-            return report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
+            return EffectiveSeverity(report) is ProblemSeverity.Critical or ProblemSeverity.Major &&
                    !await HasValidResolutionEvidenceAsync(report);
         }
 
@@ -521,9 +525,22 @@ namespace HB_NLP_Research_Lab.Certification
         /// Unclassified impact floors at Critical so Level A compliance cannot be forged by asserting
         /// Minor/Major without supporting keywords. Explicit severity may not under-classify below the floor.
         /// </summary>
-        public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity)
+        public static ProblemSeverity ResolveSeverity(string? impact, ProblemSeverity? explicitSeverity) =>
+            ResolveSeverity(title: null, description: null, impact, explicitSeverity);
+
+        /// <summary>
+        /// Resolve severity from title, description, and impact. High-severity language in any field
+        /// is a floor so "routine observation of catastrophic failure" cannot be stored as Minor.
+        /// Minor keywords apply only to Impact so a title like "Routine stand checkout" cannot
+        /// downgrade unclassified impact below the fail-closed Critical default.
+        /// </summary>
+        public static ProblemSeverity ResolveSeverity(
+            string? title,
+            string? description,
+            string? impact,
+            ProblemSeverity? explicitSeverity)
         {
-            var keywordClass = ClassifyImpactKeywords(impact);
+            var keywordClass = ClassifyReportKeywords(title, description, impact);
             // Unclassified impact (no keywords) floors at Critical — clients cannot assert Minor
             // to hide blocking issues from Critical/Major compliance gates.
             var floor = keywordClass ?? ProblemSeverity.Critical;
@@ -538,6 +555,12 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
+        internal static ProblemSeverity EffectiveSeverity(ProblemReport report)
+        {
+            ArgumentNullException.ThrowIfNull(report);
+            return ResolveSeverity(report.Title, report.Description, report.Impact, report.Severity);
+        }
+
         private static string NormalizeRequiredText(string? value, string fieldName)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -548,25 +571,44 @@ namespace HB_NLP_Research_Lab.Certification
             return value.Trim();
         }
 
-        private static ProblemSeverity? ClassifyImpactKeywords(string? impact)
+        // Same stems/inflections as FormalCodeReviewSystem so "hazardous" / "critically"
+        // still elevate when paired with routine/observation. Only the standalone word
+        // "non" (non-critical / non critical) suppresses elevation — not "cannon critical".
+        private const string StandaloneNonPrefix = @"(?<!(?<![A-Za-z0-9])non[- ]?)";
+
+        private static readonly Regex CriticalElevationPattern = new(
+            StandaloneNonPrefix + @"(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|fail(?:ure|ures|ed)?|loss(?:es)?|lost|unsafe(?:ly)?|fatal(?:ly|ity|ities)?)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex MajorElevationPattern = new(
+            StandaloneNonPrefix + @"(?<![A-Za-z0-9])(major(?:ly)?|significant(?:ly)?|significance)(?![A-Za-z0-9])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static ProblemSeverity? ClassifyReportKeywords(string? title, string? description, string? impact)
         {
-            if (string.IsNullOrWhiteSpace(impact))
-                return null;
+            var elevationText = $"{title} {description} {impact}";
 
-            if (ContainsImpactKeyword(impact, "safety") ||
-                ContainsImpactKeyword(impact, "critical"))
+            if (!string.IsNullOrWhiteSpace(elevationText) && CriticalElevationPattern.IsMatch(elevationText))
+            {
                 return ProblemSeverity.Critical;
+            }
 
-            if (ContainsImpactKeyword(impact, "major") ||
-                ContainsImpactKeyword(impact, "significant"))
+            if (!string.IsNullOrWhiteSpace(elevationText) && MajorElevationPattern.IsMatch(elevationText))
+            {
                 return ProblemSeverity.Major;
+            }
 
-            if (ContainsImpactKeyword(impact, "minor") ||
-                ContainsImpactKeyword(impact, "cosmetic") ||
-                ContainsImpactKeyword(impact, "observation") ||
-                ContainsImpactKeyword(impact, "routine") ||
-                ContainsImpactKeyword(impact, "nit"))
+            // Minor tokens are Impact-only. Title/description "routine" must not hide
+            // unclassified impact (fail-closed Critical) from compliance gates.
+            if (!string.IsNullOrWhiteSpace(impact) &&
+                (ContainsImpactKeyword(impact, "minor") ||
+                 ContainsImpactKeyword(impact, "cosmetic") ||
+                 ContainsImpactKeyword(impact, "observation") ||
+                 ContainsImpactKeyword(impact, "routine") ||
+                 ContainsImpactKeyword(impact, "nit")))
+            {
                 return ProblemSeverity.Minor;
+            }
 
             return null;
         }
@@ -575,21 +617,24 @@ namespace HB_NLP_Research_Lab.Certification
         /// Whole-token keyword match so short tokens like "nit" do not match inside
         /// "nitrogen" / similar substrings.
         /// </summary>
-        private static bool ContainsImpactKeyword(string impact, string keyword)
+        private static bool ContainsImpactKeyword(string impact, string keyword) =>
+            ContainsKeyword(impact, keyword, skipNegated: false);
+
+        private static bool ContainsKeyword(string text, string keyword, bool skipNegated)
         {
             var start = 0;
-            while (start <= impact.Length - keyword.Length)
+            while (start <= text.Length - keyword.Length)
             {
-                var index = impact.IndexOf(keyword, start, StringComparison.OrdinalIgnoreCase);
+                var index = text.IndexOf(keyword, start, StringComparison.OrdinalIgnoreCase);
                 if (index < 0)
                 {
                     return false;
                 }
 
-                var beforeOk = index == 0 || !IsImpactTokenChar(impact[index - 1]);
+                var beforeOk = index == 0 || !IsImpactTokenChar(text[index - 1]);
                 var afterIndex = index + keyword.Length;
-                var afterOk = afterIndex >= impact.Length || !IsImpactTokenChar(impact[afterIndex]);
-                if (beforeOk && afterOk)
+                var afterOk = afterIndex >= text.Length || !IsImpactTokenChar(text[afterIndex]);
+                if (beforeOk && afterOk && !(skipNegated && IsNegatedKeyword(text, index)))
                 {
                     return true;
                 }
@@ -598,6 +643,22 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// "non-critical" / "non critical" must not count as the Critical token.
+        /// </summary>
+        private static bool IsNegatedKeyword(string text, int keywordIndex)
+        {
+            var i = keywordIndex;
+            while (i > 0 && (text[i - 1] == '-' || char.IsWhiteSpace(text[i - 1])))
+            {
+                i--;
+            }
+
+            return i >= 3 &&
+                   text.AsSpan(i - 3, 3).Equals("non", StringComparison.OrdinalIgnoreCase) &&
+                   (i == 3 || !IsImpactTokenChar(text[i - 4]));
         }
 
         private static bool IsImpactTokenChar(char c) => char.IsLetterOrDigit(c);

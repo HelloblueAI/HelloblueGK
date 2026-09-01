@@ -39,7 +39,7 @@ cd WebAPI && dotnet run
 | **Understand what's public vs commercial** | [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) |
 | **Set up locally** | [DEVELOPERS.md](DEVELOPERS.md) |
 | **Understand the codebase** | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| **Contribute (PRs, style, tests)** | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| **Make your first PR** | [CONTRIBUTING.md](CONTRIBUTING.md) — small docs/tests first |
 | **Pick a starter task** | [good first issues](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) |
 | **Report a bug** | [Issue template](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=bug_report.yml) |
 | **API reference** | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) |
@@ -70,8 +70,12 @@ Clone and run your own instance — you control registration, SSO, and secrets. 
 
 ### Community
 
+New contributors are welcome. You do not need to touch certification or security gates for a first PR.
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — first-hour path, safe folders, and how we review
+- [good first issues](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
 - [Code of Conduct](CODE_OF_CONDUCT.md)
-- [GitHub Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions) — questions and ideas
+- [GitHub Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions) — questions before you write code
 - [GitHub Issues](https://github.com/HelloblueAI/HelloblueGK/issues) — bugs and features
 
 ---
