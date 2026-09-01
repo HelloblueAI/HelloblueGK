@@ -755,13 +755,24 @@ namespace HB_NLP_Research_Lab.Certification
             return lineStart == 1 && lineEnd - lineStart + 1 >= MinimumFileReviewLineCount;
         }
 
+        /// <summary>
+        /// Create-time <see cref="NormalizeRequiredText"/> already rejects empty function
+        /// names. Leftover Approved rows must meet the same bar so a file-covering span
+        /// without a named function cannot satisfy a Level A roster entry.
+        /// </summary>
+        private static bool HasNamedFunction(string? functionName) =>
+            !string.IsNullOrWhiteSpace(functionName);
+
         private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
         {
             var approvedFiles = (await _context.CodeReviews
                 .Where(r => r.Status == CodeReviewStatus.Approved)
-                .Select(r => new { r.FilePath, r.LineStart, r.LineEnd })
+                .Select(r => new { r.FilePath, r.FunctionName, r.LineStart, r.LineEnd })
                 .ToListAsync())
-                .Where(r => !string.IsNullOrWhiteSpace(r.FilePath) && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
+                .Where(r =>
+                    !string.IsNullOrWhiteSpace(r.FilePath) &&
+                    HasNamedFunction(r.FunctionName) &&
+                    IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
                 .Select(r => NormalizeFilePath(r.FilePath))
                 .Where(IsSafeRelativeRepositoryPath)
                 .ToHashSet(StringComparer.Ordinal);
@@ -788,10 +799,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (!check.IsCompliant)
             {
-                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
+                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span and a named function");
                 foreach (var file in check.UnreviewedFiles)
                 {
-                    check.Issues.Add($"File not reviewed with a file-covering approved span: {file}");
+                    check.Issues.Add($"File not reviewed with a file-covering approved span and a named function: {file}");
                 }
             }
 
