@@ -340,12 +340,12 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
-        // Whole-token stems plus explicit inflections: "hazards"/"critically"/"unsafely"/"fatality"
+        // Whole-token stems plus explicit inflections: "hazards"/"critically"/"unsafely"/"fatalities"
         // still elevate, but "insignificant" must not hit "significant" and "non-critical" /
         // "non-fatal" must not hit "critical"/"fatal". Hyphenated compounds like
         // "safety-critical" still match. unsafe/fatal close the RTM #160 keyword parity gap.
         private static readonly Regex CriticalKeywordPattern = new(
-            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|unsafe(?:ly)?|fatal(?:ly|ity)?)(?![A-Za-z0-9])",
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|unsafe(?:ly)?|fatal(?:ly|ity|ities)?)(?![A-Za-z0-9])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static readonly Regex MajorKeywordPattern = new(

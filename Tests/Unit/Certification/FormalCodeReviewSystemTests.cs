@@ -991,6 +991,7 @@ public class FormalCodeReviewSystemTests
     [InlineData("Unsafely disabled interlock")]
     [InlineData("Fatal engine shutdown path")]
     [InlineData("Fatally unbounded recursion")]
+    [InlineData("Documented fatalities remain unmitigated")]
     public void ResolveFindingSeverity_DerivedCriticalKeywords_ElevateToCritical(string description)
     {
         FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
