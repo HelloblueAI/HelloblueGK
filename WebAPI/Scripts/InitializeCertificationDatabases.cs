@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
+using System.Data.Common;
 using System.Linq;
 using HB_NLP_Research_Lab.Certification;
 
@@ -38,6 +39,7 @@ public static class CertificationDatabaseInitializer
             
             logger.LogInformation("Initializing CodeReviewDbContext tables...");
             await EnsureTablesExistAsync(codeReviewContext, logger);
+            await EnsureReviewFindingDispositionColumnsAsync(codeReviewContext, logger);
             
             logger.LogInformation("All certification database tables initialized successfully");
         }
@@ -139,5 +141,77 @@ public static class CertificationDatabaseInitializer
             logger.LogError(ex, "Error ensuring tables exist for {ContextType}: {Error}", context.GetType().Name, ex.Message);
             // Don't throw - allow application to continue
         }
+    }
+
+    /// <summary>
+    /// Additive columns for finding disposition notes on legacy EnsureCreated schemas.
+    /// </summary>
+    private static async Task EnsureReviewFindingDispositionColumnsAsync(
+        CodeReviewDbContext context,
+        ILogger logger)
+    {
+        try
+        {
+            if (context.Database.IsSqlite())
+            {
+                if (!await SqliteColumnExistsAsync(context, "ReviewFindings", "ResolvedBy"))
+                {
+                    await context.Database.ExecuteSqlRawAsync(
+                        """ALTER TABLE "ReviewFindings" ADD COLUMN "ResolvedBy" TEXT NULL""");
+                    logger.LogInformation("Added ReviewFindings.ResolvedBy column.");
+                }
+
+                if (!await SqliteColumnExistsAsync(context, "ReviewFindings", "Resolution"))
+                {
+                    await context.Database.ExecuteSqlRawAsync(
+                        """ALTER TABLE "ReviewFindings" ADD COLUMN "Resolution" TEXT NULL""");
+                    logger.LogInformation("Added ReviewFindings.Resolution column.");
+                }
+
+                return;
+            }
+
+            if (context.Database.IsNpgsql())
+            {
+                await context.Database.ExecuteSqlRawAsync(
+                    """
+                    ALTER TABLE "ReviewFindings" ADD COLUMN IF NOT EXISTS "ResolvedBy" character varying(256) NULL;
+                    ALTER TABLE "ReviewFindings" ADD COLUMN IF NOT EXISTS "Resolution" text NULL;
+                    """);
+                logger.LogInformation("Ensured ReviewFindings disposition columns exist (PostgreSQL).");
+            }
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogWarning(ex, "Could not patch ReviewFindings disposition columns.");
+        }
+        catch (DbException ex)
+        {
+            logger.LogWarning(ex, "Could not patch ReviewFindings disposition columns.");
+        }
+    }
+
+    private static async Task<bool> SqliteColumnExistsAsync(
+        DbContext context,
+        string tableName,
+        string columnName)
+    {
+        await using var command = context.Database.GetDbConnection().CreateCommand();
+        if (command.Connection!.State != System.Data.ConnectionState.Open)
+        {
+            await command.Connection.OpenAsync();
+        }
+
+        command.CommandText = $"PRAGMA table_info(\"{tableName}\")";
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (string.Equals(reader.GetString(1), columnName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
