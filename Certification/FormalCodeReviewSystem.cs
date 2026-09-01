@@ -340,11 +340,12 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
-        // Whole-token stems plus explicit inflections: "hazards"/"critically" still elevate,
-        // but "insignificant" must not hit "significant" and "non-critical" must not hit
-        // "critical". Hyphenated compounds like "safety-critical" still match.
+        // Whole-token stems plus explicit inflections: "hazards"/"critically"/"unsafely"/"fatalities"
+        // still elevate, but "insignificant" must not hit "significant" and "non-critical" /
+        // "non-fatal" must not hit "critical"/"fatal". Hyphenated compounds like
+        // "safety-critical" still match. unsafe/fatal close the RTM #160 keyword parity gap.
         private static readonly Regex CriticalKeywordPattern = new(
-            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?)(?![A-Za-z0-9])",
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|unsafe(?:ly)?|fatal(?:ly|ity|ities)?)(?![A-Za-z0-9])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static readonly Regex MajorKeywordPattern = new(
@@ -526,6 +527,24 @@ namespace HB_NLP_Research_Lab.Certification
                     "Cannot approve a code review as one of its completing reviewers; Level A requires separation of duties");
             }
 
+            // Re-score leftover rows so pre-keyword-floor Minors with unsafe/fatal language
+            // cannot sneak past Approve. Persist so the post-claim re-check sees the floor.
+            var leftoverRescored = false;
+            foreach (var finding in review.Findings)
+            {
+                var resolved = ResolveFindingSeverity(finding);
+                if (finding.Severity != resolved)
+                {
+                    finding.Severity = resolved;
+                    leftoverRescored = true;
+                }
+            }
+
+            if (leftoverRescored)
+            {
+                await _context.SaveChangesAsync();
+            }
+
             // Critical and Major findings block approval until dispositioned with notes.
             // Resolved=true without substantive resolution is still a blocking finding.
             var blockingFindings = review.Findings.Where(IsBlockingFinding).ToList();
@@ -559,6 +578,16 @@ namespace HB_NLP_Research_Lab.Certification
             var findingsAfterClaim = await _context.ReviewFindings
                 .Where(f => f.ReviewId == reviewId)
                 .ToListAsync();
+            foreach (var finding in findingsAfterClaim)
+            {
+                var resolved = ResolveFindingSeverity(finding);
+                if (finding.Severity != resolved)
+                    finding.Severity = resolved;
+            }
+
+            if (findingsAfterClaim.Any(f => _context.Entry(f).State == EntityState.Modified))
+                await _context.SaveChangesAsync();
+
             var blockingAfterClaim = findingsAfterClaim.Count(IsBlockingFinding);
             if (blockingAfterClaim > 0)
             {

@@ -880,13 +880,94 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task SubmitFindingsAsync_UnsafeOrFatalKeywords_ElevateClientMinorSeverity()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Correctness,
+                Description = "Unsafe overpressure relief with a fatal shutdown path"
+            }
+        });
+
+        var finding = await context.ReviewFindings.SingleAsync();
+        finding.Severity.Should().Be(FindingSeverity.Critical);
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved critical*");
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_LeftoverUnsafeMinorFinding_RescoresAndBlocks()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var assignment = await context.CodeReviewAssignments.SingleAsync();
+        assignment.Status = ReviewAssignmentStatus.Completed;
+        assignment.CompletedAt = DateTime.UtcNow;
+        created.Status = CodeReviewStatus.Completed;
+        context.ReviewFindings.Add(new ReviewFinding
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = created.Id,
+            ReviewerName = "certified-bob",
+            LineNumber = 5,
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Correctness,
+            Description = "Unsafe overpressure relief valve",
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved critical*");
+
+        var persistedFinding = await context.ReviewFindings.AsNoTracking().SingleAsync();
+        persistedFinding.Severity.Should().Be(FindingSeverity.Critical);
+
+        var persistedReview = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == created.Id);
+        persistedReview.Status.Should().Be(CodeReviewStatus.Completed);
+        persistedReview.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
     public void ResolveFindingSeverity_SubstringAndNegatedKeywords_DoNotElevate()
     {
         FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
         {
             Severity = FindingSeverity.Minor,
             Category = FindingCategory.Correctness,
-            Description = "Change is insignificant, non-critical, and affects a majority of comments"
+            Description = "Change is insignificant, non-critical, non-fatal, and affects a majority of comments"
         }).Should().Be(FindingSeverity.Minor);
     }
 
@@ -906,6 +987,11 @@ public class FormalCodeReviewSystemTests
     [InlineData("Hazardous over-temperature path")]
     [InlineData("Fails critically under abort")]
     [InlineData("Catastrophically unbounded recursion")]
+    [InlineData("Unsafe overpressure relief valve")]
+    [InlineData("Unsafely disabled interlock")]
+    [InlineData("Fatal engine shutdown path")]
+    [InlineData("Fatally unbounded recursion")]
+    [InlineData("Documented fatalities remain unmitigated")]
     public void ResolveFindingSeverity_DerivedCriticalKeywords_ElevateToCritical(string description)
     {
         FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
