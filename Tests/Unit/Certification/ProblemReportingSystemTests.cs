@@ -796,6 +796,162 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
+    public async Task LinkToRequirementAsync_OutsideTreeVerifiedCode_DoesNotSatisfyClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync("tmp/hack.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, forged.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against leftover tmp implementation evidence",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_PrefixQualifiedTraversalVerifiedCode_DoesNotSatisfyClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync("Core/../tmp/hack.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, forged.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against leftover prefix-qualified traversal evidence",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithOutsideTreeCode_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync("tmp/hack.cs");
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9003",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover tmp implementation evidence",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover tmp implementation evidence",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportRequirementLinks.Add(new ProblemReportRequirementLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            RequirementId = forged.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsOutsideTreeCoverageInventory()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-TMP-001", "tmp/forge.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(created.ReportNumber, "TC-TMP-001");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Test case*not found*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithOutsideTreeCoverageTest_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-TMP-001", "tmp/forge.cs");
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9004",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover tmp coverage inventory",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover tmp coverage inventory",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportTestLinks.Add(new ProblemReportTestLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            TestCaseId = "TC-TMP-001",
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task LinkToTestAsync_AcceptsCoverageInventoryTestCase()
     {
         await using var fixture = CreateFixture();
@@ -1079,7 +1235,7 @@ public class ProblemReportingSystemTests
             changedBy: "bob");
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*linked requirement or test case*");
+            .WithMessage("*verified implementation evidence*recorded test case*");
     }
 
     [Fact]
@@ -1258,7 +1414,8 @@ public class ProblemReportingSystemTests
             return requirement;
         }
 
-        public async Task<Requirement> SeedRequirementWithVerifiedCodeAsync()
+        public async Task<Requirement> SeedRequirementWithVerifiedCodeAsync(
+            string codeFile = "Core/Sensors/ChamberPressure.cs")
         {
             var requirement = new Requirement
             {
@@ -1277,7 +1434,7 @@ public class ProblemReportingSystemTests
             {
                 Id = Guid.NewGuid(),
                 RequirementId = requirement.Id,
-                CodeFile = "Core/Sensors/ChamberPressure.cs",
+                CodeFile = codeFile,
                 FunctionName = "ReadCalibratedPressure",
                 LineStart = 1,
                 LineEnd = 40,
