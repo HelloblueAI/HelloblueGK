@@ -263,7 +263,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var created = await system.CreateProblemReportAsync(new ProblemReport
         {
