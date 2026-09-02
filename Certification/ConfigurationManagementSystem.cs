@@ -739,6 +739,11 @@ namespace HB_NLP_Research_Lab.Certification
             if (trimmed.Length < 12)
                 return false;
 
+            // Punctuation-only / digit-only strings ("............", "123456789012")
+            // previously counted as a real CCB disposition.
+            if (!trimmed.Any(char.IsLetter))
+                return false;
+
             var normalized = trimmed.ToLowerInvariant();
             return normalized is not (
                 "done" or "fixed" or "ok" or "okay" or "approved" or "lgtm" or

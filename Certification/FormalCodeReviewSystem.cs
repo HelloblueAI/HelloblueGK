@@ -1058,11 +1058,25 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool SatisfiesIndependentReviewEvidence(CodeReview review)
         {
+            // Leftover Approved rows with placeholder authors ("System") or
+            // placeholder certified reviewers must not satisfy Level A.
+            // Create/register already reject those identities.
+            if (!HasRealActorIdentity(review.Author))
+                return false;
+
             var hasCertifiedCompletion = review.Assignments.Any(a =>
-                a.IsCertified && a.Status == ReviewAssignmentStatus.Completed);
+                a.IsCertified &&
+                a.Status == ReviewAssignmentStatus.Completed &&
+                HasRealActorIdentity(a.ReviewerName));
             var hasSubstantiveFinding = review.Findings.Any(f =>
                 HasSubstantiveFindingDescription(f.Description));
             return hasCertifiedCompletion && hasSubstantiveFinding;
+        }
+
+        private static bool HasRealActorIdentity(string? actorName)
+        {
+            var normalized = NormalizeReviewerName(actorName ?? string.Empty);
+            return !string.IsNullOrWhiteSpace(normalized) && !IsPlaceholderActor(normalized);
         }
 
         /// <summary>

@@ -780,6 +780,33 @@ public class ConfigurationManagementSystemTests
         persisted.ApprovedBy.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("............")]
+    [InlineData("123456789012")]
+    public async Task ApproveChangeRequestAsync_RejectsPunctuationOrDigitOnlyNotes(string notes)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", notes);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*substantive*")
+            .WithParameterName("approvalNotes");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
+        persisted.ApprovedBy.Should().BeNull();
+        persisted.ApprovalNotes.Should().BeNull();
+    }
+
     [Fact]
     public async Task CreateBaselineAsync_RejectsPlaceholderCreator()
     {
