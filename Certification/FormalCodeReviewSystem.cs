@@ -834,8 +834,42 @@ namespace HB_NLP_Research_Lab.Certification
             return lineStart == 1 && lineEnd - lineStart + 1 >= MinimumFileReviewLineCount;
         }
 
+        /// <summary>
+        /// Leftover Approved reviews must still show an independent approver.
+        /// Empty ApprovedBy cannot evaluate SoD. Author-as-approver and
+        /// completing-reviewer-as-approver are the same collisions Approve rejects.
+        /// </summary>
+        private static bool HasIndependentApproval(CodeReview review)
+        {
+            if (string.IsNullOrWhiteSpace(review.ApprovedBy))
+            {
+                return false;
+            }
+
+            var approver = NormalizeReviewerName(review.ApprovedBy);
+            if (!string.IsNullOrWhiteSpace(review.Author)
+                && string.Equals(
+                    NormalizeReviewerName(review.Author),
+                    approver,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var completingReviewers = review.Assignments
+                .Where(a => a.Status == ReviewAssignmentStatus.Completed)
+                .Select(a => a.ReviewerName)
+                .Where(name => !string.IsNullOrWhiteSpace(name));
+
+            return !completingReviewers.Any(name =>
+                string.Equals(NormalizeReviewerName(name), approver, StringComparison.OrdinalIgnoreCase));
+        }
+
         private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
         {
+            // Leftover Approved rows whose author (or completing reviewer) is also
+            // ApprovedBy previously stamped Level A roster compliance. Approve already
+            // rejects those SoD collisions; leftover verify must re-check independence.
             var approvedReviews = await _context.CodeReviews
                 .Include(r => r.Assignments)
                 .Include(r => r.Findings)
@@ -853,6 +887,7 @@ namespace HB_NLP_Research_Lab.Certification
             // findings) must not satisfy Level A roster compliance.
             var approvedFiles = approvedReviews
                 .Where(r => SatisfiesIndependentReviewEvidence(r)
+                    && HasIndependentApproval(r)
                     && !r.Findings.Any(IsEffectivelyBlockingFinding)
                     && !string.IsNullOrWhiteSpace(r.FilePath)
                     && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
