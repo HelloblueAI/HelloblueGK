@@ -84,6 +84,14 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
+            // Create/Add already reject empty versions. Leftover Draft rows with
+            // Version="" must not become official or mint an SCI without identity.
+            if (!HasIdentifiableVersions(baseline))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version");
+            }
+
             // Level A independence: approver must not be the baseline author.
             // Empty or placeholder creators previously skipped this gate.
             var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
@@ -124,7 +132,7 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(i => i.BaselineId == baselineId)
                 .Include(i => i.ConfigurationItem)
                 .ToListAsync();
-            if (claimedItems.Count == 0 || !HasReleasedChecksumEvidence(claimedItems))
+            if (claimedItems.Count == 0 || !HasReleasedChecksumEvidence(claimedItems) || !HasIdentifiableItemVersions(claimedItems))
             {
                 await _context.SoftwareBaselines
                     .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
@@ -136,7 +144,9 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new InvalidOperationException(
                     claimedItems.Count == 0
                         ? $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved"
-                        : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
+                        : !HasReleasedChecksumEvidence(claimedItems)
+                            ? $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum"
+                            : $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -556,6 +566,14 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item is Released with a checksum");
             }
 
+            // Leftover Approved + empty/whitespace item (or baseline) Version previously
+            // minted an SCI. Create/Add already reject those strings.
+            if (!HasIdentifiableVersions(baseline))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI until the baseline and every configuration item have a version");
+            }
+
             var sci = new SoftwareConfigurationIndex
             {
                 BaselineId = baselineId,
@@ -599,10 +617,14 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Check for missing items. Whitespace-only checksums are not evidence —
             // Approve/SCI already use IsNullOrWhiteSpace; leftover "   " rows must
-            // not stamp audit IsCompliant.
-            var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
-            foreach (var item in items)
+            // not stamp audit IsCompliant. Leftover empty/whitespace item versions
+            // must emit the unused MissingVersion issue type so SCI identity cannot
+            // be forged after Create/Add already rejected those strings.
+            var links = baseline.ConfigurationItems.ToList();
+            var items = links.Select(bci => bci.ConfigurationItem).ToList();
+            foreach (var link in links)
             {
+                var item = link.ConfigurationItem;
                 if (!HasChecksumEvidence(item.Checksum))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
@@ -611,6 +633,17 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = AuditIssueType.MissingChecksum,
                         Severity = IssueSeverity.Major,
                         Description = $"Configuration item {item.ItemName} has no checksum"
+                    });
+                }
+
+                if (!HasVersionEvidence(link.Version))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.MissingVersion,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has no version"
                     });
                 }
 
@@ -635,6 +668,17 @@ namespace HB_NLP_Research_Lab.Certification
                         Description = $"Configuration item {item.ItemName} path is outside the repository evidence tree"
                     });
                 }
+            }
+
+            if (!HasVersionEvidence(baseline.Version))
+            {
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.MissingVersion,
+                    Severity = IssueSeverity.Major,
+                    Description = $"Baseline {baseline.BaselineName} has no version"
+                });
             }
 
             report.TotalItems = items.Count;
@@ -772,6 +816,16 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasChecksumEvidence(string? checksum) =>
             !string.IsNullOrWhiteSpace(checksum);
+
+        private static bool HasVersionEvidence(string? version) =>
+            !string.IsNullOrWhiteSpace(version);
+
+        private static bool HasIdentifiableItemVersions(IEnumerable<BaselineConfigurationItem> links) =>
+            links.All(link => HasVersionEvidence(link.Version));
+
+        private static bool HasIdentifiableVersions(SoftwareBaseline baseline) =>
+            HasVersionEvidence(baseline.Version) &&
+            HasIdentifiableItemVersions(baseline.ConfigurationItems);
 
         private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link =>
