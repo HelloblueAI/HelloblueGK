@@ -1328,7 +1328,7 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
-    public async Task UpdateStatusAsync_LeftoverMinorWithCatastrophicLanguage_PersistsEffectiveSeverity()
+    public async Task UpdateStatusAsync_LeftoverMinorWithCatastrophicLanguage_DoesNotPersistEffectiveSeverityUntilClosed()
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
@@ -1346,28 +1346,28 @@ public class ProblemReportingSystemTests
 
         var stored = await fixture.Reports.ProblemReports.SingleAsync(r => r.ReportNumber == leftover.ReportNumber);
         stored.Status.Should().Be(ProblemReportStatus.UnderInvestigation);
-        stored.Severity.Should().Be(ProblemSeverity.Critical);
+        stored.Severity.Should().Be(ProblemSeverity.Minor);
     }
 
     [Fact]
-    public async Task UpdateStatusAsync_RejectingLeftoverUnderclassifiedMinor_DoesNotForgeCompliance()
+    public async Task VerifyComplianceAsync_RejectingLeftoverMinorWithCatastrophicLanguage_DoesNotForgeCompliance()
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
         await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
-        var closedCritical = await system.CreateProblemReportAsync(new ProblemReport
+        var closed = await system.CreateProblemReportAsync(new ProblemReport
         {
             Title = "Critical sensor fault",
             Description = "Chamber pressure sensor stuck",
             Impact = "critical safety instrumentation fault",
             ReportedBy = "alice"
         });
-        await system.LinkToTestAsync(closedCritical.ReportNumber, "TC-SENSOR-001");
-        await system.UpdateStatusAsync(closedCritical.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
-        await system.UpdateStatusAsync(closedCritical.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+        await system.LinkToTestAsync(closed.ReportNumber, "TC-SENSOR-001");
+        await system.UpdateStatusAsync(closed.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(closed.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
         await system.UpdateStatusAsync(
-            closedCritical.ReportNumber,
+            closed.ReportNumber,
             ProblemReportStatus.Closed,
             resolution: "verified on stand with TC-SENSOR-001",
             changedBy: "bob");
@@ -1378,6 +1378,12 @@ public class ProblemReportingSystemTests
             status: ProblemReportStatus.Open);
         await fixture.Reports.SaveChangesAsync();
 
+        // Investigate then reject — neither transition may persist the Critical
+        // floor, or a leftover Minor drops out of the underclassified gate.
+        await system.UpdateStatusAsync(
+            leftover.ReportNumber,
+            ProblemReportStatus.UnderInvestigation,
+            changedBy: "bob");
         await system.UpdateStatusAsync(leftover.ReportNumber, ProblemReportStatus.Rejected, changedBy: "bob");
 
         var stored = await fixture.Reports.ProblemReports.SingleAsync(r => r.ReportNumber == leftover.ReportNumber);

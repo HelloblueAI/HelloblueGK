@@ -108,8 +108,11 @@ namespace HB_NLP_Research_Lab.Certification
             DateTime? closedAtToPersist = report.ClosedAt;
             // Leftover rows may store Minor while title/description/impact still
             // contain catastrophic language. Re-score before the close gate so
-            // those rows cannot skip Critical/Major evidence.
+            // those rows cannot skip Critical/Major evidence. Persist the floor
+            // only on Closed-after-evidence — Reject/investigate must not upgrade
+            // stored Minor and drop the leftover out of the underclassified gate.
             var effectiveSeverity = EffectiveSeverity(report);
+            var severityToPersist = report.Severity;
             if (newStatus == ProblemReportStatus.Closed)
             {
                 if (string.IsNullOrWhiteSpace(resolution))
@@ -136,13 +139,8 @@ namespace HB_NLP_Research_Lab.Certification
 
                 resolutionToPersist = normalizedResolution;
                 closedAtToPersist = DateTime.UtcNow;
+                severityToPersist = effectiveSeverity;
             }
-
-            // Rejecting must not rewrite stored severity — that would drop leftover
-            // underclassified Minors out of VerifyComplianceAsync's fail-closed gate.
-            var severityToPersist = newStatus == ProblemReportStatus.Rejected
-                ? report.Severity
-                : effectiveSeverity;
 
             // Atomic expected-status claim closes load/check/SaveChanges TOCTOU
             // (concurrent Open→UnderInvestigation vs Open→Rejected last-writer-wins).
