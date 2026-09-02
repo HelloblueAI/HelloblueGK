@@ -588,7 +588,12 @@ namespace HB_NLP_Research_Lab.Certification
                 Issues = new List<ConfigurationAuditIssue>()
             };
 
-            // Check for missing items
+            // Check for missing or placeholder checksums. Placeholder tokens
+            // ("n/a" / "none" / "todo") are not integrity evidence — Approve/SCI
+            // already require a non-whitespace checksum, but leftover "n/a" rows
+            // previously stamped audit IsCompliant and minted an SCI.
+            // Whitespace-only leftovers stay MissingChecksum-via-IsNullOrEmpty
+            // (owned by leftover whitespace audit work); do not widen that here.
             var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var item in items)
             {
@@ -600,6 +605,16 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = AuditIssueType.MissingChecksum,
                         Severity = IssueSeverity.Major,
                         Description = $"Configuration item {item.ItemName} has no checksum"
+                    });
+                }
+                else if (IsPlaceholderChecksum(item.Checksum))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.InvalidChecksum,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has a placeholder checksum that is not integrity evidence"
                     });
                 }
 
@@ -746,7 +761,24 @@ namespace HB_NLP_Research_Lab.Certification
             links.All(link =>
                 link.ConfigurationItem != null &&
                 link.ConfigurationItem.Status == ConfigurationItemStatus.Released &&
-                !string.IsNullOrWhiteSpace(link.ConfigurationItem.Checksum));
+                HasChecksumEvidence(link.ConfigurationItem.Checksum));
+
+        private static bool HasChecksumEvidence(string? checksum) =>
+            !string.IsNullOrWhiteSpace(checksum) && !IsPlaceholderChecksum(checksum);
+
+        /// <summary>
+        /// Reject vacuous checksum tokens that previously approved a baseline,
+        /// minted an SCI, and stamped leftover audit IsCompliant.
+        /// </summary>
+        internal static bool IsPlaceholderChecksum(string? checksum)
+        {
+            if (string.IsNullOrWhiteSpace(checksum))
+                return false;
+
+            var normalized = checksum.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
     }
 
     // Data Models

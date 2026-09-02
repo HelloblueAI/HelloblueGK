@@ -277,6 +277,39 @@ public class ConfigurationManagementSystemTests
         persisted.ApprovedBy.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    [InlineData(" TBD ")]
+    public async Task ApproveBaselineAsync_RejectsPlaceholderChecksum(string checksum)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Placeholder-Checksum", "0.1.0", "placeholder", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = checksum,
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = checksum;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Released with a checksum*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
     [Fact]
     public async Task GenerateSCIAsync_RejectsApprovedBaselineWithUnreleasedItems()
     {
@@ -317,6 +350,94 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.GenerateSCIAsync(baseline.Id);
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*SCI cannot be generated without configuration evidence*");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("NONE")]
+    [InlineData("todo")]
+    public async Task GenerateSCIAsync_RejectsApprovedBaselineWithPlaceholderChecksum(string checksum)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-SCI", "1.0.0", "leftover placeholder", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = checksum,
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = checksum;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Released with a checksum*");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task PerformAuditAsync_LeftoverApprovedPlaceholderChecksum_FailsClosed(string checksum)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + placeholder checksum — leftover rows
+        // previously stamped audit IsCompliant and minted an SCI.
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Checksum", "1.0.0", "leftover", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = checksum,
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = checksum;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidChecksum &&
+            i.ItemName == "core.c");
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedMatchingChecksum_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Matching-Checksum", "1.0.0", "leftover ok", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
     }
 
     [Fact]
