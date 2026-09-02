@@ -33,6 +33,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             review.FilePath = NormalizeReviewFilePath(review.FilePath);
             review.FunctionName = NormalizeRequiredText(review.FunctionName, "Function name");
+            // Author is the SoD identity for assign/approve. Empty or placeholder
+            // authors ("System"/"unknown") previously skipped independence gates.
+            review.Author = NormalizeActorIdentity(review.Author, "Author");
             if (review.LineStart <= 0 || review.LineEnd < review.LineStart)
             {
                 throw new ArgumentException(
@@ -103,7 +106,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(reviewerName))
                 throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
 
-            var normalized = NormalizeReviewerName(reviewerName);
+            var normalized = NormalizeActorIdentity(reviewerName, nameof(reviewerName));
             var existing = await FindCertifiedReviewerAsync(normalized);
             if (existing != null)
             {
@@ -163,7 +166,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(reviewerName))
                 throw new ArgumentException("Reviewer name is required", nameof(reviewerName));
 
-            var normalized = NormalizeReviewerName(reviewerName);
+            var normalized = NormalizeActorIdentity(reviewerName, nameof(reviewerName));
             var rosterEntry = await FindCertifiedReviewerAsync(normalized);
             if (rosterEntry is not { IsActive: true })
             {
@@ -172,6 +175,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var review = await _context.CodeReviews
+                .Include(r => r.Assignments)
                 .FirstOrDefaultAsync(r => r.Id == reviewId);
             if (review == null)
                 throw new ArgumentException($"Review {reviewId} not found");
@@ -185,6 +189,28 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new InvalidOperationException(
                     $"Cannot assign a reviewer to a review with status {review.Status}");
+            }
+
+            // Level A independence: the author cannot satisfy the certified-reviewer
+            // assignment. Approve already blocks author-as-approver; without this
+            // gate, author-as-reviewer + a third-party approve forges independent review.
+            if (string.Equals(
+                    NormalizeReviewerName(review.Author),
+                    normalized,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot assign a code review to its author; Level A requires an independent reviewer");
+            }
+
+            if (review.Assignments.Any(a =>
+                    string.Equals(
+                        NormalizeReviewerName(a.ReviewerName),
+                        normalized,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"Reviewer {normalized} is already assigned to this review");
             }
 
             var assignment = new CodeReviewAssignment
@@ -253,6 +279,13 @@ namespace HB_NLP_Research_Lab.Certification
                     throw new ArgumentException("Finding description is required", nameof(findings));
                 }
 
+                if (!HasSubstantiveFindingDescription(finding.Description))
+                {
+                    throw new ArgumentException(
+                        "Finding description must be substantive; vacuous text such as 'ok'/'lgtm' cannot complete a certified assignment",
+                        nameof(findings));
+                }
+
                 finding.Description = finding.Description.Trim();
             }
 
@@ -274,7 +307,13 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Cannot submit findings for review with status {review.Status}");
             }
 
-            var assignment = review.Assignments.FirstOrDefault(a => a.ReviewerName == reviewerName);
+            var normalizedSubmitter = NormalizeActorIdentity(reviewerName, nameof(reviewerName));
+
+            var assignment = review.Assignments.FirstOrDefault(a =>
+                string.Equals(
+                    NormalizeReviewerName(a.ReviewerName),
+                    normalizedSubmitter,
+                    StringComparison.OrdinalIgnoreCase));
             if (assignment == null)
                 throw new ArgumentException($"Reviewer {reviewerName} not assigned to review {reviewId}");
 
@@ -293,7 +332,7 @@ namespace HB_NLP_Research_Lab.Certification
 
                 finding.Id = Guid.NewGuid();
                 finding.ReviewId = reviewId;
-                finding.ReviewerName = reviewerName;
+                finding.ReviewerName = assignment.ReviewerName;
                 finding.Description = finding.Description.Trim();
                 finding.CreatedAt = DateTime.UtcNow;
                 finding.Severity = ResolveFindingSeverity(finding);
@@ -340,11 +379,12 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
-        // Whole-token stems plus explicit inflections: "hazards"/"critically" still elevate,
-        // but "insignificant" must not hit "significant" and "non-critical" must not hit
-        // "critical". Hyphenated compounds like "safety-critical" still match.
+        // Whole-token stems plus explicit inflections: "hazards"/"critically"/"unsafely"/"fatalities"
+        // still elevate, but "insignificant" must not hit "significant" and "non-critical" /
+        // "non-fatal" must not hit "critical"/"fatal". Hyphenated compounds like
+        // "safety-critical" still match. unsafe/fatal close the RTM #160 keyword parity gap.
         private static readonly Regex CriticalKeywordPattern = new(
-            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?)(?![A-Za-z0-9])",
+            @"(?<!non[- ]?)(?<![A-Za-z0-9])(safety|safeties|critical(?:ly|ity)?|catastrophic(?:ally)?|hazard(?:s|ous|ously)?|unsafe(?:ly)?|fatal(?:ly|ity|ities)?)(?![A-Za-z0-9])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         private static readonly Regex MajorKeywordPattern = new(
@@ -452,6 +492,18 @@ namespace HB_NLP_Research_Lab.Certification
             !IsDispositioned(finding);
 
         /// <summary>
+        /// Leftover Approved rows may store Minor while description language is
+        /// still Critical/Major. Re-score before compliance/summary so those
+        /// findings cannot satisfy Level A as a clean review.
+        /// </summary>
+        private static bool IsEffectivelyBlockingFinding(ReviewFinding finding)
+        {
+            var severity = ResolveFindingSeverity(finding);
+            return (severity == FindingSeverity.Critical || severity == FindingSeverity.Major) &&
+                   !IsDispositioned(finding);
+        }
+
+        /// <summary>
         /// Approve code review
         /// </summary>
         public async Task ApproveReviewAsync(Guid reviewId, string approvedBy)
@@ -501,11 +553,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Level A independence: approver must not be the author or a completing reviewer.
-            var normalizedApprover = NormalizeReviewerName(approvedBy);
-            if (string.IsNullOrWhiteSpace(normalizedApprover))
-            {
-                throw new ArgumentException("Approver is required", nameof(approvedBy));
-            }
+            var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
 
             if (!string.IsNullOrWhiteSpace(review.Author) &&
                 string.Equals(NormalizeReviewerName(review.Author), normalizedApprover, StringComparison.OrdinalIgnoreCase))
@@ -524,6 +572,24 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new InvalidOperationException(
                     "Cannot approve a code review as one of its completing reviewers; Level A requires separation of duties");
+            }
+
+            // Re-score leftover rows so pre-keyword-floor Minors with unsafe/fatal language
+            // cannot sneak past Approve. Persist so the post-claim re-check sees the floor.
+            var leftoverRescored = false;
+            foreach (var finding in review.Findings)
+            {
+                var resolved = ResolveFindingSeverity(finding);
+                if (finding.Severity != resolved)
+                {
+                    finding.Severity = resolved;
+                    leftoverRescored = true;
+                }
+            }
+
+            if (leftoverRescored)
+            {
+                await _context.SaveChangesAsync();
             }
 
             // Critical and Major findings block approval until dispositioned with notes.
@@ -559,6 +625,16 @@ namespace HB_NLP_Research_Lab.Certification
             var findingsAfterClaim = await _context.ReviewFindings
                 .Where(f => f.ReviewId == reviewId)
                 .ToListAsync();
+            foreach (var finding in findingsAfterClaim)
+            {
+                var resolved = ResolveFindingSeverity(finding);
+                if (finding.Severity != resolved)
+                    finding.Severity = resolved;
+            }
+
+            if (findingsAfterClaim.Any(f => _context.Entry(f).State == EntityState.Modified))
+                await _context.SaveChangesAsync();
+
             var blockingAfterClaim = findingsAfterClaim.Count(IsBlockingFinding);
             if (blockingAfterClaim > 0)
             {
@@ -600,9 +676,12 @@ namespace HB_NLP_Research_Lab.Certification
                 Approved = reviews.Count(r => r.Status == CodeReviewStatus.Approved),
                 Rejected = reviews.Count(r => r.Status == CodeReviewStatus.Rejected),
                 TotalFindings = reviews.Sum(r => r.Findings.Count),
-                CriticalFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Critical)),
-                MajorFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Major)),
-                MinorFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Minor))
+                CriticalFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Critical)),
+                MajorFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Major)),
+                MinorFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Minor))
             };
 
             return summary;
@@ -622,6 +701,8 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(filePath))
                 throw new ArgumentException("File path is required", nameof(filePath));
 
+            // Same repository-tree gate as CreateReview — tmp/ and bare filenames
+            // must not enter the Level A required-file roster.
             var normalized = NormalizeReviewFilePath(filePath);
 
             var matches = (await _context.RequiredReviewFiles.ToListAsync())
@@ -703,10 +784,37 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task<CodeReviewComplianceCheck> VerifyComplianceAsync()
         {
-            var normalizedRequired = (await _context.RequiredReviewFiles
+            var requiredRows = await _context.RequiredReviewFiles
                 .Where(f => f.IsActive)
                 .Select(f => f.FilePath)
-                .ToListAsync())
+                .ToListAsync();
+
+            var unsafeRosterPaths = requiredRows
+                .Where(f => !string.IsNullOrWhiteSpace(f) && !IsStoredReviewPathSafe(f))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            // Leftover outside-tree roster rows (tmp/, bare filenames) must not
+            // satisfy Level A even when a matching Approved review exists.
+            if (unsafeRosterPaths.Count > 0)
+            {
+                var issues = new List<string>
+                {
+                    $"{unsafeRosterPaths.Count} required review file(s) are outside the implementation or test tree"
+                };
+                issues.AddRange(unsafeRosterPaths.Select(path => $"Unsafe required review file: {path}"));
+
+                return new CodeReviewComplianceCheck
+                {
+                    CheckedAt = DateTime.UtcNow,
+                    TotalRequiredFiles = requiredRows.Count(f => !string.IsNullOrWhiteSpace(f)),
+                    IsCompliant = false,
+                    UnreviewedFiles = unsafeRosterPaths,
+                    Issues = issues
+                };
+            }
+
+            var normalizedRequired = requiredRows
                 .Where(f => !string.IsNullOrWhiteSpace(f))
                 .Select(NormalizeFilePath)
                 .Distinct(StringComparer.Ordinal)
@@ -762,15 +870,30 @@ namespace HB_NLP_Research_Lab.Certification
             // Leftover Approved rows whose author (or completing reviewer) is also
             // ApprovedBy previously stamped Level A roster compliance. Approve already
             // rejects those SoD collisions; leftover verify must re-check independence.
-            var approvedFiles = (await _context.CodeReviews
+            var approvedReviews = await _context.CodeReviews
                 .Include(r => r.Assignments)
+                .Include(r => r.Findings)
                 .Where(r => r.Status == CodeReviewStatus.Approved)
-                .ToListAsync())
-                .Where(r => !string.IsNullOrWhiteSpace(r.FilePath)
-                            && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd)
-                            && HasIndependentApproval(r))
+                .ToListAsync();
+
+            // Leftover Approved + undispositioned Critical/Major (stored or
+            // effective) must not satisfy the roster. #161 re-scores at Approve
+            // only; already-stamped rows still need a verify-time gate.
+            var leftoverBlocking = approvedReviews
+                .SelectMany(r => r.Findings)
+                .Count(IsEffectivelyBlockingFinding);
+
+            // Leftover Approved rows (status stamped without certified completion or
+            // findings) must not satisfy Level A roster compliance.
+            var approvedFiles = approvedReviews
+                .Where(r => SatisfiesIndependentReviewEvidence(r)
+                    && HasIndependentApproval(r)
+                    && !r.Findings.Any(IsEffectivelyBlockingFinding)
+                    && !string.IsNullOrWhiteSpace(r.FilePath)
+                    && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
                 .Select(r => NormalizeFilePath(r.FilePath))
                 .Where(IsSafeRelativeRepositoryPath)
+                .Where(IsStoredReviewPathSafe)
                 .ToHashSet(StringComparer.Ordinal);
 
             var check = new CodeReviewComplianceCheck
@@ -790,10 +913,16 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
-            // Traversal / absolute roster rows never match a safe approved review.
-            check.IsCompliant = check.UnreviewedFiles.Count == 0;
+            if (leftoverBlocking > 0)
+            {
+                check.Issues.Add(
+                    $"{leftoverBlocking} approved review finding(s) remain undispositioned at effective Critical/Major severity");
+            }
 
-            if (!check.IsCompliant)
+            // Traversal / absolute roster rows never match a safe approved review.
+            check.IsCompliant = check.UnreviewedFiles.Count == 0 && leftoverBlocking == 0;
+
+            if (check.UnreviewedFiles.Count > 0)
             {
                 check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
                 foreach (var file in check.UnreviewedFiles)
@@ -823,6 +952,11 @@ namespace HB_NLP_Research_Lab.Certification
         /// Canonical review path: trim, forward slashes, lowercase — so case-sensitive
         /// stores cannot hold duplicate roster rows for the same logical file.
         /// </summary>
+        private static readonly HashSet<string> AllowedReviewRoots = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Core", "WebAPI", "Certification", "Physics", "AI", "Models", "Aerospace", "Scripts", "Tests"
+        };
+
         private static string NormalizeFilePath(string filePath) =>
             filePath.Trim().Replace('\\', '/').ToLowerInvariant();
 
@@ -831,39 +965,109 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static string NormalizeReviewFilePath(string? filePath)
         {
+            if (!TryNormalizeReviewFilePath(filePath, out var normalized, out var error))
+            {
+                throw new ArgumentException(error, nameof(filePath));
+            }
+
+            return normalized;
+        }
+
+        private static bool IsStoredReviewPathSafe(string? filePath)
+        {
+            return TryNormalizeReviewFilePath(filePath, out var normalized, out _)
+                && string.Equals(filePath, normalized, StringComparison.Ordinal);
+        }
+
+        private static bool TryNormalizeReviewFilePath(string? filePath, out string normalized, out string error)
+        {
+            normalized = string.Empty;
+            error = string.Empty;
+
             if (string.IsNullOrWhiteSpace(filePath))
             {
-                throw new ArgumentException("File path is required", nameof(filePath));
+                error = "File path is required";
+                return false;
             }
 
-            var normalized = NormalizeFilePath(filePath);
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || normalized.Contains("://", StringComparison.Ordinal)
-                || normalized.Contains(':', StringComparison.Ordinal))
+            var trimmed = NormalizeFilePath(filePath);
+            if (trimmed.StartsWith("/", StringComparison.Ordinal)
+                || trimmed.StartsWith("//", StringComparison.Ordinal)
+                || trimmed.Contains("://", StringComparison.Ordinal)
+                || trimmed.Contains(':', StringComparison.Ordinal))
             {
-                throw new ArgumentException(
-                    "File path must be relative to the repository.",
-                    nameof(filePath));
+                error = "File path must be relative to the repository.";
+                return false;
             }
 
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0
                 || segments.Any(segment => segment is "." or ".."))
             {
-                throw new ArgumentException(
-                    "File path must not contain traversal segments.",
-                    nameof(filePath));
+                error = "File path must not contain traversal segments.";
+                return false;
             }
 
-            if (!IsSafeRelativeRepositoryPath(normalized))
+            if (segments.Length < 2 || !AllowedReviewRoots.Contains(segments[0]))
+            {
+                error =
+                    "File path must be under an implementation or test tree (Core/, WebAPI/, Certification/, Physics/, AI/, Models/, Aerospace/, Scripts/, Tests/).";
+                return false;
+            }
+
+            normalized = string.Join("/", segments);
+            return true;
+        }
+
+        private static string NormalizeActorIdentity(string? actorName, string paramName)
+        {
+            var normalized = NormalizeReviewerName(actorName ?? string.Empty);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                throw new ArgumentException($"{paramName} is required", paramName);
+            }
+
+            if (IsPlaceholderActor(normalized))
             {
                 throw new ArgumentException(
-                    "Review file path must be relative to the repository and must not contain traversal segments.",
-                    nameof(filePath));
+                    $"{paramName} must be a real actor identity, not a placeholder such as 'System'",
+                    paramName);
             }
 
-            return string.Join("/", segments);
+            return normalized;
+        }
+
+        private static bool IsPlaceholderActor(string actorName)
+        {
+            var normalized = actorName.Trim().ToLowerInvariant();
+            return normalized is "system" or "unknown" or "n/a" or "na" or "none" or "anonymous";
+        }
+
+        private static bool SatisfiesIndependentReviewEvidence(CodeReview review)
+        {
+            var hasCertifiedCompletion = review.Assignments.Any(a =>
+                a.IsCertified && a.Status == ReviewAssignmentStatus.Completed);
+            var hasSubstantiveFinding = review.Findings.Any(f =>
+                HasSubstantiveFindingDescription(f.Description));
+            return hasCertifiedCompletion && hasSubstantiveFinding;
+        }
+
+        /// <summary>
+        /// Reject vacuous finding text ("ok", "lgtm", "fine") that previously completed
+        /// a certified assignment and forged Level A approve/compliance.
+        /// Short real comments such as "nit" remain valid.
+        /// </summary>
+        internal static bool HasSubstantiveFindingDescription(string? description)
+        {
+            if (string.IsNullOrWhiteSpace(description))
+                return false;
+
+            var normalized = description.Trim().ToLowerInvariant();
+            return normalized is not (
+                "ok" or "okay" or "lgtm" or "fine" or "pass" or "passed" or
+                "n/a" or "na" or "none" or "done" or "fixed" or "good" or
+                "approved" or "looks good" or "no issues" or "none found" or
+                "ship it" or "complete" or "completed");
         }
 
         private static bool IsSafeRelativeRepositoryPath(string normalizedPath)
