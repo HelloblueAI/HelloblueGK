@@ -588,11 +588,13 @@ namespace HB_NLP_Research_Lab.Certification
                 Issues = new List<ConfigurationAuditIssue>()
             };
 
-            // Check for missing items
+            // Check for missing items. Whitespace-only checksums are not evidence —
+            // Approve/SCI already use IsNullOrWhiteSpace; leftover "   " rows must
+            // not stamp audit IsCompliant.
             var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var item in items)
             {
-                if (string.IsNullOrEmpty(item.Checksum))
+                if (!HasChecksumEvidence(item.Checksum))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
@@ -742,11 +744,14 @@ namespace HB_NLP_Research_Lab.Certification
             return $"{prefix}{next:D4}";
         }
 
+        private static bool HasChecksumEvidence(string? checksum) =>
+            !string.IsNullOrWhiteSpace(checksum);
+
         private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link =>
                 link.ConfigurationItem != null &&
                 link.ConfigurationItem.Status == ConfigurationItemStatus.Released &&
-                !string.IsNullOrWhiteSpace(link.ConfigurationItem.Checksum));
+                HasChecksumEvidence(link.ConfigurationItem.Checksum));
     }
 
     // Data Models

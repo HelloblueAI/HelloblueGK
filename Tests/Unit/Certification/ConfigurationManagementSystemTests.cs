@@ -320,6 +320,63 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedWhitespaceChecksum_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + "   " checksum — Approve/SCI already reject
+        // whitespace, but leftover rows previously stamped audit IsCompliant.
+        var baseline = await system.CreateBaselineAsync("Legacy-Whitespace-Checksum", "1.0.0", "leftover", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = "   ",
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = "   ";
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.MissingChecksum &&
+            i.ItemName == "core.c");
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Released with a checksum*");
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedMatchingChecksum_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Matching-Checksum", "1.0.0", "leftover ok", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task PerformAuditAsync_DraftBaselineWithCleanItems_FailsClosed()
     {
         await using var context = CreateContext();
