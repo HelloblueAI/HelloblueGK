@@ -23,6 +23,24 @@ public class ConfigurationManagementSystemTests
         context.SoftwareBaselines.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    [InlineData(" TBD ")]
+    public async Task CreateBaselineAsync_RejectsPlaceholderVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateBaselineAsync("SCI-1", version, "initial", "alice");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real version identity*")
+            .WithParameterName("version");
+
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task CreateConfigurationItemAsync_RejectsEmptyNameAndTraversalPath()
     {
@@ -277,6 +295,53 @@ public class ConfigurationManagementSystemTests
         persisted.ApprovedBy.Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPlaceholderBaselineVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Placeholder-Version", "0.1.0", "placeholder", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        // Create already rejects placeholder tokens. Stamp leftover Draft + "n/a".
+        baseline.Version = version;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder version*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData(" TBD ")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPlaceholderItemVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Placeholder-Item-Version", "0.1.0", "placeholder", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var link = context.BaselineConfigurationItems.Single();
+        link.Version = version;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder version*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
     [Fact]
     public async Task GenerateSCIAsync_RejectsApprovedBaselineWithUnreleasedItems()
     {
@@ -364,6 +429,103 @@ public class ConfigurationManagementSystemTests
         var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
 
         var baseline = await system.CreateBaselineAsync("Legacy-Matching-Checksum", "1.0.0", "leftover ok", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("NONE")]
+    [InlineData("todo")]
+    public async Task GenerateSCIAsync_RejectsApprovedBaselineWithPlaceholderVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-SCI-Version", "1.0.0", "leftover placeholder", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.Version = version;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder version*");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task PerformAuditAsync_LeftoverApprovedPlaceholderVersion_FailsClosed(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + placeholder version — leftover rows
+        // previously stamped audit IsCompliant and minted an SCI.
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Version", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.Version = version;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidVersion &&
+            i.ItemName == "Legacy-Placeholder-Version");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("pending")]
+    public async Task PerformAuditAsync_LeftoverApprovedPlaceholderItemVersion_FailsClosed(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Item-Version", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var link = context.BaselineConfigurationItems.Single();
+        link.Version = version;
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidVersion &&
+            i.ItemName == "core.c");
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder version*");
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedMatchingVersion_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Matching-Version", "1.0.0", "leftover ok", "alice");
         await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
         baseline.Status = BaselineStatus.Approved;
         baseline.ApprovedBy = "bob";
@@ -577,6 +739,31 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "   ");
         await act.Should().ThrowAsync<ArgumentException>()
             .WithParameterName("version");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("NONE")]
+    [InlineData("todo")]
+    public async Task AddItemToBaselineAsync_RejectsPlaceholderVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-2", "1.0.0", "initial", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c"
+        });
+
+        var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, version);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real version identity*")
+            .WithParameterName("version");
+
+        context.BaselineConfigurationItems.Should().BeEmpty();
     }
 
     [Fact]
