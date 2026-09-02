@@ -168,7 +168,7 @@ public class ConfigurationManagementSystemTests
             RequestedBy = "alice"
         });
 
-        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "Alice", "CCB ok");
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "Alice", "CCB approved mixture ratio change");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*separation of duties*");
     }
@@ -187,16 +187,24 @@ public class ConfigurationManagementSystemTests
             RequestedBy = "alice"
         });
 
-        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
         var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
         {
             ItemName = "injector.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/injector.c"
+            FilePath = "Core/injector.c"
         });
         await system.ImplementChangeRequestAsync(created.RequestNumber, "alice", new List<Guid> { item.Id });
 
-        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "carol", "re-approve");
+        var implemented = await context.ChangeRequests
+            .Include(cr => cr.AffectedItems)
+            .SingleAsync(cr => cr.Id == created.Id);
+        implemented.Status.Should().Be(ChangeRequestStatus.Implemented);
+        implemented.ImplementedBy.Should().Be("alice");
+        implemented.AffectedItems.Should().ContainSingle()
+            .Which.ConfigurationItemId.Should().Be(item.Id);
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "carol", "CCB re-approve after implement");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*cannot be approved from status Implemented*");
     }
@@ -255,7 +263,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c"
+            FilePath = "Core/core.c"
         });
         var item = context.ConfigurationItems.Single();
         await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
@@ -280,7 +288,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c"
+            FilePath = "Core/core.c"
         });
         await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
         baseline.Status = BaselineStatus.Approved;
@@ -312,6 +320,63 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedWhitespaceChecksum_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + "   " checksum — Approve/SCI already reject
+        // whitespace, but leftover rows previously stamped audit IsCompliant.
+        var baseline = await system.CreateBaselineAsync("Legacy-Whitespace-Checksum", "1.0.0", "leftover", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = "   ",
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = "   ";
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.MissingChecksum &&
+            i.ItemName == "core.c");
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*Released with a checksum*");
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedMatchingChecksum_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Matching-Checksum", "1.0.0", "leftover ok", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task PerformAuditAsync_DraftBaselineWithCleanItems_FailsClosed()
     {
         await using var context = CreateContext();
@@ -322,7 +387,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c",
+            FilePath = "Core/core.c",
             Checksum = "abc123",
             Size = 128,
             Status = ConfigurationItemStatus.Released
@@ -339,6 +404,100 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task PerformAuditAsync_LeftoverCreatorAsApprover_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Self-Approve", "1.0.0", "leftover SoD", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        // Approve already rejects creator-as-approver. Stamp leftover Approved + self-approval.
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "Alice";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.ApprovalNotIndependent);
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedWithoutApprover_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-No-Approver", "1.0.0", "leftover empty SoD", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "   ";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.ApprovalNotIndependent);
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverIndependentlyApprovedReleasedItems_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Independent", "1.0.0", "leftover independent", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_RejectsLeftoverCreatorAsApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Self-SCI", "1.0.0", "leftover SoD SCI", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "sci.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "alice";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent approver*");
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_SucceedsForLeftoverIndependentlyApprovedBaseline()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Independent-SCI", "1.0.0", "leftover independent SCI", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "sci.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var sci = await system.GenerateSCIAsync(baseline.Id);
+        sci.BaselineName.Should().Be("Legacy-Independent-SCI");
+        sci.ConfigurationItems.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task AddItemToBaselineAsync_RejectsApprovedBaseline()
     {
         await using var context = CreateContext();
@@ -351,7 +510,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "late.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/late.c"
+            FilePath = "Core/late.c"
         });
 
         var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.1");
@@ -412,7 +571,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c"
+            FilePath = "Core/core.c"
         });
 
         var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, "   ");
@@ -433,7 +592,7 @@ public class ConfigurationManagementSystemTests
             Justification = "Stability",
             RequestedBy = "alice"
         });
-        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB ok");
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
 
         var act = async () => await system.ImplementChangeRequestAsync(
             created.RequestNumber,
@@ -445,6 +604,70 @@ public class ConfigurationManagementSystemTests
 
         var persisted = await context.ChangeRequests.SingleAsync();
         persisted.Status.Should().Be(ChangeRequestStatus.Approved);
+    }
+
+    [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsApproverAsImplementer()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/injector.c"
+        });
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "Bob",
+            new List<Guid> { item.Id });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*CCB approver*");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Approved);
+        persisted.ImplementedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ImplementChangeRequestAsync_RejectsEmptyImplementer()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "CCB approved mixture ratio change");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "injector.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/injector.c"
+        });
+
+        var act = async () => await system.ImplementChangeRequestAsync(
+            created.RequestNumber,
+            "  ",
+            new List<Guid> { item.Id });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("implementedBy");
     }
 
     [Fact]
@@ -464,7 +687,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "late.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/late.c",
+            FilePath = "Core/late.c",
             Checksum = "late",
             Size = 32
         });
@@ -513,6 +736,148 @@ public class ConfigurationManagementSystemTests
         second.RequestNumber.Should().EndWith("-0002");
     }
 
+    [Theory]
+    [InlineData("tmp/sci.c")]
+    [InlineData("src/core.c")]
+    [InlineData("phantom/engine.c")]
+    public async Task CreateConfigurationItemAsync_RejectsOutsideTreeEvidencePath(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "forged.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = filePath
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*evidence tree*");
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApproveChangeRequestAsync_RejectsVacuousApprovalNotes()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+
+        var act = async () => await system.ApproveChangeRequestAsync(created.RequestNumber, "bob", "lgtm");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*substantive*");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task CreateBaselineAsync_RejectsPlaceholderCreator()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateBaselineAsync("SCI-1", "1.0.0", "initial", "System");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ApproveBaselineAsync_LeftoverPlaceholderCreator_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-legacy", "1.0.0", "legacy", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "legacy.c");
+        baseline.CreatedBy = "System";
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*real creator identity*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ApproveChangeRequestAsync_LeftoverPlaceholderRequester_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Legacy CR",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        created.RequestedBy = "System";
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveChangeRequestAsync(
+            created.RequestNumber,
+            "bob",
+            "CCB approved mixture ratio change");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*real requester identity*");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_LeftoverOutsideTreeItem_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-unsafe", "1.0.0", "legacy path", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "safe.c");
+        await system.ApproveBaselineAsync(baseline.Id, "bob");
+
+        var unsafeItem = await context.ConfigurationItems.FirstAsync();
+        unsafeItem.FilePath = "tmp/forge.c";
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*outside the repository evidence tree*");
+    }
+
+    [Fact]
+    public async Task CreateChangeRequestAsync_RejectsPlaceholderRequester()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Update injector map",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "unknown"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+        context.ChangeRequests.Should().BeEmpty();
+    }
+
     private static async Task AddReleasedItemAsync(
         ConfigurationManagementSystem system,
         ConfigurationDbContext context,
@@ -523,7 +888,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = itemName,
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = $"src/{itemName}",
+            FilePath = $"Core/{itemName}",
             Checksum = "abc123",
             Size = 64
         });
