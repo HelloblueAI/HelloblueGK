@@ -1350,6 +1350,46 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
+    public async Task UpdateStatusAsync_RejectingLeftoverUnderclassifiedMinor_DoesNotForgeCompliance()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
+
+        var closedCritical = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+        await system.LinkToTestAsync(closedCritical.ReportNumber, "TC-SENSOR-001");
+        await system.UpdateStatusAsync(closedCritical.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(closedCritical.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+        await system.UpdateStatusAsync(
+            closedCritical.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified on stand with TC-SENSOR-001",
+            changedBy: "bob");
+
+        var leftover = SeedLeftoverMinorCatastrophic(
+            fixture,
+            reportNumber: "PR-2026-0205",
+            status: ProblemReportStatus.Open);
+        await fixture.Reports.SaveChangesAsync();
+
+        await system.UpdateStatusAsync(leftover.ReportNumber, ProblemReportStatus.Rejected, changedBy: "bob");
+
+        var stored = await fixture.Reports.ProblemReports.SingleAsync(r => r.ReportNumber == leftover.ReportNumber);
+        stored.Status.Should().Be(ProblemReportStatus.Rejected);
+        stored.Severity.Should().Be(ProblemSeverity.Minor);
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("elevated safety language", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task UpdateStatusAsync_LeftoverMinorWithCatastrophicLanguage_ClosesWithEvidence()
     {
         await using var fixture = CreateFixture();

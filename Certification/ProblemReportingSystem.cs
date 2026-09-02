@@ -138,6 +138,12 @@ namespace HB_NLP_Research_Lab.Certification
                 closedAtToPersist = DateTime.UtcNow;
             }
 
+            // Rejecting must not rewrite stored severity — that would drop leftover
+            // underclassified Minors out of VerifyComplianceAsync's fail-closed gate.
+            var severityToPersist = newStatus == ProblemReportStatus.Rejected
+                ? report.Severity
+                : effectiveSeverity;
+
             // Atomic expected-status claim closes load/check/SaveChanges TOCTOU
             // (concurrent Open→UnderInvestigation vs Open→Rejected last-writer-wins).
             // Claim + audit insert share one transaction so a failed audit save does not
@@ -154,7 +160,7 @@ namespace HB_NLP_Research_Lab.Certification
                     .SetProperty(pr => pr.UpdatedAt, updatedAt)
                     .SetProperty(pr => pr.Resolution, resolutionToPersist)
                     .SetProperty(pr => pr.ClosedAt, closedAtToPersist)
-                    .SetProperty(pr => pr.Severity, effectiveSeverity));
+                    .SetProperty(pr => pr.Severity, severityToPersist));
 
             if (claimed == 0)
             {
