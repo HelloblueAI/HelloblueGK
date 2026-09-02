@@ -161,16 +161,26 @@ namespace HB_NLP_Research_Lab.Certification
             string? registeredBy = null)
         {
             var normalized = NormalizeFilePath(filePath);
-            var existing = await FindRequiredCoverageFileAsync(normalized);
+            var rosterRows = await _context.RequiredCoverageFiles.ToListAsync();
+            var matches = MatchingStoredCoveragePaths(rosterRows, normalized);
+            var existing = matches.FirstOrDefault(f =>
+                               string.Equals(f.FilePath, normalized, StringComparison.Ordinal))
+                           ?? matches
+                               .OrderByDescending(f => f.IsActive)
+                               .ThenByDescending(f => f.RegisteredAt)
+                               .FirstOrDefault();
             if (existing != null)
             {
                 existing.IsActive = true;
-                existing.FilePath = normalized;
+                // Keep the stored path. Recasing a leftover case-variant hits the unique
+                // FilePath index and desynchronizes exact CodeCoverage lookups.
                 existing.IsSafetyCritical = isSafetyCritical;
                 existing.RegisteredBy = string.IsNullOrWhiteSpace(registeredBy)
                     ? existing.RegisteredBy
                     : registeredBy.Trim();
                 existing.RegisteredAt = DateTime.UtcNow;
+                foreach (var duplicate in matches.Where(f => f.Id != existing.Id))
+                    duplicate.IsActive = false;
                 await _context.SaveChangesAsync();
                 return existing;
             }
@@ -199,16 +209,24 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         public async Task RevokeRequiredFileAsync(string filePath)
         {
-            var existing = await FindRequiredCoverageFileAsync(NormalizeFilePath(filePath));
-            if (existing == null)
+            if (string.IsNullOrWhiteSpace(filePath))
+                throw new ArgumentException("File path is required", nameof(filePath));
+
+            // Lookup by canonical form only — leftover scheme/outside-tree rows must
+            // still be revocable. Register remains the path that rejects unsafe paths.
+            var matches = MatchingStoredCoveragePaths(
+                await _context.RequiredCoverageFiles.ToListAsync(),
+                filePath);
+            if (matches.Count == 0)
                 throw new ArgumentException($"Required coverage file '{filePath.Trim()}' not found", nameof(filePath));
 
-            existing.IsActive = false;
+            foreach (var existing in matches)
+                existing.IsActive = false;
             await _context.SaveChangesAsync();
 
             _logger.LogInformation(
                 "Revoked required coverage file {FilePath}",
-                LogSanitizer.Sanitize(existing.FilePath));
+                LogSanitizer.Sanitize(matches[0].FilePath));
         }
 
         /// <summary>
@@ -219,15 +237,19 @@ namespace HB_NLP_Research_Lab.Certification
             var roster = await _context.RequiredCoverageFiles
                 .Where(f => f.IsActive)
                 .ToListAsync();
-            var coverageByPath = (await _context.CodeCoverage
+            var coverageRows = await _context.CodeCoverage
                 .Include(c => c.TestCaseLinks)
-                .ToListAsync())
-                .ToDictionary(c => c.FilePath, StringComparer.Ordinal);
+                .ToListAsync();
 
             var rosterCoverage = new List<CodeCoverage>();
             foreach (var required in roster)
             {
-                if (coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                if (!IsStoredCoveragePathSafe(required.FilePath))
+                    continue;
+
+                if (TryGetCoverageForRoster(coverageRows, required.FilePath, out var coverage)
+                    && coverage != null
+                    && IsStoredCoveragePathSafe(coverage.FilePath))
                 {
                     // Roster owns the safety-critical flag for Level A MC/DC scope.
                     coverage.IsSafetyCritical = required.IsSafetyCritical;
@@ -270,13 +292,17 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Fail closed: empty roster / missing evidence / no safety-critical inventory /
-            // count-only records with no linked test execution evidence.
-            var missingRosterFiles = roster.Count(r => !coverageByPath.ContainsKey(r.FilePath));
+            // leftover scheme, absolute, or outside-tree paths / count-only records
+            // with no linked test execution evidence.
+            var missingRosterFiles = roster.Count(r =>
+                !TryGetCoverageForRoster(coverageRows, r.FilePath, out _));
+            var unsafeRosterFiles = roster.Count(r => !IsStoredCoveragePathSafe(r.FilePath));
             report.FilesWithTestEvidence = rosterCoverage.Count(HasValidTestEvidence);
             report.SafetyCriticalFilesWithMcdcTestEvidence = rosterCoverage.Count(c =>
                 c.IsSafetyCritical && HasValidMcdcTestEvidence(c));
             report.MeetsDO178CLevelA = roster.Count > 0 &&
                                       missingRosterFiles == 0 &&
+                                      unsafeRosterFiles == 0 &&
                                       report.SafetyCriticalFiles > 0 &&
                                       report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
                                       report.FilesWith100PercentBranchCoverage == report.TotalFiles &&
@@ -287,7 +313,19 @@ namespace HB_NLP_Research_Lab.Certification
             report.CoverageGaps = roster
                 .Select(required =>
                 {
-                    if (!coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                    TryGetCoverageForRoster(coverageRows, required.FilePath, out var coverage);
+                    if (!IsStoredCoveragePathSafe(required.FilePath)
+                        || (coverage != null && !IsStoredCoveragePathSafe(coverage.FilePath)))
+                    {
+                        return new CoverageGap
+                        {
+                            FilePath = required.FilePath,
+                            IsSafetyCritical = required.IsSafetyCritical,
+                            GapDescription = "Unsafe coverage evidence path"
+                        };
+                    }
+
+                    if (coverage == null)
                     {
                         return new CoverageGap
                         {
@@ -329,16 +367,24 @@ namespace HB_NLP_Research_Lab.Certification
             var roster = await _context.RequiredCoverageFiles
                 .Where(f => f.IsActive)
                 .ToListAsync();
-            var coverageByPath = (await _context.CodeCoverage
+            var coverageRows = await _context.CodeCoverage
                 .Include(c => c.TestCaseLinks)
-                .ToListAsync())
-                .ToDictionary(c => c.FilePath, StringComparer.Ordinal);
+                .ToListAsync();
 
             var rosterCoverage = new List<CodeCoverage>();
             var missingFiles = new List<string>();
+            var unsafeFiles = new List<string>();
             foreach (var required in roster)
             {
-                if (!coverageByPath.TryGetValue(required.FilePath, out var coverage))
+                if (!IsStoredCoveragePathSafe(required.FilePath))
+                {
+                    unsafeFiles.Add(required.FilePath);
+                    continue;
+                }
+
+                if (!TryGetCoverageForRoster(coverageRows, required.FilePath, out var coverage)
+                    || coverage == null
+                    || !IsStoredCoveragePathSafe(coverage.FilePath))
                 {
                     missingFiles.Add(required.FilePath);
                     continue;
@@ -372,6 +418,21 @@ namespace HB_NLP_Research_Lab.Certification
                 check.MCDCCoverageCompliant = false;
                 check.IsCompliant = false;
                 check.Issues.Add("Required coverage roster is empty; DO-178C Level A compliance cannot be asserted");
+                return check;
+            }
+
+            if (unsafeFiles.Count > 0)
+            {
+                check.StatementCoverageCompliant = false;
+                check.BranchCoverageCompliant = false;
+                check.MCDCCoverageCompliant = false;
+                check.IsCompliant = false;
+                check.Issues.Add($"{unsafeFiles.Count} required coverage file(s) are outside the repository implementation or test trees");
+                foreach (var unsafePath in unsafeFiles)
+                {
+                    check.Issues.Add($"Unsafe coverage evidence path: {unsafePath}");
+                }
+
                 return check;
             }
 
@@ -426,17 +487,34 @@ namespace HB_NLP_Research_Lab.Certification
             return check;
         }
 
-        private async Task<RequiredCoverageFile?> FindRequiredCoverageFileAsync(string normalizedFilePath)
+        private static List<RequiredCoverageFile> MatchingStoredCoveragePaths(
+            IEnumerable<RequiredCoverageFile> rows,
+            string lookupPath)
         {
-            var candidates = await _context.RequiredCoverageFiles
-                .Where(f => f.FilePath == normalizedFilePath)
-                .ToListAsync();
-
-            return candidates.FirstOrDefault(f =>
-                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.Ordinal))
-                   ?? candidates.FirstOrDefault(f =>
-                       string.Equals(f.FilePath, normalizedFilePath, StringComparison.OrdinalIgnoreCase));
+            return rows
+                .Where(f => StoredCoveragePathsMatch(f.FilePath, lookupPath))
+                .ToList();
         }
+
+        private static bool TryGetCoverageForRoster(
+            IReadOnlyCollection<CodeCoverage> coverageRows,
+            string rosterPath,
+            out CodeCoverage? coverage)
+        {
+            var matches = coverageRows
+                .Where(c => StoredCoveragePathsMatch(c.FilePath, rosterPath))
+                .ToList();
+            coverage = matches.FirstOrDefault(c =>
+                           string.Equals(c.FilePath, rosterPath, StringComparison.Ordinal))
+                       ?? matches.FirstOrDefault();
+            return coverage != null;
+        }
+
+        private static bool StoredCoveragePathsMatch(string? left, string? right) =>
+            string.Equals(
+                CanonicalizeStoredCoveragePath(left),
+                CanonicalizeStoredCoveragePath(right),
+                StringComparison.OrdinalIgnoreCase);
 
         private string GenerateGapDescription(CodeCoverage coverage)
         {
@@ -458,6 +536,11 @@ namespace HB_NLP_Research_Lab.Certification
 
             return string.Join(", ", gaps);
         }
+
+        private static readonly HashSet<string> AllowedCoverageRoots = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Core", "WebAPI", "Certification", "Physics", "AI", "Models", "Aerospace", "Scripts", "Tests"
+        };
 
         private static bool HasValidTestEvidence(CodeCoverage coverage) =>
             coverage.TestCaseLinks.Any(IsValidTestCaseLink);
@@ -518,27 +601,62 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static string NormalizeFilePath(string filePath)
         {
+            if (!TryNormalizeCoveragePath(filePath, out var normalized, out var error))
+            {
+                throw new ArgumentException(error, nameof(filePath));
+            }
+
+            return normalized;
+        }
+
+        private static string CanonicalizeStoredCoveragePath(string? filePath) =>
+            (filePath ?? string.Empty).Trim().Replace('\\', '/');
+
+        private static bool IsStoredCoveragePathSafe(string? filePath)
+        {
+            return TryNormalizeCoveragePath(filePath, out var normalized, out _)
+                && string.Equals(filePath, normalized, StringComparison.Ordinal);
+        }
+
+        private static bool TryNormalizeCoveragePath(string? filePath, out string normalized, out string error)
+        {
+            normalized = string.Empty;
+            error = string.Empty;
+
             if (string.IsNullOrWhiteSpace(filePath))
             {
-                throw new ArgumentException("Coverage file path is required.", nameof(filePath));
+                error = "Coverage file path is required.";
+                return false;
             }
 
-            var normalized = filePath.Trim().Replace('\\', '/');
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || (normalized.Length >= 2 && char.IsLetter(normalized[0]) && normalized[1] == ':'))
+            var trimmed = filePath.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so Level A
+            // coverage evidence cannot point outside the repository.
+            if (trimmed.StartsWith("/", StringComparison.Ordinal)
+                || trimmed.StartsWith("//", StringComparison.Ordinal)
+                || trimmed.Contains("://", StringComparison.Ordinal)
+                || trimmed.Contains(':', StringComparison.Ordinal))
             {
-                throw new ArgumentException("Coverage file path must be relative to the repository.", nameof(filePath));
+                error = "Coverage file path must be relative to the repository.";
+                return false;
             }
 
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0
                 || segments.Any(segment => segment is "." or ".."))
             {
-                throw new ArgumentException("Coverage file path must not contain traversal segments.", nameof(filePath));
+                error = "Coverage file path must not contain traversal segments.";
+                return false;
             }
 
-            return string.Join("/", segments);
+            if (segments.Length < 2 || !AllowedCoverageRoots.Contains(segments[0]))
+            {
+                error = "Coverage file path must be under an implementation or test tree (Core/, WebAPI/, Certification/, Physics/, AI/, Models/, Aerospace/, Scripts/, Tests/).";
+                return false;
+            }
+
+            normalized = string.Join("/", segments);
+            return true;
         }
 
         private static void ValidateAndNormalizeMetrics(CoverageMetrics metrics)

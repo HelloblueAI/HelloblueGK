@@ -20,6 +20,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <summary>
         /// Basic health check endpoint
         /// </summary>
+        /// <returns>The current health status of the service.</returns>
+        /// <response code="200">Health status retrieved successfully</response>
         [HttpGet]
         [AllowAnonymous]
         public IActionResult Get()
@@ -36,6 +38,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <summary>
         /// Detailed health check with system metrics
         /// </summary>
+        /// <returns>Detailed health information and system metrics.</returns>
+        /// <response code="200">Health status retrieved successfully</response>
+        /// <response code="401">Authentication is required.</response>
+        /// <response code="403">Administrator privileges are required.</response>
         [HttpGet("detailed")]
         [Authorize(Roles = "Admin")]
         public IActionResult GetDetailed()
@@ -69,6 +75,11 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
         /// <summary>
         /// Engine system health check
         /// </summary>
+        /// <returns>The current health status of the engine.</returns>
+        /// <response code="200">Health status retrieved successfully</response>
+        /// <response code="401">Authentication is required.</response>
+        /// <response code="403">Administrator privileges are required.</response>
+        /// <response code="500">Engine health check failed</response>
         [HttpGet("engine")]
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetEngineHealth()

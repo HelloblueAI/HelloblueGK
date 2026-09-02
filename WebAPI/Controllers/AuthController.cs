@@ -21,6 +21,10 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers;
 [Tags("Auth")]
 public class AuthController : ControllerBase
 {
+    private const int MinUsernameLength = 3;
+    private const int MaxUsernameLength = 100;
+    private const int MaxEmailLength = 255;
+    private const int MaxNameLength = 100;
     private const int MaxPasswordLength = 128;
     private const int MaxPbkdf2Iterations = 600000;
     private const string DummyPasswordHash = "100000:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
@@ -367,7 +371,20 @@ public class AuthController : ControllerBase
             });
         }
 
-        if (!System.Text.RegularExpressions.Regex.IsMatch(username.Trim(), "^[a-zA-Z0-9_-]+$"))
+        username = username.Trim();
+        if (username.Length < MinUsernameLength || username.Length > MaxUsernameLength)
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = $"Username must be between {MinUsernameLength} and {MaxUsernameLength} characters",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
+        if (!System.Text.RegularExpressions.Regex.IsMatch(username, "^[a-zA-Z0-9_-]+$"))
         {
             return BadRequest(new ErrorResponse
             {
@@ -379,9 +396,21 @@ public class AuthController : ControllerBase
             });
         }
 
+        if ((firstName?.Length ?? 0) > MaxNameLength || (lastName?.Length ?? 0) > MaxNameLength)
+        {
+            return BadRequest(new ErrorResponse
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                Message = $"First and last name cannot exceed {MaxNameLength} characters",
+                Timestamp = DateTime.UtcNow,
+                Path = Request.Path,
+                Method = Request.Method
+            });
+        }
+
         // Parse through MailAddress so a user-supplied character scan cannot
         // gate HashPassword (cs/user-controlled-bypass).
-        if (!TryNormalizeRegistrationEmail(email, out var parsedEmail))
+        if (!TryNormalizeRegistrationEmail(email, out var parsedEmail) || parsedEmail.Length > MaxEmailLength)
         {
             return BadRequest(new ErrorResponse
             {
@@ -395,7 +424,6 @@ public class AuthController : ControllerBase
 
         // Normalize before persistence so case-variant usernames/emails cannot be
         // registered beside an existing account (closes ownership IDOR via casing).
-        username = username.Trim();
         var normalizedUsername = username.ToLowerInvariant();
         var normalizedEmail = parsedEmail.ToLowerInvariant();
 

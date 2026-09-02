@@ -435,6 +435,8 @@ namespace HB_NLP_Research_Lab.WebAPI.Controllers
                 var executionTime = (DateTime.UtcNow - startTime).TotalSeconds;
 
                 // Improvement is always versus the persisted engine baseline.
+                // Client parameter overrides may change the starting design for the
+                // optimizer, but they cannot inflate ImprovementPercentage.
                 var optimizedEfficiency = result.OptimizedParameters?.Efficiency ?? baselineEfficiency;
                 var improvement = baselineEfficiency > 0
                     ? ((optimizedEfficiency - baselineEfficiency) / baselineEfficiency) * 100

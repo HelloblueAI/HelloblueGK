@@ -1,0 +1,46 @@
+name: Documentation
+description: Broken link, missing setup step, or unclear docs
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks. Small docs PRs are the fastest way to land a first contribution — see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+        Prefer live docs (`DEVELOPERS.md`, `Docs/Project/DEMO.md`, `Docs/README.md`). Skip `Docs/archive/historical/`.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong or missing?
+      description: Link, page, or sentence that confused you.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should it say instead?
+      description: A proposed fix is enough; you do not need a perfect draft.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - README / DEVELOPERS
+        - API_DOCUMENTATION.md
+        - Docs/Project
+        - Docs/Deployment
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribute
+    attributes:
+      label: Contribution
+      options:
+        - label: I am willing to open a PR for this
+        - label: I agree to follow the [Code of Conduct](../../CODE_OF_CONDUCT.md)
+          required: true

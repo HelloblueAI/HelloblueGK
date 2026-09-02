@@ -707,7 +707,7 @@ public class FormalCodeReviewSystemTests
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
         var created = await system.CreateReviewAsync(new CodeReview
         {
-            FilePath = "c.cs",
+            FilePath = "Core/c.cs",
             FunctionName = "C",
             LineStart = 1,
             LineEnd = 2,
@@ -880,13 +880,94 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task SubmitFindingsAsync_UnsafeOrFatalKeywords_ElevateClientMinorSeverity()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Correctness,
+                Description = "Unsafe overpressure relief with a fatal shutdown path"
+            }
+        });
+
+        var finding = await context.ReviewFindings.SingleAsync();
+        finding.Severity.Should().Be(FindingSeverity.Critical);
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved critical*");
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_LeftoverUnsafeMinorFinding_RescoresAndBlocks()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var assignment = await context.CodeReviewAssignments.SingleAsync();
+        assignment.Status = ReviewAssignmentStatus.Completed;
+        assignment.CompletedAt = DateTime.UtcNow;
+        created.Status = CodeReviewStatus.Completed;
+        context.ReviewFindings.Add(new ReviewFinding
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = created.Id,
+            ReviewerName = "certified-bob",
+            LineNumber = 5,
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Correctness,
+            Description = "Unsafe overpressure relief valve",
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var approve = async () => await system.ApproveReviewAsync(created.Id, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved critical*");
+
+        var persistedFinding = await context.ReviewFindings.AsNoTracking().SingleAsync();
+        persistedFinding.Severity.Should().Be(FindingSeverity.Critical);
+
+        var persistedReview = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == created.Id);
+        persistedReview.Status.Should().Be(CodeReviewStatus.Completed);
+        persistedReview.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
     public void ResolveFindingSeverity_SubstringAndNegatedKeywords_DoNotElevate()
     {
         FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
         {
             Severity = FindingSeverity.Minor,
             Category = FindingCategory.Correctness,
-            Description = "Change is insignificant, non-critical, and affects a majority of comments"
+            Description = "Change is insignificant, non-critical, non-fatal, and affects a majority of comments"
         }).Should().Be(FindingSeverity.Minor);
     }
 
@@ -906,6 +987,11 @@ public class FormalCodeReviewSystemTests
     [InlineData("Hazardous over-temperature path")]
     [InlineData("Fails critically under abort")]
     [InlineData("Catastrophically unbounded recursion")]
+    [InlineData("Unsafe overpressure relief valve")]
+    [InlineData("Unsafely disabled interlock")]
+    [InlineData("Fatal engine shutdown path")]
+    [InlineData("Fatally unbounded recursion")]
+    [InlineData("Documented fatalities remain unmitigated")]
     public void ResolveFindingSeverity_DerivedCriticalKeywords_ElevateToCritical(string description)
     {
         FormalCodeReviewSystem.ResolveFindingSeverity(new ReviewFinding
@@ -1041,11 +1127,13 @@ public class FormalCodeReviewSystemTests
 
         var traversal = async () => await system.RegisterRequiredFileAsync("../secrets/core.c", "admin");
         await traversal.Should().ThrowAsync<ArgumentException>()
-            .WithParameterName("filePath");
+            .WithParameterName("filePath")
+            .WithMessage("*traversal*");
 
         var absolute = async () => await system.RegisterRequiredFileAsync("/etc/passwd", "admin");
         await absolute.Should().ThrowAsync<ArgumentException>()
-            .WithParameterName("filePath");
+            .WithParameterName("filePath")
+            .WithMessage("*relative*");
 
         context.RequiredReviewFiles.Should().BeEmpty();
     }
@@ -1071,7 +1159,7 @@ public class FormalCodeReviewSystemTests
         context.CodeReviews.Add(new CodeReview
         {
             Id = Guid.NewGuid(),
-            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9001",
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-legacy-traversal",
             FilePath = "../secrets/core.c",
             FunctionName = "Leak",
             LineStart = 1,
@@ -1409,6 +1497,10 @@ public class FormalCodeReviewSystemTests
     [InlineData("C:\\Windows\\system32\\kernel.cs")]
     [InlineData("../secret.cs")]
     [InlineData("Core/../../secret.cs")]
+    [InlineData("tmp/forge.cs")]
+    [InlineData("src/engine.cs")]
+    [InlineData("a.cs")]
+    [InlineData("http://example.test/Core/Engine.cs")]
     public async Task CreateReviewAsync_RejectsVacuousOrUnsafeFilePath(string filePath)
     {
         await using var context = CreateContext();
@@ -1487,6 +1579,371 @@ public class FormalCodeReviewSystemTests
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*Finding description is required*");
         context.ReviewFindings.Should().BeEmpty();
+    }
+
+
+    [Fact]
+    public async Task RegisterRequiredFileAsync_RejectsOutsideTreePath()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.RegisterRequiredFileAsync("tmp/forge.cs", "admin");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*implementation or test tree*");
+        context.RequiredReviewFiles.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverOutsideTreeRoster_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        context.RequiredReviewFiles.Add(new RequiredReviewFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "tmp/forge.cs",
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("outside the implementation or test tree", StringComparison.OrdinalIgnoreCase));
+        check.UnreviewedFiles.Should().Contain("tmp/forge.cs");
+    }
+
+    [Fact]
+    public async Task RegisterCertifiedReviewerAsync_RejectsPlaceholderName()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.RegisterCertifiedReviewerAsync("System", "admin");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+        context.CertifiedReviewers.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateReviewAsync_RejectsPlaceholderAuthor()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "System"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+        context.CodeReviews.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task CreateReviewAsync_RejectsEmptyAuthor()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/Engine.cs",
+            FunctionName = "Ignite",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "  "
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Author is required*");
+        context.CodeReviews.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task AssignReviewerAsync_WhenReviewerIsAuthor_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("alice", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "Alice"
+        });
+
+        var assign = async () => await system.AssignReviewerAsync(created.Id, "alice");
+        await assign.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent reviewer*");
+
+        var persisted = await context.CodeReviews
+            .Include(r => r.Assignments)
+            .SingleAsync();
+        persisted.Assignments.Should().BeEmpty();
+        persisted.Status.Should().Be(CodeReviewStatus.Pending);
+    }
+
+    [Fact]
+    public async Task AssignReviewerAsync_WhenReviewerAlreadyAssigned_Throws()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var assignAgain = async () => await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await assignAgain.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*already assigned*");
+
+        var persisted = await context.CodeReviewAssignments.CountAsync();
+        persisted.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData("ok")]
+    [InlineData("LGTM")]
+    [InlineData("fine")]
+    [InlineData("looks good")]
+    [InlineData("no issues")]
+    public async Task SubmitFindingsAsync_WithVacuousDescriptionToken_Throws(string description)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var act = async () => await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = description
+            }
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("findings")
+            .WithMessage("*substantive*");
+
+        var persisted = await context.CodeReviews
+            .Include(r => r.Assignments)
+            .Include(r => r.Findings)
+            .SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.InProgress);
+        persisted.Assignments.Should().ContainSingle()
+            .Which.Status.Should().Be(ReviewAssignmentStatus.Assigned);
+        persisted.Findings.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task SubmitFindingsAsync_RejectsLineNumberOutsideReviewSpan()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var act = async () => await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 99,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "Comment cites a line that was never in the review span"
+            }
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*line range*");
+        context.ReviewFindings.Should().BeEmpty();
+        var persisted = await context.CodeReviews
+            .Include(r => r.Assignments)
+            .SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.InProgress);
+        persisted.Assignments.Single().Status.Should().Be(ReviewAssignmentStatus.Assigned);
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithoutCertifiedFindings_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/HelloblueGKEngine.cs", "admin");
+
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-0099",
+            FilePath = "core/hellobluegkengine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice",
+            Status = CodeReviewStatus.Approved,
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle()
+            .Which.Should().Be("core/hellobluegkengine.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_OneLineApprovedReview_DoesNotSatisfyRoster()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = "noop",
+            LineStart = 1,
+            LineEnd = 1,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 1,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/flightcontrol.cs");
+        check.Issues.Should().Contain(i => i.Contains("file-covering", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_InteriorSpanApprovedReview_DoesNotSatisfyRoster()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = "HandleTick",
+            LineStart = 90,
+            LineEnd = 99,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 92,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "nit"
+            }
+        });
+        await system.ApproveReviewAsync(created.Id, "admin");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("file-covering approved span", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_RejectsPlaceholderApprover()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+        await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = "Consider naming clarity"
+            }
+        });
+
+        var act = async () => await system.ApproveReviewAsync(created.Id, "System");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*");
+
+        var persisted = await context.CodeReviews.SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.Completed);
+        persisted.ApprovedBy.Should().BeNull();
     }
 
     private static async Task<(Guid ReviewId, Guid FindingId)> SeedCompletedReviewWithCriticalFindingAsync(
