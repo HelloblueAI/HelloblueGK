@@ -396,6 +396,141 @@ public class TestCoverageSystemTests
     }
 
     [Fact]
+    public async Task VerifyComplianceAsync_LeftoverForgedPercentagesWithMismatchedCounts_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        // Pre-gate leftover: stored 100% percentages while covered/total counts are 50%.
+        SeedLeftoverCoverage(
+            context,
+            filePath: "Core/Engine.cs",
+            statementCoverage: 100,
+            branchCoverage: 100,
+            mcdcCoverage: 100,
+            totalStatements: 10,
+            coveredStatements: 5,
+            totalBranches: 4,
+            coveredBranches: 2,
+            totalConditions: 2,
+            coveredConditions: 1);
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.StatementCoverageCompliant.Should().BeFalse();
+        check.BranchCoverageCompliant.Should().BeFalse();
+        check.MCDCCoverageCompliant.Should().BeFalse();
+        check.FilesWith100PercentStatementCoverage.Should().Be(0);
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.OverallStatementCoverage.Should().Be(50.0);
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("statement coverage missing", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverPercentageOnlyZeroTotals_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        // Pre-gate leftover: percentage-only row with zero countable evidence.
+        SeedLeftoverCoverage(
+            context,
+            filePath: "Core/Engine.cs",
+            statementCoverage: 100,
+            branchCoverage: 100,
+            mcdcCoverage: 100,
+            totalStatements: 0,
+            coveredStatements: 0,
+            totalBranches: 0,
+            coveredBranches: 0,
+            totalConditions: 0,
+            coveredConditions: 0);
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("count-inconsistent", StringComparison.OrdinalIgnoreCase)
+            || i.Contains("count-free", StringComparison.OrdinalIgnoreCase)
+            || i.Contains("no recorded evidence", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("count", StringComparison.OrdinalIgnoreCase)
+            || g.GapDescription.Contains("No coverage evidence", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverMcdcWithoutConditionCounts_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        // Pre-gate leftover: claimed 100% MC/DC with no condition totals.
+        SeedLeftoverCoverage(
+            context,
+            filePath: "Core/Engine.cs",
+            statementCoverage: 100,
+            branchCoverage: 100,
+            mcdcCoverage: 100,
+            totalStatements: 10,
+            coveredStatements: 10,
+            totalBranches: 4,
+            coveredBranches: 4,
+            totalConditions: 0,
+            coveredConditions: 0);
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.MCDCCoverageCompliant.Should().BeFalse();
+        check.SafetyCriticalFilesWithMCDC.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("MC/DC coverage", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("MC/DC", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverMatchingCounts_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        SeedLeftoverCoverage(
+            context,
+            filePath: "Core/Engine.cs",
+            statementCoverage: 100,
+            branchCoverage: 100,
+            mcdcCoverage: 100,
+            totalStatements: 10,
+            coveredStatements: 10,
+            totalBranches: 4,
+            coveredBranches: 4,
+            totalConditions: 2,
+            coveredConditions: 2);
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeTrue();
+        report.MeetsDO178CLevelA.Should().BeTrue();
+        report.CoverageGaps.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task RegisterRequiredFileAsync_CaseVariantLeftovers_DoesNotRecaseStoredPath()
     {
         await using var context = CreateContext();
@@ -503,6 +638,49 @@ public class TestCoverageSystemTests
         CoveredConditions = 2,
         MCDCCoverage = 100
     };
+
+    private static void SeedLeftoverCoverage(
+        TestCoverageDbContext context,
+        string filePath,
+        double statementCoverage,
+        double branchCoverage,
+        double mcdcCoverage,
+        int totalStatements,
+        int coveredStatements,
+        int totalBranches,
+        int coveredBranches,
+        int totalConditions,
+        int coveredConditions)
+    {
+        var coverage = new CodeCoverage
+        {
+            Id = Guid.NewGuid(),
+            FilePath = filePath,
+            IsSafetyCritical = true,
+            StatementCoverage = statementCoverage,
+            BranchCoverage = branchCoverage,
+            MCDCCoverage = mcdcCoverage,
+            ConditionCoverage = mcdcCoverage,
+            TotalStatements = totalStatements,
+            CoveredStatements = coveredStatements,
+            TotalBranches = totalBranches,
+            CoveredBranches = coveredBranches,
+            TotalConditions = totalConditions,
+            CoveredConditions = coveredConditions,
+            MeetsLevelARequirements = true,
+            LastUpdated = DateTime.UtcNow
+        };
+        context.CodeCoverage.Add(coverage);
+        context.CoverageTestCaseLinks.Add(new CoverageTestCaseLink
+        {
+            Id = Guid.NewGuid(),
+            CodeCoverageId = coverage.Id,
+            TestCaseId = "TC-LEFTOVER-001",
+            TestFile = "Tests/Unit/Core/EngineTests.cs",
+            CoverageType = CoverageType.MCDC,
+            CreatedAt = DateTime.UtcNow
+        });
+    }
 
     private static TestCoverageDbContext CreateContext()
     {

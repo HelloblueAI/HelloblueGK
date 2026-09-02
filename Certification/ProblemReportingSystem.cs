@@ -106,6 +106,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             string? resolutionToPersist = report.Resolution;
             DateTime? closedAtToPersist = report.ClosedAt;
+            // Leftover rows may store Minor while title/description/impact still
+            // contain catastrophic language. Re-score before the close gate so
+            // those rows cannot skip Critical/Major evidence. Persist the floor
+            // only on Closed-after-evidence — Reject/investigate must not upgrade
+            // stored Minor and drop the leftover out of the underclassified gate.
+            var effectiveSeverity = EffectiveSeverity(report);
+            var severityToPersist = report.Severity;
             if (newStatus == ProblemReportStatus.Closed)
             {
                 if (string.IsNullOrWhiteSpace(resolution))
@@ -118,12 +125,12 @@ namespace HB_NLP_Research_Lab.Certification
                 if (!HasSubstantiveResolution(normalizedResolution))
                 {
                     throw new InvalidOperationException(
-                        $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
+                        $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed' or punctuation-only notes)");
                 }
 
                 // Critical/Major closures need verified implementation evidence — a
                 // Draft/NotTraced shell requirement or invented test id forges IsCompliant.
-                if (report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
+                if (effectiveSeverity is ProblemSeverity.Critical or ProblemSeverity.Major &&
                     !await HasValidResolutionEvidenceAsync(report))
                 {
                     throw new InvalidOperationException(
@@ -132,6 +139,7 @@ namespace HB_NLP_Research_Lab.Certification
 
                 resolutionToPersist = normalizedResolution;
                 closedAtToPersist = DateTime.UtcNow;
+                severityToPersist = effectiveSeverity;
             }
 
             // Atomic expected-status claim closes load/check/SaveChanges TOCTOU
@@ -149,7 +157,8 @@ namespace HB_NLP_Research_Lab.Certification
                     .SetProperty(pr => pr.Status, newStatus)
                     .SetProperty(pr => pr.UpdatedAt, updatedAt)
                     .SetProperty(pr => pr.Resolution, resolutionToPersist)
-                    .SetProperty(pr => pr.ClosedAt, closedAtToPersist));
+                    .SetProperty(pr => pr.ClosedAt, closedAtToPersist)
+                    .SetProperty(pr => pr.Severity, severityToPersist));
 
             if (claimed == 0)
             {
@@ -249,6 +258,10 @@ namespace HB_NLP_Research_Lab.Certification
                 .Include(pr => pr.StatusChanges)
                 .ToListAsync();
 
+            var scored = reports
+                .Select(r => (Report: r, Severity: EffectiveSeverity(r)))
+                .ToList();
+
             var summary = new ProblemReportSummary
             {
                 GeneratedAt = DateTime.UtcNow,
@@ -257,20 +270,20 @@ namespace HB_NLP_Research_Lab.Certification
                 UnderInvestigation = reports.Count(r => r.Status == ProblemReportStatus.UnderInvestigation),
                 Resolved = reports.Count(r => r.Status == ProblemReportStatus.Resolved),
                 Closed = reports.Count(r => r.Status == ProblemReportStatus.Closed),
-                CriticalSeverity = reports.Count(r => r.Severity == ProblemSeverity.Critical),
-                MajorSeverity = reports.Count(r => r.Severity == ProblemSeverity.Major),
-                MinorSeverity = reports.Count(r => r.Severity == ProblemSeverity.Minor),
+                CriticalSeverity = scored.Count(x => x.Severity == ProblemSeverity.Critical),
+                MajorSeverity = scored.Count(x => x.Severity == ProblemSeverity.Major),
+                MinorSeverity = scored.Count(x => x.Severity == ProblemSeverity.Minor),
                 AverageResolutionTime = CalculateAverageResolutionTime(reports),
-                Reports = reports.Select(r => new ProblemReportSummaryEntry
+                Reports = scored.Select(x => new ProblemReportSummaryEntry
                 {
-                    ReportNumber = r.ReportNumber,
-                    Title = r.Title,
-                    Status = r.Status,
-                    Severity = r.Severity,
-                    CreatedAt = r.CreatedAt,
-                    ClosedAt = r.ClosedAt,
-                    ResolutionTime = r.ClosedAt.HasValue 
-                        ? (r.ClosedAt.Value - r.CreatedAt).TotalDays 
+                    ReportNumber = x.Report.ReportNumber,
+                    Title = x.Report.Title,
+                    Status = x.Report.Status,
+                    Severity = x.Severity,
+                    CreatedAt = x.Report.CreatedAt,
+                    ClosedAt = x.Report.ClosedAt,
+                    ResolutionTime = x.Report.ClosedAt.HasValue
+                        ? (x.Report.ClosedAt.Value - x.Report.CreatedAt).TotalDays
                         : (double?)null
                 }).ToList()
             };
@@ -440,7 +453,7 @@ namespace HB_NLP_Research_Lab.Certification
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {
             if (requirement.CodeLinks.Any(c =>
-                    HasSafeImplementationPath(c.CodeFile, ImplementationPathKind.Code) &&
+                    RepositoryEvidencePaths.HasSafeRepositoryPath(c.CodeFile, RepositoryEvidenceKind.Code) &&
                     !string.IsNullOrWhiteSpace(c.FunctionName) &&
                     c.LineStart > 0 &&
                     c.LineEnd >= c.LineStart &&
@@ -451,7 +464,7 @@ namespace HB_NLP_Research_Lab.Certification
 
             return requirement.TestLinks.Any(t =>
                 !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-                HasSafeImplementationPath(t.TestFile, ImplementationPathKind.Test) &&
+                RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test) &&
                 t.Verified &&
                 t.TestResult == TestResult.Passed);
         }
@@ -491,56 +504,14 @@ namespace HB_NLP_Research_Lab.Certification
                 .Select(t => new { t.TestCaseId, t.TestFile })
                 .ToListAsync();
             ids.UnionWith(coverageLinks
-                .Where(t => HasSafeImplementationPath(t.TestFile, ImplementationPathKind.Test))
+                .Where(t => RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test))
                 .Select(t => t.TestCaseId.Trim()));
             return ids;
         }
 
-        private enum ImplementationPathKind
-        {
-            Code,
-            Test
-        }
-
-        // Same repository-tree prefixes as RTM leftover verify. Verified=true on
-        // tmp/, phantom/, or Core/../tmp previously forged Critical/Major closure.
-        private static readonly string[] CodeEvidencePrefixes =
-        [
-            "Core/", "WebAPI/", "Certification/", "Physics/", "AI/", "Models/", "Aerospace/", "Scripts/"
-        ];
-        private static readonly string[] TestEvidencePrefixes = ["Tests/"];
-
-        private static bool HasSafeImplementationPath(string? path, ImplementationPathKind kind)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return false;
-            }
-
-            var normalized = path.Trim().Replace('\\', '/');
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || normalized.Contains("://", StringComparison.Ordinal)
-                || normalized.Contains(':', StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length < 2 || segments.Any(segment => segment is "." or ".."))
-            {
-                return false;
-            }
-
-            var canonical = string.Join("/", segments);
-            var prefixes = kind == ImplementationPathKind.Test ? TestEvidencePrefixes : CodeEvidencePrefixes;
-            return prefixes.Any(prefix =>
-                canonical.StartsWith(prefix, StringComparison.Ordinal) &&
-                canonical.Length > prefix.Length);
-        }
-
         /// <summary>
-        /// Reject vacuous closure text ("done", "fixed", "ok") that previously forged IsCompliant.
+        /// Reject vacuous closure text ("done", "fixed", "ok", punctuation-only) that
+        /// previously forged IsCompliant.
         /// </summary>
         internal static bool HasSubstantiveResolution(string resolution)
         {
@@ -549,6 +520,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             var trimmed = resolution.Trim();
             if (trimmed.Length < 12)
+                return false;
+
+            // "............" / "123456789012" met the length bar without describing a fix.
+            if (!trimmed.Any(char.IsLetter))
                 return false;
 
             var normalized = trimmed.ToLowerInvariant();
@@ -634,7 +609,7 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
-        internal static ProblemSeverity EffectiveSeverity(ProblemReport report)
+        public static ProblemSeverity EffectiveSeverity(ProblemReport report)
         {
             ArgumentNullException.ThrowIfNull(report);
             return ResolveSeverity(report.Title, report.Description, report.Impact, report.Severity);

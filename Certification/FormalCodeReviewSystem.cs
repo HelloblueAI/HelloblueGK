@@ -423,7 +423,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (!HasSubstantiveResolution(resolution))
             {
                 throw new ArgumentException(
-                    "Finding resolution requires substantive notes (not empty, 'done', 'fixed', or 'ok')",
+                    "Finding resolution requires substantive notes (not empty, punctuation-only, 'done', 'fixed', or 'ok')",
                     nameof(resolution));
             }
 
@@ -466,8 +466,8 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Reject vacuous disposition text ("done", "fixed", "ok") that previously
-        /// forged an Approved review after a note-free resolve.
+        /// Reject vacuous disposition text ("done", "fixed", "ok", punctuation-only)
+        /// that previously forged an Approved review after a note-free resolve.
         /// </summary>
         internal static bool HasSubstantiveResolution(string? resolution)
         {
@@ -476,6 +476,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             var trimmed = resolution.Trim();
             if (trimmed.Length < 12)
+                return false;
+
+            // "............" / "123456789012" met the length bar without describing a fix.
+            if (!trimmed.Any(char.IsLetter))
                 return false;
 
             var normalized = trimmed.ToLowerInvariant();
@@ -490,6 +494,18 @@ namespace HB_NLP_Research_Lab.Certification
         private static bool IsBlockingFinding(ReviewFinding finding) =>
             (finding.Severity == FindingSeverity.Critical || finding.Severity == FindingSeverity.Major) &&
             !IsDispositioned(finding);
+
+        /// <summary>
+        /// Leftover Approved rows may store Minor while description language is
+        /// still Critical/Major. Re-score before compliance/summary so those
+        /// findings cannot satisfy Level A as a clean review.
+        /// </summary>
+        private static bool IsEffectivelyBlockingFinding(ReviewFinding finding)
+        {
+            var severity = ResolveFindingSeverity(finding);
+            return (severity == FindingSeverity.Critical || severity == FindingSeverity.Major) &&
+                   !IsDispositioned(finding);
+        }
 
         /// <summary>
         /// Approve code review
@@ -664,9 +680,12 @@ namespace HB_NLP_Research_Lab.Certification
                 Approved = reviews.Count(r => r.Status == CodeReviewStatus.Approved),
                 Rejected = reviews.Count(r => r.Status == CodeReviewStatus.Rejected),
                 TotalFindings = reviews.Sum(r => r.Findings.Count),
-                CriticalFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Critical)),
-                MajorFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Major)),
-                MinorFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Minor))
+                CriticalFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Critical)),
+                MajorFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Major)),
+                MinorFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Minor))
             };
 
             return summary;
@@ -819,17 +838,71 @@ namespace HB_NLP_Research_Lab.Certification
             return lineStart == 1 && lineEnd - lineStart + 1 >= MinimumFileReviewLineCount;
         }
 
+        /// <summary>
+        /// Create-time <see cref="NormalizeRequiredText"/> already rejects empty function
+        /// names. Leftover Approved rows must meet the same bar so a file-covering span
+        /// without a named function cannot satisfy a Level A roster entry.
+        /// </summary>
+        private static bool HasNamedFunction(string? functionName) =>
+            !string.IsNullOrWhiteSpace(functionName);
+
+        /// <summary>
+        /// Leftover Approved reviews must still show an independent approver.
+        /// Empty ApprovedBy cannot evaluate SoD. Author-as-approver and
+        /// completing-reviewer-as-approver are the same collisions Approve rejects.
+        /// </summary>
+        private static bool HasIndependentApproval(CodeReview review)
+        {
+            if (string.IsNullOrWhiteSpace(review.ApprovedBy))
+            {
+                return false;
+            }
+
+            var approver = NormalizeReviewerName(review.ApprovedBy);
+            if (!string.IsNullOrWhiteSpace(review.Author)
+                && string.Equals(
+                    NormalizeReviewerName(review.Author),
+                    approver,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            var completingReviewers = review.Assignments
+                .Where(a => a.Status == ReviewAssignmentStatus.Completed)
+                .Select(a => a.ReviewerName)
+                .Where(name => !string.IsNullOrWhiteSpace(name));
+
+            return !completingReviewers.Any(name =>
+                string.Equals(NormalizeReviewerName(name), approver, StringComparison.OrdinalIgnoreCase));
+        }
+
         private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
         {
-            // Leftover Approved rows (status stamped without certified completion or
-            // findings) must not satisfy Level A roster compliance.
-            var approvedFiles = (await _context.CodeReviews
+            // Leftover Approved rows whose author (or completing reviewer) is also
+            // ApprovedBy previously stamped Level A roster compliance. Approve already
+            // rejects those SoD collisions; leftover verify must re-check independence.
+            var approvedReviews = await _context.CodeReviews
                 .Include(r => r.Assignments)
                 .Include(r => r.Findings)
                 .Where(r => r.Status == CodeReviewStatus.Approved)
-                .ToListAsync())
+                .ToListAsync();
+
+            // Leftover Approved + undispositioned Critical/Major (stored or
+            // effective) must not satisfy the roster. #161 re-scores at Approve
+            // only; already-stamped rows still need a verify-time gate.
+            var leftoverBlocking = approvedReviews
+                .SelectMany(r => r.Findings)
+                .Count(IsEffectivelyBlockingFinding);
+
+            // Leftover Approved rows (status stamped without certified completion or
+            // findings) must not satisfy Level A roster compliance.
+            var approvedFiles = approvedReviews
                 .Where(r => SatisfiesIndependentReviewEvidence(r)
+                    && HasIndependentApproval(r)
+                    && !r.Findings.Any(IsEffectivelyBlockingFinding)
                     && !string.IsNullOrWhiteSpace(r.FilePath)
+                    && HasNamedFunction(r.FunctionName)
                     && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
                 .Select(r => NormalizeFilePath(r.FilePath))
                 .Where(IsSafeRelativeRepositoryPath)
@@ -853,15 +926,21 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
-            // Traversal / absolute roster rows never match a safe approved review.
-            check.IsCompliant = check.UnreviewedFiles.Count == 0;
-
-            if (!check.IsCompliant)
+            if (leftoverBlocking > 0)
             {
-                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
+                check.Issues.Add(
+                    $"{leftoverBlocking} approved review finding(s) remain undispositioned at effective Critical/Major severity");
+            }
+
+            // Traversal / absolute roster rows never match a safe approved review.
+            check.IsCompliant = check.UnreviewedFiles.Count == 0 && leftoverBlocking == 0;
+
+            if (check.UnreviewedFiles.Count > 0)
+            {
+                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span and a named function");
                 foreach (var file in check.UnreviewedFiles)
                 {
-                    check.Issues.Add($"File not reviewed with a file-covering approved span: {file}");
+                    check.Issues.Add($"File not reviewed with a file-covering approved span and a named function: {file}");
                 }
             }
 
@@ -979,11 +1058,25 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool SatisfiesIndependentReviewEvidence(CodeReview review)
         {
+            // Leftover Approved rows with placeholder authors ("System") or
+            // placeholder certified reviewers must not satisfy Level A.
+            // Create/register already reject those identities.
+            if (!HasRealActorIdentity(review.Author))
+                return false;
+
             var hasCertifiedCompletion = review.Assignments.Any(a =>
-                a.IsCertified && a.Status == ReviewAssignmentStatus.Completed);
+                a.IsCertified &&
+                a.Status == ReviewAssignmentStatus.Completed &&
+                HasRealActorIdentity(a.ReviewerName));
             var hasSubstantiveFinding = review.Findings.Any(f =>
                 HasSubstantiveFindingDescription(f.Description));
             return hasCertifiedCompletion && hasSubstantiveFinding;
+        }
+
+        private static bool HasRealActorIdentity(string? actorName)
+        {
+            var normalized = NormalizeReviewerName(actorName ?? string.Empty);
+            return !string.IsNullOrWhiteSpace(normalized) && !IsPlaceholderActor(normalized);
         }
 
         /// <summary>
