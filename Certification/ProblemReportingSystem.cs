@@ -434,11 +434,13 @@ namespace HB_NLP_Research_Lab.Certification
         /// A requirement counts as problem-report closure evidence only when it
         /// already has verified code or a verified passing test. Existence of a
         /// Draft/NotTraced row (or unverified planning links) is not a fix.
+        /// Leftover Verified=true rows that point at tmp/, phantom/, or
+        /// prefix-qualified traversal (Core/../tmp) are not implementation evidence.
         /// </summary>
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {
             if (requirement.CodeLinks.Any(c =>
-                    !string.IsNullOrWhiteSpace(c.CodeFile) &&
+                    HasSafeImplementationPath(c.CodeFile, ImplementationPathKind.Code) &&
                     !string.IsNullOrWhiteSpace(c.FunctionName) &&
                     c.LineStart > 0 &&
                     c.LineEnd >= c.LineStart &&
@@ -449,7 +451,7 @@ namespace HB_NLP_Research_Lab.Certification
 
             return requirement.TestLinks.Any(t =>
                 !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-                !string.IsNullOrWhiteSpace(t.TestFile) &&
+                HasSafeImplementationPath(t.TestFile, ImplementationPathKind.Test) &&
                 t.Verified &&
                 t.TestResult == TestResult.Passed);
         }
@@ -483,13 +485,58 @@ namespace HB_NLP_Research_Lab.Certification
             if (_coverageContext == null)
                 return ids;
 
-            var coverageIds = await _coverageContext.CoverageTestCaseLinks
+            var coverageLinks = await _coverageContext.CoverageTestCaseLinks
                 .AsNoTracking()
-                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
-                .Select(t => t.TestCaseId)
+                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile) && !string.IsNullOrWhiteSpace(t.TestCaseId))
+                .Select(t => new { t.TestCaseId, t.TestFile })
                 .ToListAsync();
-            ids.UnionWith(coverageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
+            ids.UnionWith(coverageLinks
+                .Where(t => HasSafeImplementationPath(t.TestFile, ImplementationPathKind.Test))
+                .Select(t => t.TestCaseId.Trim()));
             return ids;
+        }
+
+        private enum ImplementationPathKind
+        {
+            Code,
+            Test
+        }
+
+        // Same repository-tree prefixes as RTM leftover verify. Verified=true on
+        // tmp/, phantom/, or Core/../tmp previously forged Critical/Major closure.
+        private static readonly string[] CodeEvidencePrefixes =
+        [
+            "Core/", "WebAPI/", "Certification/", "Physics/", "AI/", "Models/", "Aerospace/", "Scripts/"
+        ];
+        private static readonly string[] TestEvidencePrefixes = ["Tests/"];
+
+        private static bool HasSafeImplementationPath(string? path, ImplementationPathKind kind)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            var normalized = path.Trim().Replace('\\', '/');
+            if (normalized.StartsWith("/", StringComparison.Ordinal)
+                || normalized.StartsWith("//", StringComparison.Ordinal)
+                || normalized.Contains("://", StringComparison.Ordinal)
+                || normalized.Contains(':', StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 2 || segments.Any(segment => segment is "." or ".."))
+            {
+                return false;
+            }
+
+            var canonical = string.Join("/", segments);
+            var prefixes = kind == ImplementationPathKind.Test ? TestEvidencePrefixes : CodeEvidencePrefixes;
+            return prefixes.Any(prefix =>
+                canonical.StartsWith(prefix, StringComparison.Ordinal) &&
+                canonical.Length > prefix.Length);
         }
 
         /// <summary>
