@@ -102,7 +102,7 @@ public class ProblemReportsController : ControllerBase
             Title = report.Title,
             Description = report.Description,
             Impact = report.Impact,
-            Severity = report.Severity.ToString(),
+            Severity = ProblemReportingSystem.EffectiveSeverity(report).ToString(),
             Status = report.Status.ToString(),
             ReportedBy = report.ReportedBy,
             AssignedTo = report.AssignedTo,
