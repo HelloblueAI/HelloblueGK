@@ -104,7 +104,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var created = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -161,7 +161,7 @@ public class ProblemReportingSystemTests
             changedBy: "bob");
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*linked requirement or test case*");
+            .WithMessage("*verified implementation evidence*recorded test case*");
     }
 
     [Fact]
@@ -231,7 +231,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var created = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -279,7 +279,7 @@ public class ProblemReportingSystemTests
             changedBy: "bob");
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*linked requirement or test case*");
+            .WithMessage("*verified implementation evidence*recorded test case*");
     }
 
     [Fact]
@@ -325,7 +325,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        var requirement = await fixture.SeedRequirementWithTestAsync("TC-REQ-LINK-001");
+        var requirement = await fixture.SeedRequirementWithVerifiedImplementationAsync("TC-REQ-LINK-001");
 
         var created = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -342,6 +342,92 @@ public class ProblemReportingSystemTests
             created.ReportNumber,
             ProblemReportStatus.Closed,
             resolution: "verified against REQ chamber-pressure limit",
+            changedBy: "bob");
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_ShellRequirement_DoesNotSatisfyClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var shell = await fixture.SeedShellRequirementAsync();
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, shell.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against a Draft requirement with no implementation evidence",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_UnverifiedPlanningLinks_DoNotSatisfyClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var planning = await fixture.SeedRequirementWithTestAsync("TC-PLAN-ONLY-001");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, planning.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "linked a planning-only requirement without verified tests",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_VerifiedCodeLink_SatisfiesCompliance()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var requirement = await fixture.SeedRequirementWithVerifiedCodeAsync();
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, requirement.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+        await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against implemented chamber-pressure limit",
             changedBy: "bob");
 
         var check = await system.VerifyComplianceAsync();
@@ -439,7 +525,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var critical = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -480,7 +566,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var closed = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -519,7 +605,7 @@ public class ProblemReportingSystemTests
     {
         await using var fixture = CreateFixture();
         var system = fixture.System;
-        await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
 
         var closed = await system.CreateProblemReportAsync(new ProblemReport
         {
@@ -597,6 +683,45 @@ public class ProblemReportingSystemTests
     }
 
     [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithShellRequirement_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var shell = await fixture.SeedShellRequirementAsync();
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9002",
+            Title = "Legacy closed critical",
+            Description = "Closed against a Draft requirement shell",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against REQ chamber-pressure limit",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportRequirementLinks.Add(new ProblemReportRequirementLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            RequirementId = shell.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task LinkToTestAsync_RejectsVacuousRtmTestFile()
     {
         await using var fixture = CreateFixture();
@@ -614,6 +739,247 @@ public class ProblemReportingSystemTests
         var act = async () => await system.LinkToTestAsync(created.ReportNumber, "TC-EMPTY-FILE");
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*Test case*not found*");
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsRtmOnlyBootstrap()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedRequirementWithTestAsync("TC-RTM-ONLY", "Tests/Unit/Sensors/ForgeTests.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(created.ReportNumber, "TC-RTM-ONLY");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Test case*not found*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithRtmOnlyTest_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedRequirementWithTestAsync("TC-RTM-ONLY", "Tests/Unit/Sensors/ForgeTests.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        created.Status = ProblemReportStatus.Closed;
+        created.Resolution = "verified on stand with rtm-only planning link";
+        created.ClosedAt = DateTime.UtcNow;
+        fixture.Reports.ProblemReportTestLinks.Add(new ProblemReportTestLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = created.Id,
+            TestCaseId = "TC-RTM-ONLY",
+            CreatedAt = DateTime.UtcNow
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_OutsideTreeVerifiedCode_DoesNotSatisfyClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync("tmp/hack.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, forged.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against leftover tmp implementation evidence",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_PrefixQualifiedTraversalVerifiedCode_DoesNotSatisfyClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync("Core/../tmp/hack.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, forged.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against leftover prefix-qualified traversal evidence",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Fact]
+    public async Task LinkToRequirementAsync_PhantomVerifiedTestFile_DoesNotSatisfyClose()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedImplementationAsync(
+            "TC-PHANTOM-001",
+            "phantom/forgeTests.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, forged.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against leftover phantom test implementation evidence",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithOutsideTreeCode_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync("tmp/hack.cs");
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9003",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover tmp implementation evidence",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover tmp implementation evidence",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportRequirementLinks.Add(new ProblemReportRequirementLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            RequirementId = forged.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task LinkToTestAsync_RejectsOutsideTreeCoverageInventory()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-TMP-001", "tmp/forge.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(created.ReportNumber, "TC-TMP-001");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Test case*not found*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithOutsideTreeCoverageTest_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-TMP-001", "tmp/forge.cs");
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9004",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover tmp coverage inventory",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover tmp coverage inventory",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportTestLinks.Add(new ProblemReportTestLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            TestCaseId = "TC-TMP-001",
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -900,7 +1266,7 @@ public class ProblemReportingSystemTests
             changedBy: "bob");
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*linked requirement or test case*");
+            .WithMessage("*verified implementation evidence*recorded test case*");
     }
 
     [Fact]
@@ -955,7 +1321,7 @@ public class ProblemReportingSystemTests
             changedBy: "bob");
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*linked requirement or test case*");
+            .WithMessage("*verified implementation evidence*recorded test case*");
 
         var stored = await fixture.Reports.ProblemReports.SingleAsync(r => r.ReportNumber == leftover.ReportNumber);
         stored.Status.Should().Be(ProblemReportStatus.Resolved);
@@ -1157,6 +1523,88 @@ public class ProblemReportingSystemTests
                 TestCaseId = testCaseId,
                 TestFile = testFile,
                 CoverageType = TestCoverageType.MCDC,
+                CreatedAt = DateTime.UtcNow
+            });
+            await Requirements.SaveChangesAsync();
+            return requirement;
+        }
+
+        public async Task<Requirement> SeedShellRequirementAsync()
+        {
+            var requirement = new Requirement
+            {
+                Id = Guid.NewGuid(),
+                RequirementNumber = $"REQ-{Guid.NewGuid():N}"[..16],
+                Title = "Untraced chamber pressure placeholder",
+                Description = "Draft shell with no design, code, or test links.",
+                Priority = RequirementPriority.Critical,
+                Status = RequirementStatus.Draft,
+                TraceabilityStatus = TraceabilityStatus.NotTraced,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "alice"
+            };
+            Requirements.Requirements.Add(requirement);
+            await Requirements.SaveChangesAsync();
+            return requirement;
+        }
+
+        public async Task<Requirement> SeedRequirementWithVerifiedImplementationAsync(
+            string testCaseId,
+            string testFile = "Tests/Unit/Sensors/ChamberPressureTests.cs")
+        {
+            var requirement = new Requirement
+            {
+                Id = Guid.NewGuid(),
+                RequirementNumber = $"REQ-{Guid.NewGuid():N}"[..16],
+                Title = "Chamber pressure instrumentation",
+                Description = "Sensor must remain within calibrated range during hot-fire.",
+                Priority = RequirementPriority.Critical,
+                Status = RequirementStatus.Verified,
+                TraceabilityStatus = TraceabilityStatus.FullyTraced,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "alice"
+            };
+            Requirements.Requirements.Add(requirement);
+            Requirements.RequirementTestLinks.Add(new RequirementTestLink
+            {
+                Id = Guid.NewGuid(),
+                RequirementId = requirement.Id,
+                TestCaseId = testCaseId,
+                TestFile = testFile,
+                CoverageType = TestCoverageType.MCDC,
+                TestResult = TestResult.Passed,
+                Verified = true,
+                CreatedAt = DateTime.UtcNow
+            });
+            await Requirements.SaveChangesAsync();
+            return requirement;
+        }
+
+        public async Task<Requirement> SeedRequirementWithVerifiedCodeAsync(
+            string codeFile = "Core/Sensors/ChamberPressure.cs")
+        {
+            var requirement = new Requirement
+            {
+                Id = Guid.NewGuid(),
+                RequirementNumber = $"REQ-{Guid.NewGuid():N}"[..16],
+                Title = "Chamber pressure instrumentation",
+                Description = "Sensor must remain within calibrated range during hot-fire.",
+                Priority = RequirementPriority.Critical,
+                Status = RequirementStatus.Implemented,
+                TraceabilityStatus = TraceabilityStatus.PartiallyTraced,
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = "alice"
+            };
+            Requirements.Requirements.Add(requirement);
+            Requirements.RequirementCodeLinks.Add(new RequirementCodeLink
+            {
+                Id = Guid.NewGuid(),
+                RequirementId = requirement.Id,
+                CodeFile = codeFile,
+                FunctionName = "ReadCalibratedPressure",
+                LineStart = 1,
+                LineEnd = 40,
+                Verified = true,
                 CreatedAt = DateTime.UtcNow
             });
             await Requirements.SaveChangesAsync();

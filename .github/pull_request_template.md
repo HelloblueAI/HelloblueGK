@@ -1,6 +1,6 @@
 ## Summary
 
-<!-- What does this PR change and why? -->
+<!-- What changed, and why? First PR? Keep it to one issue and say so here. -->
 
 ## Related issues
 
@@ -30,6 +30,7 @@
 - [ ] I updated documentation when behavior, APIs, or setup changed
 - [ ] My commit messages are clear and descriptive
 - [ ] I did not commit secrets, credentials, or `.env` files
+- [ ] First PR / docs-only work stays out of `Certification/` unless the issue asked for it
 
 ## Screenshots / logs (optional)
 

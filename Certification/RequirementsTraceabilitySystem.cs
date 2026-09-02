@@ -34,7 +34,7 @@ namespace HB_NLP_Research_Lab.Certification
             requirement.Description = NormalizeRequiredText(requirement.Description, "Description");
 
             // Priority is fail-closed: unclassified defaults to Critical (MC/DC required),
-            // and safety/critical keywords cannot be under-classified to skip Level A gates.
+            // and safety/critical/hazard keywords cannot be under-classified to skip Level A gates.
             requirement.Priority = ResolvePriority(
                 requirement.RequirementNumber,
                 requirement.Title,
@@ -74,7 +74,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Resolve requirement priority with a keyword floor.
         /// Unclassified priority defaults to Critical so MC/DC cannot be skipped by omission.
-        /// Explicit Medium/Low may not under-classify safety/critical wording.
+        /// Explicit Medium/Low may not under-classify safety/critical/hazard wording.
         /// </summary>
         public static RequirementPriority ResolvePriority(
             string? requirementNumber,
@@ -100,7 +100,7 @@ namespace HB_NLP_Research_Lab.Certification
             string? description)
         {
             if (ContainsPriorityKeyword(requirementNumber, title, description,
-                    "safety", "critical", "catastrophic"))
+                    "safety", "critical", "catastrophic", "hazard", "unsafe", "fatal"))
             {
                 return RequirementPriority.Critical;
             }
@@ -126,7 +126,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(designDocument))
                 throw new ArgumentException("Design document is required", nameof(designDocument));
 
-            var normalizedDesignDocument = NormalizeEvidencePath(designDocument, nameof(designDocument));
+            var normalizedDesignDocument = NormalizeEvidencePath(
+                designDocument,
+                nameof(designDocument),
+                RepositoryEvidenceKind.Design);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -162,7 +165,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (lineStart <= 0 || lineEnd < lineStart)
                 throw new ArgumentException("Code line range must be a positive, ordered span");
 
-            var normalizedCodeFile = NormalizeEvidencePath(codeFile, nameof(codeFile));
+            var normalizedCodeFile = NormalizeEvidencePath(
+                codeFile,
+                nameof(codeFile),
+                RepositoryEvidenceKind.Code);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -199,7 +205,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (string.IsNullOrWhiteSpace(testFile))
                 throw new ArgumentException("Test file is required", nameof(testFile));
 
-            var normalizedTestFile = NormalizeEvidencePath(testFile, nameof(testFile));
+            var normalizedTestFile = NormalizeEvidencePath(
+                testFile,
+                nameof(testFile),
+                RepositoryEvidenceKind.Test);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -302,6 +311,14 @@ namespace HB_NLP_Research_Lab.Certification
 
             foreach (var req in requirements)
             {
+                // Re-score leftover Medium/Low rows whose title/description hid hazard language.
+                var effectivePriority = ResolvePriority(
+                    req.RequirementNumber,
+                    req.Title,
+                    req.Description,
+                    req.Priority);
+                var isCritical = effectivePriority == RequirementPriority.Critical;
+
                 var hasDesign = HasMeaningfulDesignLinks(req);
                 var hasCode = HasMeaningfulCodeLinks(req);
                 var hasTest = HasMeaningfulTestLinks(req);
@@ -314,7 +331,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingDesignLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no design link"
                     });
                 }
@@ -325,7 +342,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingDesignLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no verified design link"
                     });
                 }
@@ -338,7 +355,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingCodeLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no code implementation"
                     });
                 }
@@ -349,7 +366,7 @@ namespace HB_NLP_Research_Lab.Certification
                         RequirementId = req.Id,
                         RequirementNumber = req.RequirementNumber,
                         IssueType = TraceabilityIssueType.MissingCodeLink,
-                        Severity = req.Priority == RequirementPriority.Critical ? IssueSeverity.Critical : IssueSeverity.Major,
+                        Severity = isCritical ? IssueSeverity.Critical : IssueSeverity.Major,
                         Description = $"Requirement {req.RequirementNumber} has no verified code link"
                     });
                 }
@@ -380,13 +397,12 @@ namespace HB_NLP_Research_Lab.Certification
 
                 // Check for MC/DC coverage for safety-critical requirements.
                 // CoverageType alone is client-asserted — require verified Passed MC/DC evidence.
-                if (req.Priority == RequirementPriority.Critical &&
+                if (isCritical &&
                     !req.TestLinks.Any(t =>
                         t.CoverageType == TestCoverageType.MCDC &&
                         t.Verified &&
                         t.TestResult == TestResult.Passed &&
-                        !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-                        !string.IsNullOrWhiteSpace(t.TestFile)))
+                        HasMeaningfulTestLink(t)))
                 {
                     report.Issues.Add(new TraceabilityIssue
                     {
@@ -561,17 +577,17 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
             !string.IsNullOrWhiteSpace(d.DesignElementId) &&
-            !string.IsNullOrWhiteSpace(d.DesignDocument);
+            RepositoryEvidencePaths.HasAllowedPrefix(d.DesignDocument, RepositoryEvidenceKind.Design);
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
-            !string.IsNullOrWhiteSpace(c.CodeFile) &&
+            RepositoryEvidencePaths.HasAllowedPrefix(c.CodeFile, RepositoryEvidenceKind.Code) &&
             !string.IsNullOrWhiteSpace(c.FunctionName) &&
             c.LineStart > 0 &&
             c.LineEnd >= c.LineStart;
 
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
             !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-            !string.IsNullOrWhiteSpace(t.TestFile);
+            RepositoryEvidencePaths.HasAllowedPrefix(t.TestFile, RepositoryEvidenceKind.Test);
 
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {
@@ -603,7 +619,7 @@ namespace HB_NLP_Research_Lab.Certification
             return trimmed;
         }
 
-        private static string NormalizeEvidencePath(string path, string paramName)
+        private static string NormalizeEvidencePath(string path, string paramName, RepositoryEvidenceKind kind)
         {
             var normalized = path.Trim().Replace('\\', '/');
             // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so RTM
@@ -623,7 +639,16 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Evidence path must not contain traversal segments.", paramName);
             }
 
-            return string.Join("/", segments);
+            normalized = string.Join("/", segments);
+            if (!RepositoryEvidencePaths.HasAllowedPrefix(normalized, kind))
+            {
+                var allowed = string.Join(", ", RepositoryEvidencePaths.PrefixesFor(kind));
+                throw new ArgumentException(
+                    $"Evidence path must be under an allowed {kind.ToString().ToLowerInvariant()} prefix ({allowed}).",
+                    paramName);
+            }
+
+            return normalized;
         }
 
         private static bool IsUniqueConstraintViolation(DbUpdateException exception)

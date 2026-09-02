@@ -1,6 +1,8 @@
 # Documentation Directory
 
-This directory contains all project documentation organized by category.
+Live docs for running and contributing live here. Historical write-ups stay in [`archive/historical/`](archive/historical/README.md) and are not a first-PR target.
+
+New here? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Directory Structure
 

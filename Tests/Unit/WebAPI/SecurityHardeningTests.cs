@@ -690,6 +690,39 @@ public class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task Register_WithOversizedUsernameOrName_ReturnsBadRequest()
+    {
+        await using var context = CreateContext();
+        var controller = CreateRegisterController(context);
+
+        var shortUsername = await controller.Register(new RegisterRequest
+        {
+            Username = "ab",
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        shortUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var longUsername = await controller.Register(new RegisterRequest
+        {
+            Username = new string('a', 101),
+            Email = "ok@example.com",
+            Password = "Password123!"
+        });
+        longUsername.Should().BeOfType<BadRequestObjectResult>();
+
+        var longFirstName = await controller.Register(new RegisterRequest
+        {
+            Username = "ok_user",
+            Email = "ok@example.com",
+            Password = "Password123!",
+            FirstName = new string('A', 101)
+        });
+        longFirstName.Should().BeOfType<BadRequestObjectResult>();
+        context.Users.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task CreateRequirement_InvalidPriority_ReturnsBadRequest()
     {
         await using var requirementsContext = CreateRequirementsContext();
@@ -772,6 +805,104 @@ public class SecurityHardeningTests
         result.Should().BeOfType<CreatedAtActionResult>();
         var persisted = await requirementsContext.Requirements.SingleAsync();
         persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Fact]
+    public async Task CreateRequirement_OmittedPriority_FailClosesToCritical()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var result = await controller.CreateRequirement(new CreateRequirementRequest
+        {
+            RequirementNumber = "REQ-PRI-003",
+            Title = "Valve timing",
+            Description = "Main valve open sequence"
+            // Priority omitted — DTO default must not silently become Medium.
+        });
+
+        result.Should().BeOfType<CreatedAtActionResult>();
+        var persisted = await requirementsContext.Requirements.SingleAsync();
+        persisted.Priority.Should().Be(RequirementPriority.Critical);
+    }
+
+    [Fact]
+    public async Task RecordTestResult_OmittedResult_ReturnsBadRequest()
+    {
+        await using var requirementsContext = CreateRequirementsContext();
+        var system = new RequirementsTraceabilitySystem(
+            requirementsContext,
+            NullLogger<RequirementsTraceabilitySystem>.Instance);
+        var controller = new RequirementsController(
+            system,
+            requirementsContext,
+            NullLogger<RequirementsController>.Instance)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    Request =
+                    {
+                        Method = HttpMethods.Post,
+                        Path = "/api/v1/certification/requirements"
+                    },
+                    User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                    {
+                        new Claim(ClaimTypes.Name, "admin"),
+                        new Claim(ClaimTypes.Role, "Admin")
+                    }, "Test"))
+                }
+            }
+        };
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PRI-004",
+            Title = "Sensor validity",
+            Description = "Must reject stale sensor frames",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "admin"
+        });
+        var test = await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-004",
+            "Tests/SensorsTests.cs",
+            TestCoverageType.MCDC);
+
+        var result = await controller.RecordTestResult(
+            requirement.Id,
+            test.Id,
+            new RecordTestResultRequest());
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+        var persisted = await requirementsContext.RequirementTestLinks.SingleAsync();
+        persisted.TestResult.Should().Be(TestResult.NotRun);
+        persisted.Verified.Should().BeFalse();
     }
 
     [Fact]
@@ -1595,6 +1726,35 @@ public class SecurityHardeningTests
         unauthenticatedResponse.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
         userResponse.StatusCode.Should().Be(HttpStatusCode.Forbidden);
         adminResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task UnauthenticatedExpensiveMutation_IsRateLimitedBeforeAuthorization()
+    {
+        using var factory = new TestWebApiFactory(Environments.Production, new Dictionary<string, string?>
+        {
+            ["EnableRateLimiting"] = "true"
+        });
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
+        {
+            AllowAutoRedirect = false
+        });
+
+        HttpResponseMessage lastAllowed = default!;
+        for (var i = 0; i < 10; i++)
+        {
+            using var allowedContent = new StringContent("{}", Encoding.UTF8, "application/json");
+            lastAllowed = await client.PostAsync("/api/v1/simulations", allowedContent);
+        }
+
+        using var blockedContent = new StringContent("{}", Encoding.UTF8, "application/json");
+        var blocked = await client.PostAsync("/api/v1/simulations", blockedContent);
+
+        lastAllowed.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+        lastAllowed.Headers.Should().ContainKey("X-RateLimit-Limit");
+        lastAllowed.Headers.GetValues("X-RateLimit-Limit").Should().Contain("10");
+        blocked.StatusCode.Should().Be(HttpStatusCode.TooManyRequests);
+        blocked.Headers.Should().ContainKey("Retry-After");
     }
 
     [Fact]

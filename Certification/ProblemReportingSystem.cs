@@ -125,13 +125,13 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
                 }
 
-                // Critical/Major closures need linked evidence that exists in RTM/coverage
-                // stores — a phantom GUID or invented test id forges IsCompliant.
+                // Critical/Major closures need verified implementation evidence — a
+                // Draft/NotTraced shell requirement or invented test id forges IsCompliant.
                 if (effectiveSeverity is ProblemSeverity.Critical or ProblemSeverity.Major &&
                     !await HasValidResolutionEvidenceAsync(report))
                 {
                     throw new InvalidOperationException(
-                        $"Problem report {reportNumber} requires a linked requirement or test case before closing");
+                        $"Problem report {reportNumber} requires a linked requirement with verified implementation evidence or a recorded test case before closing");
                 }
 
                 resolutionToPersist = normalizedResolution;
@@ -326,6 +326,9 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
+            // Closures need substantive notes AND verified implementation evidence
+            // (not a Draft/NotTraced shell). Leftover Minor rows with safety language
+            // cannot skip those Critical/Major gates.
             var underclassified = allReports.Count(r =>
                 r.Severity == ProblemSeverity.Minor &&
                 EffectiveSeverity(r) is ProblemSeverity.Critical or ProblemSeverity.Major);
@@ -399,8 +402,10 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Evidence rows must resolve to a real requirement or recorded test case.
-        /// Phantom GUIDs / invented test ids previously forged IsCompliant.
+        /// Evidence rows must resolve to a requirement with verified implementation
+        /// (verified code span or verified Passed test) or a coverage-recorded test case.
+        /// Phantom GUIDs, Draft shells, and invented test ids previously forged IsCompliant.
+        /// RTM RequirementTestLinks are planning assertions and must not bootstrap inventory.
         /// </summary>
         private async Task<bool> HasValidResolutionEvidenceAsync(ProblemReport report)
         {
@@ -409,12 +414,16 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(id => id != Guid.Empty)
                 .Distinct()
                 .ToList();
-            if (requirementIds.Count > 0 &&
-                await _requirementsContext.Requirements
-                    .AsNoTracking()
-                    .AnyAsync(r => requirementIds.Contains(r.Id)))
+            if (requirementIds.Count > 0)
             {
-                return true;
+                var requirements = await _requirementsContext.Requirements
+                    .AsNoTracking()
+                    .Include(r => r.CodeLinks)
+                    .Include(r => r.TestLinks)
+                    .Where(r => requirementIds.Contains(r.Id))
+                    .ToListAsync();
+                if (requirements.Any(HasVerifiedImplementationEvidence))
+                    return true;
             }
 
             var testCaseIds = report.TestLinks
@@ -428,6 +437,32 @@ namespace HB_NLP_Research_Lab.Certification
 
             var recorded = await LoadRecordedTestCaseIdsAsync();
             return testCaseIds.Any(recorded.Contains);
+        }
+
+        /// <summary>
+        /// A requirement counts as problem-report closure evidence only when it
+        /// already has verified code or a verified passing test. Existence of a
+        /// Draft/NotTraced row (or unverified planning links) is not a fix.
+        /// Leftover Verified=true rows that point at tmp/, phantom/, or
+        /// prefix-qualified traversal (Core/../tmp) are not implementation evidence.
+        /// </summary>
+        private static bool HasVerifiedImplementationEvidence(Requirement requirement)
+        {
+            if (requirement.CodeLinks.Any(c =>
+                    RepositoryEvidencePaths.HasSafeRepositoryPath(c.CodeFile, RepositoryEvidenceKind.Code) &&
+                    !string.IsNullOrWhiteSpace(c.FunctionName) &&
+                    c.LineStart > 0 &&
+                    c.LineEnd >= c.LineStart &&
+                    c.Verified))
+            {
+                return true;
+            }
+
+            return requirement.TestLinks.Any(t =>
+                !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+                RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test) &&
+                t.Verified &&
+                t.TestResult == TestResult.Passed);
         }
 
         private async Task<bool> RequirementExistsAsync(Guid requirementId)
@@ -453,22 +488,20 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var rtmIds = await _requirementsContext.RequirementTestLinks
-                .AsNoTracking()
-                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
-                .Select(t => t.TestCaseId)
-                .ToListAsync();
-            ids.UnionWith(rtmIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
-
+            // Coverage is the execution inventory. RTM RequirementTestLinks are
+            // planning rows — treating them as recorded tests let an invented
+            // Tests/*.cs link close Critical/Major reports and stamp IsCompliant.
             if (_coverageContext == null)
                 return ids;
 
-            var coverageIds = await _coverageContext.CoverageTestCaseLinks
+            var coverageLinks = await _coverageContext.CoverageTestCaseLinks
                 .AsNoTracking()
-                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
-                .Select(t => t.TestCaseId)
+                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile) && !string.IsNullOrWhiteSpace(t.TestCaseId))
+                .Select(t => new { t.TestCaseId, t.TestFile })
                 .ToListAsync();
-            ids.UnionWith(coverageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
+            ids.UnionWith(coverageLinks
+                .Where(t => RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test))
+                .Select(t => t.TestCaseId.Trim()));
             return ids;
         }
 

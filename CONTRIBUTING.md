@@ -1,130 +1,107 @@
 # Contributing to HelloblueGK
 
-Thank you for your interest in contributing! This repository is the **Community Edition** of HelloblueGK — **Apache 2.0** open source for integration, learning, and reference implementations.
+You do not need to be an aerospace or certification expert to help. A **small, correct PR** is more useful than a large one.
 
-**Read first:** [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) — what belongs in this public repo and what does not.
+This repository is the **Community Edition** ([Apache 2.0](LICENSE)). Read [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) before sending production secrets, ITAR/export-controlled data, or formal certification evidence — those do not belong here.
 
-## Quick links
+## Your first hour
 
-| Resource | Purpose |
-|----------|---------|
-| [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) | Community vs hosted vs enterprise tiers |
-| [DEVELOPERS.md](DEVELOPERS.md) | Clone → build → test in 5 minutes |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | How the codebase is organized |
-| [Docs/Project/DEMO.md](Docs/Project/DEMO.md) | Run the Web API locally |
-| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Community standards |
-| [SECURITY.md](SECURITY.md) | Report vulnerabilities privately |
+1. **Talk first (optional but helpful).** Comment `I'd like to work on this` on a [`good first issue`](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) so two people do not do the same work. Or ask in [Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions).
+2. **Run the project locally** — [DEVELOPERS.md](DEVELOPERS.md) (about five minutes if you already have .NET 9).
+3. **Change one thing.** One issue, one folder, one concern.
+4. **Open a PR against `main`.** Use the PR template. Keep the description short: what you changed and how you checked it.
 
-## Good first contributions
+We review first-time PRs for **correctness and scope**, not for matching every internal hardening campaign. Docs and test-only PRs should not require you to resolve unrelated CodeQL or Bugbot threads on other files.
 
-Look for issues labeled [`good first issue`](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) or [`help wanted`](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22help+wanted%22).
+## Pick a safe first task
 
-Great starter tasks:
+**Good first areas** (low merge conflict, easy to review):
 
-- Fix broken links or typos in docs
-- Add unit tests for uncovered code paths
-- Improve XML doc comments on public APIs
-- Clarify setup steps in `DEVELOPERS.md` or `DEMO.md`
+| Area | Examples |
+|------|----------|
+| Docs newcomers actually use | `DEVELOPERS.md`, `Docs/Project/DEMO.md`, `Docs/README.md`, `API_DOCUMENTATION.md` |
+| Broken links | Live docs only — **skip** `Docs/archive/historical/` |
+| XML comments | One controller under `WebAPI/Controllers/` (not `Certification/`) |
+| Isolated tests | New cases next to an existing test class in `Tests/Unit/WebAPI/` or `Tests/Unit/Core/` |
+| Typos / clarity | README quick start, error messages a user would see |
 
-**Do not contribute:** API keys, connection strings, export-controlled data, customer proprietary models, or production certification artifacts. See [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
+**Wait until later** (these files change often and have merge-blocking review rules):
 
-## Development workflow
+- `Certification/**` and `WebAPI/Controllers/Certification/**`
+- `Core/RateLimiting*.cs` and related middleware
+- Auth / registration / SSO paths
+- Anything described as “fail-closed,” “Level A,” or “SoD”
 
-1. **Fork** the repository on GitHub
-2. **Clone** your fork and create a branch:
-   ```bash
-   git clone https://github.com/YOUR_USERNAME/HelloblueGK.git
-   cd HelloblueGK
-   git checkout -b feature/short-description
-   ```
-3. **Set up** — see [DEVELOPERS.md](DEVELOPERS.md)
-4. **Make changes** — follow code style below
-5. **Test** locally:
-   ```bash
-   dotnet build
-   dotnet test Tests/HelloblueGK.Tests.csproj
-   ```
-6. **Commit** with clear messages (e.g. `fix: correct DEMO.md path in CONTRIBUTING`)
-7. **Push** and open a **Pull Request** against `main`
-8. Wait for **CI** to pass and address review feedback
+If your idea touches those, open a Discussion or issue first. We will either scope a safe slice or take it ourselves.
+
+**Never commit:** API keys, connection strings, `.env` files, customer models, or export-controlled material.
 
 ## Prerequisites
 
 - [.NET 9.0 SDK](https://dotnet.microsoft.com/download)
 - Git
-- Docker (optional — for containerized runs)
+- Docker is optional
 
-## Getting started
+## Local loop
 
 ```bash
-git clone https://github.com/HelloblueAI/HelloblueGK.git
+git clone https://github.com/YOUR_USERNAME/HelloblueGK.git
 cd HelloblueGK
+git checkout -b docs/fix-broken-docs-readme-link
 
 dotnet restore HelloblueGK.sln
 dotnet build HelloblueGK.sln
-
 dotnet test Tests/HelloblueGK.Tests.csproj
-
-cd WebAPI
-dotnet run
-# Swagger: http://localhost:5000/swagger
 ```
 
-For detailed setup, environment variables, and project layout, see [DEVELOPERS.md](DEVELOPERS.md).
+Run only the tests you touched if the full suite is slow or memory-heavy:
+
+```bash
+dotnet test Tests/HelloblueGK.Tests.csproj --filter "FullyQualifiedName~Health"
+```
+
+API: `cd WebAPI && dotnet run` → http://localhost:5000/swagger  
+Health (no login): http://localhost:5000/Health
+
+The hosted site is a **reference deploy**, not an open sandbox. Develop against your local API.
+
+## Pull request expectations
+
+We will merge a first PR that is:
+
+- **Small** — prefer under ~200 lines unless the issue says otherwise
+- **On `main`**, rebased or merged with `main` if CI complains about conflicts
+- **Tested** — `dotnet build` plus the tests that cover your change (full suite when you can)
+- **Secret-free**
+- **In Community Edition scope**
+
+Commit messages can be simple: `docs: fix broken link in Docs/README.md`.
+
+If CI fails on something you did not touch, say so in the PR. We will help.
+
+Maintainers: do not ask first-time contributors to absorb daily certification PRs or to resolve bot comments on files they never edited. Fix or dismiss those on their behalf.
 
 ## Code style
 
-- Follow standard C# conventions and existing patterns in the file you edit
-- Use meaningful names; keep methods focused
-- Add XML documentation for new **public** APIs
-- Match indentation and formatting (see `.editorconfig`)
-- Write unit tests for new behavior in `Tests/`
+- Match the file you are in (see `.editorconfig`)
+- Meaningful names; small methods
+- XML docs on **new public** APIs
+- Tests for new behavior in `Tests/`
 
-## Testing
+## Reporting bugs and ideas
 
-| Command | Purpose |
-|---------|---------|
-| `dotnet test Tests/HelloblueGK.Tests.csproj` | All unit/integration tests |
-| `dotnet test --filter Category=Integration` | Integration tests only |
-| `dotnet test --filter Category=Performance` | Performance benchmarks |
-
-CI runs on every pull request — see [.github/workflows/ci.yml](.github/workflows/ci.yml).
-
-## Pull request checklist
-
-- [ ] Branch is up to date with `main`
-- [ ] `dotnet build` and `dotnet test` pass locally
-- [ ] Documentation updated if behavior or setup changed
-- [ ] No secrets, credentials, export-controlled data, or `.env` files committed
-- [ ] PR description explains **what** and **why**
-- [ ] Changes are appropriate for **Community Edition** scope ([OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md))
-
-## Reporting issues
-
-Use the [bug report](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=bug_report.yml) or [feature request](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=feature_request.yml) templates.
-
-Include:
-
-- Clear title and description
-- Steps to reproduce (for bugs)
-- .NET version and OS
-- Expected vs actual behavior
-
-**Security issues:** Do not open public issues. See [SECURITY.md](SECURITY.md).
+| Kind | Where |
+|------|--------|
+| Question / “is this a good first PR?” | [Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions) |
+| Bug | [Bug report](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=bug_report.yml) |
+| Docs fix | [Documentation](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=documentation.yml) |
+| Feature | [Feature request](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=feature_request.yml) |
+| Security | [SECURITY.md](SECURITY.md) — **not** a public issue |
 
 ## Code of Conduct
 
-This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md). By participating, you agree to uphold it.
+[Contributor Covenant](CODE_OF_CONDUCT.md). Report concerns to **conduct@helloblue.ai**.
 
-Report conduct concerns to **conduct@helloblue.ai**.
+By contributing, you license your work under [Apache 2.0](LICENSE).
 
-## License
-
-By contributing, you agree that your contributions will be licensed under the [Apache License 2.0](LICENSE).
-
-## Questions?
-
-- [GitHub Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions) — questions and ideas
-- [GitHub Issues](https://github.com/HelloblueAI/HelloblueGK/issues) — bugs and feature requests
-
-Thank you for helping make HelloblueGK better!
+Welcome — we want your first PR to land.

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for suggesting an improvement. For small fixes, consider opening a PR directly — see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+        Thanks for suggesting an improvement. Small docs or test fixes can be a PR without a feature issue — see [CONTRIBUTING.md](../../CONTRIBUTING.md).
 
   - type: textarea
     id: problem

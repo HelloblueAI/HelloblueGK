@@ -301,6 +301,166 @@ public class TestCoverageSystemTests
         report.CoverageGaps.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("http://example.test/Core/Engine.cs")]
+    [InlineData("https://example.test/Core/Engine.cs")]
+    [InlineData("file:///etc/passwd")]
+    [InlineData("tmp/forge.cs")]
+    [InlineData("phantom/coverage.cs")]
+    [InlineData("C:\\Windows\\system32\\kernel.cs")]
+    public async Task RegisterRequiredFileAsync_RejectsSchemeOrOutsideTreePaths(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.RegisterRequiredFileAsync(filePath, isSafetyCritical: true, registeredBy: "admin");
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        context.RequiredCoverageFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("http://example.test/Core/Engine.cs")]
+    [InlineData("tmp/forge.cs")]
+    public async Task RecordCoverageAsync_RejectsSchemeOrOutsideTreePaths(string filePath)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.RecordCoverageAsync(filePath, new CoverageMetrics
+        {
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MCDCCoverage = 100
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+        context.CodeCoverage.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverSchemePath_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        context.RequiredCoverageFiles.Add(new RequiredCoverageFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "http://example.test/Core/Engine.cs",
+            IsSafetyCritical = true,
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        context.CodeCoverage.Add(new CodeCoverage
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "http://example.test/Core/Engine.cs",
+            StatementCoverage = 100,
+            BranchCoverage = 100,
+            MCDCCoverage = 100,
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            MeetsLevelARequirements = true,
+            LastUpdated = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("Unsafe coverage evidence path", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.Files.Should().BeEmpty();
+        report.OverallStatementCoverage.Should().Be(0);
+        report.CoverageGaps.Should().Contain(g =>
+            g.FilePath == "http://example.test/Core/Engine.cs"
+            && g.GapDescription.Contains("Unsafe coverage evidence path", StringComparison.OrdinalIgnoreCase));
+
+        await system.RevokeRequiredFileAsync("HTTP://example.test/Core/Engine.cs");
+        context.RequiredCoverageFiles.Single().IsActive.Should().BeFalse();
+
+        var afterRevoke = await system.VerifyComplianceAsync();
+        afterRevoke.IsCompliant.Should().BeFalse();
+        afterRevoke.Issues.Should().Contain(i => i.Contains("roster is empty", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task RegisterRequiredFileAsync_CaseVariantLeftovers_DoesNotRecaseStoredPath()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var older = new RequiredCoverageFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "core/engine.cs",
+            IsSafetyCritical = true,
+            IsActive = true,
+            RegisteredBy = "legacy",
+            RegisteredAt = DateTime.UtcNow.AddDays(-2)
+        };
+        var exact = new RequiredCoverageFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "Core/Engine.cs",
+            IsSafetyCritical = true,
+            IsActive = true,
+            RegisteredBy = "legacy",
+            RegisteredAt = DateTime.UtcNow.AddDays(-1)
+        };
+        context.RequiredCoverageFiles.AddRange(older, exact);
+        await context.SaveChangesAsync();
+
+        var registered = await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        registered.FilePath.Should().Be("Core/Engine.cs");
+        context.RequiredCoverageFiles.Single(f => f.Id == exact.Id).IsActive.Should().BeTrue();
+        context.RequiredCoverageFiles.Single(f => f.Id == older.Id).IsActive.Should().BeFalse();
+        context.RequiredCoverageFiles.Single(f => f.Id == older.Id).FilePath.Should().Be("core/engine.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_CaseVariantRosterAndCoverage_StillMatches()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        context.RequiredCoverageFiles.Add(new RequiredCoverageFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = "core/engine.cs",
+            IsSafetyCritical = true,
+            IsActive = true,
+            RegisteredBy = "legacy",
+            RegisteredAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var registered = await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+        registered.FilePath.Should().Be("core/engine.cs");
+
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+        await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            "TC-ENGINE-001",
+            "Tests/Unit/Core/EngineTests.cs",
+            CoverageType.MCDC);
+
+        var check = await system.VerifyComplianceAsync();
+        check.IsCompliant.Should().BeTrue();
+    }
+
     [Fact]
     public async Task LinkTestCaseAsync_RejectsWhitespaceTestCaseId()
     {
