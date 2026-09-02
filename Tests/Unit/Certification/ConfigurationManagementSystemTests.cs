@@ -404,6 +404,100 @@ public class ConfigurationManagementSystemTests
     }
 
     [Fact]
+    public async Task PerformAuditAsync_LeftoverCreatorAsApprover_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Self-Approve", "1.0.0", "leftover SoD", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        // Approve already rejects creator-as-approver. Stamp leftover Approved + self-approval.
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "Alice";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.ApprovalNotIndependent);
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedWithoutApprover_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-No-Approver", "1.0.0", "leftover empty SoD", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "   ";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.ApprovalNotIndependent);
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverIndependentlyApprovedReleasedItems_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Independent", "1.0.0", "leftover independent", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_RejectsLeftoverCreatorAsApprover()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Self-SCI", "1.0.0", "leftover SoD SCI", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "sci.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "alice";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent approver*");
+    }
+
+    [Fact]
+    public async Task GenerateSCIAsync_SucceedsForLeftoverIndependentlyApprovedBaseline()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Independent-SCI", "1.0.0", "leftover independent SCI", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "sci.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var sci = await system.GenerateSCIAsync(baseline.Id);
+        sci.BaselineName.Should().Be("Legacy-Independent-SCI");
+        sci.ConfigurationItems.Should().ContainSingle();
+    }
+
+    [Fact]
     public async Task AddItemToBaselineAsync_RejectsApprovedBaseline()
     {
         await using var context = CreateContext();

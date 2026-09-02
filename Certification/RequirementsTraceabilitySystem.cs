@@ -577,17 +577,17 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
             !string.IsNullOrWhiteSpace(d.DesignElementId) &&
-            RepositoryEvidencePaths.HasAllowedPrefix(d.DesignDocument, RepositoryEvidenceKind.Design);
+            HasSafeEvidencePath(d.DesignDocument, RepositoryEvidenceKind.Design);
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
-            RepositoryEvidencePaths.HasAllowedPrefix(c.CodeFile, RepositoryEvidenceKind.Code) &&
+            HasSafeEvidencePath(c.CodeFile, RepositoryEvidenceKind.Code) &&
             !string.IsNullOrWhiteSpace(c.FunctionName) &&
             c.LineStart > 0 &&
             c.LineEnd >= c.LineStart;
 
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
             !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-            RepositoryEvidencePaths.HasAllowedPrefix(t.TestFile, RepositoryEvidenceKind.Test);
+            HasSafeEvidencePath(t.TestFile, RepositoryEvidenceKind.Test);
 
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {
@@ -619,36 +619,64 @@ namespace HB_NLP_Research_Lab.Certification
             return trimmed;
         }
 
+        private static bool HasSafeEvidencePath(string? path, RepositoryEvidenceKind kind) =>
+            TryNormalizeEvidencePath(path, kind, out _, out _);
+
         private static string NormalizeEvidencePath(string path, string paramName, RepositoryEvidenceKind kind)
         {
-            var normalized = path.Trim().Replace('\\', '/');
-            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so RTM
-            // evidence cannot point outside the repository.
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || normalized.Contains("://", StringComparison.Ordinal)
-                || normalized.Contains(':', StringComparison.Ordinal))
+            if (!TryNormalizeEvidencePath(path, kind, out var normalized, out var error))
             {
-                throw new ArgumentException("Evidence path must be relative to the repository.", paramName);
+                throw new ArgumentException(error, paramName);
             }
 
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            return normalized;
+        }
+
+        private static bool TryNormalizeEvidencePath(
+            string? path,
+            RepositoryEvidenceKind kind,
+            out string normalized,
+            out string error)
+        {
+            normalized = string.Empty;
+            error = string.Empty;
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                error = "Evidence path is required.";
+                return false;
+            }
+
+            var trimmed = path.Trim().Replace('\\', '/');
+            // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so RTM
+            // evidence cannot point outside the repository.
+            if (trimmed.StartsWith("/", StringComparison.Ordinal)
+                || trimmed.StartsWith("//", StringComparison.Ordinal)
+                || trimmed.Contains("://", StringComparison.Ordinal)
+                || trimmed.Contains(':', StringComparison.Ordinal))
+            {
+                error = "Evidence path must be relative to the repository.";
+                return false;
+            }
+
+            var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0
                 || segments.Any(segment => segment is "." or ".."))
             {
-                throw new ArgumentException("Evidence path must not contain traversal segments.", paramName);
+                error = "Evidence path must not contain traversal segments.";
+                return false;
             }
 
             normalized = string.Join("/", segments);
             if (!RepositoryEvidencePaths.HasAllowedPrefix(normalized, kind))
             {
                 var allowed = string.Join(", ", RepositoryEvidencePaths.PrefixesFor(kind));
-                throw new ArgumentException(
-                    $"Evidence path must be under an allowed {kind.ToString().ToLowerInvariant()} prefix ({allowed}).",
-                    paramName);
+                error =
+                    $"Evidence path must be under an allowed {kind.ToString().ToLowerInvariant()} prefix ({allowed}).";
+                return false;
             }
 
-            return normalized;
+            return true;
         }
 
         private static bool IsUniqueConstraintViolation(DbUpdateException exception)
