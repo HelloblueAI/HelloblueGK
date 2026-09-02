@@ -1366,6 +1366,14 @@ public class FormalCodeReviewSystemTests
         await shortNote.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*substantive notes*");
 
+        var punctuationOnly = async () => await system.ResolveFindingAsync(reviewId, findingId, "admin", "............");
+        await punctuationOnly.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*substantive notes*");
+
+        var digitsOnly = async () => await system.ResolveFindingAsync(reviewId, findingId, "admin", "123456789012");
+        await digitsOnly.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*substantive notes*");
+
         var finding = await context.ReviewFindings.AsNoTracking().SingleAsync(f => f.Id == findingId);
         finding.Resolved.Should().BeFalse();
         finding.Resolution.Should().BeNull();
@@ -1411,6 +1419,29 @@ public class FormalCodeReviewSystemTests
         finding.Resolved = true;
         finding.ResolvedAt = DateTime.UtcNow;
         finding.Resolution = "ok";
+        await context.SaveChangesAsync();
+
+        var approve = async () => await system.ApproveReviewAsync(reviewId, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved critical*");
+
+        var persisted = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == reviewId);
+        persisted.Status.Should().Be(CodeReviewStatus.Completed);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_TreatsPunctuationOnlyResolutionAsUnresolved()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        var (reviewId, findingId) = await SeedCompletedReviewWithCriticalFindingAsync(system, context);
+
+        var finding = await context.ReviewFindings.SingleAsync(f => f.Id == findingId);
+        finding.Resolved = true;
+        finding.ResolvedAt = DateTime.UtcNow;
+        finding.ResolvedBy = "legacy";
+        finding.Resolution = "............";
         await context.SaveChangesAsync();
 
         var approve = async () => await system.ApproveReviewAsync(reviewId, "admin");

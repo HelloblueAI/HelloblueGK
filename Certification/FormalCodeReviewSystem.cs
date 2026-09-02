@@ -423,7 +423,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (!HasSubstantiveResolution(resolution))
             {
                 throw new ArgumentException(
-                    "Finding resolution requires substantive notes (not empty, 'done', 'fixed', or 'ok')",
+                    "Finding resolution requires substantive notes (not empty, punctuation-only, 'done', 'fixed', or 'ok')",
                     nameof(resolution));
             }
 
@@ -466,8 +466,8 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Reject vacuous disposition text ("done", "fixed", "ok") that previously
-        /// forged an Approved review after a note-free resolve.
+        /// Reject vacuous disposition text ("done", "fixed", "ok", punctuation-only)
+        /// that previously forged an Approved review after a note-free resolve.
         /// </summary>
         internal static bool HasSubstantiveResolution(string? resolution)
         {
@@ -476,6 +476,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             var trimmed = resolution.Trim();
             if (trimmed.Length < 12)
+                return false;
+
+            // "............" / "123456789012" met the length bar without describing a fix.
+            if (!trimmed.Any(char.IsLetter))
                 return false;
 
             var normalized = trimmed.ToLowerInvariant();
