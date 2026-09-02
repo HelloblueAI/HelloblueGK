@@ -129,7 +129,7 @@ namespace HB_NLP_Research_Lab.Certification
             var normalizedDesignDocument = NormalizeEvidencePath(
                 designDocument,
                 nameof(designDocument),
-                EvidencePathKind.Design);
+                RepositoryEvidenceKind.Design);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -168,7 +168,7 @@ namespace HB_NLP_Research_Lab.Certification
             var normalizedCodeFile = NormalizeEvidencePath(
                 codeFile,
                 nameof(codeFile),
-                EvidencePathKind.Code);
+                RepositoryEvidenceKind.Code);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -208,7 +208,7 @@ namespace HB_NLP_Research_Lab.Certification
             var normalizedTestFile = NormalizeEvidencePath(
                 testFile,
                 nameof(testFile),
-                EvidencePathKind.Test);
+                RepositoryEvidenceKind.Test);
 
             var requirement = await _context.Requirements.FindAsync(requirementId);
             if (requirement == null)
@@ -577,17 +577,17 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
             !string.IsNullOrWhiteSpace(d.DesignElementId) &&
-            HasSafeEvidencePath(d.DesignDocument, EvidencePathKind.Design);
+            HasSafeEvidencePath(d.DesignDocument, RepositoryEvidenceKind.Design);
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
-            HasSafeEvidencePath(c.CodeFile, EvidencePathKind.Code) &&
+            HasSafeEvidencePath(c.CodeFile, RepositoryEvidenceKind.Code) &&
             !string.IsNullOrWhiteSpace(c.FunctionName) &&
             c.LineStart > 0 &&
             c.LineEnd >= c.LineStart;
 
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
             !string.IsNullOrWhiteSpace(t.TestCaseId) &&
-            HasSafeEvidencePath(t.TestFile, EvidencePathKind.Test);
+            HasSafeEvidencePath(t.TestFile, RepositoryEvidenceKind.Test);
 
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {
@@ -619,50 +619,10 @@ namespace HB_NLP_Research_Lab.Certification
             return trimmed;
         }
 
-        private enum EvidencePathKind
-        {
-            Design,
-            Code,
-            Test
-        }
-
-        // Design evidence must live under Docs/; code under implementation trees;
-        // tests under Tests/. Relative-but-arbitrary paths (phantom/forge.cs) previously
-        // satisfied HasMeaningful* and forged Level A IsCompliant. Prefix-only leftover
-        // checks also accepted Docs/../tmp (and Core/../, Tests/../) because they start
-        // with an allowed prefix — leftover verify uses the same TryNormalize gate as Link.
-        private static readonly string[] DesignEvidencePrefixes = ["Docs/"];
-        private static readonly string[] CodeEvidencePrefixes =
-        [
-            "Core/", "WebAPI/", "Certification/", "Physics/", "AI/", "Models/", "Aerospace/", "Scripts/"
-        ];
-        private static readonly string[] TestEvidencePrefixes = ["Tests/"];
-
-        private static string[] PrefixesFor(EvidencePathKind kind) => kind switch
-        {
-            EvidencePathKind.Design => DesignEvidencePrefixes,
-            EvidencePathKind.Code => CodeEvidencePrefixes,
-            EvidencePathKind.Test => TestEvidencePrefixes,
-            _ => throw new ArgumentOutOfRangeException(nameof(kind))
-        };
-
-        private static bool HasAllowedEvidencePrefix(string? path, EvidencePathKind kind)
-        {
-            if (string.IsNullOrWhiteSpace(path))
-            {
-                return false;
-            }
-
-            var prefixes = PrefixesFor(kind);
-            return prefixes.Any(prefix =>
-                path.StartsWith(prefix, StringComparison.Ordinal) &&
-                path.Length > prefix.Length);
-        }
-
-        private static bool HasSafeEvidencePath(string? path, EvidencePathKind kind) =>
+        private static bool HasSafeEvidencePath(string? path, RepositoryEvidenceKind kind) =>
             TryNormalizeEvidencePath(path, kind, out _, out _);
 
-        private static string NormalizeEvidencePath(string path, string paramName, EvidencePathKind kind)
+        private static string NormalizeEvidencePath(string path, string paramName, RepositoryEvidenceKind kind)
         {
             if (!TryNormalizeEvidencePath(path, kind, out var normalized, out var error))
             {
@@ -674,7 +634,7 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool TryNormalizeEvidencePath(
             string? path,
-            EvidencePathKind kind,
+            RepositoryEvidenceKind kind,
             out string normalized,
             out string error)
         {
@@ -708,9 +668,9 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             normalized = string.Join("/", segments);
-            if (!HasAllowedEvidencePrefix(normalized, kind))
+            if (!RepositoryEvidencePaths.HasAllowedPrefix(normalized, kind))
             {
-                var allowed = string.Join(", ", PrefixesFor(kind));
+                var allowed = string.Join(", ", RepositoryEvidencePaths.PrefixesFor(kind));
                 error =
                     $"Evidence path must be under an allowed {kind.ToString().ToLowerInvariant()} prefix ({allowed}).";
                 return false;

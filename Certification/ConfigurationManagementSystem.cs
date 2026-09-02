@@ -40,7 +40,7 @@ namespace HB_NLP_Research_Lab.Certification
                 Version = version.Trim(),
                 Description = description,
                 Status = BaselineStatus.Draft,
-                CreatedBy = createdBy,
+                CreatedBy = NormalizeActorIdentity(createdBy, nameof(createdBy)),
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -85,14 +85,15 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Level A independence: approver must not be the baseline author.
-            var normalizedApprover = NormalizeActorName(approvedBy);
-            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            // Empty or placeholder creators previously skipped this gate.
+            var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
+            if (!HasRealActorIdentity(baseline.CreatedBy))
             {
-                throw new ArgumentException("Approver is required", nameof(approvedBy));
+                throw new InvalidOperationException(
+                    "Cannot approve a baseline without a real creator identity; Level A SoD cannot be evaluated");
             }
 
-            if (!string.IsNullOrWhiteSpace(baseline.CreatedBy) &&
-                string.Equals(NormalizeActorName(baseline.CreatedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(NormalizeActorName(baseline.CreatedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
                     "Cannot approve a baseline as its creator; Level A requires an independent approver");
@@ -231,6 +232,7 @@ namespace HB_NLP_Research_Lab.Certification
             request.Title = request.Title.Trim();
             request.Description = request.Description.Trim();
             request.Justification = request.Justification.Trim();
+            request.RequestedBy = NormalizeActorIdentity(request.RequestedBy, nameof(request.RequestedBy));
             request.Id = Guid.NewGuid();
             request.CreatedAt = DateTime.UtcNow;
             request.Status = ChangeRequestStatus.Submitted;
@@ -278,16 +280,23 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var notes = approvalNotes.Trim();
-
-            // Level A / CCB independence: requester cannot self-approve.
-            var normalizedApprover = NormalizeActorName(approvedBy);
-            if (string.IsNullOrWhiteSpace(normalizedApprover))
+            if (!HasSubstantiveApprovalNotes(notes))
             {
-                throw new ArgumentException("Approver is required", nameof(approvedBy));
+                throw new ArgumentException(
+                    "Approval notes must be substantive; vacuous text such as 'ok'/'lgtm' cannot record CCB approval",
+                    nameof(approvalNotes));
             }
 
-            if (!string.IsNullOrWhiteSpace(request.RequestedBy) &&
-                string.Equals(NormalizeActorName(request.RequestedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
+            // Level A / CCB independence: requester cannot self-approve.
+            // Empty or placeholder requesters previously skipped this gate.
+            var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
+            if (!HasRealActorIdentity(request.RequestedBy))
+            {
+                throw new InvalidOperationException(
+                    "Cannot approve a change request without a real requester identity; Level A SoD cannot be evaluated");
+            }
+
+            if (string.Equals(NormalizeActorName(request.RequestedBy), normalizedApprover, StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException(
                     "Cannot approve a change request as its requester; Level A requires separation of duties");
@@ -363,11 +372,45 @@ namespace HB_NLP_Research_Lab.Certification
             if (request.Status != ChangeRequestStatus.Approved)
                 throw new InvalidOperationException($"Change request {requestNumber} must be approved before implementation");
 
-            request.Status = ChangeRequestStatus.Implemented;
-            request.ImplementedBy = implementedBy;
-            request.ImplementedAt = DateTime.UtcNow;
+            var normalizedImplementer = NormalizeActorIdentity(implementedBy, nameof(implementedBy));
 
-            // Link to affected items
+            // Level A independence: the CCB approver cannot also implement the change.
+            // Requester-as-implementer remains allowed (developer implements after CCB).
+            if (!string.IsNullOrWhiteSpace(request.ApprovedBy) &&
+                string.Equals(
+                    NormalizeActorName(request.ApprovedBy),
+                    normalizedImplementer,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    "Cannot implement a change request as its CCB approver; Level A requires separation of duties");
+            }
+
+            // Claim and item links share one transaction so a failure after the
+            // Approved → Implemented update cannot leave an Implemented row with
+            // no ChangeRequestItemLink evidence (retry would then be rejected).
+            var implementedAt = DateTime.UtcNow;
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            var claimed = await _context.ChangeRequests
+                .Where(cr => cr.Id == request.Id && cr.Status == ChangeRequestStatus.Approved)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(cr => cr.Status, ChangeRequestStatus.Implemented)
+                    .SetProperty(cr => cr.ImplementedBy, normalizedImplementer)
+                    .SetProperty(cr => cr.ImplementedAt, implementedAt));
+
+            if (claimed == 0)
+            {
+                await transaction.RollbackAsync();
+                await _context.Entry(request).ReloadAsync();
+                throw new InvalidOperationException(
+                    $"Change request {requestNumber} cannot be implemented from status {request.Status}; " +
+                    "concurrent status change detected");
+            }
+
+            request.Status = ChangeRequestStatus.Implemented;
+            request.ImplementedBy = normalizedImplementer;
+            request.ImplementedAt = implementedAt;
+
             var links = distinctItemIds.Select(itemId => new ChangeRequestItemLink
             {
                 Id = Guid.NewGuid(),
@@ -377,7 +420,17 @@ namespace HB_NLP_Research_Lab.Certification
             }).ToList();
             _context.ChangeRequestItemLinks.AddRange(links);
 
-            await _context.SaveChangesAsync();
+            try
+            {
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+
             _logger.LogInformation("Implemented change request {RequestNumber}", requestNumber);
         }
 
@@ -391,36 +444,67 @@ namespace HB_NLP_Research_Lab.Certification
             return value.Trim();
         }
 
+        private static readonly HashSet<string> AllowedConfigurationRoots = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "Docs", "Core", "WebAPI", "Certification", "Physics", "AI", "Models", "Aerospace", "Scripts", "Tests"
+        };
+
         private static string NormalizeEvidencePath(string? filePath)
         {
+            if (!TryNormalizeEvidencePath(filePath, out var normalized, out var error))
+            {
+                throw new ArgumentException(error, nameof(filePath));
+            }
+
+            return normalized;
+        }
+
+        private static bool IsStoredEvidencePathSafe(string? filePath)
+        {
+            return TryNormalizeEvidencePath(filePath, out var normalized, out _)
+                && string.Equals(filePath, normalized, StringComparison.Ordinal);
+        }
+
+        private static bool TryNormalizeEvidencePath(string? filePath, out string normalized, out string error)
+        {
+            normalized = string.Empty;
+            error = string.Empty;
+
             if (string.IsNullOrWhiteSpace(filePath))
             {
-                throw new ArgumentException("Configuration item file path is required.", nameof(filePath));
+                error = "Configuration item file path is required.";
+                return false;
             }
 
-            var normalized = filePath.Trim().Replace('\\', '/');
+            var trimmed = filePath.Trim().Replace('\\', '/');
             // Reject absolute / UNC / scheme URIs (http://, file:, C:\) so SCI
             // evidence cannot point outside the repository (parity with RTM).
-            if (normalized.StartsWith("/", StringComparison.Ordinal)
-                || normalized.StartsWith("//", StringComparison.Ordinal)
-                || normalized.Contains("://", StringComparison.Ordinal)
-                || normalized.Contains(':', StringComparison.Ordinal))
+            if (trimmed.StartsWith("/", StringComparison.Ordinal)
+                || trimmed.StartsWith("//", StringComparison.Ordinal)
+                || trimmed.Contains("://", StringComparison.Ordinal)
+                || trimmed.Contains(':', StringComparison.Ordinal))
             {
-                throw new ArgumentException(
-                    "Configuration item file path must be relative to the repository.",
-                    nameof(filePath));
+                error = "Configuration item file path must be relative to the repository.";
+                return false;
             }
 
-            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
             if (segments.Length == 0
                 || segments.Any(segment => segment is "." or ".."))
             {
-                throw new ArgumentException(
-                    "Configuration item file path must not contain traversal segments.",
-                    nameof(filePath));
+                error = "Configuration item file path must not contain traversal segments.";
+                return false;
             }
 
-            return string.Join("/", segments);
+            if (segments.Length < 2 || !AllowedConfigurationRoots.Contains(segments[0]))
+            {
+                error =
+                    "Configuration item file path must be under a repository evidence tree (Docs/, Core/, WebAPI/, Certification/, Physics/, AI/, Models/, Aerospace/, Scripts/, Tests/).";
+                return false;
+            }
+
+            normalized = string.Join("/", segments);
+            return true;
         }
 
         /// <summary>
@@ -448,6 +532,13 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new InvalidOperationException(
                     $"Baseline {baseline.BaselineName} has no configuration items; SCI cannot be generated without configuration evidence");
+            }
+
+            // Leftover outside-tree items must not appear as official SCI evidence.
+            if (baseline.ConfigurationItems.Any(bci => !IsStoredEvidencePathSafe(bci.ConfigurationItem.FilePath)))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} contains configuration items outside the repository evidence tree; SCI cannot be generated");
             }
 
             if (!HasReleasedChecksumEvidence(baseline.ConfigurationItems))
@@ -497,11 +588,13 @@ namespace HB_NLP_Research_Lab.Certification
                 Issues = new List<ConfigurationAuditIssue>()
             };
 
-            // Check for missing items
+            // Check for missing items. Whitespace-only checksums are not evidence —
+            // Approve/SCI already use IsNullOrWhiteSpace; leftover "   " rows must
+            // not stamp audit IsCompliant.
             var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var item in items)
             {
-                if (string.IsNullOrEmpty(item.Checksum))
+                if (!HasChecksumEvidence(item.Checksum))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
@@ -520,6 +613,17 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = AuditIssueType.ItemNotReleased,
                         Severity = IssueSeverity.Major,
                         Description = $"Configuration item {item.ItemName} is not in Released status"
+                    });
+                }
+
+                if (!IsStoredEvidencePathSafe(item.FilePath))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.UnsafeFilePath,
+                        Severity = IssueSeverity.Critical,
+                        Description = $"Configuration item {item.ItemName} path is outside the repository evidence tree"
                     });
                 }
             }
@@ -566,6 +670,56 @@ namespace HB_NLP_Research_Lab.Certification
         private static string NormalizeActorName(string? actorName) =>
             string.IsNullOrWhiteSpace(actorName) ? string.Empty : actorName.Trim();
 
+        private static string NormalizeActorIdentity(string? actorName, string paramName)
+        {
+            var normalized = NormalizeActorName(actorName);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                throw new ArgumentException($"{paramName} is required", paramName);
+            }
+
+            if (IsPlaceholderActor(normalized))
+            {
+                throw new ArgumentException(
+                    $"{paramName} must be a real actor identity, not a placeholder such as 'System'",
+                    paramName);
+            }
+
+            return normalized;
+        }
+
+        private static bool HasRealActorIdentity(string? actorName)
+        {
+            var normalized = NormalizeActorName(actorName);
+            return !string.IsNullOrWhiteSpace(normalized) && !IsPlaceholderActor(normalized);
+        }
+
+        private static bool IsPlaceholderActor(string actorName)
+        {
+            var normalized = actorName.Trim().ToLowerInvariant();
+            return normalized is "system" or "unknown" or "n/a" or "na" or "none" or "anonymous";
+        }
+
+        /// <summary>
+        /// Reject vacuous CCB notes ("ok", "lgtm", "approved") that previously recorded
+        /// independent approval without a real disposition.
+        /// </summary>
+        internal static bool HasSubstantiveApprovalNotes(string notes)
+        {
+            if (string.IsNullOrWhiteSpace(notes))
+                return false;
+
+            var trimmed = notes.Trim();
+            if (trimmed.Length < 12)
+                return false;
+
+            var normalized = trimmed.ToLowerInvariant();
+            return normalized is not (
+                "done" or "fixed" or "ok" or "okay" or "approved" or "lgtm" or
+                "n/a" or "na" or "none" or "complete" or "completed" or "pass" or "passed" or
+                "ccb ok" or "looks good" or "looks good to me");
+        }
+
         private async Task<string> AllocateNextRequestNumberAsync()
         {
             var year = DateTime.UtcNow.Year;
@@ -590,11 +744,14 @@ namespace HB_NLP_Research_Lab.Certification
             return $"{prefix}{next:D4}";
         }
 
+        private static bool HasChecksumEvidence(string? checksum) =>
+            !string.IsNullOrWhiteSpace(checksum);
+
         private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link =>
                 link.ConfigurationItem != null &&
                 link.ConfigurationItem.Status == ConfigurationItemStatus.Released &&
-                !string.IsNullOrWhiteSpace(link.ConfigurationItem.Checksum));
+                HasChecksumEvidence(link.ConfigurationItem.Checksum));
     }
 
     // Data Models
@@ -761,7 +918,8 @@ namespace HB_NLP_Research_Lab.Certification
         MissingVersion,
         InvalidChecksum,
         MissingBaseline,
-        BaselineNotApproved
+        BaselineNotApproved,
+        UnsafeFilePath
     }
 
     // DbContext
