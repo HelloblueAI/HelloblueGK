@@ -839,6 +839,14 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
+        /// Create-time <see cref="NormalizeRequiredText"/> already rejects empty function
+        /// names. Leftover Approved rows must meet the same bar so a file-covering span
+        /// without a named function cannot satisfy a Level A roster entry.
+        /// </summary>
+        private static bool HasNamedFunction(string? functionName) =>
+            !string.IsNullOrWhiteSpace(functionName);
+
+        /// <summary>
         /// Leftover Approved reviews must still show an independent approver.
         /// Empty ApprovedBy cannot evaluate SoD. Author-as-approver and
         /// completing-reviewer-as-approver are the same collisions Approve rejects.
@@ -894,6 +902,7 @@ namespace HB_NLP_Research_Lab.Certification
                     && HasIndependentApproval(r)
                     && !r.Findings.Any(IsEffectivelyBlockingFinding)
                     && !string.IsNullOrWhiteSpace(r.FilePath)
+                    && HasNamedFunction(r.FunctionName)
                     && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
                 .Select(r => NormalizeFilePath(r.FilePath))
                 .Where(IsSafeRelativeRepositoryPath)
@@ -928,10 +937,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (check.UnreviewedFiles.Count > 0)
             {
-                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
+                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span and a named function");
                 foreach (var file in check.UnreviewedFiles)
                 {
-                    check.Issues.Add($"File not reviewed with a file-covering approved span: {file}");
+                    check.Issues.Add($"File not reviewed with a file-covering approved span and a named function: {file}");
                 }
             }
 
