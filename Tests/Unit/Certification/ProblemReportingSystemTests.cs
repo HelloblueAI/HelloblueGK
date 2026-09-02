@@ -1079,7 +1079,7 @@ public class ProblemReportingSystemTests
             changedBy: "bob");
 
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*linked requirement or test case*");
+            .WithMessage("*verified implementation evidence*recorded test case*");
     }
 
     [Fact]
