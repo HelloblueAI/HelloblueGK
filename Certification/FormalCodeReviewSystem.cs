@@ -492,6 +492,18 @@ namespace HB_NLP_Research_Lab.Certification
             !IsDispositioned(finding);
 
         /// <summary>
+        /// Leftover Approved rows may store Minor while description language is
+        /// still Critical/Major. Re-score before compliance/summary so those
+        /// findings cannot satisfy Level A as a clean review.
+        /// </summary>
+        private static bool IsEffectivelyBlockingFinding(ReviewFinding finding)
+        {
+            var severity = ResolveFindingSeverity(finding);
+            return (severity == FindingSeverity.Critical || severity == FindingSeverity.Major) &&
+                   !IsDispositioned(finding);
+        }
+
+        /// <summary>
         /// Approve code review
         /// </summary>
         public async Task ApproveReviewAsync(Guid reviewId, string approvedBy)
@@ -664,9 +676,12 @@ namespace HB_NLP_Research_Lab.Certification
                 Approved = reviews.Count(r => r.Status == CodeReviewStatus.Approved),
                 Rejected = reviews.Count(r => r.Status == CodeReviewStatus.Rejected),
                 TotalFindings = reviews.Sum(r => r.Findings.Count),
-                CriticalFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Critical)),
-                MajorFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Major)),
-                MinorFindings = reviews.Sum(r => r.Findings.Count(f => f.Severity == FindingSeverity.Minor))
+                CriticalFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Critical)),
+                MajorFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Major)),
+                MinorFindings = reviews.Sum(r => r.Findings.Count(f =>
+                    ResolveFindingSeverity(f) == FindingSeverity.Minor))
             };
 
             return summary;
@@ -821,14 +836,24 @@ namespace HB_NLP_Research_Lab.Certification
 
         private async Task<CodeReviewComplianceCheck> BuildComplianceCheckAsync(List<string> normalizedRequired)
         {
-            // Leftover Approved rows (status stamped without certified completion or
-            // findings) must not satisfy Level A roster compliance.
-            var approvedFiles = (await _context.CodeReviews
+            var approvedReviews = await _context.CodeReviews
                 .Include(r => r.Assignments)
                 .Include(r => r.Findings)
                 .Where(r => r.Status == CodeReviewStatus.Approved)
-                .ToListAsync())
+                .ToListAsync();
+
+            // Leftover Approved + undispositioned Critical/Major (stored or
+            // effective) must not satisfy the roster. #161 re-scores at Approve
+            // only; already-stamped rows still need a verify-time gate.
+            var leftoverBlocking = approvedReviews
+                .SelectMany(r => r.Findings)
+                .Count(IsEffectivelyBlockingFinding);
+
+            // Leftover Approved rows (status stamped without certified completion or
+            // findings) must not satisfy Level A roster compliance.
+            var approvedFiles = approvedReviews
                 .Where(r => SatisfiesIndependentReviewEvidence(r)
+                    && !r.Findings.Any(IsEffectivelyBlockingFinding)
                     && !string.IsNullOrWhiteSpace(r.FilePath)
                     && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
                 .Select(r => NormalizeFilePath(r.FilePath))
@@ -853,10 +878,16 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
-            // Traversal / absolute roster rows never match a safe approved review.
-            check.IsCompliant = check.UnreviewedFiles.Count == 0;
+            if (leftoverBlocking > 0)
+            {
+                check.Issues.Add(
+                    $"{leftoverBlocking} approved review finding(s) remain undispositioned at effective Critical/Major severity");
+            }
 
-            if (!check.IsCompliant)
+            // Traversal / absolute roster rows never match a safe approved review.
+            check.IsCompliant = check.UnreviewedFiles.Count == 0 && leftoverBlocking == 0;
+
+            if (check.UnreviewedFiles.Count > 0)
             {
                 check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
                 foreach (var file in check.UnreviewedFiles)
