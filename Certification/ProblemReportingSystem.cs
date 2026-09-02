@@ -106,6 +106,13 @@ namespace HB_NLP_Research_Lab.Certification
 
             string? resolutionToPersist = report.Resolution;
             DateTime? closedAtToPersist = report.ClosedAt;
+            // Leftover rows may store Minor while title/description/impact still
+            // contain catastrophic language. Re-score before the close gate so
+            // those rows cannot skip Critical/Major evidence. Persist the floor
+            // only on Closed-after-evidence — Reject/investigate must not upgrade
+            // stored Minor and drop the leftover out of the underclassified gate.
+            var effectiveSeverity = EffectiveSeverity(report);
+            var severityToPersist = report.Severity;
             if (newStatus == ProblemReportStatus.Closed)
             {
                 if (string.IsNullOrWhiteSpace(resolution))
@@ -121,17 +128,18 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
                 }
 
-                // Critical/Major closures need linked evidence that exists in RTM/coverage
-                // stores — a phantom GUID or invented test id forges IsCompliant.
-                if (report.Severity is ProblemSeverity.Critical or ProblemSeverity.Major &&
+                // Critical/Major closures need verified implementation evidence — a
+                // Draft/NotTraced shell requirement or invented test id forges IsCompliant.
+                if (effectiveSeverity is ProblemSeverity.Critical or ProblemSeverity.Major &&
                     !await HasValidResolutionEvidenceAsync(report))
                 {
                     throw new InvalidOperationException(
-                        $"Problem report {reportNumber} requires a linked requirement or test case before closing");
+                        $"Problem report {reportNumber} requires a linked requirement with verified implementation evidence or a recorded test case before closing");
                 }
 
                 resolutionToPersist = normalizedResolution;
                 closedAtToPersist = DateTime.UtcNow;
+                severityToPersist = effectiveSeverity;
             }
 
             // Atomic expected-status claim closes load/check/SaveChanges TOCTOU
@@ -149,7 +157,8 @@ namespace HB_NLP_Research_Lab.Certification
                     .SetProperty(pr => pr.Status, newStatus)
                     .SetProperty(pr => pr.UpdatedAt, updatedAt)
                     .SetProperty(pr => pr.Resolution, resolutionToPersist)
-                    .SetProperty(pr => pr.ClosedAt, closedAtToPersist));
+                    .SetProperty(pr => pr.ClosedAt, closedAtToPersist)
+                    .SetProperty(pr => pr.Severity, severityToPersist));
 
             if (claimed == 0)
             {
@@ -249,6 +258,10 @@ namespace HB_NLP_Research_Lab.Certification
                 .Include(pr => pr.StatusChanges)
                 .ToListAsync();
 
+            var scored = reports
+                .Select(r => (Report: r, Severity: EffectiveSeverity(r)))
+                .ToList();
+
             var summary = new ProblemReportSummary
             {
                 GeneratedAt = DateTime.UtcNow,
@@ -257,20 +270,20 @@ namespace HB_NLP_Research_Lab.Certification
                 UnderInvestigation = reports.Count(r => r.Status == ProblemReportStatus.UnderInvestigation),
                 Resolved = reports.Count(r => r.Status == ProblemReportStatus.Resolved),
                 Closed = reports.Count(r => r.Status == ProblemReportStatus.Closed),
-                CriticalSeverity = reports.Count(r => r.Severity == ProblemSeverity.Critical),
-                MajorSeverity = reports.Count(r => r.Severity == ProblemSeverity.Major),
-                MinorSeverity = reports.Count(r => r.Severity == ProblemSeverity.Minor),
+                CriticalSeverity = scored.Count(x => x.Severity == ProblemSeverity.Critical),
+                MajorSeverity = scored.Count(x => x.Severity == ProblemSeverity.Major),
+                MinorSeverity = scored.Count(x => x.Severity == ProblemSeverity.Minor),
                 AverageResolutionTime = CalculateAverageResolutionTime(reports),
-                Reports = reports.Select(r => new ProblemReportSummaryEntry
+                Reports = scored.Select(x => new ProblemReportSummaryEntry
                 {
-                    ReportNumber = r.ReportNumber,
-                    Title = r.Title,
-                    Status = r.Status,
-                    Severity = r.Severity,
-                    CreatedAt = r.CreatedAt,
-                    ClosedAt = r.ClosedAt,
-                    ResolutionTime = r.ClosedAt.HasValue 
-                        ? (r.ClosedAt.Value - r.CreatedAt).TotalDays 
+                    ReportNumber = x.Report.ReportNumber,
+                    Title = x.Report.Title,
+                    Status = x.Report.Status,
+                    Severity = x.Severity,
+                    CreatedAt = x.Report.CreatedAt,
+                    ClosedAt = x.Report.ClosedAt,
+                    ResolutionTime = x.Report.ClosedAt.HasValue
+                        ? (x.Report.ClosedAt.Value - x.Report.CreatedAt).TotalDays
                         : (double?)null
                 }).ToList()
             };
@@ -317,6 +330,9 @@ namespace HB_NLP_Research_Lab.Certification
                 return check;
             }
 
+            // Closures need substantive notes AND verified implementation evidence
+            // (not a Draft/NotTraced shell). Leftover Minor rows with safety language
+            // cannot skip those Critical/Major gates.
             var underclassified = allReports.Count(r =>
                 r.Severity == ProblemSeverity.Minor &&
                 EffectiveSeverity(r) is ProblemSeverity.Critical or ProblemSeverity.Major);
@@ -390,8 +406,10 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Evidence rows must resolve to a real requirement or recorded test case.
-        /// Phantom GUIDs / invented test ids previously forged IsCompliant.
+        /// Evidence rows must resolve to a requirement with verified implementation
+        /// (verified code span or verified Passed test) or a coverage-recorded test case.
+        /// Phantom GUIDs, Draft shells, and invented test ids previously forged IsCompliant.
+        /// RTM RequirementTestLinks are planning assertions and must not bootstrap inventory.
         /// </summary>
         private async Task<bool> HasValidResolutionEvidenceAsync(ProblemReport report)
         {
@@ -400,12 +418,16 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(id => id != Guid.Empty)
                 .Distinct()
                 .ToList();
-            if (requirementIds.Count > 0 &&
-                await _requirementsContext.Requirements
-                    .AsNoTracking()
-                    .AnyAsync(r => requirementIds.Contains(r.Id)))
+            if (requirementIds.Count > 0)
             {
-                return true;
+                var requirements = await _requirementsContext.Requirements
+                    .AsNoTracking()
+                    .Include(r => r.CodeLinks)
+                    .Include(r => r.TestLinks)
+                    .Where(r => requirementIds.Contains(r.Id))
+                    .ToListAsync();
+                if (requirements.Any(HasVerifiedImplementationEvidence))
+                    return true;
             }
 
             var testCaseIds = report.TestLinks
@@ -419,6 +441,32 @@ namespace HB_NLP_Research_Lab.Certification
 
             var recorded = await LoadRecordedTestCaseIdsAsync();
             return testCaseIds.Any(recorded.Contains);
+        }
+
+        /// <summary>
+        /// A requirement counts as problem-report closure evidence only when it
+        /// already has verified code or a verified passing test. Existence of a
+        /// Draft/NotTraced row (or unverified planning links) is not a fix.
+        /// Leftover Verified=true rows that point at tmp/, phantom/, or
+        /// prefix-qualified traversal (Core/../tmp) are not implementation evidence.
+        /// </summary>
+        private static bool HasVerifiedImplementationEvidence(Requirement requirement)
+        {
+            if (requirement.CodeLinks.Any(c =>
+                    RepositoryEvidencePaths.HasSafeRepositoryPath(c.CodeFile, RepositoryEvidenceKind.Code) &&
+                    !string.IsNullOrWhiteSpace(c.FunctionName) &&
+                    c.LineStart > 0 &&
+                    c.LineEnd >= c.LineStart &&
+                    c.Verified))
+            {
+                return true;
+            }
+
+            return requirement.TestLinks.Any(t =>
+                !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+                RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test) &&
+                t.Verified &&
+                t.TestResult == TestResult.Passed);
         }
 
         private async Task<bool> RequirementExistsAsync(Guid requirementId)
@@ -444,22 +492,20 @@ namespace HB_NLP_Research_Lab.Certification
         {
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var rtmIds = await _requirementsContext.RequirementTestLinks
-                .AsNoTracking()
-                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
-                .Select(t => t.TestCaseId)
-                .ToListAsync();
-            ids.UnionWith(rtmIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
-
+            // Coverage is the execution inventory. RTM RequirementTestLinks are
+            // planning rows — treating them as recorded tests let an invented
+            // Tests/*.cs link close Critical/Major reports and stamp IsCompliant.
             if (_coverageContext == null)
                 return ids;
 
-            var coverageIds = await _coverageContext.CoverageTestCaseLinks
+            var coverageLinks = await _coverageContext.CoverageTestCaseLinks
                 .AsNoTracking()
-                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile))
-                .Select(t => t.TestCaseId)
+                .Where(t => !string.IsNullOrWhiteSpace(t.TestFile) && !string.IsNullOrWhiteSpace(t.TestCaseId))
+                .Select(t => new { t.TestCaseId, t.TestFile })
                 .ToListAsync();
-            ids.UnionWith(coverageIds.Where(id => !string.IsNullOrWhiteSpace(id)).Select(id => id.Trim()));
+            ids.UnionWith(coverageLinks
+                .Where(t => RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test))
+                .Select(t => t.TestCaseId.Trim()));
             return ids;
         }
 
@@ -558,7 +604,7 @@ namespace HB_NLP_Research_Lab.Certification
             return resolved;
         }
 
-        internal static ProblemSeverity EffectiveSeverity(ProblemReport report)
+        public static ProblemSeverity EffectiveSeverity(ProblemReport report)
         {
             ArgumentNullException.ThrowIfNull(report);
             return ResolveSeverity(report.Title, report.Description, report.Impact, report.Severity);
