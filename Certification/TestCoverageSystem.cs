@@ -253,9 +253,11 @@ namespace HB_NLP_Research_Lab.Certification
                 {
                     // Roster owns the safety-critical flag for Level A MC/DC scope.
                     coverage.IsSafetyCritical = required.IsSafetyCritical;
-                    coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
-                                                      coverage.BranchCoverage >= 100.0 &&
-                                                      (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
+                    // Recompute leftover stored percentages from counts so a pre-gate
+                    // 100% row with 5/10 statements cannot stamp Level A.
+                    if (!TryApplyStoredCoverageIntegrity(coverage))
+                        continue;
+
                     rosterCoverage.Add(coverage);
                 }
             }
@@ -292,17 +294,24 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Fail closed: empty roster / missing evidence / no safety-critical inventory /
-            // leftover scheme, absolute, or outside-tree paths / count-only records
-            // with no linked test execution evidence.
+            // leftover scheme, absolute, or outside-tree paths / leftover count-free or
+            // count-mismatched percentages / count-only records with no linked tests.
             var missingRosterFiles = roster.Count(r =>
                 !TryGetCoverageForRoster(coverageRows, r.FilePath, out _));
             var unsafeRosterFiles = roster.Count(r => !IsStoredCoveragePathSafe(r.FilePath));
+            var inconsistentRosterFiles = roster.Count(r =>
+                TryGetCoverageForRoster(coverageRows, r.FilePath, out var coverage)
+                && coverage != null
+                && IsStoredCoveragePathSafe(r.FilePath)
+                && IsStoredCoveragePathSafe(coverage.FilePath)
+                && !HasCountableCoverageTotals(coverage));
             report.FilesWithTestEvidence = rosterCoverage.Count(HasValidTestEvidence);
             report.SafetyCriticalFilesWithMcdcTestEvidence = rosterCoverage.Count(c =>
                 c.IsSafetyCritical && HasValidMcdcTestEvidence(c));
             report.MeetsDO178CLevelA = roster.Count > 0 &&
                                       missingRosterFiles == 0 &&
                                       unsafeRosterFiles == 0 &&
+                                      inconsistentRosterFiles == 0 &&
                                       report.SafetyCriticalFiles > 0 &&
                                       report.FilesWith100PercentStatementCoverage == report.TotalFiles &&
                                       report.FilesWith100PercentBranchCoverage == report.TotalFiles &&
@@ -332,6 +341,16 @@ namespace HB_NLP_Research_Lab.Certification
                             FilePath = required.FilePath,
                             IsSafetyCritical = required.IsSafetyCritical,
                             GapDescription = "No coverage evidence recorded for required file"
+                        };
+                    }
+
+                    if (!HasCountableCoverageTotals(coverage))
+                    {
+                        return new CoverageGap
+                        {
+                            FilePath = required.FilePath,
+                            IsSafetyCritical = required.IsSafetyCritical,
+                            GapDescription = "Count-inconsistent or count-free coverage evidence"
                         };
                     }
 
@@ -374,6 +393,7 @@ namespace HB_NLP_Research_Lab.Certification
             var rosterCoverage = new List<CodeCoverage>();
             var missingFiles = new List<string>();
             var unsafeFiles = new List<string>();
+            var inconsistentFiles = new List<string>();
             foreach (var required in roster)
             {
                 if (!IsStoredCoveragePathSafe(required.FilePath))
@@ -391,9 +411,12 @@ namespace HB_NLP_Research_Lab.Certification
                 }
 
                 coverage.IsSafetyCritical = required.IsSafetyCritical;
-                coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
-                                                  coverage.BranchCoverage >= 100.0 &&
-                                                  (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
+                if (!TryApplyStoredCoverageIntegrity(coverage))
+                {
+                    inconsistentFiles.Add(required.FilePath);
+                    continue;
+                }
+
                 rosterCoverage.Add(coverage);
             }
 
@@ -446,6 +469,22 @@ namespace HB_NLP_Research_Lab.Certification
                 foreach (var missing in missingFiles)
                 {
                     check.Issues.Add($"Missing coverage evidence: {missing}");
+                }
+
+                return check;
+            }
+
+            if (inconsistentFiles.Count > 0)
+            {
+                check.StatementCoverageCompliant = false;
+                check.BranchCoverageCompliant = false;
+                check.MCDCCoverageCompliant = false;
+                check.IsCompliant = false;
+                check.Issues.Add(
+                    $"{inconsistentFiles.Count} required coverage file(s) have count-inconsistent or count-free percentage evidence");
+                foreach (var inconsistent in inconsistentFiles)
+                {
+                    check.Issues.Add($"Count-inconsistent or count-free coverage evidence: {inconsistent}");
                 }
 
                 return check;
@@ -541,6 +580,56 @@ namespace HB_NLP_Research_Lab.Certification
         {
             "Core", "WebAPI", "Certification", "Physics", "AI", "Models", "Aerospace", "Scripts", "Tests"
         };
+
+        /// <summary>
+        /// Recompute leftover stored percentages from counts using the same rules as
+        /// <see cref="RecordCoverageAsync"/>. Count-free or contradictory totals cannot
+        /// satisfy Level A even when StatementCoverage/MCDCCoverage were persisted as 100.
+        /// </summary>
+        private static bool TryApplyStoredCoverageIntegrity(CodeCoverage coverage)
+        {
+            if (!HasCountableCoverageTotals(coverage))
+                return false;
+
+            coverage.StatementCoverage = (double)coverage.CoveredStatements / coverage.TotalStatements * 100.0;
+            coverage.BranchCoverage = (double)coverage.CoveredBranches / coverage.TotalBranches * 100.0;
+            coverage.ConditionCoverage = coverage.TotalConditions > 0
+                ? (double)coverage.CoveredConditions / coverage.TotalConditions * 100.0
+                : 0.0;
+
+            if (coverage.TotalConditions > 0)
+            {
+                var claimedMcdc = coverage.MCDCCoverage;
+                if (double.IsNaN(claimedMcdc) || double.IsInfinity(claimedMcdc) || claimedMcdc < 0)
+                    claimedMcdc = 0;
+                else if (claimedMcdc > 100)
+                    claimedMcdc = 100;
+
+                coverage.MCDCCoverage = Math.Min(claimedMcdc, coverage.ConditionCoverage);
+            }
+            else
+            {
+                coverage.MCDCCoverage = 0.0;
+            }
+
+            coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
+                                              coverage.BranchCoverage >= 100.0 &&
+                                              (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
+            return true;
+        }
+
+        private static bool HasCountableCoverageTotals(CodeCoverage coverage)
+        {
+            if (coverage.TotalStatements <= 0 || coverage.TotalBranches <= 0 || coverage.TotalConditions < 0)
+                return false;
+
+            if (coverage.CoveredStatements < 0 || coverage.CoveredBranches < 0 || coverage.CoveredConditions < 0)
+                return false;
+
+            return coverage.CoveredStatements <= coverage.TotalStatements
+                && coverage.CoveredBranches <= coverage.TotalBranches
+                && coverage.CoveredConditions <= coverage.TotalConditions;
+        }
 
         private static bool HasValidTestEvidence(CodeCoverage coverage) =>
             coverage.TestCaseLinks.Any(IsValidTestCaseLink);
