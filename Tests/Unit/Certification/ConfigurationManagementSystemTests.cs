@@ -332,7 +332,7 @@ public class ConfigurationManagementSystemTests
         {
             ItemName = "core.c",
             ItemType = ConfigurationItemType.SourceCode,
-            FilePath = "src/core.c",
+            FilePath = "Core/core.c",
             Checksum = "   ",
             Size = 128
         });
