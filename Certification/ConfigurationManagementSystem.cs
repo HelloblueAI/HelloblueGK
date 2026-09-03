@@ -84,6 +84,12 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
+            if (!AllItemsHaveNames(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved until every configuration item has a name");
+            }
+
             // Level A independence: approver must not be the baseline author.
             // Empty or placeholder creators previously skipped this gate.
             var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
@@ -124,7 +130,9 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(i => i.BaselineId == baselineId)
                 .Include(i => i.ConfigurationItem)
                 .ToListAsync();
-            if (claimedItems.Count == 0 || !HasReleasedChecksumEvidence(claimedItems))
+            if (claimedItems.Count == 0
+                || !HasReleasedChecksumEvidence(claimedItems)
+                || !AllItemsHaveNames(claimedItems))
             {
                 await _context.SoftwareBaselines
                     .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
@@ -136,7 +144,9 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new InvalidOperationException(
                     claimedItems.Count == 0
                         ? $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved"
-                        : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
+                        : !AllItemsHaveNames(claimedItems)
+                            ? $"Baseline {baseline.BaselineName} cannot be approved until every configuration item has a name"
+                            : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -556,6 +566,12 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item is Released with a checksum");
             }
 
+            if (!AllItemsHaveNames(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item has a name");
+            }
+
             var sci = new SoftwareConfigurationIndex
             {
                 BaselineId = baselineId,
@@ -603,36 +619,50 @@ namespace HB_NLP_Research_Lab.Certification
             var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var item in items)
             {
-                if (!HasChecksumEvidence(item.Checksum))
+                if (!HasItemNameEvidence(item.ItemName))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = item.ItemName ?? string.Empty,
+                        IssueType = AuditIssueType.MissingItemName,
+                        Severity = IssueSeverity.Major,
+                        Description = "Configuration item has no name"
+                    });
+                }
+
+                if (!HasChecksumEvidence(item.Checksum))
+                {
+                    var itemLabel = item.ItemName ?? string.Empty;
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.MissingChecksum,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} has no checksum"
+                        Description = $"Configuration item {itemLabel} has no checksum"
                     });
                 }
 
                 if (item.Status != ConfigurationItemStatus.Released)
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.ItemNotReleased,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} is not in Released status"
+                        Description = $"Configuration item {itemLabel} is not in Released status"
                     });
                 }
 
                 if (!IsStoredEvidencePathSafe(item.FilePath))
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.UnsafeFilePath,
                         Severity = IssueSeverity.Critical,
-                        Description = $"Configuration item {item.ItemName} path is outside the repository evidence tree"
+                        Description = $"Configuration item {itemLabel} path is outside the repository evidence tree"
                     });
                 }
             }
@@ -777,6 +807,14 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasChecksumEvidence(string? checksum) =>
             !string.IsNullOrWhiteSpace(checksum);
+
+        private static bool HasItemNameEvidence(string? itemName) =>
+            !string.IsNullOrWhiteSpace(itemName);
+
+        private static bool AllItemsHaveNames(IEnumerable<BaselineConfigurationItem> links) =>
+            links.All(link =>
+                link.ConfigurationItem != null &&
+                HasItemNameEvidence(link.ConfigurationItem.ItemName));
 
         private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link =>
@@ -971,6 +1009,7 @@ namespace HB_NLP_Research_Lab.Certification
     {
         MissingChecksum,
         ItemNotReleased,
+        MissingItemName,
         MissingVersion,
         InvalidChecksum,
         MissingBaseline,
