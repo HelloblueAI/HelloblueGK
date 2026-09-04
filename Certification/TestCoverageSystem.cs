@@ -640,7 +640,7 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool IsValidTestCaseLink(CoverageTestCaseLink link)
         {
-            if (string.IsNullOrWhiteSpace(link.TestCaseId) || string.IsNullOrWhiteSpace(link.TestFile))
+            if (!HasRealEvidenceId(link.TestCaseId) || string.IsNullOrWhiteSpace(link.TestFile))
             {
                 return false;
             }
@@ -656,6 +656,27 @@ namespace HB_NLP_Research_Lab.Certification
             }
         }
 
+        /// <summary>
+        /// Placeholder tokens ("n/a", "none", "todo") are not test identity.
+        /// Link already rejects empty IDs; leftover rows must meet the same bar.
+        /// </summary>
+        private static bool IsPlaceholderEvidenceId(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized is
+                "n/a" or "na" or "none" or "todo" or "tbd" or
+                "unknown" or "pending" or "placeholder" or
+                "null" or "undefined" or "system" or "anonymous";
+        }
+
+        private static bool HasRealEvidenceId(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderEvidenceId(value);
+
         private static string NormalizeTestCaseId(string testCaseId)
         {
             if (string.IsNullOrWhiteSpace(testCaseId))
@@ -663,7 +684,15 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Test case id is required.", nameof(testCaseId));
             }
 
-            return testCaseId.Trim();
+            var trimmed = testCaseId.Trim();
+            if (IsPlaceholderEvidenceId(trimmed))
+            {
+                throw new ArgumentException(
+                    "Test case id must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(testCaseId));
+            }
+
+            return trimmed;
         }
 
         private static string NormalizeTestFilePath(string testFile)

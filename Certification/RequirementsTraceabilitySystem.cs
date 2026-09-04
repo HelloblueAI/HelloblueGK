@@ -123,6 +123,10 @@ namespace HB_NLP_Research_Lab.Certification
         {
             if (string.IsNullOrWhiteSpace(designElementId))
                 throw new ArgumentException("Design element id is required", nameof(designElementId));
+            if (IsPlaceholderEvidenceId(designElementId))
+                throw new ArgumentException(
+                    "Design element id must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(designElementId));
             if (string.IsNullOrWhiteSpace(designDocument))
                 throw new ArgumentException("Design document is required", nameof(designDocument));
 
@@ -202,6 +206,10 @@ namespace HB_NLP_Research_Lab.Certification
         {
             if (string.IsNullOrWhiteSpace(testCaseId))
                 throw new ArgumentException("Test case id is required", nameof(testCaseId));
+            if (IsPlaceholderEvidenceId(testCaseId))
+                throw new ArgumentException(
+                    "Test case id must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(testCaseId));
             if (string.IsNullOrWhiteSpace(testFile))
                 throw new ArgumentException("Test file is required", nameof(testFile));
 
@@ -576,7 +584,7 @@ namespace HB_NLP_Research_Lab.Certification
                 HasMeaningfulTestLink(t) && t.Verified && t.TestResult == TestResult.Passed);
 
         private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
-            !string.IsNullOrWhiteSpace(d.DesignElementId) &&
+            HasRealEvidenceId(d.DesignElementId) &&
             HasSafeEvidencePath(d.DesignDocument, RepositoryEvidenceKind.Design);
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
@@ -586,8 +594,30 @@ namespace HB_NLP_Research_Lab.Certification
             c.LineEnd >= c.LineStart;
 
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
-            !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+            HasRealEvidenceId(t.TestCaseId) &&
             HasSafeEvidencePath(t.TestFile, RepositoryEvidenceKind.Test);
+
+        /// <summary>
+        /// Placeholder tokens ("n/a", "none", "todo") are not design or test identity.
+        /// Link already rejects empty IDs; leftover rows must meet the same bar.
+        /// FunctionName placeholders are owned separately and are not widened here.
+        /// </summary>
+        private static bool IsPlaceholderEvidenceId(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized is
+                "n/a" or "na" or "none" or "todo" or "tbd" or
+                "unknown" or "pending" or "placeholder" or
+                "null" or "undefined" or "system" or "anonymous";
+        }
+
+        private static bool HasRealEvidenceId(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderEvidenceId(value);
 
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {

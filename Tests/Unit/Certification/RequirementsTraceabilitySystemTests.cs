@@ -679,6 +679,123 @@ public class RequirementsTraceabilitySystemTests
         report.CriticalIssues.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task VerifyTraceabilityAsync_LeftoverPlaceholderEvidenceIds_AreNotCompliant(
+        string leftoverEvidenceId)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-021",
+            Title = "Legacy placeholder evidence ids",
+            Description = "Placeholder design/test identity must fail closed at verify",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        context.RequirementDesignLinks.Add(new RequirementDesignLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            DesignElementId = leftoverEvidenceId,
+            DesignDocument = "Docs/DesignDoc.pdf",
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementCodeLinks.Add(new RequirementCodeLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            CodeFile = "Core/Sensors.cs",
+            FunctionName = "ValidateSensor",
+            LineStart = 1,
+            LineEnd = 20,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementTestLinks.Add(new RequirementTestLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            TestCaseId = leftoverEvidenceId,
+            TestFile = "Tests/SensorsTests.cs",
+            CoverageType = TestCoverageType.MCDC,
+            TestResult = TestResult.Passed,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingDesignLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task LinkToDesignAsync_RejectsPlaceholderDesignElementId(string placeholderDesignElementId)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-022",
+            Title = "Reject placeholder design id",
+            Description = "Create-time design identity cannot be a placeholder token",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToDesignAsync(
+            requirement.Id,
+            placeholderDesignElementId,
+            "Docs/DesignDoc.pdf");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real identifier*")
+            .WithParameterName("designElementId");
+        context.RequirementDesignLinks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task LinkToTestAsync_RejectsPlaceholderTestCaseId(string placeholderTestCaseId)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-023",
+            Title = "Reject placeholder test id",
+            Description = "Create-time test identity cannot be a placeholder token",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(
+            requirement.Id,
+            placeholderTestCaseId,
+            "Tests/SensorsTests.cs",
+            TestCoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real identifier*")
+            .WithParameterName("testCaseId");
+        context.RequirementTestLinks.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task VerifyLinkAsync_RejectsLeftoverTraversalPath()
     {
