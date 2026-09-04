@@ -530,6 +530,62 @@ public class TestCoverageSystemTests
         report.CoverageGaps.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task VerifyComplianceAsync_LeftoverPlaceholderTestCaseId_FailsClosed(string leftoverTestCaseId)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        context.CoverageTestCaseLinks.Add(new CoverageTestCaseLink
+        {
+            Id = Guid.NewGuid(),
+            CodeCoverageId = coverage.Id,
+            TestCaseId = leftoverTestCaseId,
+            TestFile = "Tests/Unit/Core/EngineTests.cs",
+            CoverageType = CoverageType.MCDC,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.TestEvidenceCompliant.Should().BeFalse();
+        check.FilesWithTestEvidence.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task LinkTestCaseAsync_RejectsPlaceholderTestCaseId(string placeholderTestCaseId)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            placeholderTestCaseId,
+            "Tests/Unit/Core/EngineTests.cs",
+            CoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real identifier*")
+            .WithParameterName("testCaseId");
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task RegisterRequiredFileAsync_CaseVariantLeftovers_DoesNotRecaseStoredPath()
     {

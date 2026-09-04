@@ -70,6 +70,14 @@ namespace HB_NLP_Research_Lab.Certification
                     "only Draft or UnderReview baselines may be approved");
             }
 
+            // Create already rejects empty names. Leftover Draft rows with a blank
+            // BaselineName must not become official or mint a nameless SCI.
+            if (!HasBaselineNameEvidence(baseline.BaselineName))
+            {
+                throw new InvalidOperationException(
+                    "Baseline cannot be approved without a name");
+            }
+
             // Empty / unreleased / checksum-free items must not become official —
             // Approve freezes the set and SCI would otherwise be vacuous.
             if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
@@ -527,6 +535,14 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} is {baseline.Status}; SCI may only be generated for Approved or Released baselines");
             }
 
+            // Leftover Approved/Released rows with an empty BaselineName previously
+            // minted a nameless SCI. Create already rejects blank names.
+            if (!HasBaselineNameEvidence(baseline.BaselineName))
+            {
+                throw new InvalidOperationException(
+                    "Baseline cannot produce an SCI without a name");
+            }
+
             // Leftover Approved/Released rows whose creator is also ApprovedBy (or
             // that have no approver) previously minted an SCI. Approve already
             // rejects creator-as-approver; leftover SCI must re-check independence.
@@ -688,6 +704,23 @@ namespace HB_NLP_Research_Lab.Certification
                 return report;
             }
 
+            // Leftover Approved/Released + empty/whitespace BaselineName previously
+            // stamped IsCompliant and minted a nameless SCI. Create already rejects
+            // those strings. Matching leftover named baselines still comply.
+            if (!HasBaselineNameEvidence(baseline.BaselineName))
+            {
+                report.IsCompliant = false;
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName ?? string.Empty,
+                    IssueType = AuditIssueType.MissingBaselineName,
+                    Severity = IssueSeverity.Critical,
+                    Description = "Baseline has no name; configuration compliance cannot be asserted"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
             report.IsCompliant = report.Issues.Count == 0;
 
             return report;
@@ -777,6 +810,13 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasChecksumEvidence(string? checksum) =>
             !string.IsNullOrWhiteSpace(checksum);
+
+        /// <summary>
+        /// Create-time already rejects empty baseline names. Leftover Approved rows
+        /// must meet the same bar so a nameless SCI cannot stamp Level A.
+        /// </summary>
+        private static bool HasBaselineNameEvidence(string? baselineName) =>
+            !string.IsNullOrWhiteSpace(baselineName);
 
         private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link =>
@@ -976,7 +1016,8 @@ namespace HB_NLP_Research_Lab.Certification
         MissingBaseline,
         BaselineNotApproved,
         ApprovalNotIndependent,
-        UnsafeFilePath
+        UnsafeFilePath,
+        MissingBaselineName
     }
 
     // DbContext
