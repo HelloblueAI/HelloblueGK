@@ -23,6 +23,24 @@ public class ConfigurationManagementSystemTests
         context.SoftwareBaselines.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    [InlineData(" TBD ")]
+    public async Task CreateBaselineAsync_RejectsPlaceholderName(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateBaselineAsync(baselineName, "1.0.0", "initial", "alice");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real configuration identity*")
+            .WithParameterName("baselineName");
+
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task CreateConfigurationItemAsync_RejectsEmptyNameAndTraversalPath()
     {
@@ -46,6 +64,29 @@ public class ConfigurationManagementSystemTests
         });
         await traversal.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*traversal*");
+
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("NONE")]
+    [InlineData("todo")]
+    [InlineData(" pending ")]
+    public async Task CreateConfigurationItemAsync_RejectsPlaceholderName(string itemName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = itemName,
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c"
+        });
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real configuration identity*")
+            .WithParameterName("ItemName");
 
         context.ConfigurationItems.Should().BeEmpty();
     }
@@ -116,6 +157,53 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*has no configuration items and cannot be approved*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPlaceholderBaselineName(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Placeholder-Name", "0.1.0", "placeholder", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        // Create already rejects placeholder tokens. Stamp leftover Draft + "n/a".
+        baseline.BaselineName = baselineName;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder configuration name*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData(" TBD ")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPlaceholderItemName(string itemName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Placeholder-Item-Name", "0.1.0", "placeholder", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var item = context.ConfigurationItems.Single();
+        item.ItemName = itemName;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder configuration name*");
 
         var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
         persisted.Status.Should().Be(BaselineStatus.Draft);
@@ -364,6 +452,103 @@ public class ConfigurationManagementSystemTests
         var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
 
         var baseline = await system.CreateBaselineAsync("Legacy-Matching-Checksum", "1.0.0", "leftover ok", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("NONE")]
+    [InlineData("todo")]
+    public async Task GenerateSCIAsync_RejectsApprovedBaselineWithPlaceholderName(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-SCI-Name", "1.0.0", "leftover placeholder", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.BaselineName = baselineName;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder configuration name*");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task PerformAuditAsync_LeftoverApprovedPlaceholderBaselineName_FailsClosed(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + placeholder name — leftover rows
+        // previously stamped audit IsCompliant and minted an SCI.
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Name", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.BaselineName = baselineName;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidBaselineName &&
+            i.ItemName == baselineName);
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("pending")]
+    public async Task PerformAuditAsync_LeftoverApprovedPlaceholderItemName_FailsClosed(string itemName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Item-Name", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var item = context.ConfigurationItems.Single();
+        item.ItemName = itemName;
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidItemName &&
+            i.ItemName == itemName);
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*placeholder configuration name*");
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedMatchingName_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Matching-Name", "1.0.0", "leftover ok", "alice");
         await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
         baseline.Status = BaselineStatus.Approved;
         baseline.ApprovedBy = "bob";

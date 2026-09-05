@@ -30,6 +30,12 @@ namespace HB_NLP_Research_Lab.Certification
         {
             if (string.IsNullOrWhiteSpace(baselineName))
                 throw new ArgumentException("Baseline name is required", nameof(baselineName));
+            if (IsPlaceholderConfigurationName(baselineName))
+            {
+                throw new ArgumentException(
+                    "Baseline name must be a real configuration identity, not a placeholder such as 'n/a'",
+                    nameof(baselineName));
+            }
             if (string.IsNullOrWhiteSpace(version))
                 throw new ArgumentException("Baseline version is required", nameof(version));
 
@@ -84,6 +90,16 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
+            // Placeholder tokens ("n/a" / "none" / "todo") are not configuration
+            // identity. Create already rejects them; leftover Draft rows must
+            // not freeze into an official baseline. Empty leftover names are a
+            // separate MissingBaselineName / MissingItemName gate.
+            if (HasPlaceholderConfigurationName(baseline.BaselineName, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved with a placeholder configuration name");
+            }
+
             // Level A independence: approver must not be the baseline author.
             // Empty or placeholder creators previously skipped this gate.
             var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
@@ -124,7 +140,9 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(i => i.BaselineId == baselineId)
                 .Include(i => i.ConfigurationItem)
                 .ToListAsync();
-            if (claimedItems.Count == 0 || !HasReleasedChecksumEvidence(claimedItems))
+            if (claimedItems.Count == 0
+                || !HasReleasedChecksumEvidence(claimedItems)
+                || HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems))
             {
                 await _context.SoftwareBaselines
                     .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
@@ -136,7 +154,9 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new InvalidOperationException(
                     claimedItems.Count == 0
                         ? $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved"
-                        : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
+                        : HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems)
+                            ? $"Baseline {baseline.BaselineName} cannot be approved with a placeholder configuration name"
+                            : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -153,6 +173,12 @@ namespace HB_NLP_Research_Lab.Certification
         {
             ArgumentNullException.ThrowIfNull(item);
             item.ItemName = NormalizeRequiredText(item.ItemName, nameof(item.ItemName));
+            if (IsPlaceholderConfigurationName(item.ItemName))
+            {
+                throw new ArgumentException(
+                    "ItemName must be a real configuration identity, not a placeholder such as 'n/a'",
+                    nameof(item.ItemName));
+            }
             item.FilePath = NormalizeEvidencePath(item.FilePath);
 
             item.Id = Guid.NewGuid();
@@ -556,6 +582,15 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item is Released with a checksum");
             }
 
+            // Leftover Approved/Released + placeholder name previously minted
+            // an SCI whose identity was "n/a" / "none" / "todo". Empty leftover
+            // names are a separate MissingBaselineName / MissingItemName gate.
+            if (HasPlaceholderConfigurationName(baseline.BaselineName, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI with a placeholder configuration name");
+            }
+
             var sci = new SoftwareConfigurationIndex
             {
                 BaselineId = baselineId,
@@ -600,6 +635,10 @@ namespace HB_NLP_Research_Lab.Certification
             // Check for missing items. Whitespace-only checksums are not evidence —
             // Approve/SCI already use IsNullOrWhiteSpace; leftover "   " rows must
             // not stamp audit IsCompliant.
+            // Placeholder name tokens are not configuration identity —
+            // leftover Approved + "n/a" previously stamped IsCompliant and minted
+            // an SCI. Empty leftover names stay on the unused MissingBaselineName
+            // / MissingItemName gates and are not widened here.
             var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var item in items)
             {
@@ -635,6 +674,28 @@ namespace HB_NLP_Research_Lab.Certification
                         Description = $"Configuration item {item.ItemName} path is outside the repository evidence tree"
                     });
                 }
+
+                if (IsPlaceholderConfigurationName(item.ItemName))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.InvalidItemName,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has a placeholder name that is not configuration identity"
+                    });
+                }
+            }
+
+            if (IsPlaceholderConfigurationName(baseline.BaselineName))
+            {
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.InvalidBaselineName,
+                    Severity = IssueSeverity.Critical,
+                    Description = $"Baseline {baseline.BaselineName} has a placeholder name that is not configuration identity"
+                });
             }
 
             report.TotalItems = items.Count;
@@ -774,6 +835,26 @@ namespace HB_NLP_Research_Lab.Certification
 
             return $"{prefix}{next:D4}";
         }
+
+        /// <summary>
+        /// Reject vacuous configuration-name tokens that previously created,
+        /// approved, and minted an SCI whose identity was "n/a" / "none" /
+        /// "todo". Empty and whitespace names stay on the existing required-text
+        /// / unused MissingBaselineName and MissingItemName leftover gates.
+        /// </summary>
+        internal static bool IsPlaceholderConfigurationName(string? name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
+            var normalized = name.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
+        private static bool HasPlaceholderConfigurationName(string? baselineName, IEnumerable<BaselineConfigurationItem>? links) =>
+            IsPlaceholderConfigurationName(baselineName) ||
+            (links?.Any(link => IsPlaceholderConfigurationName(link.ConfigurationItem?.ItemName)) ?? false);
 
         private static bool HasChecksumEvidence(string? checksum) =>
             !string.IsNullOrWhiteSpace(checksum);
@@ -976,7 +1057,9 @@ namespace HB_NLP_Research_Lab.Certification
         MissingBaseline,
         BaselineNotApproved,
         ApprovalNotIndependent,
-        UnsafeFilePath
+        UnsafeFilePath,
+        InvalidBaselineName,
+        InvalidItemName
     }
 
     // DbContext
