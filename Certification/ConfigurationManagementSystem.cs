@@ -527,6 +527,15 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} is {baseline.Status}; SCI may only be generated for Approved or Released baselines");
             }
 
+            // Leftover Approved/Released rows whose creator is also ApprovedBy (or
+            // that have no approver) previously minted an SCI. Approve already
+            // rejects creator-as-approver; leftover SCI must re-check independence.
+            if (!HasIndependentBaselineApproval(baseline))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI without an independent approver");
+            }
+
             // Empty / unreleased / checksum-free SCI is not DO-178C evidence.
             if (baseline.ConfigurationItems == null || baseline.ConfigurationItems.Count == 0)
             {
@@ -588,16 +597,15 @@ namespace HB_NLP_Research_Lab.Certification
                 Issues = new List<ConfigurationAuditIssue>()
             };
 
-            // Check for missing or placeholder checksums. Placeholder tokens
-            // ("n/a" / "none" / "todo") are not integrity evidence — Approve/SCI
-            // already require a non-whitespace checksum, but leftover "n/a" rows
-            // previously stamped audit IsCompliant and minted an SCI.
-            // Whitespace-only leftovers stay MissingChecksum-via-IsNullOrEmpty
-            // (owned by leftover whitespace audit work); do not widen that here.
+            // Check for missing or placeholder checksums. Whitespace-only values
+            // are MissingChecksum (leftover "   " must not stamp IsCompliant).
+            // Placeholder tokens ("n/a" / "none" / "todo") are InvalidChecksum —
+            // they previously approved a baseline, minted an SCI, and stamped
+            // leftover audit IsCompliant.
             var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var item in items)
             {
-                if (string.IsNullOrEmpty(item.Checksum))
+                if (string.IsNullOrWhiteSpace(item.Checksum))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
@@ -675,6 +683,23 @@ namespace HB_NLP_Research_Lab.Certification
                 return report;
             }
 
+            // Leftover Approved/Released + creator-as-approver (or missing ApprovedBy)
+            // previously stamped IsCompliant. Approve already rejects that SoD collision.
+            if (!HasIndependentBaselineApproval(baseline))
+            {
+                report.IsCompliant = false;
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.ApprovalNotIndependent,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Baseline {baseline.BaselineName} leftover approval is not independent; creator and approver must be distinct"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
             report.IsCompliant = report.Issues.Count == 0;
 
             return report;
@@ -726,6 +751,11 @@ namespace HB_NLP_Research_Lab.Certification
             if (trimmed.Length < 12)
                 return false;
 
+            // Punctuation-only / digit-only strings ("............", "123456789012")
+            // previously counted as a real CCB disposition.
+            if (!trimmed.Any(char.IsLetter))
+                return false;
+
             var normalized = trimmed.ToLowerInvariant();
             return normalized is not (
                 "done" or "fixed" or "ok" or "okay" or "approved" or "lgtm" or
@@ -757,14 +787,14 @@ namespace HB_NLP_Research_Lab.Certification
             return $"{prefix}{next:D4}";
         }
 
+        private static bool HasChecksumEvidence(string? checksum) =>
+            !string.IsNullOrWhiteSpace(checksum) && !IsPlaceholderChecksum(checksum);
+
         private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link =>
                 link.ConfigurationItem != null &&
                 link.ConfigurationItem.Status == ConfigurationItemStatus.Released &&
                 HasChecksumEvidence(link.ConfigurationItem.Checksum));
-
-        private static bool HasChecksumEvidence(string? checksum) =>
-            !string.IsNullOrWhiteSpace(checksum) && !IsPlaceholderChecksum(checksum);
 
         /// <summary>
         /// Reject vacuous checksum tokens that previously approved a baseline,
@@ -778,6 +808,31 @@ namespace HB_NLP_Research_Lab.Certification
             var normalized = checksum.Trim().ToLowerInvariant();
             return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
                 or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
+        /// <summary>
+        /// Leftover Approved/Released baselines must still show an independent approver.
+        /// Empty ApprovedBy cannot evaluate SoD. Creator-as-approver is the collision
+        /// Approve already rejects. Empty/placeholder CreatedBy is owned by leftover
+        /// SoD actor hardening and is not re-checked here.
+        /// </summary>
+        private static bool HasIndependentBaselineApproval(SoftwareBaseline baseline)
+        {
+            if (string.IsNullOrWhiteSpace(baseline.ApprovedBy))
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(baseline.CreatedBy)
+                && string.Equals(
+                    NormalizeActorName(baseline.CreatedBy),
+                    NormalizeActorName(baseline.ApprovedBy),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
         }
     }
 
@@ -946,6 +1001,7 @@ namespace HB_NLP_Research_Lab.Certification
         InvalidChecksum,
         MissingBaseline,
         BaselineNotApproved,
+        ApprovalNotIndependent,
         UnsafeFilePath
     }
 

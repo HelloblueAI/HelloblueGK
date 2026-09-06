@@ -255,6 +255,75 @@ public class ProblemReportingSystemTests
             .WithMessage("*substantive resolution*");
     }
 
+    [Theory]
+    [InlineData("............")]
+    [InlineData("------------")]
+    [InlineData("123456789012")]
+    public async Task UpdateStatusAsync_RejectsPunctuationOnlyResolutionWhenClosing(string vacuousResolution)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-SENSOR-001", "Tests/Unit/Sensors/ChamberPressureTests.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToTestAsync(created.ReportNumber, "TC-SENSOR-001");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: vacuousResolution,
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*substantive resolution*");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverClosedWithPunctuationOnlyResolution_FailsClosed()
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var requirement = await fixture.SeedRequirementWithTestAsync("TC-SENSOR-001");
+
+        var report = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = "PR-2026-0088",
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            Resolution = "............",
+            ReportedBy = "legacy",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(report);
+        fixture.Reports.ProblemReportRequirementLinks.Add(new ProblemReportRequirementLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = report.Id,
+            RequirementId = requirement.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task UpdateStatusAsync_RejectsClosedCriticalWithoutEvidenceLink()
     {

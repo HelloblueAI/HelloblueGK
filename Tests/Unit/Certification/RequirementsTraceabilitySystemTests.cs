@@ -566,6 +566,154 @@ public class RequirementsTraceabilitySystemTests
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
     }
 
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverTraversalLinks_AreNotCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-018",
+            Title = "Legacy traversal evidence",
+            Description = "Prefix-qualified traversal must fail closed at verify",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        // Prefix-only leftover checks accepted Docs/../tmp because the string
+        // starts with Docs/. LinkTo* already rejects these; seed the forge.
+        context.RequirementDesignLinks.Add(new RequirementDesignLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            DesignElementId = "DE-TRAVERSAL",
+            DesignDocument = "Docs/../tmp/forge-design.pdf",
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementCodeLinks.Add(new RequirementCodeLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            CodeFile = "Core/../tmp/forge.cs",
+            FunctionName = "Forge",
+            LineStart = 1,
+            LineEnd = 20,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementTestLinks.Add(new RequirementTestLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            TestCaseId = "TC-TRAVERSAL",
+            TestFile = "Tests/../tmp/forgeTests.cs",
+            CoverageType = TestCoverageType.MCDC,
+            TestResult = TestResult.Passed,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingDesignLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingCodeLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverSafeNamespaceLinks_AreCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-019",
+            Title = "Legacy in-tree evidence",
+            Description = "Matching leftover Docs/Core/Tests paths must still verify",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        context.RequirementDesignLinks.Add(new RequirementDesignLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            DesignElementId = "DE-SAFE",
+            DesignDocument = "Docs/DesignDoc.pdf",
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementCodeLinks.Add(new RequirementCodeLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            CodeFile = "Core/Sensors.cs",
+            FunctionName = "ValidateSensor",
+            LineStart = 1,
+            LineEnd = 20,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementTestLinks.Add(new RequirementTestLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            TestCaseId = "TC-SAFE",
+            TestFile = "Tests/SensorsTests.cs",
+            CoverageType = TestCoverageType.MCDC,
+            TestResult = TestResult.Passed,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeTrue();
+        report.CriticalIssues.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VerifyLinkAsync_RejectsLeftoverTraversalPath()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-020",
+            Title = "Verify cannot stamp traversal",
+            Description = "Leftover Docs/../ paths must not become Verified through the API",
+            CreatedBy = "alice"
+        });
+
+        var linkId = Guid.NewGuid();
+        context.RequirementDesignLinks.Add(new RequirementDesignLink
+        {
+            Id = linkId,
+            RequirementId = requirement.Id,
+            DesignElementId = "DE-TRAVERSAL-VERIFY",
+            DesignDocument = "Docs/../tmp/forge-design.pdf",
+            CreatedAt = DateTime.UtcNow,
+            Verified = false
+        });
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.VerifyLinkAsync(
+            requirement.Id,
+            linkId,
+            RequirementLinkKind.Design);
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*vacuous*");
+    }
+
     private static RequirementsDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<RequirementsDbContext>()
