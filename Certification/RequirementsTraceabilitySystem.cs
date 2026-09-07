@@ -31,7 +31,7 @@ namespace HB_NLP_Research_Lab.Certification
             ArgumentNullException.ThrowIfNull(requirement);
             requirement.RequirementNumber = NormalizeRequirementNumber(requirement.RequirementNumber);
             requirement.Title = NormalizeRequiredText(requirement.Title, "Title");
-            requirement.Description = NormalizeRequiredText(requirement.Description, "Description");
+            requirement.Description = NormalizeRequirementDescription(requirement.Description);
 
             // Priority is fail-closed: unclassified defaults to Critical (MC/DC required),
             // and safety/critical/hazard keywords cannot be under-classified to skip Level A gates.
@@ -311,6 +311,14 @@ namespace HB_NLP_Research_Lab.Certification
 
             foreach (var req in requirements)
             {
+                // Leftover empty/placeholder Description previously stamped Level A
+                // IsCompliant when verified links existed. Create already rejects
+                // empty Description; placeholder tokens ("n/a") were still accepted
+                // and counted as a described requirement. Number/Title leftover
+                // identity is owned by a separate leftover-identity change and is
+                // not restacked here.
+                AddRequirementDescriptionIssues(report, req);
+
                 // Re-score leftover Medium/Low rows whose title/description hid hazard language.
                 var effectivePriority = ResolvePriority(
                     req.RequirementNumber,
@@ -589,6 +597,54 @@ namespace HB_NLP_Research_Lab.Certification
             !string.IsNullOrWhiteSpace(t.TestCaseId) &&
             HasSafeEvidencePath(t.TestFile, RepositoryEvidenceKind.Test);
 
+        private static void AddRequirementDescriptionIssues(
+            TraceabilityVerificationReport report,
+            Requirement req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Description))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.MissingRequirementDescription,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} has no description; leftover empty requirement body cannot satisfy Level A traceability"
+                });
+            }
+            else if (IsPlaceholderRequirementDescription(req.Description))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.InvalidRequirementDescription,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} description is a placeholder; leftover vacuous requirement body cannot satisfy Level A traceability"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Leftover empty/whitespace or placeholder Description must not count as
+        /// implementation evidence for problem-report closure. Number/Title leftover
+        /// identity is owned separately and is not restacked here.
+        /// </summary>
+        internal static bool HasRequirementDescription(Requirement requirement) =>
+            HasRealRequirementDescription(requirement.Description);
+
+        internal static bool HasRealRequirementDescription(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderRequirementDescription(value);
+
+        internal static bool IsPlaceholderRequirementDescription(string value)
+        {
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {
             var normalized = NormalizeRequiredText(requirementNumber, "RequirementNumber");
@@ -601,6 +657,19 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return normalized;
+        }
+
+        private static string NormalizeRequirementDescription(string? description)
+        {
+            var trimmed = NormalizeRequiredText(description, "Description");
+            if (IsPlaceholderRequirementDescription(trimmed))
+            {
+                throw new ArgumentException(
+                    "Description must be a real requirement body, not a placeholder such as 'n/a'",
+                    "Description");
+            }
+
+            return trimmed;
         }
 
         private static string NormalizeRequiredText(string? value, string fieldName)
@@ -874,7 +943,9 @@ namespace HB_NLP_Research_Lab.Certification
         MissingTestLink,
         MissingMCDCCoverage,
         UnverifiedLink,
-        BrokenLink
+        BrokenLink,
+        MissingRequirementDescription,
+        InvalidRequirementDescription
     }
 
     public enum IssueSeverity

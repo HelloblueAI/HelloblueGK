@@ -679,6 +679,70 @@ public class RequirementsTraceabilitySystemTests
         report.CriticalIssues.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task CreateRequirementAsync_RejectsPlaceholderDescription(string placeholder)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PLACEHOLDER-DESC",
+            Title = "Chamber pressure limit",
+            Description = placeholder,
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*");
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverEmptyDescription_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementWithBodyAsync(
+            context,
+            system,
+            requirementNumber: "REQ-EMPTY-DESC",
+            title: "Legacy leftover empty description");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.Description = "   ";
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingRequirementDescription);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverPlaceholderDescription_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementWithBodyAsync(
+            context,
+            system,
+            requirementNumber: "REQ-PLACEHOLDER-DESC-LEFTOVER",
+            title: "Legacy leftover placeholder description");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.Description = "n/a";
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementDescription);
+    }
+
     [Fact]
     public async Task VerifyLinkAsync_RejectsLeftoverTraversalPath()
     {
@@ -712,6 +776,55 @@ public class RequirementsTraceabilitySystemTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*vacuous*");
+    }
+
+    private static async Task SeedLeftoverVerifiedRequirementWithBodyAsync(
+        RequirementsDbContext context,
+        RequirementsTraceabilitySystem system,
+        string requirementNumber,
+        string title)
+    {
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = requirementNumber,
+            Title = title,
+            Description = "Matching leftover named body must still verify; leftover empty/placeholder Description is seeded by mutating this row",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        context.RequirementDesignLinks.Add(new RequirementDesignLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            DesignElementId = "DE-SAFE",
+            DesignDocument = "Docs/DesignDoc.pdf",
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementCodeLinks.Add(new RequirementCodeLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            CodeFile = "Core/Sensors.cs",
+            FunctionName = "ValidateSensor",
+            LineStart = 1,
+            LineEnd = 20,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementTestLinks.Add(new RequirementTestLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            TestCaseId = "TC-SAFE",
+            TestFile = "Tests/SensorsTests.cs",
+            CoverageType = TestCoverageType.MCDC,
+            TestResult = TestResult.Passed,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        await context.SaveChangesAsync();
     }
 
     private static RequirementsDbContext CreateContext()
