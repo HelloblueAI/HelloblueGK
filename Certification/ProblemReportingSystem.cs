@@ -463,7 +463,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return requirement.TestLinks.Any(t =>
-                !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+                HasRealEvidenceId(t.TestCaseId) &&
                 RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test) &&
                 t.Verified &&
                 t.TestResult == TestResult.Passed);
@@ -504,10 +504,33 @@ namespace HB_NLP_Research_Lab.Certification
                 .Select(t => new { t.TestCaseId, t.TestFile })
                 .ToListAsync();
             ids.UnionWith(coverageLinks
-                .Where(t => RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test))
+                .Where(t =>
+                    HasRealEvidenceId(t.TestCaseId) &&
+                    RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test))
                 .Select(t => t.TestCaseId.Trim()));
             return ids;
         }
+
+        /// <summary>
+        /// Placeholder tokens ("n/a", "none", "todo") are not recorded test identity.
+        /// Coverage leftover inventory under those tokens must not close Critical/Major.
+        /// </summary>
+        private static bool IsPlaceholderEvidenceId(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized is
+                "n/a" or "na" or "none" or "todo" or "tbd" or
+                "unknown" or "pending" or "placeholder" or
+                "null" or "undefined" or "system" or "anonymous";
+        }
+
+        private static bool HasRealEvidenceId(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderEvidenceId(value);
 
         /// <summary>
         /// Reject vacuous closure text ("done", "fixed", "ok", punctuation-only) that
