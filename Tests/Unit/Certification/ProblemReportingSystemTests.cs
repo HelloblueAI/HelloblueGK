@@ -1079,6 +1079,72 @@ public class ProblemReportingSystemTests
         check.IsCompliant.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task LinkToTestAsync_RejectsPlaceholderCoverageInventory(string placeholderTestCaseId)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync(placeholderTestCaseId, "Tests/Coverage/SensorTests.cs");
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(created.ReportNumber, placeholderTestCaseId);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*Test case*not found*");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithPlaceholderCoverageTest_FailsClosed(
+        string leftoverTestCaseId)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync(leftoverTestCaseId, "Tests/Coverage/SensorTests.cs");
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9105",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover placeholder coverage inventory",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover placeholder coverage inventory",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportTestLinks.Add(new ProblemReportTestLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            TestCaseId = leftoverTestCaseId,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task UpdateStatusAsync_ConcurrentOpenTransitions_PreserveAuditChain()
     {
