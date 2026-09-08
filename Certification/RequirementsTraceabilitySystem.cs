@@ -162,6 +162,10 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Code file is required", nameof(codeFile));
             if (string.IsNullOrWhiteSpace(functionName))
                 throw new ArgumentException("Function name is required", nameof(functionName));
+            if (CertificationIdentityTokens.IsPlaceholder(functionName))
+                throw new ArgumentException(
+                    "Function name must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(functionName));
             if (lineStart <= 0 || lineEnd < lineStart)
                 throw new ArgumentException("Code line range must be a positive, ordered span");
 
@@ -581,7 +585,7 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
             HasSafeEvidencePath(c.CodeFile, RepositoryEvidenceKind.Code) &&
-            !string.IsNullOrWhiteSpace(c.FunctionName) &&
+            CertificationIdentityTokens.HasRealIdentity(c.FunctionName) &&
             c.LineStart > 0 &&
             c.LineEnd >= c.LineStart;
 

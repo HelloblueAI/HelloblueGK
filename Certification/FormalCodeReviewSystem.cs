@@ -32,7 +32,7 @@ namespace HB_NLP_Research_Lab.Certification
             ArgumentNullException.ThrowIfNull(review);
 
             review.FilePath = NormalizeReviewFilePath(review.FilePath);
-            review.FunctionName = NormalizeRequiredText(review.FunctionName, "Function name");
+            review.FunctionName = NormalizeRequiredIdentity(review.FunctionName, nameof(review.FunctionName));
             // Author is the SoD identity for assign/approve. Empty or placeholder
             // authors ("System"/"unknown") previously skipped independence gates.
             review.Author = NormalizeActorIdentity(review.Author, "Author");
@@ -839,12 +839,12 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Create-time <see cref="NormalizeRequiredText"/> already rejects empty function
-        /// names. Leftover Approved rows must meet the same bar so a file-covering span
-        /// without a named function cannot satisfy a Level A roster entry.
+        /// Create-time <see cref="NormalizeRequiredIdentity"/> already rejects empty
+        /// and placeholder function names. Leftover Approved rows must meet the same
+        /// bar so a file-covering span named "n/a" cannot satisfy a Level A roster entry.
         /// </summary>
         private static bool HasNamedFunction(string? functionName) =>
-            !string.IsNullOrWhiteSpace(functionName);
+            CertificationIdentityTokens.HasRealIdentity(functionName);
 
         /// <summary>
         /// Leftover Approved reviews must still show an independent approver.
@@ -1122,6 +1122,19 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return value.Trim();
+        }
+
+        private static string NormalizeRequiredIdentity(string? value, string paramName)
+        {
+            var normalized = NormalizeRequiredText(value, paramName);
+            if (CertificationIdentityTokens.IsPlaceholder(normalized))
+            {
+                throw new ArgumentException(
+                    $"{paramName} must be a real identifier, not a placeholder such as 'n/a'",
+                    paramName);
+            }
+
+            return normalized;
         }
     }
 
