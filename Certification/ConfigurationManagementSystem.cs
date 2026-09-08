@@ -527,13 +527,14 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} is {baseline.Status}; SCI may only be generated for Approved or Released baselines");
             }
 
-            // Leftover Approved/Released rows whose creator is also ApprovedBy (or
-            // that have no approver) previously minted an SCI. Approve already
-            // rejects creator-as-approver; leftover SCI must re-check independence.
+            // Leftover Approved/Released rows whose creator is also ApprovedBy,
+            // that have no approver, or that carry empty/placeholder SoD
+            // identities previously minted an SCI. Approve already rejects those
+            // identities; leftover SCI must re-check independence.
             if (!HasIndependentBaselineApproval(baseline))
             {
                 throw new InvalidOperationException(
-                    $"Baseline {baseline.BaselineName} cannot produce an SCI without an independent approver");
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI without independent creator and approver identities");
             }
 
             // Empty / unreleased / checksum-free SCI is not DO-178C evidence.
@@ -671,8 +672,47 @@ namespace HB_NLP_Research_Lab.Certification
                 return report;
             }
 
-            // Leftover Approved/Released + creator-as-approver (or missing ApprovedBy)
-            // previously stamped IsCompliant. Approve already rejects that SoD collision.
+            // Leftover Approved/Released rows must still show real, independent SoD
+            // identities. Approve already rejects empty/placeholder creators and
+            // placeholder approvers; leftover audit previously skipped those gates
+            // and stamped IsCompliant whenever ApprovedBy was non-empty and not
+            // equal to CreatedBy (including CreatedBy="" / "System" and ApprovedBy="n/a").
+            if (!HasRealActorIdentity(baseline.CreatedBy))
+            {
+                report.IsCompliant = false;
+                var missingCreator = string.IsNullOrWhiteSpace(baseline.CreatedBy);
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = missingCreator ? AuditIssueType.MissingCreator : AuditIssueType.InvalidCreator,
+                    Severity = IssueSeverity.Critical,
+                    Description = missingCreator
+                        ? $"Baseline {baseline.BaselineName} leftover creator identity is missing; Level A SoD cannot be evaluated"
+                        : $"Baseline {baseline.BaselineName} leftover creator identity is a placeholder; Level A SoD cannot be evaluated"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
+            if (!HasRealActorIdentity(baseline.ApprovedBy))
+            {
+                report.IsCompliant = false;
+                var missingApprover = string.IsNullOrWhiteSpace(baseline.ApprovedBy);
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = missingApprover
+                        ? AuditIssueType.ApprovalNotIndependent
+                        : AuditIssueType.InvalidApprover,
+                    Severity = IssueSeverity.Critical,
+                    Description = missingApprover
+                        ? $"Baseline {baseline.BaselineName} leftover approval is not independent; creator and approver must be distinct"
+                        : $"Baseline {baseline.BaselineName} leftover approver identity is a placeholder; Level A SoD cannot be evaluated"
+                });
+                report.IssuesFound = report.Issues.Count;
+                return report;
+            }
+
             if (!HasIndependentBaselineApproval(baseline))
             {
                 report.IsCompliant = false;
@@ -785,28 +825,21 @@ namespace HB_NLP_Research_Lab.Certification
                 HasChecksumEvidence(link.ConfigurationItem.Checksum));
 
         /// <summary>
-        /// Leftover Approved/Released baselines must still show an independent approver.
-        /// Empty ApprovedBy cannot evaluate SoD. Creator-as-approver is the collision
-        /// Approve already rejects. Empty/placeholder CreatedBy is owned by leftover
-        /// SoD actor hardening and is not re-checked here.
+        /// Leftover Approved/Released baselines must still show real, independent
+        /// SoD identities. Empty or placeholder CreatedBy/ApprovedBy cannot evaluate
+        /// independence. Creator-as-approver is the collision Approve already rejects.
         /// </summary>
         private static bool HasIndependentBaselineApproval(SoftwareBaseline baseline)
         {
-            if (string.IsNullOrWhiteSpace(baseline.ApprovedBy))
+            if (!HasRealActorIdentity(baseline.CreatedBy) || !HasRealActorIdentity(baseline.ApprovedBy))
             {
                 return false;
             }
 
-            if (!string.IsNullOrWhiteSpace(baseline.CreatedBy)
-                && string.Equals(
-                    NormalizeActorName(baseline.CreatedBy),
-                    NormalizeActorName(baseline.ApprovedBy),
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
-            return true;
+            return !string.Equals(
+                NormalizeActorName(baseline.CreatedBy),
+                NormalizeActorName(baseline.ApprovedBy),
+                StringComparison.OrdinalIgnoreCase);
         }
     }
 
@@ -976,6 +1009,9 @@ namespace HB_NLP_Research_Lab.Certification
         MissingBaseline,
         BaselineNotApproved,
         ApprovalNotIndependent,
+        MissingCreator,
+        InvalidCreator,
+        InvalidApprover,
         UnsafeFilePath
     }
 

@@ -847,18 +847,18 @@ namespace HB_NLP_Research_Lab.Certification
             !string.IsNullOrWhiteSpace(functionName);
 
         /// <summary>
-        /// Leftover Approved reviews must still show an independent approver.
-        /// Empty ApprovedBy cannot evaluate SoD. Author-as-approver and
-        /// completing-reviewer-as-approver are the same collisions Approve rejects.
+        /// Leftover Approved reviews must still show a real, independent approver.
+        /// Empty or placeholder ApprovedBy cannot evaluate SoD. Author-as-approver
+        /// and completing-reviewer-as-approver are the same collisions Approve rejects.
         /// </summary>
         private static bool HasIndependentApproval(CodeReview review)
         {
-            if (string.IsNullOrWhiteSpace(review.ApprovedBy))
+            if (!HasRealActorIdentity(review.ApprovedBy))
             {
                 return false;
             }
 
-            var approver = NormalizeReviewerName(review.ApprovedBy);
+            var approver = NormalizeReviewerName(review.ApprovedBy ?? string.Empty);
             if (!string.IsNullOrWhiteSpace(review.Author)
                 && string.Equals(
                     NormalizeReviewerName(review.Author),
