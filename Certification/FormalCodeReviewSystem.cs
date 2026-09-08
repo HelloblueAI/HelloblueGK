@@ -423,7 +423,7 @@ namespace HB_NLP_Research_Lab.Certification
             if (!HasSubstantiveResolution(resolution))
             {
                 throw new ArgumentException(
-                    "Finding resolution requires substantive notes (not empty, 'done', 'fixed', or 'ok')",
+                    "Finding resolution requires substantive notes (not empty, punctuation-only, 'done', 'fixed', or 'ok')",
                     nameof(resolution));
             }
 
@@ -466,8 +466,8 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Reject vacuous disposition text ("done", "fixed", "ok") that previously
-        /// forged an Approved review after a note-free resolve.
+        /// Reject vacuous disposition text ("done", "fixed", "ok", punctuation-only)
+        /// that previously forged an Approved review after a note-free resolve.
         /// </summary>
         internal static bool HasSubstantiveResolution(string? resolution)
         {
@@ -476,6 +476,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             var trimmed = resolution.Trim();
             if (trimmed.Length < 12)
+                return false;
+
+            // "............" / "123456789012" met the length bar without describing a fix.
+            if (!trimmed.Any(char.IsLetter))
                 return false;
 
             var normalized = trimmed.ToLowerInvariant();
@@ -835,6 +839,14 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
+        /// Create-time <see cref="NormalizeRequiredText"/> already rejects empty function
+        /// names. Leftover Approved rows must meet the same bar so a file-covering span
+        /// without a named function cannot satisfy a Level A roster entry.
+        /// </summary>
+        private static bool HasNamedFunction(string? functionName) =>
+            !string.IsNullOrWhiteSpace(functionName);
+
+        /// <summary>
         /// Leftover Approved reviews must still show an independent approver.
         /// Empty ApprovedBy cannot evaluate SoD. Author-as-approver and
         /// completing-reviewer-as-approver are the same collisions Approve rejects.
@@ -890,6 +902,7 @@ namespace HB_NLP_Research_Lab.Certification
                     && HasIndependentApproval(r)
                     && !r.Findings.Any(IsEffectivelyBlockingFinding)
                     && !string.IsNullOrWhiteSpace(r.FilePath)
+                    && HasNamedFunction(r.FunctionName)
                     && IsFileCoveringReviewSpan(r.LineStart, r.LineEnd))
                 .Select(r => NormalizeFilePath(r.FilePath))
                 .Where(IsSafeRelativeRepositoryPath)
@@ -924,10 +937,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             if (check.UnreviewedFiles.Count > 0)
             {
-                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span");
+                check.Issues.Add($"{check.UnreviewedFiles.Count} files have not been reviewed with a file-covering approved span and a named function");
                 foreach (var file in check.UnreviewedFiles)
                 {
-                    check.Issues.Add($"File not reviewed with a file-covering approved span: {file}");
+                    check.Issues.Add($"File not reviewed with a file-covering approved span and a named function: {file}");
                 }
             }
 
@@ -1045,11 +1058,25 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool SatisfiesIndependentReviewEvidence(CodeReview review)
         {
+            // Leftover Approved rows with placeholder authors ("System") or
+            // placeholder certified reviewers must not satisfy Level A.
+            // Create/register already reject those identities.
+            if (!HasRealActorIdentity(review.Author))
+                return false;
+
             var hasCertifiedCompletion = review.Assignments.Any(a =>
-                a.IsCertified && a.Status == ReviewAssignmentStatus.Completed);
+                a.IsCertified &&
+                a.Status == ReviewAssignmentStatus.Completed &&
+                HasRealActorIdentity(a.ReviewerName));
             var hasSubstantiveFinding = review.Findings.Any(f =>
                 HasSubstantiveFindingDescription(f.Description));
             return hasCertifiedCompletion && hasSubstantiveFinding;
+        }
+
+        private static bool HasRealActorIdentity(string? actorName)
+        {
+            var normalized = NormalizeReviewerName(actorName ?? string.Empty);
+            return !string.IsNullOrWhiteSpace(normalized) && !IsPlaceholderActor(normalized);
         }
 
         /// <summary>

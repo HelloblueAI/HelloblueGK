@@ -615,17 +615,19 @@ namespace HB_NLP_Research_Lab.Certification
                 Issues = new List<ConfigurationAuditIssue>()
             };
 
-            // Check for missing items. Whitespace-only checksums are not evidence —
-            // Approve/SCI already use IsNullOrWhiteSpace; leftover "   " rows must
-            // not stamp audit IsCompliant. Leftover empty/whitespace item versions
-            // must emit the unused MissingVersion issue type so SCI identity cannot
-            // be forged after Create/Add already rejected those strings.
+            // Check for missing or placeholder checksums. Whitespace-only values
+            // are MissingChecksum (leftover "   " must not stamp IsCompliant).
+            // Placeholder tokens ("n/a" / "none" / "todo") are InvalidChecksum —
+            // they previously approved a baseline, minted an SCI, and stamped
+            // leftover audit IsCompliant.
+            // Leftover empty/whitespace item versions emit unused MissingVersion
+            // so SCI identity cannot be forged after Create/Add rejected those strings.
             var links = baseline.ConfigurationItems.ToList();
             var items = links.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var link in links)
             {
                 var item = link.ConfigurationItem;
-                if (!HasChecksumEvidence(item.Checksum))
+                if (string.IsNullOrWhiteSpace(item.Checksum))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
@@ -633,6 +635,16 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = AuditIssueType.MissingChecksum,
                         Severity = IssueSeverity.Major,
                         Description = $"Configuration item {item.ItemName} has no checksum"
+                    });
+                }
+                else if (IsPlaceholderChecksum(item.Checksum))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.InvalidChecksum,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has a placeholder checksum that is not integrity evidence"
                     });
                 }
 
@@ -783,6 +795,11 @@ namespace HB_NLP_Research_Lab.Certification
             if (trimmed.Length < 12)
                 return false;
 
+            // Punctuation-only / digit-only strings ("............", "123456789012")
+            // previously counted as a real CCB disposition.
+            if (!trimmed.Any(char.IsLetter))
+                return false;
+
             var normalized = trimmed.ToLowerInvariant();
             return normalized is not (
                 "done" or "fixed" or "ok" or "okay" or "approved" or "lgtm" or
@@ -815,7 +832,7 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         private static bool HasChecksumEvidence(string? checksum) =>
-            !string.IsNullOrWhiteSpace(checksum);
+            !string.IsNullOrWhiteSpace(checksum) && !IsPlaceholderChecksum(checksum);
 
         private static bool HasVersionEvidence(string? version) =>
             !string.IsNullOrWhiteSpace(version);
@@ -832,6 +849,20 @@ namespace HB_NLP_Research_Lab.Certification
                 link.ConfigurationItem != null &&
                 link.ConfigurationItem.Status == ConfigurationItemStatus.Released &&
                 HasChecksumEvidence(link.ConfigurationItem.Checksum));
+
+        /// <summary>
+        /// Reject vacuous checksum tokens that previously approved a baseline,
+        /// minted an SCI, and stamped leftover audit IsCompliant.
+        /// </summary>
+        internal static bool IsPlaceholderChecksum(string? checksum)
+        {
+            if (string.IsNullOrWhiteSpace(checksum))
+                return false;
+
+            var normalized = checksum.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
 
         /// <summary>
         /// Leftover Approved/Released baselines must still show an independent approver.

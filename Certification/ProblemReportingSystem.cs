@@ -125,7 +125,7 @@ namespace HB_NLP_Research_Lab.Certification
                 if (!HasSubstantiveResolution(normalizedResolution))
                 {
                     throw new InvalidOperationException(
-                        $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed')");
+                        $"Problem report {reportNumber} requires a substantive resolution (not vacuous text such as 'done'/'fixed' or punctuation-only notes)");
                 }
 
                 // Critical/Major closures need verified implementation evidence — a
@@ -510,7 +510,8 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Reject vacuous closure text ("done", "fixed", "ok") that previously forged IsCompliant.
+        /// Reject vacuous closure text ("done", "fixed", "ok", punctuation-only) that
+        /// previously forged IsCompliant.
         /// </summary>
         internal static bool HasSubstantiveResolution(string resolution)
         {
@@ -519,6 +520,10 @@ namespace HB_NLP_Research_Lab.Certification
 
             var trimmed = resolution.Trim();
             if (trimmed.Length < 12)
+                return false;
+
+            // "............" / "123456789012" met the length bar without describing a fix.
+            if (!trimmed.Any(char.IsLetter))
                 return false;
 
             var normalized = trimmed.ToLowerInvariant();

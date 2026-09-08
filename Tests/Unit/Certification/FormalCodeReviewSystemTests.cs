@@ -1366,6 +1366,14 @@ public class FormalCodeReviewSystemTests
         await shortNote.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*substantive notes*");
 
+        var punctuationOnly = async () => await system.ResolveFindingAsync(reviewId, findingId, "admin", "............");
+        await punctuationOnly.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*substantive notes*");
+
+        var digitsOnly = async () => await system.ResolveFindingAsync(reviewId, findingId, "admin", "123456789012");
+        await digitsOnly.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*substantive notes*");
+
         var finding = await context.ReviewFindings.AsNoTracking().SingleAsync(f => f.Id == findingId);
         finding.Resolved.Should().BeFalse();
         finding.Resolution.Should().BeNull();
@@ -1411,6 +1419,29 @@ public class FormalCodeReviewSystemTests
         finding.Resolved = true;
         finding.ResolvedAt = DateTime.UtcNow;
         finding.Resolution = "ok";
+        await context.SaveChangesAsync();
+
+        var approve = async () => await system.ApproveReviewAsync(reviewId, "admin");
+        await approve.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*unresolved critical*");
+
+        var persisted = await context.CodeReviews.AsNoTracking().SingleAsync(r => r.Id == reviewId);
+        persisted.Status.Should().Be(CodeReviewStatus.Completed);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task ApproveReviewAsync_TreatsPunctuationOnlyResolutionAsUnresolved()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        var (reviewId, findingId) = await SeedCompletedReviewWithCriticalFindingAsync(system, context);
+
+        var finding = await context.ReviewFindings.SingleAsync(f => f.Id == findingId);
+        finding.Resolved = true;
+        finding.ResolvedAt = DateTime.UtcNow;
+        finding.ResolvedBy = "legacy";
+        finding.Resolution = "............";
         await context.SaveChangesAsync();
 
         var approve = async () => await system.ApproveReviewAsync(reviewId, "admin");
@@ -1807,6 +1838,71 @@ public class FormalCodeReviewSystemTests
     }
 
     [Fact]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithPlaceholderAuthor_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: "System",
+            reviewerName: "certified-bob",
+            reviewNumberSuffix: "8801");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle()
+            .Which.Should().Be("core/flightcontrol.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithPlaceholderCertifiedReviewer_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: "alice",
+            reviewerName: "System",
+            reviewNumberSuffix: "8802");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle()
+            .Which.Should().Be("core/flightcontrol.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithRealAuthorAndReviewer_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: "alice",
+            reviewerName: "certified-bob",
+            reviewNumberSuffix: "8803");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeTrue();
+        check.ReviewedFiles.Should().Be(1);
+        check.UnreviewedFiles.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_LeftoverApprovedWithoutCertifiedFindings_FailsClosed()
     {
         await using var context = CreateContext();
@@ -2064,6 +2160,94 @@ public class FormalCodeReviewSystemTests
         check.Issues.Should().Contain(i => i.Contains("file-covering approved span", StringComparison.OrdinalIgnoreCase));
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedReviewWithoutFunctionName_DoesNotSatisfyRoster(
+        string leftoverFunctionName)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        // CreateReviewAsync now rejects empty FunctionName. Seed a leftover Approved
+        // file-covering row the same way a pre-hardening database would.
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9101",
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = leftoverFunctionName,
+            LineStart = 1,
+            LineEnd = FormalCodeReviewSystem.MinimumFileReviewLineCount,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/flightcontrol.cs");
+        check.Issues.Should().Contain(i => i.Contains("named function", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverApprovedReviewWithNamedFunction_SatisfiesRoster()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        var reviewId = Guid.NewGuid();
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = reviewId,
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9102",
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = FormalCodeReviewSystem.MinimumFileReviewLineCount,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.CodeReviewAssignments.Add(new CodeReviewAssignment
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            IsCertified = true,
+            Status = ReviewAssignmentStatus.Completed,
+            AssignedAt = DateTime.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        context.ReviewFindings.Add(new ReviewFinding
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            LineNumber = 5,
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Standards,
+            Description = "Consider naming clarity",
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeTrue();
+        check.ReviewedFiles.Should().Be(1);
+        check.UnreviewedFiles.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task ApproveReviewAsync_RejectsPlaceholderApprover()
     {
@@ -2130,6 +2314,52 @@ public class FormalCodeReviewSystemTests
             .Select(f => f.Id)
             .SingleAsync();
         return (created.Id, findingId);
+    }
+
+    private static void SeedLeftoverApprovedReviewWithCertifiedFinding(
+        CodeReviewDbContext context,
+        string filePath,
+        string author,
+        string reviewerName,
+        string reviewNumberSuffix)
+    {
+        var reviewId = Guid.NewGuid();
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = reviewId,
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-{reviewNumberSuffix}",
+            FilePath = filePath,
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = author,
+            Status = CodeReviewStatus.Approved,
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.CodeReviewAssignments.Add(new CodeReviewAssignment
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = reviewerName,
+            IsCertified = true,
+            Status = ReviewAssignmentStatus.Completed,
+            AssignedAt = DateTime.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTime.UtcNow.AddMinutes(-5)
+        });
+        context.ReviewFindings.Add(new ReviewFinding
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = reviewerName,
+            LineNumber = 5,
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Standards,
+            Description = "Consider naming clarity",
+            CreatedAt = DateTime.UtcNow.AddMinutes(-5)
+        });
+        context.SaveChanges();
     }
 
     private static void SeedLeftoverApprovedReview(
