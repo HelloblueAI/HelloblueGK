@@ -684,7 +684,7 @@ namespace HB_NLP_Research_Lab.Certification
                     });
                 }
 
-                if (!HasChecksumEvidence(item.Checksum))
+                if (string.IsNullOrWhiteSpace(item.Checksum))
                 {
                     var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
