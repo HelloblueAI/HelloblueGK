@@ -452,9 +452,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// </summary>
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {
-            // Leftover verified spans on a vacuous requirement identity (empty or
-            // placeholder Number/Title) must not close Critical/Major reports.
-            if (!RequirementsTraceabilitySystem.HasRequirementIdentity(requirement))
+            if (!RequirementsTraceabilitySystem.HasRequirementIdentity(requirement)
+                || !RequirementsTraceabilitySystem.HasRequirementDescription(requirement))
                 return false;
 
             if (requirement.CodeLinks.Any(c =>
