@@ -1099,6 +1099,96 @@ public class ConfigurationManagementSystemTests
         audit.Issues.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task PerformAuditAsync_LeftoverApprovedEmptyCreator_FailsClosed(string leftoverCreator)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Approve already rejects leftover Draft + empty CreatedBy. A leftover
+        // Approved + Released row with CreatedBy="" previously stamped IsCompliant
+        // because leftover audit only checked ApprovedBy vs a non-empty creator.
+        var baseline = await system.CreateBaselineAsync("Legacy-Empty-Creator", "1.0.0", "leftover empty creator", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.CreatedBy = leftoverCreator;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.MissingCreator);
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent creator and approver identities*");
+    }
+
+    [Theory]
+    [InlineData("System")]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("unknown")]
+    public async Task PerformAuditAsync_LeftoverApprovedPlaceholderCreator_FailsClosed(string leftoverCreator)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Approve already rejects leftover Draft + CreatedBy="System". A leftover
+        // Approved + Released row with a placeholder creator previously stamped
+        // IsCompliant when ApprovedBy was a distinct real actor.
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Creator", "1.0.0", "leftover placeholder creator", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.CreatedBy = leftoverCreator;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.InvalidCreator);
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent creator and approver identities*");
+    }
+
+    [Theory]
+    [InlineData("System")]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("unknown")]
+    public async Task PerformAuditAsync_LeftoverApprovedPlaceholderApprover_FailsClosed(string leftoverApprover)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Approve already rejects placeholder approvers. A leftover Approved +
+        // Released row with ApprovedBy="n/a" previously stamped IsCompliant
+        // because leftover audit only treated empty ApprovedBy as missing SoD.
+        var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Approver", "1.0.0", "leftover placeholder approver", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = leftoverApprover;
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.InvalidApprover);
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent creator and approver identities*");
+    }
+
     [Fact]
     public async Task GenerateSCIAsync_RejectsLeftoverCreatorAsApprover()
     {
@@ -1114,7 +1204,7 @@ public class ConfigurationManagementSystemTests
 
         var act = async () => await system.GenerateSCIAsync(baseline.Id);
         await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*independent approver*");
+            .WithMessage("*independent creator and approver identities*");
     }
 
     [Fact]

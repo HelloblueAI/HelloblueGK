@@ -1926,6 +1926,36 @@ public class FormalCodeReviewSystemTests
         check.UnreviewedFiles.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("System")]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("unknown")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithPlaceholderApprover_FailsClosed(string leftoverApprover)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        // Approve already rejects placeholder approvers. A leftover Approved row
+        // with Author=alice / ApprovedBy="System" previously stamped IsCompliant
+        // because leftover verify only treated empty ApprovedBy as missing SoD.
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: "alice",
+            reviewerName: "certified-bob",
+            reviewNumberSuffix: "8804",
+            approvedBy: leftoverApprover);
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle()
+            .Which.Should().Be("core/flightcontrol.cs");
+    }
+
     [Fact]
     public async Task VerifyComplianceAsync_LeftoverApprovedWithoutCertifiedFindings_FailsClosed()
     {
@@ -2380,7 +2410,8 @@ public class FormalCodeReviewSystemTests
         string filePath,
         string author,
         string reviewerName,
-        string reviewNumberSuffix)
+        string reviewNumberSuffix,
+        string approvedBy = "admin")
     {
         var reviewId = Guid.NewGuid();
         context.CodeReviews.Add(new CodeReview
@@ -2393,7 +2424,7 @@ public class FormalCodeReviewSystemTests
             LineEnd = 10,
             Author = author,
             Status = CodeReviewStatus.Approved,
-            ApprovedBy = "admin",
+            ApprovedBy = approvedBy,
             ApprovedAt = DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
         });
