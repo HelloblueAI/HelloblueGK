@@ -30,8 +30,8 @@ namespace HB_NLP_Research_Lab.Certification
         {
             ArgumentNullException.ThrowIfNull(requirement);
             requirement.RequirementNumber = NormalizeRequirementNumber(requirement.RequirementNumber);
-            requirement.Title = NormalizeRequiredText(requirement.Title, "Title");
-            requirement.Description = NormalizeRequiredText(requirement.Description, "Description");
+            requirement.Title = NormalizeRequirementIdentity(requirement.Title, "Title");
+            requirement.Description = NormalizeRequirementDescription(requirement.Description);
 
             // Priority is fail-closed: unclassified defaults to Critical (MC/DC required),
             // and safety/critical/hazard keywords cannot be under-classified to skip Level A gates.
@@ -123,6 +123,10 @@ namespace HB_NLP_Research_Lab.Certification
         {
             if (string.IsNullOrWhiteSpace(designElementId))
                 throw new ArgumentException("Design element id is required", nameof(designElementId));
+            if (IsPlaceholderEvidenceId(designElementId))
+                throw new ArgumentException(
+                    "Design element id must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(designElementId));
             if (string.IsNullOrWhiteSpace(designDocument))
                 throw new ArgumentException("Design document is required", nameof(designDocument));
 
@@ -162,6 +166,10 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Code file is required", nameof(codeFile));
             if (string.IsNullOrWhiteSpace(functionName))
                 throw new ArgumentException("Function name is required", nameof(functionName));
+            if (CertificationIdentityTokens.IsPlaceholder(functionName))
+                throw new ArgumentException(
+                    "Function name must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(functionName));
             if (lineStart <= 0 || lineEnd < lineStart)
                 throw new ArgumentException("Code line range must be a positive, ordered span");
 
@@ -202,6 +210,10 @@ namespace HB_NLP_Research_Lab.Certification
         {
             if (string.IsNullOrWhiteSpace(testCaseId))
                 throw new ArgumentException("Test case id is required", nameof(testCaseId));
+            if (IsPlaceholderEvidenceId(testCaseId))
+                throw new ArgumentException(
+                    "Test case id must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(testCaseId));
             if (string.IsNullOrWhiteSpace(testFile))
                 throw new ArgumentException("Test file is required", nameof(testFile));
 
@@ -311,6 +323,9 @@ namespace HB_NLP_Research_Lab.Certification
 
             foreach (var req in requirements)
             {
+                AddRequirementIdentityIssues(report, req);
+                AddRequirementDescriptionIssues(report, req);
+
                 // Re-score leftover Medium/Low rows whose title/description hid hazard language.
                 var effectivePriority = ResolvePriority(
                     req.RequirementNumber,
@@ -576,22 +591,164 @@ namespace HB_NLP_Research_Lab.Certification
                 HasMeaningfulTestLink(t) && t.Verified && t.TestResult == TestResult.Passed);
 
         private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
-            !string.IsNullOrWhiteSpace(d.DesignElementId) &&
+            HasRealEvidenceId(d.DesignElementId) &&
             HasSafeEvidencePath(d.DesignDocument, RepositoryEvidenceKind.Design);
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
             HasSafeEvidencePath(c.CodeFile, RepositoryEvidenceKind.Code) &&
-            !string.IsNullOrWhiteSpace(c.FunctionName) &&
+            CertificationIdentityTokens.HasRealIdentity(c.FunctionName) &&
             c.LineStart > 0 &&
             c.LineEnd >= c.LineStart;
 
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
-            !string.IsNullOrWhiteSpace(t.TestCaseId) &&
+            HasRealEvidenceId(t.TestCaseId) &&
             HasSafeEvidencePath(t.TestFile, RepositoryEvidenceKind.Test);
+
+        private static void AddRequirementDescriptionIssues(
+            TraceabilityVerificationReport report,
+            Requirement req)
+        {
+            if (string.IsNullOrWhiteSpace(req.Description))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.MissingRequirementDescription,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} has no description; leftover empty requirement body cannot satisfy Level A traceability"
+                });
+            }
+            else if (IsPlaceholderRequirementDescription(req.Description))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.InvalidRequirementDescription,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} description is a placeholder; leftover vacuous requirement body cannot satisfy Level A traceability"
+                });
+            }
+        }
+
+        private static void AddRequirementIdentityIssues(
+            TraceabilityVerificationReport report,
+            Requirement req)
+        {
+            if (string.IsNullOrWhiteSpace(req.RequirementNumber))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.MissingRequirementNumber,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        "Requirement has no requirement number; leftover empty identity cannot satisfy Level A traceability"
+                });
+            }
+            else if (IsPlaceholderRequirementIdentity(req.RequirementNumber))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.InvalidRequirementNumber,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement number '{req.RequirementNumber}' is a placeholder; leftover vacuous identity cannot satisfy Level A traceability"
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(req.Title))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.MissingRequirementTitle,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} has no title; leftover empty identity cannot satisfy Level A traceability"
+                });
+            }
+            else if (IsPlaceholderRequirementIdentity(req.Title))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.InvalidRequirementTitle,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} title is a placeholder; leftover vacuous identity cannot satisfy Level A traceability"
+                });
+            }
+        }
+
+        /// <summary>
+        /// Leftover empty/whitespace or placeholder Description must not count as
+        /// implementation evidence for problem-report closure.
+        /// </summary>
+        internal static bool HasRequirementDescription(Requirement requirement) =>
+            HasRealRequirementDescription(requirement.Description);
+
+        internal static bool HasRealRequirementDescription(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderRequirementDescription(value);
+
+        internal static bool IsPlaceholderRequirementDescription(string value)
+        {
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
+        /// <summary>
+        /// Leftover empty/whitespace or placeholder RequirementNumber/Title must
+        /// not count as implementation evidence for problem-report closure.
+        /// </summary>
+        internal static bool HasRequirementIdentity(Requirement requirement) =>
+            HasRealRequirementIdentity(requirement.RequirementNumber) &&
+            HasRealRequirementIdentity(requirement.Title);
+
+        internal static bool HasRealRequirementIdentity(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderRequirementIdentity(value);
+
+        internal static bool IsPlaceholderRequirementIdentity(string value)
+        {
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
+        /// <summary>
+        /// Placeholder tokens ("n/a", "none", "todo") are not design or test identity.
+        /// Link already rejects empty IDs; leftover rows must meet the same bar.
+        /// FunctionName placeholders are owned separately and are not widened here.
+        /// </summary>
+        private static bool IsPlaceholderEvidenceId(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var normalized = value.Trim().ToLowerInvariant();
+            return normalized is
+                "n/a" or "na" or "none" or "todo" or "tbd" or
+                "unknown" or "pending" or "placeholder" or
+                "null" or "undefined" or "system" or "anonymous";
+        }
+
+        private static bool HasRealEvidenceId(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderEvidenceId(value);
 
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {
-            var normalized = NormalizeRequiredText(requirementNumber, "RequirementNumber");
+            var normalized = NormalizeRequirementIdentity(requirementNumber, "RequirementNumber");
             if (normalized.Contains("..", StringComparison.Ordinal) ||
                 normalized.IndexOfAny(['/', '\\']) >= 0)
             {
@@ -601,6 +758,32 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return normalized;
+        }
+
+        private static string NormalizeRequirementDescription(string? description)
+        {
+            var trimmed = NormalizeRequiredText(description, "Description");
+            if (IsPlaceholderRequirementDescription(trimmed))
+            {
+                throw new ArgumentException(
+                    "Description must be a real requirement body, not a placeholder such as 'n/a'",
+                    "Description");
+            }
+
+            return trimmed;
+        }
+
+        private static string NormalizeRequirementIdentity(string? value, string fieldName)
+        {
+            var trimmed = NormalizeRequiredText(value, fieldName);
+            if (IsPlaceholderRequirementIdentity(trimmed))
+            {
+                throw new ArgumentException(
+                    $"{fieldName} must be a real requirement identity, not a placeholder such as 'n/a'",
+                    fieldName);
+            }
+
+            return trimmed;
         }
 
         private static string NormalizeRequiredText(string? value, string fieldName)
@@ -874,7 +1057,13 @@ namespace HB_NLP_Research_Lab.Certification
         MissingTestLink,
         MissingMCDCCoverage,
         UnverifiedLink,
-        BrokenLink
+        BrokenLink,
+        MissingRequirementDescription,
+        InvalidRequirementDescription,
+        MissingRequirementNumber,
+        InvalidRequirementNumber,
+        MissingRequirementTitle,
+        InvalidRequirementTitle
     }
 
     public enum IssueSeverity
