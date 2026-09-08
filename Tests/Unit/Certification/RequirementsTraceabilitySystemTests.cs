@@ -758,6 +758,28 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("n/a")]
     [InlineData("none")]
     [InlineData("todo")]
+    public async Task CreateRequirementAsync_RejectsPlaceholderRequirementNumber(string placeholder)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = placeholder,
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*");
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
     public async Task VerifyTraceabilityAsync_LeftoverPlaceholderEvidenceIds_AreNotCompliant(
         string leftoverEvidenceId)
     {
@@ -812,6 +834,112 @@ public class RequirementsTraceabilitySystemTests
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingDesignLink);
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task CreateRequirementAsync_RejectsPlaceholderTitle(string placeholder)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PLACEHOLDER-TITLE",
+            Title = placeholder,
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*");
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverEmptyRequirementNumber_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-EMPTY-NUMBER",
+            title: "Legacy leftover empty number");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.RequirementNumber = "   ";
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingRequirementNumber);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverPlaceholderRequirementNumber_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-PLACEHOLDER-NUMBER",
+            title: "Legacy leftover placeholder number");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.RequirementNumber = "n/a";
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementNumber);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverEmptyTitle_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-EMPTY-TITLE-LEFTOVER",
+            title: "Legacy leftover empty title");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.Title = "";
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingRequirementTitle);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverPlaceholderTitle_FailsClosed()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-PLACEHOLDER-TITLE-LEFTOVER",
+            title: "Legacy leftover placeholder title");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.Title = "n/a";
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementTitle);
     }
 
     [Theory]
@@ -904,6 +1032,55 @@ public class RequirementsTraceabilitySystemTests
 
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*vacuous*");
+    }
+
+    private static async Task SeedLeftoverVerifiedRequirementAsync(
+        RequirementsDbContext context,
+        RequirementsTraceabilitySystem system,
+        string requirementNumber,
+        string title)
+    {
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = requirementNumber,
+            Title = title,
+            Description = "Matching leftover named identity must still verify; leftover empty/placeholder identity is seeded by mutating this row",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        context.RequirementDesignLinks.Add(new RequirementDesignLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            DesignElementId = "DE-SAFE",
+            DesignDocument = "Docs/DesignDoc.pdf",
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementCodeLinks.Add(new RequirementCodeLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            CodeFile = "Core/Sensors.cs",
+            FunctionName = "ValidateSensor",
+            LineStart = 1,
+            LineEnd = 20,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementTestLinks.Add(new RequirementTestLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            TestCaseId = "TC-SAFE",
+            TestFile = "Tests/SensorsTests.cs",
+            CoverageType = TestCoverageType.MCDC,
+            TestResult = TestResult.Passed,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        await context.SaveChangesAsync();
     }
 
     private static RequirementsDbContext CreateContext()
