@@ -32,6 +32,12 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Baseline name is required", nameof(baselineName));
             if (string.IsNullOrWhiteSpace(version))
                 throw new ArgumentException("Baseline version is required", nameof(version));
+            if (IsPlaceholderVersion(version))
+            {
+                throw new ArgumentException(
+                    "Baseline version must be a real version identity, not a placeholder such as 'n/a'",
+                    nameof(version));
+            }
 
             var baseline = new SoftwareBaseline
             {
@@ -92,6 +98,29 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
+            if (!AllItemsHaveNames(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved until every configuration item has a name");
+            }
+
+            // Create/Add already reject empty versions. Leftover Draft rows with
+            // Version="" must not become official or mint an SCI without identity.
+            if (!HasIdentifiableVersions(baseline))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version");
+            }
+
+            // Placeholder tokens ("n/a" / "none" / "todo") are not configuration
+            // identity. Create/Add already reject them; leftover Draft rows must
+            // not freeze into an official baseline.
+            if (HasPlaceholderVersion(baseline.Version, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved with a placeholder version");
+            }
+
             // Level A independence: approver must not be the baseline author.
             // Empty or placeholder creators previously skipped this gate.
             var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
@@ -132,7 +161,11 @@ namespace HB_NLP_Research_Lab.Certification
                 .Where(i => i.BaselineId == baselineId)
                 .Include(i => i.ConfigurationItem)
                 .ToListAsync();
-            if (claimedItems.Count == 0 || !HasReleasedChecksumEvidence(claimedItems))
+            if (claimedItems.Count == 0
+                || !HasReleasedChecksumEvidence(claimedItems)
+                || !AllItemsHaveNames(claimedItems)
+                || !HasIdentifiableVersions(baseline)
+                || HasPlaceholderVersion(baseline.Version, claimedItems))
             {
                 await _context.SoftwareBaselines
                     .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
@@ -144,7 +177,13 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new InvalidOperationException(
                     claimedItems.Count == 0
                         ? $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved"
-                        : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
+                        : !HasReleasedChecksumEvidence(claimedItems)
+                            ? $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum"
+                            : !AllItemsHaveNames(claimedItems)
+                                ? $"Baseline {baseline.BaselineName} cannot be approved until every configuration item has a name"
+                                : !HasIdentifiableVersions(baseline)
+                                    ? $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version"
+                                    : $"Baseline {baseline.BaselineName} cannot be approved with a placeholder version");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -181,6 +220,12 @@ namespace HB_NLP_Research_Lab.Certification
         {
             if (string.IsNullOrWhiteSpace(version))
                 throw new ArgumentException("Configuration item version is required", nameof(version));
+            if (IsPlaceholderVersion(version))
+            {
+                throw new ArgumentException(
+                    "Configuration item version must be a real version identity, not a placeholder such as 'n/a'",
+                    nameof(version));
+            }
 
             var baseline = await _context.SoftwareBaselines.FindAsync(baselineId);
             if (baseline == null)
@@ -572,6 +617,28 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item is Released with a checksum");
             }
 
+            if (!AllItemsHaveNames(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item has a name");
+            }
+
+            // Create/Add already reject empty versions. Leftover Approved + empty
+            // baseline/item Version previously minted an SCI.
+            if (!HasIdentifiableVersions(baseline))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI until the baseline and every configuration item have a version");
+            }
+
+            // Leftover Approved/Released + placeholder version previously minted
+            // an SCI whose identity was "n/a" / "none" / "todo".
+            if (HasPlaceholderVersion(baseline.Version, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI with a placeholder version");
+            }
+
             var sci = new SoftwareConfigurationIndex
             {
                 BaselineId = baselineId,
@@ -613,44 +680,115 @@ namespace HB_NLP_Research_Lab.Certification
                 Issues = new List<ConfigurationAuditIssue>()
             };
 
-            // Check for missing items. Whitespace-only checksums are not evidence —
-            // Approve/SCI already use IsNullOrWhiteSpace; leftover "   " rows must
-            // not stamp audit IsCompliant.
-            var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
-            foreach (var item in items)
+            // Check for missing or placeholder checksums. Whitespace-only values
+            // are MissingChecksum (leftover "   " must not stamp IsCompliant).
+            // Placeholder checksum tokens are InvalidChecksum. Placeholder version
+            // tokens are InvalidVersion; empty leftover versions use MissingVersion.
+            var links = baseline.ConfigurationItems.ToList();
+            var items = links.Select(bci => bci.ConfigurationItem).ToList();
+            foreach (var link in links)
             {
-                if (!HasChecksumEvidence(item.Checksum))
+                var item = link.ConfigurationItem;
+                if (!HasItemNameEvidence(item.ItemName))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName ?? string.Empty,
+                        IssueType = AuditIssueType.MissingItemName,
+                        Severity = IssueSeverity.Major,
+                        Description = "Configuration item has no name"
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(item.Checksum))
+                {
+                    var itemLabel = item.ItemName ?? string.Empty;
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = itemLabel,
+                        IssueType = AuditIssueType.MissingChecksum,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {itemLabel} has no checksum"
+                    });
+                }
+                else if (IsPlaceholderChecksum(item.Checksum))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
                         ItemName = item.ItemName,
-                        IssueType = AuditIssueType.MissingChecksum,
+                        IssueType = AuditIssueType.InvalidChecksum,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} has no checksum"
+                        Description = $"Configuration item {item.ItemName} has a placeholder checksum that is not integrity evidence"
+                    });
+                }
+
+                if (!HasVersionEvidence(link.Version))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.MissingVersion,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has no version"
                     });
                 }
 
                 if (item.Status != ConfigurationItemStatus.Released)
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.ItemNotReleased,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} is not in Released status"
+                        Description = $"Configuration item {itemLabel} is not in Released status"
                     });
                 }
 
                 if (!IsStoredEvidencePathSafe(item.FilePath))
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = itemLabel,
+                        IssueType = AuditIssueType.UnsafeFilePath,
+                        Severity = IssueSeverity.Critical,
+                        Description = $"Configuration item {itemLabel} path is outside the repository evidence tree"
+                    });
+                }
+
+                if (IsPlaceholderVersion(link.Version))
+                {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
                         ItemName = item.ItemName,
-                        IssueType = AuditIssueType.UnsafeFilePath,
-                        Severity = IssueSeverity.Critical,
-                        Description = $"Configuration item {item.ItemName} path is outside the repository evidence tree"
+                        IssueType = AuditIssueType.InvalidVersion,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has a placeholder version that is not configuration identity"
                     });
                 }
+            }
+
+            if (IsPlaceholderVersion(baseline.Version))
+            {
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.InvalidVersion,
+                    Severity = IssueSeverity.Critical,
+                    Description = $"Baseline {baseline.BaselineName} has a placeholder version that is not configuration identity"
+                });
+            }
+
+            if (!HasVersionEvidence(baseline.Version))
+            {
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.MissingVersion,
+                    Severity = IssueSeverity.Major,
+                    Description = $"Baseline {baseline.BaselineName} has no version"
+                });
             }
 
             report.TotalItems = items.Count;
@@ -809,7 +947,25 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         private static bool HasChecksumEvidence(string? checksum) =>
-            !string.IsNullOrWhiteSpace(checksum);
+            !string.IsNullOrWhiteSpace(checksum) && !IsPlaceholderChecksum(checksum);
+
+        private static bool HasVersionEvidence(string? version) =>
+            !string.IsNullOrWhiteSpace(version);
+
+        private static bool HasIdentifiableItemVersions(IEnumerable<BaselineConfigurationItem> links) =>
+            links.All(link => HasVersionEvidence(link.Version));
+
+        private static bool HasIdentifiableVersions(SoftwareBaseline baseline) =>
+            HasVersionEvidence(baseline.Version) &&
+            HasIdentifiableItemVersions(baseline.ConfigurationItems);
+
+        private static bool HasItemNameEvidence(string? itemName) =>
+            !string.IsNullOrWhiteSpace(itemName);
+
+        private static bool AllItemsHaveNames(IEnumerable<BaselineConfigurationItem> links) =>
+            links.All(link =>
+                link.ConfigurationItem != null &&
+                HasItemNameEvidence(link.ConfigurationItem.ItemName));
 
         /// <summary>
         /// Create-time already rejects empty baseline names. Leftover Approved rows
@@ -823,6 +979,39 @@ namespace HB_NLP_Research_Lab.Certification
                 link.ConfigurationItem != null &&
                 link.ConfigurationItem.Status == ConfigurationItemStatus.Released &&
                 HasChecksumEvidence(link.ConfigurationItem.Checksum));
+
+        /// <summary>
+        /// Reject vacuous version tokens that previously created, approved, and
+        /// minted an SCI whose identity was "n/a" / "none" / "todo". Empty and
+        /// whitespace versions stay on HasVersionEvidence / MissingVersion.
+        /// </summary>
+        internal static bool IsPlaceholderVersion(string? version)
+        {
+            if (string.IsNullOrWhiteSpace(version))
+                return false;
+
+            var normalized = version.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
+        /// <summary>
+        /// Reject vacuous checksum tokens that previously approved a baseline,
+        /// minted an SCI, and stamped leftover audit IsCompliant.
+        /// </summary>
+        internal static bool IsPlaceholderChecksum(string? checksum)
+        {
+            if (string.IsNullOrWhiteSpace(checksum))
+                return false;
+
+            var normalized = checksum.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
+        private static bool HasPlaceholderVersion(string? baselineVersion, IEnumerable<BaselineConfigurationItem>? links) =>
+            IsPlaceholderVersion(baselineVersion) ||
+            (links?.Any(link => IsPlaceholderVersion(link.Version)) ?? false);
 
         /// <summary>
         /// Leftover Approved/Released baselines must still show an independent approver.
@@ -1011,8 +1200,10 @@ namespace HB_NLP_Research_Lab.Certification
     {
         MissingChecksum,
         ItemNotReleased,
+        MissingItemName,
         MissingVersion,
         InvalidChecksum,
+        InvalidVersion,
         MissingBaseline,
         BaselineNotApproved,
         ApprovalNotIndependent,

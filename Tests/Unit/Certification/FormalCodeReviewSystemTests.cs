@@ -1565,7 +1565,7 @@ public class FormalCodeReviewSystemTests
             Author = "alice"
         });
         await missingFunction.Should().ThrowAsync<ArgumentException>()
-            .WithMessage("*Function name is required*");
+            .WithMessage("*FunctionName is required*");
 
         var invalidRange = async () => await system.CreateReviewAsync(new CodeReview
         {
@@ -1577,6 +1577,30 @@ public class FormalCodeReviewSystemTests
         });
         await invalidRange.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*line range*");
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task CreateReviewAsync_RejectsPlaceholderFunctionName(string placeholderFunctionName)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/Engine.cs",
+            FunctionName = placeholderFunctionName,
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real identifier*")
+            .WithParameterName("FunctionName");
+        context.CodeReviews.Should().BeEmpty();
     }
 
     [Fact]
@@ -2176,6 +2200,41 @@ public class FormalCodeReviewSystemTests
         {
             Id = Guid.NewGuid(),
             ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9101",
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = leftoverFunctionName,
+            LineStart = 1,
+            LineEnd = FormalCodeReviewSystem.MinimumFileReviewLineCount,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/flightcontrol.cs");
+        check.Issues.Should().Contain(i => i.Contains("named function", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("n/a")]
+    [InlineData("none")]
+    [InlineData("todo")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedReviewWithPlaceholderFunctionName_DoesNotSatisfyRoster(
+        string leftoverFunctionName)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9103",
             FilePath = "Core/FlightControl.cs",
             FunctionName = leftoverFunctionName,
             LineStart = 1,
