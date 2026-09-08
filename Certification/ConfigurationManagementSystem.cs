@@ -90,10 +90,17 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
             }
 
+            // Create/Add already reject empty versions. Leftover Draft rows with
+            // Version="" must not become official or mint an SCI without identity.
+            if (!HasIdentifiableVersions(baseline))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version");
+            }
+
             // Placeholder tokens ("n/a" / "none" / "todo") are not configuration
             // identity. Create/Add already reject them; leftover Draft rows must
-            // not freeze into an official baseline. Empty leftover versions are
-            // a separate MissingVersion gate.
+            // not freeze into an official baseline.
             if (HasPlaceholderVersion(baseline.Version, baseline.ConfigurationItems))
             {
                 throw new InvalidOperationException(
@@ -142,6 +149,7 @@ namespace HB_NLP_Research_Lab.Certification
                 .ToListAsync();
             if (claimedItems.Count == 0
                 || !HasReleasedChecksumEvidence(claimedItems)
+                || !HasIdentifiableVersions(baseline)
                 || HasPlaceholderVersion(baseline.Version, claimedItems))
             {
                 await _context.SoftwareBaselines
@@ -154,9 +162,11 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new InvalidOperationException(
                     claimedItems.Count == 0
                         ? $"Baseline {baseline.BaselineName} has no configuration items and cannot be approved"
-                        : HasPlaceholderVersion(baseline.Version, claimedItems)
-                            ? $"Baseline {baseline.BaselineName} cannot be approved with a placeholder version"
-                            : $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum");
+                        : !HasReleasedChecksumEvidence(claimedItems)
+                            ? $"Baseline {baseline.BaselineName} cannot be approved until every configuration item is Released with a checksum"
+                            : !HasIdentifiableVersions(baseline)
+                                ? $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version"
+                                : $"Baseline {baseline.BaselineName} cannot be approved with a placeholder version");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -582,9 +592,16 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot produce an SCI until every configuration item is Released with a checksum");
             }
 
+            // Create/Add already reject empty versions. Leftover Approved + empty
+            // baseline/item Version previously minted an SCI.
+            if (!HasIdentifiableVersions(baseline))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI until the baseline and every configuration item have a version");
+            }
+
             // Leftover Approved/Released + placeholder version previously minted
-            // an SCI whose identity was "n/a" / "none" / "todo". Empty leftover
-            // versions are a separate MissingVersion gate.
+            // an SCI whose identity was "n/a" / "none" / "todo".
             if (HasPlaceholderVersion(baseline.Version, baseline.ConfigurationItems))
             {
                 throw new InvalidOperationException(
@@ -632,18 +649,16 @@ namespace HB_NLP_Research_Lab.Certification
                 Issues = new List<ConfigurationAuditIssue>()
             };
 
-            // Check for missing items. Whitespace-only checksums are not evidence —
-            // Approve/SCI already use IsNullOrWhiteSpace; leftover "   " rows must
-            // not stamp audit IsCompliant.
-            // Placeholder version tokens are not configuration identity —
-            // leftover Approved + "n/a" previously stamped IsCompliant and minted
-            // an SCI. Empty leftover versions stay on the unused MissingVersion
-            // gate and are not widened here.
-            var items = baseline.ConfigurationItems.Select(bci => bci.ConfigurationItem).ToList();
-            foreach (var link in baseline.ConfigurationItems)
+            // Check for missing or placeholder checksums. Whitespace-only values
+            // are MissingChecksum (leftover "   " must not stamp IsCompliant).
+            // Placeholder checksum tokens are InvalidChecksum. Placeholder version
+            // tokens are InvalidVersion; empty leftover versions use MissingVersion.
+            var links = baseline.ConfigurationItems.ToList();
+            var items = links.Select(bci => bci.ConfigurationItem).ToList();
+            foreach (var link in links)
             {
                 var item = link.ConfigurationItem;
-                if (!HasChecksumEvidence(item.Checksum))
+                if (string.IsNullOrWhiteSpace(item.Checksum))
                 {
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
@@ -651,6 +666,27 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = AuditIssueType.MissingChecksum,
                         Severity = IssueSeverity.Major,
                         Description = $"Configuration item {item.ItemName} has no checksum"
+                    });
+                }
+                else if (IsPlaceholderChecksum(item.Checksum))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.InvalidChecksum,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has a placeholder checksum that is not integrity evidence"
+                    });
+                }
+
+                if (!HasVersionEvidence(link.Version))
+                {
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = item.ItemName,
+                        IssueType = AuditIssueType.MissingVersion,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {item.ItemName} has no version"
                     });
                 }
 
@@ -696,6 +732,17 @@ namespace HB_NLP_Research_Lab.Certification
                     IssueType = AuditIssueType.InvalidVersion,
                     Severity = IssueSeverity.Critical,
                     Description = $"Baseline {baseline.BaselineName} has a placeholder version that is not configuration identity"
+                });
+            }
+
+            if (!HasVersionEvidence(baseline.Version))
+            {
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.MissingVersion,
+                    Severity = IssueSeverity.Major,
+                    Description = $"Baseline {baseline.BaselineName} has no version"
                 });
             }
 
@@ -838,7 +885,17 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         private static bool HasChecksumEvidence(string? checksum) =>
-            !string.IsNullOrWhiteSpace(checksum);
+            !string.IsNullOrWhiteSpace(checksum) && !IsPlaceholderChecksum(checksum);
+
+        private static bool HasVersionEvidence(string? version) =>
+            !string.IsNullOrWhiteSpace(version);
+
+        private static bool HasIdentifiableItemVersions(IEnumerable<BaselineConfigurationItem> links) =>
+            links.All(link => HasVersionEvidence(link.Version));
+
+        private static bool HasIdentifiableVersions(SoftwareBaseline baseline) =>
+            HasVersionEvidence(baseline.Version) &&
+            HasIdentifiableItemVersions(baseline.ConfigurationItems);
 
         private static bool HasReleasedChecksumEvidence(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link =>
@@ -849,8 +906,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Reject vacuous version tokens that previously created, approved, and
         /// minted an SCI whose identity was "n/a" / "none" / "todo". Empty and
-        /// whitespace versions stay on the existing required-text / unused
-        /// MissingVersion leftover gate.
+        /// whitespace versions stay on HasVersionEvidence / MissingVersion.
         /// </summary>
         internal static bool IsPlaceholderVersion(string? version)
         {
@@ -858,6 +914,20 @@ namespace HB_NLP_Research_Lab.Certification
                 return false;
 
             var normalized = version.Trim().ToLowerInvariant();
+            return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
+                or "unknown" or "pending" or "placeholder" or "null" or "undefined";
+        }
+
+        /// <summary>
+        /// Reject vacuous checksum tokens that previously approved a baseline,
+        /// minted an SCI, and stamped leftover audit IsCompliant.
+        /// </summary>
+        internal static bool IsPlaceholderChecksum(string? checksum)
+        {
+            if (string.IsNullOrWhiteSpace(checksum))
+                return false;
+
+            var normalized = checksum.Trim().ToLowerInvariant();
             return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
                 or "unknown" or "pending" or "placeholder" or "null" or "undefined";
         }
