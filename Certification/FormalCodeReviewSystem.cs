@@ -1082,14 +1082,24 @@ namespace HB_NLP_Research_Lab.Certification
         /// <summary>
         /// Reject vacuous finding text ("ok", "lgtm", "fine") that previously completed
         /// a certified assignment and forged Level A approve/compliance.
-        /// Short real comments such as "nit" remain valid.
+        /// Placeholder identity tokens ("todo" / "tbd" / "unknown") and
+        /// punctuation-only / digit-only strings ("............" / "123456789012")
+        /// are not inspection evidence. Short real comments such as "nit" remain valid.
         /// </summary>
         internal static bool HasSubstantiveFindingDescription(string? description)
         {
             if (string.IsNullOrWhiteSpace(description))
                 return false;
 
-            var normalized = description.Trim().ToLowerInvariant();
+            var trimmed = description.Trim();
+            // "............" / "123456789012" met the token-list bar without describing a finding.
+            if (!trimmed.Any(char.IsLetter))
+                return false;
+
+            if (CertificationIdentityTokens.IsPlaceholder(trimmed))
+                return false;
+
+            var normalized = trimmed.ToLowerInvariant();
             return normalized is not (
                 "ok" or "okay" or "lgtm" or "fine" or "pass" or "passed" or
                 "n/a" or "na" or "none" or "done" or "fixed" or "good" or

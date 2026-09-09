@@ -1782,7 +1782,54 @@ public class FormalCodeReviewSystemTests
     [InlineData("fine")]
     [InlineData("looks good")]
     [InlineData("no issues")]
+    [InlineData("todo")]
+    [InlineData("tbd")]
+    [InlineData("unknown")]
     public async Task SubmitFindingsAsync_WithVacuousDescriptionToken_Throws(string description)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterCertifiedReviewerAsync("certified-bob", "admin");
+
+        var created = await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+        await system.AssignReviewerAsync(created.Id, "certified-bob");
+
+        var act = async () => await system.SubmitFindingsAsync(created.Id, "certified-bob", new List<ReviewFinding>
+        {
+            new()
+            {
+                LineNumber = 5,
+                Severity = FindingSeverity.Minor,
+                Category = FindingCategory.Standards,
+                Description = description
+            }
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("findings")
+            .WithMessage("*substantive*");
+
+        var persisted = await context.CodeReviews
+            .Include(r => r.Assignments)
+            .Include(r => r.Findings)
+            .SingleAsync();
+        persisted.Status.Should().Be(CodeReviewStatus.InProgress);
+        persisted.Assignments.Should().ContainSingle()
+            .Which.Status.Should().Be(ReviewAssignmentStatus.Assigned);
+        persisted.Findings.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("............")]
+    [InlineData("123456789012")]
+    public async Task SubmitFindingsAsync_RejectsPunctuationOrDigitOnlyDescription(string description)
     {
         await using var context = CreateContext();
         var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
@@ -2335,6 +2382,65 @@ public class FormalCodeReviewSystemTests
         check.IsCompliant.Should().BeTrue();
         check.ReviewedFiles.Should().Be(1);
         check.UnreviewedFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("todo")]
+    [InlineData("tbd")]
+    [InlineData("unknown")]
+    [InlineData("............")]
+    [InlineData("123456789012")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedReviewWithVacuousFinding_DoesNotSatisfyRoster(
+        string leftoverFindingDescription)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        var reviewId = Guid.NewGuid();
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = reviewId,
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9104",
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = FormalCodeReviewSystem.MinimumFileReviewLineCount,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.CodeReviewAssignments.Add(new CodeReviewAssignment
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            IsCertified = true,
+            Status = ReviewAssignmentStatus.Completed,
+            AssignedAt = DateTime.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        context.ReviewFindings.Add(new ReviewFinding
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            LineNumber = 5,
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Standards,
+            Description = leftoverFindingDescription,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/flightcontrol.cs");
+        check.Issues.Should().Contain(i => i.Contains("named function", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
