@@ -559,6 +559,132 @@ public class RequirementsTraceabilitySystemTests
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingCodeLink);
     }
 
+    [Theory]
+    [InlineData("Core/n/a.cs")]
+    [InlineData("Core/todo.cs")]
+    [InlineData("Core/none")]
+    public async Task LinkToCodeAsync_RejectsPlaceholderCodeFile(string placeholderCodeFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PLACEHOLDER-PATH",
+            Title = "Valve timing",
+            Description = "Code links must name a real file",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToCodeAsync(
+            requirement.Id,
+            placeholderCodeFile,
+            1,
+            20,
+            "ValidateSensor");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*")
+            .WithParameterName("codeFile");
+        context.RequirementCodeLinks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Tests/n/a")]
+    [InlineData("Tests/todo")]
+    [InlineData("Tests/none.cs")]
+    public async Task LinkToTestAsync_RejectsPlaceholderTestFile(string placeholderTestFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PLACEHOLDER-TEST-PATH",
+            Title = "Valve timing",
+            Description = "Test links must name a real file",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-VALVE-001",
+            placeholderTestFile,
+            TestCoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*")
+            .WithParameterName("testFile");
+        context.RequirementTestLinks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Docs/n/a")]
+    [InlineData("Docs/todo.md")]
+    [InlineData("Docs/none")]
+    public async Task LinkToDesignAsync_RejectsPlaceholderDesignDocument(string placeholderDesignDocument)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PLACEHOLDER-DESIGN-PATH",
+            Title = "Valve timing",
+            Description = "Design links must name a real document",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToDesignAsync(
+            requirement.Id,
+            "DE-VALVE-001",
+            placeholderDesignDocument);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*")
+            .WithParameterName("designDocument");
+        context.RequirementDesignLinks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Core/n/a.cs")]
+    [InlineData("Core/todo.cs")]
+    public async Task VerifyTraceabilityAsync_LeftoverPlaceholderCodeFile_IsNotCompliant(string leftoverCodeFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(context, system, "REQ-PLACEHOLDER-CODE-PATH", "Legacy placeholder code path");
+
+        var leftover = await context.RequirementCodeLinks.SingleAsync();
+        leftover.CodeFile = leftoverCodeFile;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingCodeLink);
+    }
+
+    [Theory]
+    [InlineData("Tests/n/a")]
+    [InlineData("Tests/todo")]
+    public async Task VerifyTraceabilityAsync_LeftoverPlaceholderTestFile_IsNotCompliant(string leftoverTestFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(context, system, "REQ-PLACEHOLDER-TEST-PATH-LEFT", "Legacy placeholder test path");
+
+        var leftover = await context.RequirementTestLinks.SingleAsync();
+        leftover.TestFile = leftoverTestFile;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
     [Fact]
     public async Task LinkToDesignAsync_RejectsNonDocsPrefix()
     {

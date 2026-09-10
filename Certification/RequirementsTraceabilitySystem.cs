@@ -851,6 +851,12 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             normalized = string.Join("/", segments);
+            if (CertificationIdentityTokens.HasPlaceholderPathIdentity(normalized))
+            {
+                error = "Evidence path must be a real repository path, not a placeholder such as 'n/a'.";
+                return false;
+            }
+
             if (!RepositoryEvidencePaths.HasAllowedPrefix(normalized, kind))
             {
                 var allowed = string.Join(", ", RepositoryEvidencePaths.PrefixesFor(kind));

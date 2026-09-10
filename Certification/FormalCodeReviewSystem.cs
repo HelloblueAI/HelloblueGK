@@ -1029,6 +1029,12 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             normalized = string.Join("/", segments);
+            if (CertificationIdentityTokens.HasPlaceholderPathIdentity(normalized))
+            {
+                error = "File path must be a real evidence path, not a placeholder such as 'n/a'.";
+                return false;
+            }
+
             return true;
         }
 

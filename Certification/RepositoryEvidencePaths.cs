@@ -69,6 +69,11 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             var canonical = string.Join("/", segments);
+            if (CertificationIdentityTokens.HasPlaceholderPathIdentity(canonical))
+            {
+                return false;
+            }
+
             return HasAllowedPrefix(canonical, kind);
         }
     }
