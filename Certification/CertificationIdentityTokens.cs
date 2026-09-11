@@ -22,5 +22,52 @@ namespace HB_NLP_Research_Lab.Certification
 
         public static bool HasRealIdentity(string? value) =>
             !string.IsNullOrWhiteSpace(value) && !IsPlaceholder(value);
+
+        /// <summary>
+        /// Leftover evidence paths whose filename or directory identity is a
+        /// placeholder token ("n/a", "none", "todo") — including slash-containing
+        /// tokens such as Tests/n/a and Core/n/a.cs — are not repository evidence.
+        /// Matching leftover Core/Sensors.cs still has real path identity.
+        /// </summary>
+        public static bool HasPlaceholderPathIdentity(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            var normalized = path.Trim().Replace('\\', '/');
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return false;
+            }
+
+            for (var start = 0; start < segments.Length; start++)
+            {
+                for (var length = 1; start + length <= segments.Length; length++)
+                {
+                    var slice = string.Join('/', segments, start, length);
+                    if (IsPlaceholder(slice) || IsPlaceholder(FileStem(slice)))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static string FileStem(string pathSlice)
+        {
+            var lastDot = pathSlice.LastIndexOf('.');
+            var lastSlash = pathSlice.LastIndexOf('/');
+            if (lastDot <= lastSlash)
+            {
+                return pathSlice;
+            }
+
+            return pathSlice[..lastDot];
+        }
     }
 }

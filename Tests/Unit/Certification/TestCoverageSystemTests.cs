@@ -586,6 +586,123 @@ public class TestCoverageSystemTests
         context.CoverageTestCaseLinks.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("Tests/n/a")]
+    [InlineData("Tests/todo")]
+    [InlineData("Tests/none.cs")]
+    public async Task LinkTestCaseAsync_RejectsPlaceholderTestFile(string placeholderTestFile)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            "TC-ENGINE-001",
+            placeholderTestFile,
+            CoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*")
+            .WithParameterName("testFile");
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Core/n/a.cs")]
+    [InlineData("Core/todo.cs")]
+    [InlineData("Core/none")]
+    public async Task RegisterRequiredFileAsync_RejectsPlaceholderFilePath(string placeholderFilePath)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.RegisterRequiredFileAsync(
+            placeholderFilePath,
+            isSafetyCritical: true,
+            registeredBy: "admin");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*placeholder*");
+        context.RequiredCoverageFiles.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Tests/n/a")]
+    [InlineData("Tests/todo")]
+    [InlineData("Tests/none.cs")]
+    public async Task VerifyComplianceAsync_LeftoverPlaceholderTestFile_FailsClosed(string leftoverTestFile)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        context.CoverageTestCaseLinks.Add(new CoverageTestCaseLink
+        {
+            Id = Guid.NewGuid(),
+            CodeCoverageId = coverage.Id,
+            TestCaseId = "TC-ENGINE-001",
+            TestFile = leftoverTestFile,
+            CoverageType = CoverageType.MCDC,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.TestEvidenceCompliant.Should().BeFalse();
+        check.FilesWithTestEvidence.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("Core/n/a.cs")]
+    [InlineData("Core/todo.cs")]
+    public async Task VerifyComplianceAsync_LeftoverPlaceholderRosterPath_FailsClosed(string leftoverFilePath)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        context.RequiredCoverageFiles.Add(new RequiredCoverageFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = leftoverFilePath,
+            IsSafetyCritical = true,
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        SeedLeftoverCoverage(
+            context,
+            filePath: leftoverFilePath,
+            statementCoverage: 100,
+            branchCoverage: 100,
+            mcdcCoverage: 100,
+            totalStatements: 10,
+            coveredStatements: 10,
+            totalBranches: 4,
+            coveredBranches: 4,
+            totalConditions: 2,
+            coveredConditions: 2);
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("Unsafe coverage evidence path", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.FilePath == leftoverFilePath
+            && g.GapDescription.Contains("Unsafe coverage evidence path", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public async Task RegisterRequiredFileAsync_CaseVariantLeftovers_DoesNotRecaseStoredPath()
     {
