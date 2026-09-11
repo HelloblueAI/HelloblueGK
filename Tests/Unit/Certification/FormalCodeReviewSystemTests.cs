@@ -1603,6 +1603,30 @@ public class FormalCodeReviewSystemTests
         context.CodeReviews.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task CreateReviewAsync_RejectsPunctuationOrDigitOnlyFunctionName(string leftoverFunctionName)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/Engine.cs",
+            FunctionName = leftoverFunctionName,
+            LineStart = 1,
+            LineEnd = 10,
+            Author = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real identifier*")
+            .WithParameterName("FunctionName");
+        context.CodeReviews.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task SubmitFindingsAsync_RejectsEmptyDescription()
     {
@@ -2388,6 +2412,41 @@ public class FormalCodeReviewSystemTests
         {
             Id = Guid.NewGuid(),
             ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9103",
+            FilePath = "Core/FlightControl.cs",
+            FunctionName = leftoverFunctionName,
+            LineStart = 1,
+            LineEnd = FormalCodeReviewSystem.MinimumFileReviewLineCount,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle().Which.Should().Be("core/flightcontrol.cs");
+        check.Issues.Should().Contain(i => i.Contains("named function", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedReviewWithPunctuationFunctionName_DoesNotSatisfyRoster(
+        string leftoverFunctionName)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = Guid.NewGuid(),
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9105",
             FilePath = "Core/FlightControl.cs",
             FunctionName = leftoverFunctionName,
             LineStart = 1,

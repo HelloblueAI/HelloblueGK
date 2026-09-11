@@ -20,8 +20,22 @@ namespace HB_NLP_Research_Lab.Certification
                 "null" or "undefined" or "system" or "anonymous";
         }
 
-        public static bool HasRealIdentity(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && !IsPlaceholder(value);
+        /// <summary>
+        /// Named implementation identity must contain a letter. Leftover
+        /// punctuation-only / digit-only values ("...", "___", "123") previously
+        /// satisfied HasRealIdentity after placeholder tokens were rejected.
+        /// Matching leftover ReadCalibratedPressure / ValidateSensor still qualify.
+        /// </summary>
+        public static bool HasRealIdentity(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var trimmed = value.Trim();
+            return trimmed.Any(char.IsLetter) && !IsPlaceholder(trimmed);
+        }
 
         /// <summary>
         /// Leftover evidence paths whose filename or directory identity is a
