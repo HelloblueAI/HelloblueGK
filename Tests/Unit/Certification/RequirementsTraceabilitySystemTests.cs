@@ -514,6 +514,36 @@ public class RequirementsTraceabilitySystemTests
         context.RequirementCodeLinks.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task LinkToCodeAsync_RejectsPunctuationOrDigitOnlyFunctionName(string leftoverFunctionName)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PUNCT-FN",
+            Title = "Function identity",
+            Description = "Code links must name a real function",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToCodeAsync(
+            requirement.Id,
+            "Core/Valves.cs",
+            1,
+            20,
+            leftoverFunctionName);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real identifier*")
+            .WithParameterName("functionName");
+        context.RequirementCodeLinks.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task VerifyTraceabilityAsync_LeftoverPlaceholderFunctionName_IsNotCompliant()
     {
@@ -535,6 +565,55 @@ public class RequirementsTraceabilitySystemTests
             RequirementId = requirement.Id,
             CodeFile = "Core/Valves.cs",
             FunctionName = "n/a",
+            LineStart = 1,
+            LineEnd = 20,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true
+        });
+        context.RequirementTestLinks.Add(new RequirementTestLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            TestCaseId = "TC-VALVE-001",
+            TestFile = "Tests/ValveTests.cs",
+            CoverageType = TestCoverageType.MCDC,
+            CreatedAt = DateTime.UtcNow,
+            Verified = true,
+            TestResult = TestResult.Passed
+        });
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingCodeLink);
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task VerifyTraceabilityAsync_LeftoverPunctuationFunctionName_IsNotCompliant(
+        string leftoverFunctionName)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PUNCT-LEFT",
+            Title = "Valve timing",
+            Description = "Main valve open sequence",
+            Priority = RequirementPriority.Critical,
+            CreatedBy = "alice"
+        });
+
+        context.RequirementCodeLinks.Add(new RequirementCodeLink
+        {
+            Id = Guid.NewGuid(),
+            RequirementId = requirement.Id,
+            CodeFile = "Core/Valves.cs",
+            FunctionName = leftoverFunctionName,
             LineStart = 1,
             LineEnd = 20,
             CreatedAt = DateTime.UtcNow,
