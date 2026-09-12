@@ -127,6 +127,10 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException(
                     "Design element id must be a real identifier, not a placeholder such as 'n/a'",
                     nameof(designElementId));
+            if (!CertificationIdentityTokens.HasAlphabeticIdentity(designElementId))
+                throw new ArgumentException(
+                    "Design element id must contain at least one letter",
+                    nameof(designElementId));
             if (string.IsNullOrWhiteSpace(designDocument))
                 throw new ArgumentException("Design document is required", nameof(designDocument));
 
@@ -213,6 +217,10 @@ namespace HB_NLP_Research_Lab.Certification
             if (IsPlaceholderEvidenceId(testCaseId))
                 throw new ArgumentException(
                     "Test case id must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(testCaseId));
+            if (!CertificationIdentityTokens.HasAlphabeticIdentity(testCaseId))
+                throw new ArgumentException(
+                    "Test case id must contain at least one letter",
                     nameof(testCaseId));
             if (string.IsNullOrWhiteSpace(testFile))
                 throw new ArgumentException("Test file is required", nameof(testFile));
@@ -591,7 +599,7 @@ namespace HB_NLP_Research_Lab.Certification
                 HasMeaningfulTestLink(t) && t.Verified && t.TestResult == TestResult.Passed);
 
         private static bool HasMeaningfulDesignLink(RequirementDesignLink d) =>
-            HasRealEvidenceId(d.DesignElementId) &&
+            CertificationIdentityTokens.HasRealEvidenceId(d.DesignElementId) &&
             HasSafeEvidencePath(d.DesignDocument, RepositoryEvidenceKind.Design);
 
         private static bool HasMeaningfulCodeLink(RequirementCodeLink c) =>
@@ -601,7 +609,7 @@ namespace HB_NLP_Research_Lab.Certification
             c.LineEnd >= c.LineStart;
 
         private static bool HasMeaningfulTestLink(RequirementTestLink t) =>
-            HasRealEvidenceId(t.TestCaseId) &&
+            CertificationIdentityTokens.HasRealEvidenceId(t.TestCaseId) &&
             HasSafeEvidencePath(t.TestFile, RepositoryEvidenceKind.Test);
 
         private static void AddRequirementDescriptionIssues(
@@ -742,9 +750,6 @@ namespace HB_NLP_Research_Lab.Certification
                 "unknown" or "pending" or "placeholder" or
                 "null" or "undefined" or "system" or "anonymous";
         }
-
-        private static bool HasRealEvidenceId(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderEvidenceId(value);
 
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {

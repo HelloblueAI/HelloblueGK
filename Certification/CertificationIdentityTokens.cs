@@ -24,6 +24,23 @@ namespace HB_NLP_Research_Lab.Certification
             !string.IsNullOrWhiteSpace(value) && !IsPlaceholder(value);
 
         /// <summary>
+        /// Design/test evidence IDs must contain at least one letter.
+        /// Leftover "..." / "___" / "123" previously counted as recorded
+        /// inventory and stamped Level A. Matching leftover TC-SAFE / DE-SAFE
+        /// still comply. Distinct from HasRealIdentity (function names) and
+        /// from placeholder token lists (n/a, none, todo).
+        /// </summary>
+        public static bool HasAlphabeticIdentity(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
+
+        /// <summary>
+        /// Non-empty, non-placeholder design/test identity with a letter.
+        /// Function-name leftover letter gates stay on HasRealIdentity.
+        /// </summary>
+        public static bool HasRealEvidenceId(string? value) =>
+            HasRealIdentity(value) && HasAlphabeticIdentity(value);
+
+        /// <summary>
         /// Leftover evidence paths whose filename or directory identity is a
         /// placeholder token ("n/a", "none", "todo") — including slash-containing
         /// tokens such as Tests/n/a and Core/n/a.cs — are not repository evidence.
