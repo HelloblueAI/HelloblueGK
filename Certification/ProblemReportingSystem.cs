@@ -451,6 +451,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// prefix-qualified traversal (Core/../tmp) are not implementation evidence.
         /// Leftover placeholder FunctionName tokens ("n/a" / "none" / "todo") are
         /// not a named implementation — RTM leftover verify already rejects them.
+        /// Leftover punctuation-only / digit-only TestCaseId tokens ("..." / "123")
+        /// are not recorded or verified test identity.
         /// </summary>
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {
@@ -469,7 +471,7 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return requirement.TestLinks.Any(t =>
-                HasRealEvidenceId(t.TestCaseId) &&
+                CertificationIdentityTokens.HasRealEvidenceId(t.TestCaseId) &&
                 RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test) &&
                 t.Verified &&
                 t.TestResult == TestResult.Passed);
@@ -511,32 +513,11 @@ namespace HB_NLP_Research_Lab.Certification
                 .ToListAsync();
             ids.UnionWith(coverageLinks
                 .Where(t =>
-                    HasRealEvidenceId(t.TestCaseId) &&
+                    CertificationIdentityTokens.HasRealEvidenceId(t.TestCaseId) &&
                     RepositoryEvidencePaths.HasSafeRepositoryPath(t.TestFile, RepositoryEvidenceKind.Test))
                 .Select(t => t.TestCaseId.Trim()));
             return ids;
         }
-
-        /// <summary>
-        /// Placeholder tokens ("n/a", "none", "todo") are not recorded test identity.
-        /// Coverage leftover inventory under those tokens must not close Critical/Major.
-        /// </summary>
-        private static bool IsPlaceholderEvidenceId(string? value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return false;
-            }
-
-            var normalized = value.Trim().ToLowerInvariant();
-            return normalized is
-                "n/a" or "na" or "none" or "todo" or "tbd" or
-                "unknown" or "pending" or "placeholder" or
-                "null" or "undefined" or "system" or "anonymous";
-        }
-
-        private static bool HasRealEvidenceId(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderEvidenceId(value);
 
         /// <summary>
         /// Reject vacuous closure text ("done", "fixed", "ok", punctuation-only) that
