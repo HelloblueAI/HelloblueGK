@@ -449,8 +449,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// Draft/NotTraced row (or unverified planning links) is not a fix.
         /// Leftover Verified=true rows that point at tmp/, phantom/, or
         /// prefix-qualified traversal (Core/../tmp) are not implementation evidence.
-        /// Leftover placeholder FunctionName tokens ("n/a" / "none" / "todo") are
-        /// not a named implementation — RTM leftover verify already rejects them.
+        /// Leftover placeholder FunctionName tokens ("n/a" / "none" / "todo") and
+        /// leftover punctuation-only / digit-only names ("..." / "123") are not a
+        /// named implementation — RTM leftover verify already rejects them.
         /// </summary>
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {

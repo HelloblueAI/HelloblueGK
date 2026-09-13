@@ -839,9 +839,10 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Create-time <see cref="NormalizeRequiredIdentity"/> already rejects empty
-        /// and placeholder function names. Leftover Approved rows must meet the same
-        /// bar so a file-covering span named "n/a" cannot satisfy a Level A roster entry.
+        /// Create-time <see cref="NormalizeRequiredIdentity"/> already rejects empty,
+        /// placeholder, and punctuation-only function names. Leftover Approved rows
+        /// must meet the same bar so a file-covering span named "n/a" or "..." cannot
+        /// satisfy a Level A roster entry.
         /// </summary>
         private static bool HasNamedFunction(string? functionName) =>
             CertificationIdentityTokens.HasRealIdentity(functionName);
@@ -1143,10 +1144,10 @@ namespace HB_NLP_Research_Lab.Certification
         private static string NormalizeRequiredIdentity(string? value, string paramName)
         {
             var normalized = NormalizeRequiredText(value, paramName);
-            if (CertificationIdentityTokens.IsPlaceholder(normalized))
+            if (!CertificationIdentityTokens.HasRealIdentity(normalized))
             {
                 throw new ArgumentException(
-                    $"{paramName} must be a real identifier, not a placeholder such as 'n/a'",
+                    $"{paramName} must be a real identifier, not a placeholder such as 'n/a' or punctuation-only text",
                     paramName);
             }
 

@@ -166,9 +166,9 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException("Code file is required", nameof(codeFile));
             if (string.IsNullOrWhiteSpace(functionName))
                 throw new ArgumentException("Function name is required", nameof(functionName));
-            if (CertificationIdentityTokens.IsPlaceholder(functionName))
+            if (!CertificationIdentityTokens.HasRealIdentity(functionName))
                 throw new ArgumentException(
-                    "Function name must be a real identifier, not a placeholder such as 'n/a'",
+                    "Function name must be a real identifier, not a placeholder such as 'n/a' or punctuation-only text",
                     nameof(functionName));
             if (lineStart <= 0 || lineEnd < lineStart)
                 throw new ArgumentException("Code line range must be a positive, ordered span");
