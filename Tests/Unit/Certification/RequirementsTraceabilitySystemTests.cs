@@ -1048,6 +1048,70 @@ public class RequirementsTraceabilitySystemTests
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementDescription);
     }
 
+    [Theory]
+    [InlineData("............")]
+    [InlineData("___")]
+    [InlineData("123456789012")]
+    public async Task CreateRequirementAsync_RejectsPunctuationOnlyDescription(string vacuousBody)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PUNCT-DESC",
+            Title = "Chamber pressure limit",
+            Description = vacuousBody,
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only*");
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("............")]
+    [InlineData("___")]
+    [InlineData("123456789012")]
+    public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyDescription_FailsClosed(
+        string leftoverDescription)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-PUNCT-DESC-LEFTOVER",
+            title: "Legacy leftover punctuation description");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.Description = leftoverDescription;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementDescription);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverMatchingNamedDescription_StillComplies()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-NAMED-DESC-LEFTOVER",
+            title: "Legacy leftover named description");
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeTrue();
+        report.CriticalIssues.Should().Be(0);
+    }
+
     [Fact]
     public async Task VerifyTraceabilityAsync_LeftoverEmptyRequirementNumber_FailsClosed()
     {

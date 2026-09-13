@@ -1095,6 +1095,86 @@ public class ProblemReportingSystemTests
             i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
     }
 
+    [Theory]
+    [InlineData("............")]
+    [InlineData("___")]
+    [InlineData("123456789012")]
+    public async Task UpdateStatusAsync_RejectsClosedCriticalWithPunctuationOnlyRequirementDescription(
+        string leftoverDescription)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync();
+        forged.Description = leftoverDescription;
+        await fixture.Requirements.SaveChangesAsync();
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, forged.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against leftover punctuation-only requirement description",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Theory]
+    [InlineData("............")]
+    [InlineData("___")]
+    [InlineData("123456789012")]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithPunctuationOnlyRequirementDescription_FailsClosed(
+        string leftoverDescription)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync();
+        forged.Description = leftoverDescription;
+        await fixture.Requirements.SaveChangesAsync();
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9017",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover punctuation-only requirement description",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover punctuation-only requirement description",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportRequirementLinks.Add(new ProblemReportRequirementLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            RequirementId = forged.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithPlaceholderRequirementNumber_FailsClosed()
     {

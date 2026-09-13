@@ -451,6 +451,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// prefix-qualified traversal (Core/../tmp) are not implementation evidence.
         /// Leftover placeholder FunctionName tokens ("n/a" / "none" / "todo") are
         /// not a named implementation — RTM leftover verify already rejects them.
+        /// Leftover punctuation-only / digit-only Description is not a requirement
+        /// body — HasRequirementDescription already rejects those leftovers.
         /// </summary>
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {
