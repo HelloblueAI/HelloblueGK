@@ -566,6 +566,41 @@ public class TestCoverageSystemTests
     }
 
     [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task VerifyComplianceAsync_LeftoverPunctuationOnlyTestCaseId_FailsClosed(string leftoverTestCaseId)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+        await system.RecordCoverageAsync("Core/Engine.cs", LevelAMetrics());
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        context.CoverageTestCaseLinks.Add(new CoverageTestCaseLink
+        {
+            Id = Guid.NewGuid(),
+            CodeCoverageId = coverage.Id,
+            TestCaseId = leftoverTestCaseId,
+            TestFile = "Tests/Unit/Core/EngineTests.cs",
+            CoverageType = CoverageType.MCDC,
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.TestEvidenceCompliant.Should().BeFalse();
+        check.FilesWithTestEvidence.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("linked test-case evidence", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
     [InlineData("n/a")]
     [InlineData("none")]
     [InlineData("todo")]
@@ -582,6 +617,27 @@ public class TestCoverageSystemTests
 
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*real identifier*")
+            .WithParameterName("testCaseId");
+        context.CoverageTestCaseLinks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task LinkTestCaseAsync_RejectsPunctuationOnlyTestCaseId(string leftoverTestCaseId)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.LinkTestCaseAsync(
+            "Core/Engine.cs",
+            leftoverTestCaseId,
+            "Tests/Unit/Core/EngineTests.cs",
+            CoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*letter*")
             .WithParameterName("testCaseId");
         context.CoverageTestCaseLinks.Should().BeEmpty();
     }
