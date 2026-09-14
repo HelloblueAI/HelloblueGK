@@ -640,6 +640,18 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Requirement {req.RequirementNumber} description is a placeholder; leftover vacuous requirement body cannot satisfy Level A traceability"
                 });
             }
+            else if (!HasAlphabeticRequirementBody(req.Description))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.InvalidRequirementDescription,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} description is punctuation-only or digit-only; leftover vacuous requirement body cannot satisfy Level A traceability"
+                });
+            }
         }
 
         private static void AddRequirementIdentityIssues(
@@ -698,14 +710,18 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Leftover empty/whitespace or placeholder Description must not count as
-        /// implementation evidence for problem-report closure.
+        /// Leftover empty/whitespace, placeholder, or punctuation/digit-only
+        /// Description must not count as implementation evidence for
+        /// problem-report closure. Matching leftover named bodies still comply.
+        /// FunctionName letter identity stays on the FunctionName gate.
         /// </summary>
         internal static bool HasRequirementDescription(Requirement requirement) =>
             HasRealRequirementDescription(requirement.Description);
 
         internal static bool HasRealRequirementDescription(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderRequirementDescription(value);
+            !string.IsNullOrWhiteSpace(value)
+            && !IsPlaceholderRequirementDescription(value)
+            && HasAlphabeticRequirementBody(value);
 
         internal static bool IsPlaceholderRequirementDescription(string value)
         {
@@ -713,6 +729,14 @@ namespace HB_NLP_Research_Lab.Certification
             return normalized is "n/a" or "na" or "none" or "todo" or "tbd"
                 or "unknown" or "pending" or "placeholder" or "null" or "undefined";
         }
+
+        /// <summary>
+        /// Punctuation-only / digit-only bodies ("............" / "123456789012")
+        /// are not a requirement statement. Distinct from placeholder tokens
+        /// ("n/a") and from FunctionName / TestCaseId letter gates.
+        /// </summary>
+        private static bool HasAlphabeticRequirementBody(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
 
         /// <summary>
         /// Leftover empty/whitespace or placeholder RequirementNumber/Title must
@@ -772,6 +796,13 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new ArgumentException(
                     "Description must be a real requirement body, not a placeholder such as 'n/a'",
+                    "Description");
+            }
+
+            if (!HasAlphabeticRequirementBody(trimmed))
+            {
+                throw new ArgumentException(
+                    "Description must be a real requirement body, not punctuation-only or digit-only text",
                     "Description");
             }
 

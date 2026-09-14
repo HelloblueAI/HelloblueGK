@@ -454,6 +454,8 @@ namespace HB_NLP_Research_Lab.Certification
         /// named implementation — RTM leftover verify already rejects them.
         /// Leftover punctuation-only / digit-only TestCaseId tokens ("..." / "123")
         /// are not recorded or verified test identity.
+        /// Leftover punctuation-only / digit-only Description is not a requirement
+        /// body — HasRequirementDescription already rejects those leftovers.
         /// </summary>
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {
