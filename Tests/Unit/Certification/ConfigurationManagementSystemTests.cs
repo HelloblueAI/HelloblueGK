@@ -42,6 +42,23 @@ public class ConfigurationManagementSystemTests
     }
 
     [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task CreateBaselineAsync_RejectsPunctuationOnlyName(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateBaselineAsync(baselineName, "1.0.0", "initial", "alice");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only or digit-only*")
+            .WithParameterName("baselineName");
+
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("n/a")]
     [InlineData("none")]
     [InlineData("todo")]
@@ -104,6 +121,28 @@ public class ConfigurationManagementSystemTests
         });
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*real configuration identity*")
+            .WithParameterName("ItemName");
+
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task CreateConfigurationItemAsync_RejectsPunctuationOnlyName(string itemName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = itemName,
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c"
+        });
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only or digit-only*")
             .WithParameterName("ItemName");
 
         context.ConfigurationItems.Should().BeEmpty();
@@ -222,6 +261,54 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*placeholder configuration name*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPunctuationBaselineName(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Punctuation-Name", "0.1.0", "punctuation", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        // Create already rejects punctuation-only names. Stamp leftover Draft + "...".
+        baseline.BaselineName = baselineName;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only or digit-only configuration name*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPunctuationItemName(string itemName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Punctuation-Item-Name", "0.1.0", "punctuation", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var item = context.ConfigurationItems.Single();
+        item.ItemName = itemName;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only or digit-only configuration name*");
 
         var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
         persisted.Status.Should().Be(BaselineStatus.Draft);
@@ -829,6 +916,28 @@ public class ConfigurationManagementSystemTests
     }
 
     [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task GenerateSCIAsync_RejectsApprovedBaselineWithPunctuationName(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-SCI-Name", "1.0.0", "leftover punctuation", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.BaselineName = baselineName;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only or digit-only configuration name*");
+    }
+
+    [Theory]
     [InlineData("n/a")]
     [InlineData("none")]
     [InlineData("todo")]
@@ -901,6 +1010,69 @@ public class ConfigurationManagementSystemTests
 
         audit.IsCompliant.Should().BeTrue();
         audit.Issues.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task PerformAuditAsync_LeftoverApprovedPunctuationBaselineName_FailsClosed(string baselineName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + punctuation-only name — leftover rows
+        // previously stamped audit IsCompliant and minted an SCI.
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Name", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.BaselineName = baselineName;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidBaselineName &&
+            i.ItemName == baselineName &&
+            i.Description.Contains("punctuation-only or digit-only"));
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only or digit-only configuration name*");
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task PerformAuditAsync_LeftoverApprovedPunctuationItemName_FailsClosed(string itemName)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Item-Name", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var item = context.ConfigurationItems.Single();
+        item.ItemName = itemName;
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidItemName &&
+            i.ItemName == itemName &&
+            i.Description.Contains("punctuation-only or digit-only"));
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only or digit-only configuration name*");
     }
 
     [Theory]
