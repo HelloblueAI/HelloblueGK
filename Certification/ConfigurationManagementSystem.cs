@@ -36,6 +36,12 @@ namespace HB_NLP_Research_Lab.Certification
                     "Baseline name must be a real configuration identity, not a placeholder such as 'n/a'",
                     nameof(baselineName));
             }
+            if (!HasAlphabeticConfigurationName(baselineName))
+            {
+                throw new ArgumentException(
+                    "Baseline name must be a real configuration identity, not punctuation-only or digit-only text",
+                    nameof(baselineName));
+            }
             if (string.IsNullOrWhiteSpace(version))
                 throw new ArgumentException("Baseline version is required", nameof(version));
             if (IsPlaceholderVersion(version))
@@ -137,6 +143,17 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot be approved with a placeholder configuration name");
             }
 
+            // Punctuation-only / digit-only leftover names ("..." / "___" / "123")
+            // are not configuration identity. Create already rejects them; leftover
+            // Draft rows must not freeze into an official baseline. Placeholder
+            // tokens stay on the Invalid* gate above. Versions such as 1.0.0 and
+            // hex checksums are not letter-gated.
+            if (HasPunctuationOnlyConfigurationName(baseline.BaselineName, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only or digit-only configuration name");
+            }
+
             // Level A independence: approver must not be the baseline author.
             // Empty or placeholder creators previously skipped this gate.
             var normalizedApprover = NormalizeActorIdentity(approvedBy, nameof(approvedBy));
@@ -182,7 +199,8 @@ namespace HB_NLP_Research_Lab.Certification
                 || !AllItemsHaveNames(claimedItems)
                 || !HasIdentifiableVersions(baseline)
                 || HasPlaceholderVersion(baseline.Version, claimedItems)
-                || HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems))
+                || HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems)
+                || HasPunctuationOnlyConfigurationName(baseline.BaselineName, claimedItems))
             {
                 await _context.SoftwareBaselines
                     .Where(b => b.Id == baselineId && b.Status == BaselineStatus.Approved)
@@ -202,7 +220,9 @@ namespace HB_NLP_Research_Lab.Certification
                                     ? $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version"
                                     : HasPlaceholderVersion(baseline.Version, claimedItems)
                                         ? $"Baseline {baseline.BaselineName} cannot be approved with a placeholder version"
-                                        : $"Baseline {baseline.BaselineName} cannot be approved with a placeholder configuration name");
+                                        : HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems)
+                                            ? $"Baseline {baseline.BaselineName} cannot be approved with a placeholder configuration name"
+                                            : $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only or digit-only configuration name");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -223,6 +243,12 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new ArgumentException(
                     "ItemName must be a real configuration identity, not a placeholder such as 'n/a'",
+                    nameof(item.ItemName));
+            }
+            if (!HasAlphabeticConfigurationName(item.ItemName))
+            {
+                throw new ArgumentException(
+                    "ItemName must be a real configuration identity, not punctuation-only or digit-only text",
                     nameof(item.ItemName));
             }
             item.FilePath = NormalizeEvidencePath(item.FilePath);
@@ -680,6 +706,15 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot produce an SCI with a placeholder configuration name");
             }
 
+            // Leftover Approved/Released + punctuation-only / digit-only name
+            // previously minted an SCI whose identity was "..." / "___" / "123".
+            // Empty leftover names stay on MissingBaselineName / MissingItemName.
+            if (HasPunctuationOnlyConfigurationName(baseline.BaselineName, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI with a punctuation-only or digit-only configuration name");
+            }
+
             var sci = new SoftwareConfigurationIndex
             {
                 BaselineId = baselineId,
@@ -821,6 +856,17 @@ namespace HB_NLP_Research_Lab.Certification
                         Description = $"Configuration item {item.ItemName} has a placeholder name that is not configuration identity"
                     });
                 }
+                else if (HasNonEmptyPunctuationOnlyName(item.ItemName))
+                {
+                    var itemLabel = item.ItemName ?? string.Empty;
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = itemLabel,
+                        IssueType = AuditIssueType.InvalidItemName,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {itemLabel} has a punctuation-only or digit-only name that is not configuration identity"
+                    });
+                }
             }
 
             if (IsPlaceholderConfigurationName(baseline.BaselineName))
@@ -831,6 +877,16 @@ namespace HB_NLP_Research_Lab.Certification
                     IssueType = AuditIssueType.InvalidBaselineName,
                     Severity = IssueSeverity.Critical,
                     Description = $"Baseline {baseline.BaselineName} has a placeholder name that is not configuration identity"
+                });
+            }
+            else if (HasNonEmptyPunctuationOnlyName(baseline.BaselineName))
+            {
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.InvalidBaselineName,
+                    Severity = IssueSeverity.Critical,
+                    Description = $"Baseline {baseline.BaselineName} has a punctuation-only or digit-only name that is not configuration identity"
                 });
             }
 
@@ -1066,9 +1122,31 @@ namespace HB_NLP_Research_Lab.Certification
                 or "unknown" or "pending" or "placeholder" or "null" or "undefined";
         }
 
+        /// <summary>
+        /// Named configuration identity must contain a letter. Leftover
+        /// punctuation-only / digit-only values ("...", "___", "123") previously
+        /// stamped leftover audit IsCompliant and minted an SCI after placeholder
+        /// tokens were rejected. Matching leftover Legacy-Matching-Name / core.c
+        /// still qualify. Versions such as 1.0.0 and hex checksums are not
+        /// letter-gated. Do not fold this into HasItemNameEvidence /
+        /// HasBaselineNameEvidence — those leftover empty gates must stay
+        /// whitespace-only so leftover "n/a" remains Invalid* not Missing*.
+        /// </summary>
+        internal static bool HasAlphabeticConfigurationName(string? name) =>
+            CertificationIdentityTokens.HasAlphabeticIdentity(name);
+
+        private static bool HasNonEmptyPunctuationOnlyName(string? name) =>
+            !string.IsNullOrWhiteSpace(name)
+            && !IsPlaceholderConfigurationName(name)
+            && !HasAlphabeticConfigurationName(name);
+
         private static bool HasPlaceholderConfigurationName(string? baselineName, IEnumerable<BaselineConfigurationItem>? links) =>
             IsPlaceholderConfigurationName(baselineName) ||
             (links?.Any(link => IsPlaceholderConfigurationName(link.ConfigurationItem?.ItemName)) ?? false);
+
+        private static bool HasPunctuationOnlyConfigurationName(string? baselineName, IEnumerable<BaselineConfigurationItem>? links) =>
+            HasNonEmptyPunctuationOnlyName(baselineName) ||
+            (links?.Any(link => HasNonEmptyPunctuationOnlyName(link.ConfigurationItem?.ItemName)) ?? false);
 
         private static bool HasChecksumEvidence(string? checksum) =>
             !string.IsNullOrWhiteSpace(checksum) && !IsPlaceholderChecksum(checksum);
