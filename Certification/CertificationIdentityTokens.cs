@@ -20,8 +20,39 @@ namespace HB_NLP_Research_Lab.Certification
                 "null" or "undefined" or "system" or "anonymous";
         }
 
-        public static bool HasRealIdentity(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && !IsPlaceholder(value);
+        /// <summary>
+        /// Named implementation identity must contain a letter. Leftover
+        /// punctuation-only / digit-only values ("...", "___", "123") previously
+        /// satisfied HasRealIdentity after placeholder tokens were rejected.
+        /// Matching leftover ReadCalibratedPressure / ValidateSensor still qualify.
+        /// </summary>
+        public static bool HasRealIdentity(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            var trimmed = value.Trim();
+            return trimmed.Any(char.IsLetter) && !IsPlaceholder(trimmed);
+        }
+
+        /// <summary>
+        /// Design/test evidence IDs must contain at least one letter.
+        /// Leftover "..." / "___" / "123" previously counted as recorded
+        /// inventory and stamped Level A. Matching leftover TC-SAFE / DE-SAFE
+        /// still comply. Distinct from HasRealIdentity (function names) and
+        /// from placeholder token lists (n/a, none, todo).
+        /// </summary>
+        public static bool HasAlphabeticIdentity(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
+
+        /// <summary>
+        /// Non-empty, non-placeholder design/test identity with a letter.
+        /// Function-name leftover letter gates stay on HasRealIdentity.
+        /// </summary>
+        public static bool HasRealEvidenceId(string? value) =>
+            HasRealIdentity(value) && HasAlphabeticIdentity(value);
 
         /// <summary>
         /// Leftover evidence paths whose filename or directory identity is a

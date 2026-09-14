@@ -640,7 +640,7 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool IsValidTestCaseLink(CoverageTestCaseLink link)
         {
-            if (!HasRealEvidenceId(link.TestCaseId) || string.IsNullOrWhiteSpace(link.TestFile))
+            if (!CertificationIdentityTokens.HasRealEvidenceId(link.TestCaseId) || string.IsNullOrWhiteSpace(link.TestFile))
             {
                 return false;
             }
@@ -674,9 +674,6 @@ namespace HB_NLP_Research_Lab.Certification
                 "null" or "undefined" or "system" or "anonymous";
         }
 
-        private static bool HasRealEvidenceId(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && !IsPlaceholderEvidenceId(value);
-
         private static string NormalizeTestCaseId(string testCaseId)
         {
             if (string.IsNullOrWhiteSpace(testCaseId))
@@ -689,6 +686,13 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new ArgumentException(
                     "Test case id must be a real identifier, not a placeholder such as 'n/a'",
+                    nameof(testCaseId));
+            }
+
+            if (!CertificationIdentityTokens.HasAlphabeticIdentity(trimmed))
+            {
+                throw new ArgumentException(
+                    "Test case id must contain at least one letter",
                     nameof(testCaseId));
             }
 
