@@ -456,6 +456,9 @@ namespace HB_NLP_Research_Lab.Certification
         /// are not recorded or verified test identity.
         /// Leftover punctuation-only / digit-only Description is not a requirement
         /// body — HasRequirementDescription already rejects those leftovers.
+        /// Leftover punctuation-only RequirementNumber ("..." / "___") is not
+        /// requirement identity — HasRequirementIdentity already rejects those
+        /// leftovers. Leftover numeric numbers such as 1.2.3 / 123 still qualify.
         /// </summary>
         private static bool HasVerifiedImplementationEvidence(Requirement requirement)
         {
