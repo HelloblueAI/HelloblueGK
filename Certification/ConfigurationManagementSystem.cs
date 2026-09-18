@@ -947,14 +947,16 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Leftover Approved/Released rows must still show real, independent SoD
-            // identities. Approve already rejects empty/placeholder creators and
-            // placeholder approvers; leftover audit previously skipped those gates
-            // and stamped IsCompliant whenever ApprovedBy was non-empty and not
-            // equal to CreatedBy (including CreatedBy="" / "System" and ApprovedBy="n/a").
+            // identities. Approve already rejects empty/placeholder/punctuation
+            // creators and placeholder/punctuation approvers; leftover audit
+            // previously skipped those gates and stamped IsCompliant whenever
+            // ApprovedBy was non-empty and not equal to CreatedBy (including
+            // CreatedBy="" / "System" / "___" and ApprovedBy="n/a" / "___").
             if (!HasRealActorIdentity(baseline.CreatedBy))
             {
                 report.IsCompliant = false;
                 var missingCreator = string.IsNullOrWhiteSpace(baseline.CreatedBy);
+                var punctuationCreator = HasPunctuationOnlyActor(baseline.CreatedBy);
                 report.Issues.Add(new ConfigurationAuditIssue
                 {
                     ItemName = baseline.BaselineName,
@@ -962,7 +964,9 @@ namespace HB_NLP_Research_Lab.Certification
                     Severity = IssueSeverity.Critical,
                     Description = missingCreator
                         ? $"Baseline {baseline.BaselineName} leftover creator identity is missing; Level A SoD cannot be evaluated"
-                        : $"Baseline {baseline.BaselineName} leftover creator identity is a placeholder; Level A SoD cannot be evaluated"
+                        : punctuationCreator
+                            ? $"Baseline {baseline.BaselineName} leftover creator identity is punctuation-only; Level A SoD cannot be evaluated"
+                            : $"Baseline {baseline.BaselineName} leftover creator identity is a placeholder; Level A SoD cannot be evaluated"
                 });
                 report.IssuesFound = report.Issues.Count;
                 return report;
@@ -972,6 +976,7 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 report.IsCompliant = false;
                 var missingApprover = string.IsNullOrWhiteSpace(baseline.ApprovedBy);
+                var punctuationApprover = HasPunctuationOnlyActor(baseline.ApprovedBy);
                 report.Issues.Add(new ConfigurationAuditIssue
                 {
                     ItemName = baseline.BaselineName,
@@ -981,7 +986,9 @@ namespace HB_NLP_Research_Lab.Certification
                     Severity = IssueSeverity.Critical,
                     Description = missingApprover
                         ? $"Baseline {baseline.BaselineName} leftover approval is not independent; creator and approver must be distinct"
-                        : $"Baseline {baseline.BaselineName} leftover approver identity is a placeholder; Level A SoD cannot be evaluated"
+                        : punctuationApprover
+                            ? $"Baseline {baseline.BaselineName} leftover approver identity is punctuation-only; Level A SoD cannot be evaluated"
+                            : $"Baseline {baseline.BaselineName} leftover approver identity is a placeholder; Level A SoD cannot be evaluated"
                 });
                 report.IssuesFound = report.Issues.Count;
                 return report;
@@ -1042,13 +1049,32 @@ namespace HB_NLP_Research_Lab.Certification
                     paramName);
             }
 
+            // Punctuation-only leftover actors ("..." / "___" / "---") are not
+            // SoD identities. Placeholder tokens stay on the gate above.
+            // Matching leftover alice / bob still qualify (letter-or-digit).
+            if (!CertificationIdentityTokens.HasLetterOrDigitIdentity(normalized))
+            {
+                throw new ArgumentException(
+                    $"{paramName} must be a real actor identity, not punctuation-only text",
+                    paramName);
+            }
+
             return normalized;
         }
 
         private static bool HasRealActorIdentity(string? actorName)
         {
             var normalized = NormalizeActorName(actorName);
-            return !string.IsNullOrWhiteSpace(normalized) && !IsPlaceholderActor(normalized);
+            return CertificationIdentityTokens.HasLetterOrDigitIdentity(normalized)
+                && !IsPlaceholderActor(normalized);
+        }
+
+        private static bool HasPunctuationOnlyActor(string? actorName)
+        {
+            var normalized = NormalizeActorName(actorName);
+            return !string.IsNullOrWhiteSpace(normalized)
+                && !IsPlaceholderActor(normalized)
+                && !CertificationIdentityTokens.HasLetterOrDigitIdentity(normalized);
         }
 
         private static bool IsPlaceholderActor(string actorName)
@@ -1217,8 +1243,9 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Leftover Approved/Released baselines must still show real, independent
-        /// SoD identities. Empty or placeholder CreatedBy/ApprovedBy cannot evaluate
-        /// independence. Creator-as-approver is the collision Approve already rejects.
+        /// SoD identities. Empty, placeholder, or punctuation-only CreatedBy /
+        /// ApprovedBy cannot evaluate independence. Creator-as-approver is the
+        /// collision Approve already rejects.
         /// </summary>
         private static bool HasIndependentBaselineApproval(SoftwareBaseline baseline)
         {
