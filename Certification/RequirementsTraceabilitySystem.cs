@@ -30,7 +30,7 @@ namespace HB_NLP_Research_Lab.Certification
         {
             ArgumentNullException.ThrowIfNull(requirement);
             requirement.RequirementNumber = NormalizeRequirementNumber(requirement.RequirementNumber);
-            requirement.Title = NormalizeRequirementIdentity(requirement.Title, "Title");
+            requirement.Title = NormalizeRequirementTitle(requirement.Title);
             requirement.Description = NormalizeRequirementDescription(requirement.Description);
 
             // Priority is fail-closed: unclassified defaults to Critical (MC/DC required),
@@ -707,6 +707,18 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Requirement {req.RequirementNumber} title is a placeholder; leftover vacuous identity cannot satisfy Level A traceability"
                 });
             }
+            else if (!HasAlphabeticRequirementTitle(req.Title))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.InvalidRequirementTitle,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement {req.RequirementNumber} title is punctuation-only or digit-only; leftover vacuous identity cannot satisfy Level A traceability"
+                });
+            }
         }
 
         /// <summary>
@@ -739,15 +751,28 @@ namespace HB_NLP_Research_Lab.Certification
             !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
 
         /// <summary>
-        /// Leftover empty/whitespace or placeholder RequirementNumber/Title must
-        /// not count as implementation evidence for problem-report closure.
+        /// Leftover empty/whitespace, placeholder, or punctuation/digit-only
+        /// Title must not count as implementation evidence for problem-report
+        /// closure. RequirementNumber stays on the empty/placeholder gate —
+        /// numeric identities such as 1.2.3 remain valid.
         /// </summary>
         internal static bool HasRequirementIdentity(Requirement requirement) =>
             HasRealRequirementIdentity(requirement.RequirementNumber) &&
-            HasRealRequirementIdentity(requirement.Title);
+            HasRealRequirementTitle(requirement.Title);
 
         internal static bool HasRealRequirementIdentity(string? value) =>
             !string.IsNullOrWhiteSpace(value) && !IsPlaceholderRequirementIdentity(value);
+
+        internal static bool HasRealRequirementTitle(string? value) =>
+            HasRealRequirementIdentity(value) && HasAlphabeticRequirementTitle(value);
+
+        /// <summary>
+        /// Punctuation-only / digit-only titles ("..." / "___" / "123") are not
+        /// a named requirement. Distinct from placeholder tokens ("n/a") and
+        /// from RequirementNumber (numeric ids such as 1.2.3 stay valid).
+        /// </summary>
+        private static bool HasAlphabeticRequirementTitle(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
 
         internal static bool IsPlaceholderRequirementIdentity(string value)
         {
@@ -804,6 +829,19 @@ namespace HB_NLP_Research_Lab.Certification
                 throw new ArgumentException(
                     "Description must be a real requirement body, not punctuation-only or digit-only text",
                     "Description");
+            }
+
+            return trimmed;
+        }
+
+        private static string NormalizeRequirementTitle(string? title)
+        {
+            var trimmed = NormalizeRequirementIdentity(title, "Title");
+            if (!HasAlphabeticRequirementTitle(trimmed))
+            {
+                throw new ArgumentException(
+                    "Title must be a real requirement identity, not punctuation-only or digit-only text",
+                    "Title");
             }
 
             return trimmed;
