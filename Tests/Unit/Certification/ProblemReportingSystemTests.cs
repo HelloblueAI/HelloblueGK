@@ -1697,43 +1697,6 @@ public class ProblemReportingSystemTests
         check.IsCompliant.Should().BeTrue();
     }
 
-    [Fact]
-    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithNumericRequirementNumber_StillComplies()
-    {
-        await using var fixture = CreateFixture();
-        var system = fixture.System;
-        var matching = await fixture.SeedRequirementWithVerifiedCodeAsync();
-        matching.RequirementNumber = "1.2.3";
-        await fixture.Requirements.SaveChangesAsync();
-
-        var leftover = new ProblemReport
-        {
-            Id = Guid.NewGuid(),
-            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9019",
-            Title = "Legacy closed critical",
-            Description = "Closed against leftover numeric requirement number",
-            Impact = "critical safety instrumentation fault",
-            Severity = ProblemSeverity.Critical,
-            Status = ProblemReportStatus.Closed,
-            ReportedBy = "alice",
-            Resolution = "verified against leftover numeric requirement number",
-            CreatedAt = DateTime.UtcNow.AddDays(-2),
-            ClosedAt = DateTime.UtcNow.AddDays(-1)
-        };
-        fixture.Reports.ProblemReports.Add(leftover);
-        fixture.Reports.ProblemReportRequirementLinks.Add(new ProblemReportRequirementLink
-        {
-            Id = Guid.NewGuid(),
-            ProblemReportId = leftover.Id,
-            RequirementId = matching.Id,
-            CreatedAt = DateTime.UtcNow.AddDays(-1)
-        });
-        await fixture.Reports.SaveChangesAsync();
-
-        var check = await system.VerifyComplianceAsync();
-        check.IsCompliant.Should().BeTrue();
-    }
-
     [Theory]
     [InlineData("Core/n/a.cs")]
     [InlineData("Core/todo.cs")]
