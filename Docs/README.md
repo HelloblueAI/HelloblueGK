@@ -10,11 +10,22 @@ New here? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 High-level project documentation and reports.
 - `PROFESSIONAL_SUMMARY.md` - Overview of the project's professional capabilities and achievements
 - `PROJECT_HEALTH_REPORT.md` - Current status and health metrics of the project
+- `DEMO.md` - Demonstration and usage guide
+- `COMPREHENSIVE_PROJECT_REVIEW.md` - Project review
+- `PROJECT_GAPS_AND_IMPROVEMENTS.md` - Known gaps and improvement ideas
+- `SHOWCASE_GUIDE.md` - Guide for presenting the project
 
 ### 📁 Technical/
-Technical documentation, limitations, and validation reports.
+Technical documentation, installation, limitations, and validation reports.
+- `INSTALL_DOTNET.md` - .NET installation instructions
 - `TECHNICAL_LIMITATIONS_AND_ROADMAP.md` - Known limitations and future development roadmap
 - `VALIDATION_AND_BENCHMARKS.md` - Performance validation results and benchmark data
+
+### 📁 Deployment/
+Deployment guides and operational checklists, including [`QUICK_DEPLOY.md`](Deployment/QUICK_DEPLOY.md).
+
+### 📁 Communication/
+Project updates, research templates, and communication notes.
 
 ### 📁 Designs/
 Engine designs, specifications, and related documentation.
@@ -41,4 +52,3 @@ Project assets including images and media files.
 
 - Return to [Project Root](../README.md)
 - View [PlasticityDemo Documentation](../PlasticityDemo/README.md)
-
