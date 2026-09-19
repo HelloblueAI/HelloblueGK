@@ -1430,6 +1430,88 @@ public class RequirementsTraceabilitySystemTests
     }
 
     [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task CreateRequirementAsync_RejectsPunctuationOnlyTitle(string vacuousTitle)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PUNCT-TITLE",
+            Title = vacuousTitle,
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only*")
+            .WithParameterName("Title");
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("123")]
+    public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyTitle_FailsClosed(
+        string leftoverTitle)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-PUNCT-TITLE-LEFTOVER",
+            title: "Legacy leftover punctuation title");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.Title = leftoverTitle;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementTitle);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverMatchingNamedTitle_StillComplies()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-NAMED-TITLE-LEFTOVER",
+            title: "Legacy leftover named title");
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeTrue();
+        report.CriticalIssues.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverNumericRequirementNumber_StillComplies()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "1.2.3",
+            title: "Legacy leftover numeric requirement number");
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeTrue();
+        report.CriticalIssues.Should().Be(0);
+    }
+
+    [Theory]
     [InlineData("n/a")]
     [InlineData("none")]
     [InlineData("todo")]
