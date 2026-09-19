@@ -1784,6 +1784,21 @@ public class FormalCodeReviewSystemTests
         context.CertifiedReviewers.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task RegisterCertifiedReviewerAsync_RejectsPunctuationOnlyName(string leftoverReviewer)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.RegisterCertifiedReviewerAsync(leftoverReviewer, "admin");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*punctuation-only*");
+        context.CertifiedReviewers.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task CreateReviewAsync_RejectsPlaceholderAuthor()
     {
@@ -1801,6 +1816,29 @@ public class FormalCodeReviewSystemTests
 
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*real actor identity*");
+        context.CodeReviews.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task CreateReviewAsync_RejectsPunctuationOnlyAuthor(string leftoverAuthor)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.CreateReviewAsync(new CodeReview
+        {
+            FilePath = "Core/HelloblueGKEngine.cs",
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = 10,
+            Author = leftoverAuthor
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*punctuation-only*");
         context.CodeReviews.Should().BeEmpty();
     }
 
@@ -2101,6 +2139,108 @@ public class FormalCodeReviewSystemTests
         check.ReviewedFiles.Should().Be(0);
         check.UnreviewedFiles.Should().ContainSingle()
             .Which.Should().Be("core/flightcontrol.cs");
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithPunctuationAuthor_FailsClosed(string leftoverAuthor)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        // Create already rejects punctuation-only Author. A leftover Approved
+        // row with Author="___" previously stamped IsCompliant because leftover
+        // verify only treated empty/placeholder Author as missing SoD.
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: leftoverAuthor,
+            reviewerName: "certified-bob",
+            reviewNumberSuffix: "8811");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle()
+            .Which.Should().Be("core/flightcontrol.cs");
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithPunctuationCertifiedReviewer_FailsClosed(string leftoverReviewer)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: "alice",
+            reviewerName: leftoverReviewer,
+            reviewNumberSuffix: "8812");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle()
+            .Which.Should().Be("core/flightcontrol.cs");
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithPunctuationApprover_FailsClosed(string leftoverApprover)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: "alice",
+            reviewerName: "certified-bob",
+            reviewNumberSuffix: "8813",
+            approvedBy: leftoverApprover);
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.ReviewedFiles.Should().Be(0);
+        check.UnreviewedFiles.Should().ContainSingle()
+            .Which.Should().Be("core/flightcontrol.cs");
+    }
+
+    [Fact]
+    public async Task VerifyComplianceAsync_LeftoverApprovedWithDigitOnlyAuthor_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/FlightControl.cs", "admin");
+
+        // Letter-or-digit actor gate keeps leftover numeric authors. Do not
+        // letter-gate SoD identities — leftover 123 / alice still comply.
+        SeedLeftoverApprovedReviewWithCertifiedFinding(
+            context,
+            filePath: "core/flightcontrol.cs",
+            author: "123",
+            reviewerName: "certified-bob",
+            reviewNumberSuffix: "8814");
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeTrue();
+        check.ReviewedFiles.Should().Be(1);
+        check.UnreviewedFiles.Should().BeEmpty();
     }
 
     [Fact]

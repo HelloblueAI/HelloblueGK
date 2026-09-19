@@ -48,6 +48,17 @@ namespace HB_NLP_Research_Lab.Certification
             !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
 
         /// <summary>
+        /// SoD actor identity must contain a letter or digit. Leftover
+        /// punctuation-only values ("...", "___", "---") previously satisfied
+        /// leftover creator / author / approver gates after placeholder tokens
+        /// were rejected. Matching leftover alice / bob / admin still qualify.
+        /// Do not use this for versions (1.0.0) or hex checksums, and do not
+        /// letter-gate actors — leftover alice must remain a real identity.
+        /// </summary>
+        public static bool HasLetterOrDigitIdentity(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetterOrDigit);
+
+        /// <summary>
         /// Non-empty, non-placeholder design/test identity with a letter.
         /// Function-name leftover letter gates stay on HasRealIdentity.
         /// </summary>

@@ -1361,6 +1361,95 @@ public class ConfigurationManagementSystemTests
             .WithMessage("*independent creator and approver identities*");
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task PerformAuditAsync_LeftoverApprovedPunctuationCreator_FailsClosed(string leftoverCreator)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Create already rejects punctuation-only CreatedBy. A leftover
+        // Approved + Released row with CreatedBy="___" previously stamped
+        // IsCompliant and minted an SCI when ApprovedBy was a distinct real actor.
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Creator", "1.0.0", "leftover punctuation creator", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.CreatedBy = leftoverCreator;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidCreator &&
+            i.Description.Contains("punctuation-only"));
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent creator and approver identities*");
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task PerformAuditAsync_LeftoverApprovedPunctuationApprover_FailsClosed(string leftoverApprover)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Approve already rejects punctuation-only approvers. A leftover
+        // Approved + Released row with ApprovedBy="___" previously stamped
+        // IsCompliant because leftover audit only treated empty/placeholder
+        // ApprovedBy as missing SoD.
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Approver", "1.0.0", "leftover punctuation approver", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = leftoverApprover;
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidApprover &&
+            i.Description.Contains("punctuation-only"));
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*independent creator and approver identities*");
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedDigitOnlyCreator_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Letter-or-digit actor gate keeps leftover numeric creators. Do not
+        // letter-gate SoD identities — leftover 123 / alice still comply.
+        var baseline = await system.CreateBaselineAsync("Legacy-Digit-Creator", "1.0.0", "leftover digit creator", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.CreatedBy = "123";
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+
+        var sci = await system.GenerateSCIAsync(baseline.Id);
+        sci.BaselineName.Should().Be("Legacy-Digit-Creator");
+    }
+
     [Fact]
     public async Task GenerateSCIAsync_RejectsLeftoverCreatorAsApprover()
     {
@@ -1744,6 +1833,22 @@ public class ConfigurationManagementSystemTests
         context.SoftwareBaselines.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task CreateBaselineAsync_RejectsPunctuationOnlyCreator(string leftoverCreator)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateBaselineAsync("SCI-1", "1.0.0", "initial", leftoverCreator);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*real actor identity*punctuation-only*")
+            .WithParameterName("createdBy");
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task ApproveBaselineAsync_LeftoverPlaceholderCreator_FailsClosed()
     {
@@ -1753,6 +1858,29 @@ public class ConfigurationManagementSystemTests
         var baseline = await system.CreateBaselineAsync("SCI-legacy", "1.0.0", "legacy", "alice");
         await AddReleasedItemAsync(system, context, baseline.Id, "legacy.c");
         baseline.CreatedBy = "System";
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*real creator identity*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task ApproveBaselineAsync_LeftoverPunctuationCreator_FailsClosed(string leftoverCreator)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-legacy-punct", "1.0.0", "legacy", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "legacy.c");
+        baseline.CreatedBy = leftoverCreator;
         await context.SaveChangesAsync();
 
         var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
@@ -1778,6 +1906,37 @@ public class ConfigurationManagementSystemTests
             RequestedBy = "alice"
         });
         created.RequestedBy = "System";
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveChangeRequestAsync(
+            created.RequestNumber,
+            "bob",
+            "CCB approved mixture ratio change");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*real requester identity*");
+
+        var persisted = await context.ChangeRequests.SingleAsync();
+        persisted.Status.Should().Be(ChangeRequestStatus.Submitted);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task ApproveChangeRequestAsync_LeftoverPunctuationRequester_FailsClosed(string leftoverRequester)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var created = await system.CreateChangeRequestAsync(new ChangeRequest
+        {
+            Title = "Legacy CR punctuation",
+            Description = "Adjust mixture ratio schedule",
+            Justification = "Stability",
+            RequestedBy = "alice"
+        });
+        created.RequestedBy = leftoverRequester;
         await context.SaveChangesAsync();
 
         var act = async () => await system.ApproveChangeRequestAsync(
