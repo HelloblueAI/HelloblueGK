@@ -849,8 +849,9 @@ namespace HB_NLP_Research_Lab.Certification
 
         /// <summary>
         /// Leftover Approved reviews must still show a real, independent approver.
-        /// Empty or placeholder ApprovedBy cannot evaluate SoD. Author-as-approver
-        /// and completing-reviewer-as-approver are the same collisions Approve rejects.
+        /// Empty, placeholder, or punctuation-only ApprovedBy cannot evaluate SoD.
+        /// Author-as-approver and completing-reviewer-as-approver are the same
+        /// collisions Approve rejects.
         /// </summary>
         private static bool HasIndependentApproval(CodeReview review)
         {
@@ -1054,6 +1055,16 @@ namespace HB_NLP_Research_Lab.Certification
                     paramName);
             }
 
+            // Punctuation-only leftover actors ("..." / "___" / "---") are not
+            // SoD identities. Placeholder tokens stay on the gate above.
+            // Matching leftover alice / bob still qualify (letter-or-digit).
+            if (!CertificationIdentityTokens.HasLetterOrDigitIdentity(normalized))
+            {
+                throw new ArgumentException(
+                    $"{paramName} must be a real actor identity, not punctuation-only text",
+                    paramName);
+            }
+
             return normalized;
         }
 
@@ -1065,9 +1076,11 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool SatisfiesIndependentReviewEvidence(CodeReview review)
         {
-            // Leftover Approved rows with placeholder authors ("System") or
-            // placeholder certified reviewers must not satisfy Level A.
-            // Create/register already reject those identities.
+            // Leftover Approved rows with placeholder authors ("System"),
+            // punctuation-only authors ("___"), or matching leftover certified
+            // reviewers must not satisfy Level A. Create/register already reject
+            // those identities. Matching leftover alice / certified-bob still
+            // qualify.
             if (!HasRealActorIdentity(review.Author))
                 return false;
 
@@ -1083,7 +1096,8 @@ namespace HB_NLP_Research_Lab.Certification
         private static bool HasRealActorIdentity(string? actorName)
         {
             var normalized = NormalizeReviewerName(actorName ?? string.Empty);
-            return !string.IsNullOrWhiteSpace(normalized) && !IsPlaceholderActor(normalized);
+            return CertificationIdentityTokens.HasLetterOrDigitIdentity(normalized)
+                && !IsPlaceholderActor(normalized);
         }
 
         /// <summary>
