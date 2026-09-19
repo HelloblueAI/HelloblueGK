@@ -1993,6 +1993,28 @@ public class ConfigurationManagementSystemTests
     }
 
     [Theory]
+    [InlineData("Core/....cs")]
+    [InlineData("Core/___.cs")]
+    [InlineData("Core/123.cs")]
+    public async Task CreateConfigurationItemAsync_RejectsPunctuationOnlyFilePath(string leftoverFilePath)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = leftoverFilePath
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only or digit-only*")
+            .WithParameterName("filePath");
+        context.ConfigurationItems.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("Core/n/a.cs")]
     [InlineData("Core/todo.cs")]
     public async Task PerformAuditAsync_LeftoverPlaceholderFilePath_FailsClosed(string leftoverFilePath)
@@ -2001,6 +2023,34 @@ public class ConfigurationManagementSystemTests
         var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
 
         var baseline = await system.CreateBaselineAsync("Legacy-Placeholder-Path", "1.0.0", "leftover placeholder path", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        var item = await context.ConfigurationItems.SingleAsync();
+        item.FilePath = leftoverFilePath;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i => i.IssueType == AuditIssueType.UnsafeFilePath);
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*outside the repository evidence tree*");
+    }
+
+    [Theory]
+    [InlineData("Core/....cs")]
+    [InlineData("Core/___.cs")]
+    [InlineData("Core/123.cs")]
+    public async Task PerformAuditAsync_LeftoverPunctuationOnlyFilePath_FailsClosed(string leftoverFilePath)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Path", "1.0.0", "leftover punctuation-only path", "alice");
         await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
         baseline.Status = BaselineStatus.Approved;
         baseline.ApprovedBy = "bob";

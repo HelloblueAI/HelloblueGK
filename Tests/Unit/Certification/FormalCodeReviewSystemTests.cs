@@ -1712,6 +1712,21 @@ public class FormalCodeReviewSystemTests
     }
 
     [Theory]
+    [InlineData("Core/....cs")]
+    [InlineData("Core/___.cs")]
+    [InlineData("Core/123.cs")]
+    public async Task RegisterRequiredFileAsync_RejectsPunctuationOnlyFilePath(string leftoverFilePath)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        var act = async () => await system.RegisterRequiredFileAsync(leftoverFilePath, "admin");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only or digit-only*");
+        context.RequiredReviewFiles.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("core/n/a.cs")]
     [InlineData("core/todo.cs")]
     public async Task VerifyComplianceAsync_LeftoverPlaceholderRosterPath_FailsClosed(string leftoverFilePath)
@@ -1732,6 +1747,68 @@ public class FormalCodeReviewSystemTests
         {
             Id = reviewId,
             ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9201",
+            FilePath = leftoverFilePath,
+            FunctionName = "AnalyzeEngineAsync",
+            LineStart = 1,
+            LineEnd = FormalCodeReviewSystem.MinimumFileReviewLineCount,
+            Status = CodeReviewStatus.Approved,
+            Author = "alice",
+            ApprovedBy = "admin",
+            ApprovedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        });
+        context.CodeReviewAssignments.Add(new CodeReviewAssignment
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            IsCertified = true,
+            Status = ReviewAssignmentStatus.Completed,
+            AssignedAt = DateTime.UtcNow.AddMinutes(-10),
+            CompletedAt = DateTime.UtcNow.AddMinutes(-1)
+        });
+        context.ReviewFindings.Add(new ReviewFinding
+        {
+            Id = Guid.NewGuid(),
+            ReviewId = reviewId,
+            ReviewerName = "certified-bob",
+            LineNumber = 5,
+            Severity = FindingSeverity.Minor,
+            Category = FindingCategory.Standards,
+            Description = "Consider naming clarity",
+            CreatedAt = DateTime.UtcNow
+        });
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i => i.Contains("outside the implementation or test tree", StringComparison.OrdinalIgnoreCase));
+        check.UnreviewedFiles.Should().Contain(leftoverFilePath);
+    }
+
+    [Theory]
+    [InlineData("core/....cs")]
+    [InlineData("core/___.cs")]
+    [InlineData("core/123.cs")]
+    public async Task VerifyComplianceAsync_LeftoverPunctuationOnlyRosterPath_FailsClosed(string leftoverFilePath)
+    {
+        await using var context = CreateContext();
+        var system = new FormalCodeReviewSystem(context, NullLogger<FormalCodeReviewSystem>.Instance);
+
+        context.RequiredReviewFiles.Add(new RequiredReviewFile
+        {
+            Id = Guid.NewGuid(),
+            FilePath = leftoverFilePath,
+            IsActive = true,
+            RegisteredBy = "admin",
+            RegisteredAt = DateTime.UtcNow
+        });
+        var reviewId = Guid.NewGuid();
+        context.CodeReviews.Add(new CodeReview
+        {
+            Id = reviewId,
+            ReviewNumber = $"CR-{DateTime.UtcNow.Year}-9202",
             FilePath = leftoverFilePath,
             FunctionName = "AnalyzeEngineAsync",
             LineStart = 1,

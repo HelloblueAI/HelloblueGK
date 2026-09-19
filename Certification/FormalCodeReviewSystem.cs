@@ -1037,6 +1037,14 @@ namespace HB_NLP_Research_Lab.Certification
                 return false;
             }
 
+            // Prefix letters are not path identity. Leftover core/....cs /
+            // tests/123.cs must not satisfy the review roster.
+            if (!CertificationIdentityTokens.HasAlphabeticPathIdentity(normalized))
+            {
+                error = "File path must be a real evidence path, not punctuation-only or digit-only text.";
+                return false;
+            }
+
             return true;
         }
 

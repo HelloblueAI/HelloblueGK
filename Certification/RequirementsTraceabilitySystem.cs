@@ -962,6 +962,14 @@ namespace HB_NLP_Research_Lab.Certification
                 return false;
             }
 
+            // Prefix letters are not path identity. Leftover Core/....cs /
+            // Tests/123.cs must not become Verified through the API.
+            if (!CertificationIdentityTokens.HasAlphabeticPathIdentity(normalized))
+            {
+                error = "Evidence path must be a real repository path, not punctuation-only or digit-only text.";
+                return false;
+            }
+
             if (!RepositoryEvidencePaths.HasAllowedPrefix(normalized, kind))
             {
                 var allowed = string.Join(", ", RepositoryEvidencePaths.PrefixesFor(kind));
