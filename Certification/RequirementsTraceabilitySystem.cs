@@ -682,6 +682,18 @@ namespace HB_NLP_Research_Lab.Certification
                         $"Requirement number '{req.RequirementNumber}' is a placeholder; leftover vacuous identity cannot satisfy Level A traceability"
                 });
             }
+            else if (!HasLetterOrDigitRequirementNumber(req.RequirementNumber))
+            {
+                report.Issues.Add(new TraceabilityIssue
+                {
+                    RequirementId = req.Id,
+                    RequirementNumber = req.RequirementNumber,
+                    IssueType = TraceabilityIssueType.InvalidRequirementNumber,
+                    Severity = IssueSeverity.Critical,
+                    Description =
+                        $"Requirement number '{req.RequirementNumber}' is punctuation-only; leftover vacuous identity cannot satisfy Level A traceability"
+                });
+            }
 
             if (string.IsNullOrWhiteSpace(req.Title))
             {
@@ -751,14 +763,26 @@ namespace HB_NLP_Research_Lab.Certification
             !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
 
         /// <summary>
-        /// Leftover empty/whitespace, placeholder, or punctuation/digit-only
-        /// Title must not count as implementation evidence for problem-report
-        /// closure. RequirementNumber stays on the empty/placeholder gate —
-        /// numeric identities such as 1.2.3 remain valid.
+        /// Leftover empty/whitespace, placeholder, or punctuation-only
+        /// RequirementNumber, and leftover empty/whitespace, placeholder, or
+        /// punctuation/digit-only Title, must not count as implementation
+        /// evidence for problem-report closure. Numeric leftover numbers such
+        /// as 1.2.3 / 123 still qualify — only Title is letter-gated.
         /// </summary>
         internal static bool HasRequirementIdentity(Requirement requirement) =>
-            HasRealRequirementIdentity(requirement.RequirementNumber) &&
+            HasRealRequirementNumber(requirement.RequirementNumber) &&
             HasRealRequirementTitle(requirement.Title);
+
+        internal static bool HasRealRequirementNumber(string? value) =>
+            HasRealRequirementIdentity(value) && HasLetterOrDigitRequirementNumber(value);
+
+        /// <summary>
+        /// Punctuation-only numbers ("..." / "___") are not requirement identity.
+        /// Distinct from placeholder tokens ("n/a") and from Title / Description
+        /// letter gates — leftover numeric ids such as 1.2.3 and 123 still comply.
+        /// </summary>
+        private static bool HasLetterOrDigitRequirementNumber(string? value) =>
+            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetterOrDigit);
 
         internal static bool HasRealRequirementIdentity(string? value) =>
             !string.IsNullOrWhiteSpace(value) && !IsPlaceholderRequirementIdentity(value);
@@ -803,6 +827,13 @@ namespace HB_NLP_Research_Lab.Certification
         private static string NormalizeRequirementNumber(string? requirementNumber)
         {
             var normalized = NormalizeRequirementIdentity(requirementNumber, "RequirementNumber");
+            if (!HasLetterOrDigitRequirementNumber(normalized))
+            {
+                throw new ArgumentException(
+                    "RequirementNumber must be a real requirement identity, not punctuation-only text",
+                    "RequirementNumber");
+            }
+
             if (normalized.Contains("..", StringComparison.Ordinal) ||
                 normalized.IndexOfAny(['/', '\\']) >= 0)
             {

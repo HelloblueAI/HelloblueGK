@@ -1293,6 +1293,100 @@ public class RequirementsTraceabilitySystemTests
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementNumber);
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task CreateRequirementAsync_RejectsPunctuationOnlyRequirementNumber(string vacuousNumber)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var act = async () => await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = vacuousNumber,
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only*")
+            .WithParameterName("RequirementNumber");
+        context.Requirements.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("1.2.3")]
+    [InlineData("123")]
+    [InlineData("REQ-027")]
+    public async Task CreateRequirementAsync_AcceptsLetterOrDigitRequirementNumber(string requirementNumber)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var created = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = requirementNumber,
+            Title = "Chamber pressure limit",
+            Description = "Must not exceed design max",
+            CreatedBy = "alice"
+        });
+
+        created.RequirementNumber.Should().Be(requirementNumber);
+        context.Requirements.Should().ContainSingle();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyRequirementNumber_FailsClosed(
+        string leftoverNumber)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-PUNCT-NUMBER",
+            title: "Legacy leftover punctuation number");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.RequirementNumber = leftoverNumber;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.InvalidRequirementNumber);
+    }
+
+    [Theory]
+    [InlineData("1.2.3")]
+    [InlineData("123")]
+    [InlineData("REQ-019")]
+    public async Task VerifyTraceabilityAsync_LeftoverNumericOrNamedRequirementNumber_StillComplies(
+        string leftoverNumber)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-NUMERIC-NUMBER",
+            title: "Legacy leftover numeric or named number");
+
+        var leftover = await context.Requirements.SingleAsync();
+        leftover.RequirementNumber = leftoverNumber;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeTrue();
+        report.CriticalIssues.Should().Be(0);
+    }
+
     [Fact]
     public async Task VerifyTraceabilityAsync_LeftoverEmptyTitle_FailsClosed()
     {
