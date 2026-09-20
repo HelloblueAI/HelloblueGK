@@ -12,6 +12,11 @@ namespace HB_NLP_Research_Lab.Certification
     /// Test Coverage System for DO-178C Level A / NASA NPR 7150.2 Class A
     /// Tracks code coverage including MC/DC (Modified Condition/Decision Coverage)
     /// Required: 100% statement coverage + MC/DC for safety-critical code
+    ///
+    /// Every percentage is computed from covered/total counts rather than accepted from the
+    /// caller, including MC/DC, which is derived from demonstrated independence pairs and
+    /// bounded by condition coverage. Absent counts fail closed at 0% instead of inheriting
+    /// an asserted figure.
     /// </summary>
     public class TestCoverageSystem
     {
@@ -58,6 +63,8 @@ namespace HB_NLP_Research_Lab.Certification
             coverage.CoveredBranches = metrics.CoveredBranches;
             coverage.TotalConditions = metrics.TotalConditions;
             coverage.CoveredConditions = metrics.CoveredConditions;
+            coverage.TotalMcdcPairs = metrics.TotalMcdcPairs;
+            coverage.CoveredMcdcPairs = metrics.CoveredMcdcPairs;
             coverage.LastUpdated = DateTime.UtcNow;
 
             // Determine if file meets Level A requirements
@@ -98,7 +105,15 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Recompute Level A gate after the safety-critical flag changes so MC/DC
-            // requirements apply immediately (and clear if the flag is removed).
+            // requirements apply immediately (and clear if the flag is removed). MC/DC is
+            // re-derived from stored pair counts so a pre-gate asserted percentage cannot
+            // leave this flag more optimistic than the compliance audit.
+            coverage.MCDCCoverage = DeriveMcdcCoverage(
+                coverage.TotalConditions,
+                coverage.TotalMcdcPairs,
+                coverage.CoveredMcdcPairs,
+                coverage.ConditionCoverage);
+
             coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
                                               coverage.BranchCoverage >= 100.0 &&
                                               (!coverage.IsSafetyCritical || coverage.MCDCCoverage >= 100.0);
@@ -597,20 +612,11 @@ namespace HB_NLP_Research_Lab.Certification
                 ? (double)coverage.CoveredConditions / coverage.TotalConditions * 100.0
                 : 0.0;
 
-            if (coverage.TotalConditions > 0)
-            {
-                var claimedMcdc = coverage.MCDCCoverage;
-                if (double.IsNaN(claimedMcdc) || double.IsInfinity(claimedMcdc) || claimedMcdc < 0)
-                    claimedMcdc = 0;
-                else if (claimedMcdc > 100)
-                    claimedMcdc = 100;
-
-                coverage.MCDCCoverage = Math.Min(claimedMcdc, coverage.ConditionCoverage);
-            }
-            else
-            {
-                coverage.MCDCCoverage = 0.0;
-            }
+            coverage.MCDCCoverage = DeriveMcdcCoverage(
+                coverage.TotalConditions,
+                coverage.TotalMcdcPairs,
+                coverage.CoveredMcdcPairs,
+                coverage.ConditionCoverage);
 
             coverage.MeetsLevelARequirements = coverage.StatementCoverage >= 100.0 &&
                                               coverage.BranchCoverage >= 100.0 &&
@@ -618,17 +624,41 @@ namespace HB_NLP_Research_Lab.Certification
             return true;
         }
 
+        /// <summary>
+        /// MC/DC is computed from demonstrated independence pairs, never from a claimed
+        /// percentage. Condition coverage remains an upper bound because a condition that
+        /// was never exercised cannot have a demonstrated pair. Missing condition totals or
+        /// missing pair totals fail closed at 0 rather than inheriting an asserted figure.
+        /// </summary>
+        private static double DeriveMcdcCoverage(
+            int totalConditions,
+            int totalMcdcPairs,
+            int coveredMcdcPairs,
+            double conditionCoverage)
+        {
+            if (totalConditions <= 0 || totalMcdcPairs <= 0 || coveredMcdcPairs < 0)
+                return 0.0;
+
+            var demonstrated = (double)Math.Min(coveredMcdcPairs, totalMcdcPairs) / totalMcdcPairs * 100.0;
+            return Math.Min(demonstrated, conditionCoverage);
+        }
+
         private static bool HasCountableCoverageTotals(CodeCoverage coverage)
         {
             if (coverage.TotalStatements <= 0 || coverage.TotalBranches <= 0 || coverage.TotalConditions < 0)
                 return false;
 
-            if (coverage.CoveredStatements < 0 || coverage.CoveredBranches < 0 || coverage.CoveredConditions < 0)
+            if (coverage.TotalMcdcPairs < 0)
+                return false;
+
+            if (coverage.CoveredStatements < 0 || coverage.CoveredBranches < 0 || coverage.CoveredConditions < 0
+                || coverage.CoveredMcdcPairs < 0)
                 return false;
 
             return coverage.CoveredStatements <= coverage.TotalStatements
                 && coverage.CoveredBranches <= coverage.TotalBranches
-                && coverage.CoveredConditions <= coverage.TotalConditions;
+                && coverage.CoveredConditions <= coverage.TotalConditions
+                && coverage.CoveredMcdcPairs <= coverage.TotalMcdcPairs;
         }
 
         private static bool HasValidTestEvidence(CodeCoverage coverage) =>
@@ -800,6 +830,7 @@ namespace HB_NLP_Research_Lab.Certification
             ValidateCoveragePair(metrics.CoveredStatements, metrics.TotalStatements, nameof(metrics.CoveredStatements), nameof(metrics.TotalStatements));
             ValidateCoveragePair(metrics.CoveredBranches, metrics.TotalBranches, nameof(metrics.CoveredBranches), nameof(metrics.TotalBranches));
             ValidateCoveragePair(metrics.CoveredConditions, metrics.TotalConditions, nameof(metrics.CoveredConditions), nameof(metrics.TotalConditions));
+            ValidateCoveragePair(metrics.CoveredMcdcPairs, metrics.TotalMcdcPairs, nameof(metrics.CoveredMcdcPairs), nameof(metrics.TotalMcdcPairs));
 
             // Level A evidence requires countable statement/branch totals — percentage-only
             // records with zero totals previously forged 100% compliance.
@@ -826,17 +857,11 @@ namespace HB_NLP_Research_Lab.Certification
                 ? (double)metrics.CoveredConditions / metrics.TotalConditions * 100.0
                 : 0.0;
 
-            // MC/DC cannot be client-asserted without condition evidence. When condition
-            // totals exist, cap claimed MC/DC by measured condition coverage.
-            if (metrics.TotalConditions > 0)
-            {
-                var claimedMcdc = NormalizePercentage(metrics.MCDCCoverage, nameof(metrics.MCDCCoverage));
-                metrics.MCDCCoverage = Math.Min(claimedMcdc, metrics.ConditionCoverage);
-            }
-            else
-            {
-                metrics.MCDCCoverage = 0.0;
-            }
+            metrics.MCDCCoverage = DeriveMcdcCoverage(
+                metrics.TotalConditions,
+                metrics.TotalMcdcPairs,
+                metrics.CoveredMcdcPairs,
+                metrics.ConditionCoverage);
 
             metrics.PathCoverage = NormalizePercentage(metrics.PathCoverage, nameof(metrics.PathCoverage));
         }
@@ -887,6 +912,14 @@ namespace HB_NLP_Research_Lab.Certification
         public int CoveredBranches { get; set; }
         public int TotalConditions { get; set; }
         public int CoveredConditions { get; set; }
+
+        /// <summary>
+        /// MC/DC independence pairs required by, and demonstrated for, this file.
+        /// MCDCCoverage is derived from these counts rather than asserted, so a file
+        /// with full condition coverage cannot claim MC/DC it has not demonstrated.
+        /// </summary>
+        public int TotalMcdcPairs { get; set; }
+        public int CoveredMcdcPairs { get; set; }
         public bool MeetsLevelARequirements { get; set; }
         public DateTime LastUpdated { get; set; }
 
@@ -916,6 +949,13 @@ namespace HB_NLP_Research_Lab.Certification
         public int CoveredBranches { get; set; }
         public int TotalConditions { get; set; }
         public int CoveredConditions { get; set; }
+
+        /// <summary>
+        /// MC/DC independence pairs. MCDCCoverage is computed from these, so any value
+        /// supplied by the caller is ignored the same way StatementCoverage is.
+        /// </summary>
+        public int TotalMcdcPairs { get; set; }
+        public int CoveredMcdcPairs { get; set; }
     }
 
     public enum CoverageType
