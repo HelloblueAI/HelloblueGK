@@ -26,6 +26,7 @@ code it purports to verify is evidence of nothing.
 | Readiness decision logic | Mission-level requirement tables never relax as missions get stricter, go/no-go thresholds are inclusive at the boundary, critical categories are genuinely weighted | `Tests/Unit/Aerospace/AerospaceReadinessAssessmentTests.cs` |
 | Engine model polymorphism | Every engine reports its performance envelope through `RocketEngineBase` | `Tests/Unit/Aerospace/EngineModelTests.cs` |
 | CFD solver contract | Full decision coverage of `AdvancedCFDSolver`, including the self-initialising path | `Tests/Unit/Physics/PhysicsSolverContractTests.cs` |
+| Ideal rocket nozzle | Quasi-1D isentropic nozzle solution validated against the published specific impulse of Merlin 1D, Raptor, and RS-25; scale invariance, expansion monotonicity, and the sign of the pressure term pinned | `Tests/Unit/Physics/IdealRocketNozzleTests.cs`, `Tests/Unit/Physics/NozzleFlowSolverTests.cs` |
 
 ### Defects this verification found
 
@@ -53,17 +54,45 @@ empty category list, then averaged only the *critical* categories — which thro
 sequence. Assessing only operational and financial readiness, a reasonable request, threw
 `InvalidOperationException` instead of returning a score.
 
+## One solver now computes from its inputs
+
+`NozzleFlowSolver` and the `IdealRocketNozzle` relations behind it are the first physics in this
+repository whose output is a function of its argument. Given chamber pressure, chamber
+temperature, propellant specific-heat ratio and molar mass, throat area, expansion ratio, and
+ambient pressure, they solve the quasi-one-dimensional isentropic nozzle and return thrust,
+specific impulse, mass flow, characteristic velocity, and exit conditions.
+
+The relations are validated rather than merely self-consistent: using published chamber
+conditions and area ratios, computed specific impulse lands within about 1% of the published
+figures for Merlin 1D at sea level, Raptor at sea level, and RS-25 in vacuum, and the tests
+additionally assert that ideal theory never *under*predicts a real engine — every loss the ideal
+model neglects reduces real performance, so underprediction would indicate an error in the
+algebra or the propellant properties.
+
+What this does not claim: it is a one-dimensional equilibrium model, not a flow solver. It says
+nothing about combustion stability, boundary layers, flow separation, nozzle heat transfer, or
+off-design transients, and it assumes frozen chamber composition with fully axial exit flow.
+
+`NozzleFlowSolver` throws when handed anything other than an `EngineOperatingPoint` instead of
+falling back to defaults, because a solver that silently ignores its input is indistinguishable
+from one that works — which is precisely the defect described next.
+
 ## What is simulation scaffolding
 
 The following code runs, produces well-formed output, and is useful for demonstration and for
 exercising interfaces. It is **not** verified engineering, and no result it produces should be
 cited as an analysis of a physical system.
 
-**The physics solvers ignore their inputs.** `AdvancedCFDSolver.RunSimulation` and
+**The legacy physics solvers ignore their inputs.** `AdvancedCFDSolver.RunSimulation` and
 `AdvancedStructuralSolver` accept a model parameter and do not read it. Their outputs are
 determined by hardcoded constants, so they are identical for every engine analysed. The CFD
 solver is inside the certification boundary because its *control flow* is fully verified; the
-boundary artifact records explicitly that this is not a claim about physical correctness. In
+boundary artifact records explicitly that this is not a claim about physical correctness. Its
+console output also advertises k-ε, k-ω, and LES turbulence models across 1,000,000 elements on
+32 cores; what it actually evaluates is a closed-form expression over a 1000x1000 array using the
+specific-heat ratio and gas constant of *air*, not of combustion products. Migrating its field
+generation onto the validated nozzle solution is the obvious next step and is tracked separately,
+because changing that file means re-deriving the MC-DC analysis recorded for it. In
 `AdvancedStructuralSolver.PredictFailure`, `maxStress > yieldStrength` compares two constants
 (350 MPa against 250 MPa), so it always reports "Yield" and the "Safe" branch is unreachable.
 
