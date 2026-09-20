@@ -19,7 +19,7 @@
     "overallBranchCoverage": 50.82
   },
   "overall": {
-    "minLineCoverage": 49.0,
+    "minLineCoverage": 50.0,
     "minBranchCoverage": 51.0
   },
   "directories": [
@@ -52,17 +52,19 @@
       "path": "Core",
       "minLineCoverage": 46.0,
       "minBranchCoverage": 33.0,
-      "rationale": "Largest directory at 8021 lines. Measured 44.91% line, 32.41% branch."
+      "rationale": "Largest directory. Measured 47.33% line, 34.05% branch after removing unreferenced dead code."
     },
     {
       "path": "AI",
-      "minLineCoverage": 17.0,
-      "minBranchCoverage": 40.0,
+      "minLineCoverage": 27.0,
+      "minBranchCoverage": 52.0,
       "rationale": [
-        "Branch coverage went from 0% to 41.03% by verifying the reinforcement-learning",
-        "controller's value update, reward shaping, and action dynamics. The remaining",
-        "uncovered lines are generative and quantum scaffolding that returns constants",
-        "after Task.Delay; see Docs/VERIFICATION_SCOPE.md."
+        "Measured 28.30% line, 53.33% branch. Branch coverage went from 0% by verifying the",
+        "reinforcement-learning controller's value update, reward shaping, and action",
+        "dynamics, then rose again when the unreachable quantum and neural-network",
+        "scaffolding was deleted rather than documented. The remaining uncovered lines are",
+        "generative scaffolding that returns constants after Task.Delay; see",
+        "Docs/VERIFICATION_SCOPE.md."
       ]
     },
     {

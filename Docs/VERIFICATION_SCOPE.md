@@ -2,8 +2,8 @@
 
 This document states plainly which parts of HelloblueGK are verified engineering and which
 are simulation scaffolding. It exists because the distinction is not visible from the outside:
-a method named `RunQuantumCFDAnalysisAsync` that awaits `Task.Delay` and returns constants
-looks, from its signature and its console output, exactly like one that solves something.
+a method that awaits `Task.Delay` and returns constants looks, from its signature and its
+console output, exactly like one that solves something.
 
 The practice being followed here is the one aerospace software standards are built on. Under
 DO-178C, a claim is only as good as the evidence traced to it, and anything outside the
@@ -68,18 +68,22 @@ boundary artifact records explicitly that this is not a claim about physical cor
 (350 MPa against 250 MPa), so it always reports "Yield" and the "Safe" branch is unreachable.
 
 **Most `Create*` and `Analyze*` orchestration discards its arguments.** Across
-`RevolutionaryEngineArchitectures`, `HB_NLP_RevolutionaryEngine`, and
-`QuantumClassicalHybridEngine`, methods taking a specification object build a hardcoded result
-and ignore the specification. `AnalyzeRevolutionaryEngineAsync` awaits real physics calls and
+`RevolutionaryEngineArchitectures` and `HB_NLP_RevolutionaryEngine`, methods taking a
+specification object build a hardcoded result and ignore the specification. `AnalyzeRevolutionaryEngineAsync` awaits real physics calls and
 then discards the results in favour of constants. `Task.Delay` stands in for computation.
 
 **The genetic optimiser is unreachable.** `AIOptimizationEngine` contains a real
 population/crossover/mutation implementation, but `OptimizeEngineDesignAsync` returns a fixed
-result without calling it.
+result without calling it. The file is kept because it also declares `NeuralNetwork` and
+`GeneticAlgorithm`, which `AutonomousEngineDesigner` uses.
 
-**`NeuralNetworkEngine.TrainAsync` ignores its training data** and returns fixed accuracy and
-loss figures. The forward pass is real, but layer weights come from an unseeded `Random`, so
-predictions are not reproducible between runs.
+**Removed rather than documented.** `QuantumClassicalHybridEngine` and `NeuralNetworkEngine`
+were scaffolding that nothing constructed, and the README advertised a
+`POST /api/v1/quantum/hybrid-analysis` endpoint that was never routed, a `Category=Quantum`
+test filter matching no test, and a `hellobluegk_quantum_advantage` gauge that was declared
+and never assigned. Documenting unreachable code as scaffolding is the right call when
+something depends on it; when nothing does, deleting it and the claims it supported is
+better than carrying both.
 
 Coverage in these areas is deliberately not pursued. Tests asserting that a stub returns its
 hardcoded constant would raise the coverage percentage while establishing nothing, and would

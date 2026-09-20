@@ -25,9 +25,6 @@ public class MetricsController : ControllerBase
     private static readonly Gauge DigitalTwinAccuracy = Metrics
         .CreateGauge("hellobluegk_digital_twin_accuracy", "Digital twin prediction accuracy");
 
-    private static readonly Gauge QuantumAdvantage = Metrics
-        .CreateGauge("hellobluegk_quantum_advantage", "Quantum-classical hybrid advantage metric");
-
     private static readonly Gauge EngineArchitectures = Metrics
         .CreateGauge("hellobluegk_engine_architectures", "Number of active engine architectures");
 
@@ -52,7 +49,6 @@ public class MetricsController : ControllerBase
         _ = ApiRequestsTotal;
         _ = AiInnovationScore;
         _ = DigitalTwinAccuracy;
-        _ = QuantumAdvantage;
         _ = EngineArchitectures;
         _ = MultiPhysicsEfficiency;
         _ = RequestDuration;

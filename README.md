@@ -242,7 +242,6 @@ Documentation below describes **design targets** and **workflow orientation** �
 - **Advanced Multi-Physics Coupling**: Integrated CFD, thermal, and structural analysis with industry-standard solvers
 - **Digital Twin Technology**: Real-time simulation and predictive modeling capabilities
 - **Modular Engine Architectures**: Configurable engine designs with validated performance characteristics
-- **Hybrid Computing Framework**: Classical computing with quantum-ready architecture for future scalability
 - **Nuclear Thermal Propulsion**: Theoretical framework for advanced propulsion concepts
 - **Hybrid Electric Propulsion**: Electric-combustion hybrid system modeling
 - **Live Learning Capabilities**: Continuous model improvement through simulation data
@@ -295,14 +294,6 @@ Documentation below describes **design targets** and **workflow orientation** �
 └─────────────────────────────────────────────────────────────┘
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│                Quantum-Classical Hybrid                     │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   Quantum   │  │  Classical  │  │   Hybrid    │          │
-│  │  Computing  │  │  Computing  │  │  Advantage  │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
 │                    Engine Architecture Types                │
 │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
 │  │   Variable  │  │   Modular   │  │ Distributed │          │
@@ -339,7 +330,6 @@ Documentation below describes **design targets** and **workflow orientation** �
 
 ### Hybrid Computing Framework
 - **Classical Computing**: High-performance classical algorithms for current applications
-- **Quantum-Ready Architecture**: Framework designed for future quantum computing integration
 - **Optimization Algorithms**: Advanced optimization techniques for engine design
 - **Scalable Computing**: Distributed computing capabilities for large-scale simulations
 
@@ -494,7 +484,6 @@ Hardware acceleration: ENABLED
 Real-time 3D modeling: ACTIVE
 CFD simulation: RUNNING
 Multi-physics coupling: OPERATIONAL
-Quantum-classical hybrid: ONLINE
 
 HB-NLP Engine Design:
    Thrust: 2,000,000 N (2 MN)
@@ -651,9 +640,7 @@ Advanced Aerospace Simulation Technology - Industry-Standard Capabilities
 [Engine Architectures] Distributed propulsion: Multi-Engine Coordination
 [Engine Architectures] Coordination efficiency: 91.8 %
 
-[Hybrid Computing] Classical Computing with Quantum-Ready Framework
 [Hybrid Computing] Classical performance: 100.0 %
-[Hybrid Computing] Quantum readiness: Framework Ready
 [Hybrid Computing] Material analysis accuracy: 89.7 %
 [Hybrid Computing] Analyzed materials: 15
 [Hybrid Computing] Optimization improvement: 12.3 %
@@ -665,14 +652,12 @@ AI-Driven Design: 89.3 % optimization efficiency
 Multi-Physics Coupling: 92.1 % coupling efficiency
 Digital Twin Technology: 91.8 % prediction accuracy
 Engine Architectures: 89.2 % modularity
-Hybrid Computing: Framework ready for quantum integration
 
 [Validated Capabilities] Industry-Standard Technology:
   ✓ AI-Driven Engine Parameter Optimization - Validated Performance
   ✓ Integrated Multi-Physics Analysis - Industry-Standard Solvers
   ✓ Digital Twin Simulation - Real-Time Performance Monitoring
   ✓ Configurable Engine Geometries - Mission-Adaptive Design
-  ✓ Hybrid Computing Framework - Quantum-Ready Architecture
   ✓ Advanced Propulsion Concepts - Theoretical Frameworks
   ✓ Multi-Engine Coordination - Distributed Propulsion Modeling
   ✓ Hybrid Electric Systems - Electric-Combustion Integration
@@ -766,31 +751,6 @@ Authorization: Bearer YOUR_JWT_TOKEN
     "realTimeLearning": true,
     "predictiveModeling": true,
     "failurePrediction": true
-  }
-}
-```
-
-#### Quantum-Classical Hybrid Computing
-
-```http
-POST /api/v1/quantum/hybrid-analysis
-Content-Type: application/json
-Authorization: Bearer YOUR_JWT_TOKEN
-
-{
-  "analysisType": "quantum-cfd",
-  "quantumAdvantage": true,
-  "materialDiscovery": {
-    "targetApplication": "Engine Components",
-    "requiredStrength": 500e6,
-    "requiredTemperatureResistance": 2500
-  },
-  "optimizationSpecs": {
-    "algorithm": "quantum-annealing",
-    "targets": {
-      "thrust": 2000000,
-      "efficiency": 0.95
-    }
   }
 }
 ```
@@ -943,7 +903,6 @@ Create `appsettings.Production.json`:
   "EngineFeatures": {
     "AIDrivenDesign": true,
     "DigitalTwinLearning": true,
-    "QuantumHybridComputing": true,
     "AdvancedArchitectures": true,
     "MultiPhysicsCoupling": true,
     "RealTimeLearning": true,
@@ -955,7 +914,6 @@ Create `appsettings.Production.json`:
     "OpenFOAMPath": "/opt/openfoam8",
     "MaxSimulationTime": 3600,
     "EnableRealTimeTelemetry": true,
-    "EnableQuantumAdvantage": true,
     "EnableShapeShifting": true
   }
 }
@@ -969,7 +927,6 @@ The application exposes Prometheus metrics at `/metrics`:
 
 - `hellobluegk_ai_innovation_score`
 - `hellobluegk_digital_twin_accuracy`
-- `hellobluegk_quantum_advantage`
 - `hellobluegk_engine_architectures`
 - `hellobluegk_multi_physics_efficiency`
 - `hellobluegk_real_time_learning_events`
@@ -979,7 +936,6 @@ The application exposes Prometheus metrics at `/metrics`:
 Pre-configured dashboards for:
 - AI-driven design performance
 - Digital twin learning progress
-- Quantum advantage metrics
 - Architecture innovation
 - Multi-physics coupling efficiency
 - Real-time learning capabilities
@@ -989,7 +945,6 @@ Pre-configured dashboards for:
 - Application health: `/Health`
 - AI model availability: `/health/ai`
 - Digital twin status: `/health/digital-twin`
-- Quantum computing status: `/health/quantum`
 - Features: `/health/engine`
 
 ## Security Features
@@ -1001,7 +956,6 @@ Pre-configured dashboards for:
 - **Secret Management**: Kubernetes secrets for sensitive data
 - **CORS Configuration**: Enterprise domain restrictions
 - **AI Model Security**: Encrypted AI model storage
-- **Quantum Security**: Post-quantum cryptography ready
 
 ## High Performance & Scalability
 
@@ -1011,7 +965,6 @@ Pre-configured dashboards for:
 - **Persistent Storage**: High-performance SSD storage
 - **Caching**: Redis-based caching layer
 - **CDN Integration**: Global content delivery
-- **Quantum Computing Integration**: Hybrid quantum-classical scaling
 - **Real-Time Learning**: Continuous model improvement
 
 
@@ -1054,12 +1007,6 @@ dotnet test --filter Category=Performance
 
 ```bash
 dotnet test --filter Category=AI
-```
-
-### Quantum Computing Tests
-
-```bash
-dotnet test --filter Category=Quantum
 ```
 
 ### Test Coverage
@@ -1172,9 +1119,8 @@ Community Edition is **not warranted** for human-rated or mission-critical fligh
 
 - **OpenFOAM Foundation** for CFD solver integration
 - **NASA** for engine performance data validation
-- **SpaceX** for Raptor engine specifications (now surpassed)
+- **SpaceX** for published Raptor engine specifications
 - **Blue Origin** for BE-4 engine insights
-- **Quantum Computing Pioneers** for quantum advantage
 - **AI Research Community** for autonomous design breakthroughs
 - **Digital Twin Innovators** for real-time learning capabilities
 
@@ -1191,7 +1137,6 @@ Community Edition is **not warranted** for human-rated or mission-critical fligh
 - **Digital Twin Learning**: 99.900% accuracy
 - **Multi-Physics Coupling**: 97.0% efficiency
 - **Architectures**: 92.3% innovation
-- **Quantum-Classical Hybrid**: Advanced computing integration
 
 ### **Hosted reference status**
 The hosted platform demonstrates Community Edition capabilities. For production mission use, see [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
@@ -1243,7 +1188,6 @@ Our aerospace engine has been successfully designed and optimized using **Plasti
 - **Real-time 3D Modeling**: ACTIVE
 - **CFD Simulation**: RUNNING
 - **Multi-physics Coupling**: OPERATIONAL
-- **Quantum-classical Hybrid**: ONLINE
 
 ### **Design Files Generated**
 - `Docs/Designs/HB-NLP-REV-001/design.json` - Engine specifications
@@ -1308,7 +1252,7 @@ python3 Scripts/Integration/open_in_plasticity.py
 
 ## **ENGINE DESIGN COMPLETE!**
 
-**HB-NLP Quantum-Classical Hybrid Engine** has been successfully designed and optimized using **Plasticity v25.2.2**, demonstrating capabilities beyond current aerospace technology. The integration is complete and ready for production!
+The **HB-NLP reference engine design** is generated and exported through the Plasticity integration. See [VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md) for what this pipeline establishes and what it does not.
 
 **Status**: ✅ **OPERATIONAL**  
 **Technology Readiness Level**: 6  
@@ -1328,8 +1272,8 @@ python3 Scripts/Integration/open_in_plasticity.py
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Technology](https://img.shields.io/badge/technology-advanced-blue)](https://github.com/HelloblueAI/HelloblueGK)
-[![Line Coverage](https://img.shields.io/badge/line%20coverage-48.6%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-50.8%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Line Coverage](https://img.shields.io/badge/line%20coverage-50.4%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-51.8%25-yellow)](Certification/Artifacts/coverage-floors.json)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
 [![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)](https://docs.microsoft.com/en-us/dotnet/csharp/)
@@ -1339,7 +1283,6 @@ python3 Scripts/Integration/open_in_plasticity.py
 [![Verification](https://img.shields.io/badge/verification-DO--178C%20Level%20A%20boundary-green?style=flat)](Docs/VERIFICATION_SCOPE.md)
 [![Enterprise](https://img.shields.io/badge/Enterprise-Grade%20Architecture-purple?style=flat)](https://en.wikipedia.org/wiki/Enterprise_software)
 [![AI-Driven Design](https://img.shields.io/badge/AI--Driven%20Design-Autonomous%20Innovation-teal?style=for-the-badge&logo=robot)](https://en.wikipedia.org/wiki/Artificial_intelligence)
-[![Quantum Computing](https://img.shields.io/badge/Quantum-Classical%20Hybrid-purple?style=for-the-badge&logo=quantum)](https://en.wikipedia.org/wiki/Quantum_computing)
 [![Digital Twin](https://img.shields.io/badge/Digital%20Twin-Real%20Time%20Learning-blue?style=for-the-badge&logo=digital)](https://en.wikipedia.org/wiki/Digital_twin)
 
 [![Helloblue, Inc. 2026 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202026%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)](https://helloblue.com/)

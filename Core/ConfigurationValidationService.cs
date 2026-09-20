@@ -320,7 +320,6 @@ namespace HB_NLP_Research_Lab.Core
         
         public bool EnableRealTimeTelemetry { get; set; } = true;
         
-        public bool EnableQuantumAdvantage { get; set; } = false;
         
         public bool EnableShapeShifting { get; set; } = false;
     }
