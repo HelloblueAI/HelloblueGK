@@ -74,6 +74,13 @@ namespace HB_NLP_Research_Lab.Certification
                 return false;
             }
 
+            // Prefix letters (Core/, Tests/) are not path identity. Leftover
+            // Core/....cs / Tests/123.cs must not count as repository evidence.
+            if (!CertificationIdentityTokens.HasAlphabeticPathIdentity(canonical))
+            {
+                return false;
+            }
+
             return HasAllowedPrefix(canonical, kind);
         }
     }

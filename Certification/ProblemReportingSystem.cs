@@ -447,8 +447,11 @@ namespace HB_NLP_Research_Lab.Certification
         /// A requirement counts as problem-report closure evidence only when it
         /// already has verified code or a verified passing test. Existence of a
         /// Draft/NotTraced row (or unverified planning links) is not a fix.
-        /// Leftover Verified=true rows that point at tmp/, phantom/, or
-        /// prefix-qualified traversal (Core/../tmp) are not implementation evidence.
+        /// Leftover Verified=true rows that point at tmp/, phantom/,
+        /// prefix-qualified traversal (Core/../tmp), leftover placeholder
+        /// paths (Core/n/a.cs), or leftover punctuation-only / digit-only
+        /// path identity (Core/....cs / Tests/123.cs) are not implementation
+        /// evidence. Matching leftover Core/Sensors.cs still qualifies.
         /// Leftover placeholder FunctionName tokens ("n/a" / "none" / "todo") and
         /// leftover punctuation-only / digit-only names ("..." / "123") are not a
         /// named implementation — RTM leftover verify already rejects them.

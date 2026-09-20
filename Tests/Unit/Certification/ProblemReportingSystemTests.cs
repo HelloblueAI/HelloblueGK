@@ -1773,6 +1773,82 @@ public class ProblemReportingSystemTests
     }
 
     [Theory]
+    [InlineData("Core/....cs")]
+    [InlineData("Core/___.cs")]
+    [InlineData("Core/123.cs")]
+    public async Task UpdateStatusAsync_RejectsClosedCriticalWithPunctuationOnlyCodeFile(
+        string leftoverCodeFile)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync(leftoverCodeFile);
+
+        var created = await system.CreateProblemReportAsync(new ProblemReport
+        {
+            Title = "Critical sensor fault",
+            Description = "Chamber pressure sensor stuck",
+            Impact = "critical safety instrumentation fault",
+            ReportedBy = "alice"
+        });
+
+        await system.LinkToRequirementAsync(created.ReportNumber, forged.Id);
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.UnderInvestigation, changedBy: "bob");
+        await system.UpdateStatusAsync(created.ReportNumber, ProblemReportStatus.Resolved, resolution: "replaced sensor", changedBy: "bob");
+
+        var act = async () => await system.UpdateStatusAsync(
+            created.ReportNumber,
+            ProblemReportStatus.Closed,
+            resolution: "verified against leftover punctuation-only code path",
+            changedBy: "bob");
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*verified implementation evidence*recorded test case*");
+    }
+
+    [Theory]
+    [InlineData("Core/....cs")]
+    [InlineData("Core/___.cs")]
+    [InlineData("Core/123.cs")]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithPunctuationOnlyCodeFile_FailsClosed(
+        string leftoverCodeFile)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        var forged = await fixture.SeedRequirementWithVerifiedCodeAsync(leftoverCodeFile);
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9013",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover punctuation-only code path",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover punctuation-only code path",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportRequirementLinks.Add(new ProblemReportRequirementLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            RequirementId = forged.Id,
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
+    [Theory]
     [InlineData("Tests/n/a")]
     [InlineData("Tests/todo")]
     [InlineData("Tests/none.cs")]
@@ -1803,6 +1879,49 @@ public class ProblemReportingSystemTests
             Id = Guid.NewGuid(),
             ProblemReportId = leftover.Id,
             TestCaseId = "TC-NA-001",
+            CreatedAt = DateTime.UtcNow.AddDays(-1)
+        });
+        await fixture.Reports.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.Issues.Should().Contain(i =>
+            i.Contains("No closed critical or major problem reports", StringComparison.Ordinal) ||
+            i.Contains("without substantive resolution evidence", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Tests/....cs")]
+    [InlineData("Tests/___.cs")]
+    [InlineData("Tests/123.cs")]
+    public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithPunctuationOnlyCoverageTestFile_FailsClosed(
+        string leftoverTestFile)
+    {
+        await using var fixture = CreateFixture();
+        var system = fixture.System;
+        await fixture.SeedCoverageTestAsync("TC-PUNCT-001", leftoverTestFile);
+
+        var leftover = new ProblemReport
+        {
+            Id = Guid.NewGuid(),
+            ReportNumber = $"PR-{DateTime.UtcNow.Year}-9014",
+            Title = "Legacy closed critical",
+            Description = "Closed against leftover punctuation-only coverage test file",
+            Impact = "critical safety instrumentation fault",
+            Severity = ProblemSeverity.Critical,
+            Status = ProblemReportStatus.Closed,
+            ReportedBy = "alice",
+            Resolution = "verified against leftover punctuation-only coverage test file",
+            CreatedAt = DateTime.UtcNow.AddDays(-2),
+            ClosedAt = DateTime.UtcNow.AddDays(-1)
+        };
+        fixture.Reports.ProblemReports.Add(leftover);
+        fixture.Reports.ProblemReportTestLinks.Add(new ProblemReportTestLink
+        {
+            Id = Guid.NewGuid(),
+            ProblemReportId = leftover.Id,
+            TestCaseId = "TC-PUNCT-001",
             CreatedAt = DateTime.UtcNow.AddDays(-1)
         });
         await fixture.Reports.SaveChangesAsync();
