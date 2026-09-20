@@ -124,7 +124,9 @@ public class TestCoverageController : ControllerBase
             TotalBranches = request.TotalBranches,
             CoveredBranches = request.CoveredBranches,
             TotalConditions = request.TotalConditions,
-            CoveredConditions = request.CoveredConditions
+            CoveredConditions = request.CoveredConditions,
+            TotalMcdcPairs = request.TotalMcdcPairs,
+            CoveredMcdcPairs = request.CoveredMcdcPairs
         };
 
         try
@@ -282,6 +284,11 @@ public class RecordCoverageRequest
     public double StatementCoverage { get; set; }
     public double BranchCoverage { get; set; }
     public double ConditionCoverage { get; set; }
+
+    /// <summary>
+    /// Ignored. MC/DC is derived server-side from the pair counts below, the same way
+    /// statement and branch percentages are derived from their counts.
+    /// </summary>
     public double MCDCCoverage { get; set; }
     public double PathCoverage { get; set; }
     public int TotalStatements { get; set; }
@@ -290,6 +297,13 @@ public class RecordCoverageRequest
     public int CoveredBranches { get; set; }
     public int TotalConditions { get; set; }
     public int CoveredConditions { get; set; }
+
+    /// <summary>
+    /// MC/DC independence pairs required by, and demonstrated for, this file. Safety-critical
+    /// files cannot reach Level A without them — absent pair totals fail closed at 0%.
+    /// </summary>
+    public int TotalMcdcPairs { get; set; }
+    public int CoveredMcdcPairs { get; set; }
 }
 
 public class SafetyCriticalRequest

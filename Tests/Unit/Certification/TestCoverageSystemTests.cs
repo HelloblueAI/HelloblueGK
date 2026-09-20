@@ -158,6 +158,101 @@ public class TestCoverageSystemTests
     }
 
     [Fact]
+    public async Task RecordCoverageAsync_WithoutMcdcPairTotals_ForcesMcdcToZero()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        // Full condition coverage does not demonstrate MC/DC on its own.
+        await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            MCDCCoverage = 100,
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            TotalMcdcPairs = 0,
+            CoveredMcdcPairs = 0
+        });
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        coverage.ConditionCoverage.Should().Be(100.0);
+        coverage.MCDCCoverage.Should().Be(0.0);
+    }
+
+    [Fact]
+    public async Task RecordCoverageAsync_DerivesMcdcFromPairCountsIgnoringClaim()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.MarkAsSafetyCriticalAsync("Core/Engine.cs", isSafetyCritical: true);
+
+        await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            MCDCCoverage = 100, // claim is ignored in favour of the pair counts
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            TotalMcdcPairs = 4,
+            CoveredMcdcPairs = 1
+        });
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        coverage.MCDCCoverage.Should().Be(25.0);
+        coverage.MeetsLevelARequirements.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RecordCoverageAsync_CapsDerivedMcdcAtConditionCoverage()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        // Every pair reported as demonstrated, but half the conditions were never exercised.
+        await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 1,
+            TotalMcdcPairs = 2,
+            CoveredMcdcPairs = 2
+        });
+
+        var coverage = await context.CodeCoverage.SingleAsync();
+        coverage.MCDCCoverage.Should().Be(50.0);
+    }
+
+    [Fact]
+    public async Task RecordCoverageAsync_RejectsMcdcPairsExceedingTotals()
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+
+        var act = async () => await system.RecordCoverageAsync("Core/Engine.cs", new CoverageMetrics
+        {
+            TotalStatements = 10,
+            CoveredStatements = 10,
+            TotalBranches = 4,
+            CoveredBranches = 4,
+            TotalConditions = 2,
+            CoveredConditions = 2,
+            TotalMcdcPairs = 2,
+            CoveredMcdcPairs = 3
+        });
+
+        await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        context.CodeCoverage.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task VerifyComplianceAsync_WithNoSafetyCriticalFiles_IsNotCompliant()
     {
         await using var context = CreateContext();
@@ -414,7 +509,9 @@ public class TestCoverageSystemTests
             totalBranches: 4,
             coveredBranches: 2,
             totalConditions: 2,
-            coveredConditions: 1);
+            coveredConditions: 1,
+            totalMcdcPairs: 2,
+            coveredMcdcPairs: 2);
         await context.SaveChangesAsync();
 
         var check = await system.VerifyComplianceAsync();
@@ -450,7 +547,9 @@ public class TestCoverageSystemTests
             totalBranches: 0,
             coveredBranches: 0,
             totalConditions: 0,
-            coveredConditions: 0);
+            coveredConditions: 0,
+            totalMcdcPairs: 0,
+            coveredMcdcPairs: 0);
         await context.SaveChangesAsync();
 
         var check = await system.VerifyComplianceAsync();
@@ -486,7 +585,50 @@ public class TestCoverageSystemTests
             totalBranches: 4,
             coveredBranches: 4,
             totalConditions: 0,
-            coveredConditions: 0);
+            coveredConditions: 0,
+            totalMcdcPairs: 2,
+            coveredMcdcPairs: 2);
+        await context.SaveChangesAsync();
+
+        var check = await system.VerifyComplianceAsync();
+        var report = await system.GenerateCoverageReportAsync();
+
+        check.IsCompliant.Should().BeFalse();
+        check.MCDCCoverageCompliant.Should().BeFalse();
+        check.SafetyCriticalFilesWithMCDC.Should().Be(0);
+        check.Issues.Should().Contain(i => i.Contains("MC/DC coverage", StringComparison.OrdinalIgnoreCase));
+        report.MeetsDO178CLevelA.Should().BeFalse();
+        report.CoverageGaps.Should().Contain(g =>
+            g.GapDescription.Contains("MC/DC", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Theory]
+    [InlineData(0, 0)] // no pair evidence at all
+    [InlineData(4, 1)] // partially demonstrated pairs
+    public async Task VerifyComplianceAsync_LeftoverMcdcWithoutDemonstratedPairs_FailsClosed(
+        int totalMcdcPairs,
+        int coveredMcdcPairs)
+    {
+        await using var context = CreateContext();
+        var system = new TestCoverageSystem(context, NullLogger<TestCoverageSystem>.Instance);
+        await system.RegisterRequiredFileAsync("Core/Engine.cs", isSafetyCritical: true, registeredBy: "admin");
+
+        // Pre-gate leftover: 100% MC/DC persisted with full statement, branch, and
+        // condition counts, but without independence pairs to back the claim.
+        SeedLeftoverCoverage(
+            context,
+            filePath: "Core/Engine.cs",
+            statementCoverage: 100,
+            branchCoverage: 100,
+            mcdcCoverage: 100,
+            totalStatements: 10,
+            coveredStatements: 10,
+            totalBranches: 4,
+            coveredBranches: 4,
+            totalConditions: 2,
+            coveredConditions: 2,
+            totalMcdcPairs: totalMcdcPairs,
+            coveredMcdcPairs: coveredMcdcPairs);
         await context.SaveChangesAsync();
 
         var check = await system.VerifyComplianceAsync();
@@ -519,7 +661,9 @@ public class TestCoverageSystemTests
             totalBranches: 4,
             coveredBranches: 4,
             totalConditions: 2,
-            coveredConditions: 2);
+            coveredConditions: 2,
+            totalMcdcPairs: 2,
+            coveredMcdcPairs: 2);
         await context.SaveChangesAsync();
 
         var check = await system.VerifyComplianceAsync();
@@ -820,7 +964,9 @@ public class TestCoverageSystemTests
             totalBranches: 4,
             coveredBranches: 4,
             totalConditions: 2,
-            coveredConditions: 2);
+            coveredConditions: 2,
+            totalMcdcPairs: 2,
+            coveredMcdcPairs: 2);
         await context.SaveChangesAsync();
 
         var check = await system.VerifyComplianceAsync();
@@ -863,7 +1009,9 @@ public class TestCoverageSystemTests
             totalBranches: 4,
             coveredBranches: 4,
             totalConditions: 2,
-            coveredConditions: 2);
+            coveredConditions: 2,
+            totalMcdcPairs: 2,
+            coveredMcdcPairs: 2);
         await context.SaveChangesAsync();
 
         var check = await system.VerifyComplianceAsync();
@@ -983,7 +1131,8 @@ public class TestCoverageSystemTests
         CoveredBranches = 4,
         TotalConditions = 2,
         CoveredConditions = 2,
-        MCDCCoverage = 100
+        TotalMcdcPairs = 2,
+        CoveredMcdcPairs = 2
     };
 
     private static void SeedLeftoverCoverage(
@@ -997,7 +1146,9 @@ public class TestCoverageSystemTests
         int totalBranches,
         int coveredBranches,
         int totalConditions,
-        int coveredConditions)
+        int coveredConditions,
+        int totalMcdcPairs,
+        int coveredMcdcPairs)
     {
         var coverage = new CodeCoverage
         {
@@ -1014,6 +1165,8 @@ public class TestCoverageSystemTests
             CoveredBranches = coveredBranches,
             TotalConditions = totalConditions,
             CoveredConditions = coveredConditions,
+            TotalMcdcPairs = totalMcdcPairs,
+            CoveredMcdcPairs = coveredMcdcPairs,
             MeetsLevelARequirements = true,
             LastUpdated = DateTime.UtcNow
         };
