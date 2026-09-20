@@ -13,14 +13,14 @@
     "lines that appear under more than one class."
   ],
   "measuredOn": {
-    "commit": "9eb6108 plus the Aerospace/AI verification work",
-    "totalLines": 23988,
-    "overallLineCoverage": 48.63,
-    "overallBranchCoverage": 50.82
+    "commit": "e4d96d0 plus the quantum/neural removal and the nozzle solver",
+    "totalLines": 23303,
+    "overallLineCoverage": 50.68,
+    "overallBranchCoverage": 52.09
   },
   "overall": {
     "minLineCoverage": 50.0,
-    "minBranchCoverage": 51.0
+    "minBranchCoverage": 52.0
   },
   "directories": [
     {
@@ -69,9 +69,14 @@
     },
     {
       "path": "Physics",
-      "minLineCoverage": 29.0,
-      "minBranchCoverage": 30.0,
-      "rationale": "Measured 30.40% line, 31.98% branch."
+      "minLineCoverage": 33.0,
+      "minBranchCoverage": 43.0,
+      "rationale": [
+        "Measured 34.60% line, 43.75% branch. The jump from 30.40%/31.98% is the ideal rocket",
+        "nozzle solver, at 100% line and 100% branch coverage across IdealRocketNozzle.cs,",
+        "EngineOperatingPoint.cs, and NozzleFlowSolver.cs. The uncovered remainder is the",
+        "legacy constant-output solvers; see Docs/VERIFICATION_SCOPE.md."
+      ]
     }
   ],
   "unflooredDirectories": [
