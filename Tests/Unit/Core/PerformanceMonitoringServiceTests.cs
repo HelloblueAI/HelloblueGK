@@ -17,7 +17,7 @@ public class PerformanceMonitoringServiceTests
     }
 
     [Fact]
-    public async Task RecordMetric_ShouldStoreMetricSuccessfully()
+    public void RecordMetric_ShouldStoreMetricSuccessfully()
     {
         // Arrange
         var metricName = "TestMetric";
@@ -37,7 +37,7 @@ public class PerformanceMonitoringServiceTests
     }
 
     [Fact]
-    public async Task RecordExecutionTime_ShouldRecordDurationAndThroughput()
+    public void RecordExecutionTime_ShouldRecordDurationAndThroughput()
     {
         // Arrange
         var operationName = "TestOperation";
@@ -91,7 +91,7 @@ public class PerformanceMonitoringServiceTests
     }
 
     [Fact]
-    public async Task GetMetricsByCategory_ShouldReturnCorrectMetrics()
+    public void GetMetricsByCategory_ShouldReturnCorrectMetrics()
     {
         // Arrange
         _service.RecordMetric("Metric1", 10, "CategoryA");

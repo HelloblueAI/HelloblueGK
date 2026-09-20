@@ -799,23 +799,25 @@ namespace HB_NLP_Research_Lab.Certification
                 }
                 else if (IsPlaceholderChecksum(item.Checksum))
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.InvalidChecksum,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} has a placeholder checksum that is not integrity evidence"
+                        Description = $"Configuration item {itemLabel} has a placeholder checksum that is not integrity evidence"
                     });
                 }
 
                 if (!HasVersionEvidence(link.Version))
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.MissingVersion,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} has no version"
+                        Description = $"Configuration item {itemLabel} has no version"
                     });
                 }
 
@@ -845,23 +847,25 @@ namespace HB_NLP_Research_Lab.Certification
 
                 if (IsPlaceholderVersion(link.Version))
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.InvalidVersion,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} has a placeholder version that is not configuration identity"
+                        Description = $"Configuration item {itemLabel} has a placeholder version that is not configuration identity"
                     });
                 }
 
                 if (IsPlaceholderConfigurationName(item.ItemName))
                 {
+                    var itemLabel = item.ItemName ?? string.Empty;
                     report.Issues.Add(new ConfigurationAuditIssue
                     {
-                        ItemName = item.ItemName,
+                        ItemName = itemLabel,
                         IssueType = AuditIssueType.InvalidItemName,
                         Severity = IssueSeverity.Major,
-                        Description = $"Configuration item {item.ItemName} has a placeholder name that is not configuration identity"
+                        Description = $"Configuration item {itemLabel} has a placeholder name that is not configuration identity"
                     });
                 }
                 else if (HasNonEmptyPunctuationOnlyName(item.ItemName))
