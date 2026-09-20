@@ -10,7 +10,7 @@
          root. Without these excludes it picks up the sibling projects and their
          build output, copies them into this project's output, then re-copies the
          larger output on the next build. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);PlasticityDemo/**;Tests/**;WebAPI/**;bin/**;obj/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);PlasticityDemo/**;Tests/**;Tools/**;WebAPI/**;bin/**;obj/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

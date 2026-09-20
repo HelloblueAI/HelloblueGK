@@ -46,6 +46,21 @@ jobs:
       run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build --logger "console;verbosity=normal"
       timeout-minutes: 15
       
+    # Runs the DO-178C Level A gates against the declared certification boundary using
+    # the coverage just measured. This is a hard gate: the boundary is a small set of
+    # files the project genuinely meets, so any regression inside it fails the build.
+    # Files outside the boundary are not evaluated here.
+    - name: Verify certification boundary
+      run: |
+        report=$(find "${{ github.workspace }}/TestResults" -name "coverage.cobertura.xml" | head -1)
+        if [ -z "$report" ]; then
+          echo "No coverage report found; cannot verify the certification boundary."
+          exit 1
+        fi
+        dotnet run --project Tools/CertificationGate/CertificationGate.csproj --configuration Release -- \
+          --coverage "$report" \
+          --boundary Certification/Artifacts/certification-boundary.json
+
     - name: Generate coverage report
       if: always()
       run: |
