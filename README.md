@@ -1028,7 +1028,7 @@ The project includes a comprehensive CI/CD pipeline that runs automatically on e
 - **Code Quality**: Performs code formatting and analysis checks
 - **Security Scan**: Checks for vulnerabilities and security issues
 - **Docker Build**: Verifies Docker image builds successfully
-- **Code Coverage**: Generates and uploads coverage reports to Codecov
+- **Code Coverage**: Measures line and branch coverage and enforces per-directory floors in CI
 
 View the pipeline status: [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 
@@ -1328,13 +1328,15 @@ python3 Scripts/Integration/open_in_plasticity.py
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Technology](https://img.shields.io/badge/technology-advanced-blue)](https://github.com/HelloblueAI/HelloblueGK)
-[![Test Coverage](https://img.shields.io/badge/coverage-95%25-success)](https://github.com/HelloblueAI/HelloblueGK)
+[![Line Coverage](https://img.shields.io/badge/line%20coverage-48.6%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-50.8%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
 [![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)](https://docs.microsoft.com/en-us/dotnet/csharp/)
 [![CFD](https://img.shields.io/badge/CFD-Computational%20Fluid%20Dynamics-orange?style=flat)](https://www.openfoam.org/)
 [![FEA](https://img.shields.io/badge/FEA-Finite%20Element%20Analysis-red?style=flat)](https://en.wikipedia.org/wiki/Finite_element_method)
 [![Thermal](https://img.shields.io/badge/Thermal-Heat%20Transfer%20Analysis-yellow?style=flat)](https://en.wikipedia.org/wiki/Heat_transfer)
-[![Validation](https://img.shields.io/badge/Validation-Real%20World%20Data-green?style=flat)](https://en.wikipedia.org/wiki/Validation)
+[![Verification](https://img.shields.io/badge/verification-DO--178C%20Level%20A%20boundary-green?style=flat)](Docs/VERIFICATION_SCOPE.md)
 [![Enterprise](https://img.shields.io/badge/Enterprise-Grade%20Architecture-purple?style=flat)](https://en.wikipedia.org/wiki/Enterprise_software)
 [![AI-Driven Design](https://img.shields.io/badge/AI--Driven%20Design-Autonomous%20Innovation-teal?style=for-the-badge&logo=robot)](https://en.wikipedia.org/wiki/Artificial_intelligence)
 [![Quantum Computing](https://img.shields.io/badge/Quantum-Classical%20Hybrid-purple?style=for-the-badge&logo=quantum)](https://en.wikipedia.org/wiki/Quantum_computing)
