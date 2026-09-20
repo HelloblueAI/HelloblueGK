@@ -145,10 +145,10 @@ docker build -t test -f Dockerfile.render .
 
 ## 📚 Resources
 
-- **Quick Deploy Guide**: [QUICK_DEPLOY.md](QUICK_DEPLOY.md)
-- **Full Render Guide**: [WebAPI/DEPLOY_TO_RENDER.md](WebAPI/DEPLOY_TO_RENDER.md)
-- **Production Setup**: [WebAPI/PRODUCTION_SETUP.md](WebAPI/PRODUCTION_SETUP.md)
-- **Deployment Recommendation**: [WebAPI/DEPLOYMENT_RECOMMENDATION.md](WebAPI/DEPLOYMENT_RECOMMENDATION.md)
+- **Render deployment guide**: [DEPLOY_TO_RENDER.md](DEPLOY_TO_RENDER.md)
+- **Full Render Guide**: [WebAPI/DEPLOY_TO_RENDER.md](../../WebAPI/DEPLOY_TO_RENDER.md)
+- **Production Setup**: [WebAPI/PRODUCTION_SETUP.md](../../WebAPI/PRODUCTION_SETUP.md)
+- **Deployment Recommendation**: [WebAPI/DEPLOYMENT_RECOMMENDATION.md](../../WebAPI/DEPLOYMENT_RECOMMENDATION.md)
 
 ---
 

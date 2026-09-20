@@ -44,7 +44,7 @@ cd WebAPI && dotnet run
 | **Report a bug** | [Issue template](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=bug_report.yml) |
 | **API reference** | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) |
 | **Run the interactive demo** | [Docs/Project/DEMO.md](Docs/Project/DEMO.md) |
-| **Deploy your own instance** | [Docs/Deployment/QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) |
+| **Deploy your own instance** | [Docs/Deployment/DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md) |
 
 ### Product tiers (how we open source)
 
@@ -91,7 +91,6 @@ The sections below cover capabilities, architecture diagrams, deployment, API ex
 **API Base URL:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
 
 - **Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health) — no auth
-- **Professional Setup:** [PROFESSIONAL_SETUP.md](PROFESSIONAL_SETUP.md)
 - **API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 
 ### Certification workflow APIs (reference — Community Edition)
@@ -133,7 +132,7 @@ curl https://hellobluegk.onrender.com/api/v1/engines \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-** Deploy Your Own:** Follow [QUICK_DEPLOY.md](Docs/Deployment/QUICK_DEPLOY.md) for 15-minute production deployment. On Render: set `DATABASE_URL` and `Jwt__Key` in your service Environment — see [RENDER_DO_IT_ALL.md](Docs/Deployment/RENDER_DO_IT_ALL.md).
+** Deploy Your Own:** Follow [DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md). On Render: set `DATABASE_URL` and `Jwt__Key` in your service Environment — see [RENDER_POSTGRESQL_SETUP.md](Docs/Deployment/RENDER_POSTGRESQL_SETUP.md).
 
 **Run Locally:**
 ```bash
@@ -1064,10 +1063,12 @@ For detailed performance metrics, validation results, and industry benchmarks, s
 For an honest assessment of current limitations and future development plans, see [Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md](Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md).
 
 ### **Professional Summary**
-For a comprehensive overview of what we've actually built and why it's impressive, see [Docs/Project/PROFESSIONAL_SUMMARY.md](Docs/Project/PROFESSIONAL_SUMMARY.md).
+For a precise account of which parts of this project are verified engineering and which are
+simulation scaffolding, see [Docs/VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md).
 
 ### **Project Health Report**
-For current project status and health metrics, see [Docs/Project/PROJECT_HEALTH_REPORT.md](Docs/Project/PROJECT_HEALTH_REPORT.md).
+For the coverage floors enforced on every build, see
+[Certification/Artifacts/coverage-floors.json](Certification/Artifacts/coverage-floors.json).
 
 ---
 

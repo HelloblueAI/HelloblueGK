@@ -1,6 +1,8 @@
 # Documentation Directory
 
-Live docs for running and contributing live here. Historical write-ups stay in [`archive/historical/`](archive/historical/README.md) and are not a first-PR target.
+Live docs for running and contributing live here. Point-in-time status write-ups have been
+retired; [`VERIFICATION_SCOPE.md`](VERIFICATION_SCOPE.md) is the current account of what this
+project verifies, and git history holds the rest.
 
 New here? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
@@ -8,10 +10,7 @@ New here? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ### 📁 Project/
 High-level project documentation and reports.
-- `PROFESSIONAL_SUMMARY.md` - Overview of the project's professional capabilities and achievements
-- `PROJECT_HEALTH_REPORT.md` - Current status and health metrics of the project
 - `DEMO.md` - Demonstration and usage guide
-- `COMPREHENSIVE_PROJECT_REVIEW.md` - Project review
 - `PROJECT_GAPS_AND_IMPROVEMENTS.md` - Known gaps and improvement ideas
 - `SHOWCASE_GUIDE.md` - Guide for presenting the project
 
@@ -22,7 +21,7 @@ Technical documentation, installation, limitations, and validation reports.
 - `VALIDATION_AND_BENCHMARKS.md` - Performance validation results and benchmark data
 
 ### 📁 Deployment/
-Deployment guides and operational checklists, including [`QUICK_DEPLOY.md`](Deployment/QUICK_DEPLOY.md).
+Deployment guides and operational checklists, including [`DEPLOY_TO_RENDER.md`](Deployment/DEPLOY_TO_RENDER.md).
 
 ### 📁 Communication/
 Project updates, research templates, and communication notes.
