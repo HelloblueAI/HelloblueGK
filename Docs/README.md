@@ -8,20 +8,37 @@ New here? See [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Directory Structure
 
+### 📄 VERIFICATION_SCOPE.md
+Which parts of this project are verified engineering and which are simulation scaffolding.
+Start here to calibrate any other claim in the documentation.
+
 ### 📁 Project/
-High-level project documentation and reports.
+High-level project documentation.
 - `DEMO.md` - Demonstration and usage guide
+- `PROFESSIONAL_DEMO_STRATEGY.md` - How to present the project to a technical audience
 - `PROJECT_GAPS_AND_IMPROVEMENTS.md` - Known gaps and improvement ideas
+- `SHORT_TERM_PLAN.md` - Near-term development plan
 - `SHOWCASE_GUIDE.md` - Guide for presenting the project
 
 ### 📁 Technical/
 Technical documentation, installation, limitations, and validation reports.
+- `ENTERPRISE_DEPLOYMENT.md` - Deployment patterns for larger environments
 - `INSTALL_DOTNET.md` - .NET installation instructions
+- `REAL_TIME_ENGINE_CONTROL.md` - Real-time engine control implementation plan
 - `TECHNICAL_LIMITATIONS_AND_ROADMAP.md` - Known limitations and future development roadmap
+- `TESTING_LOCALLY.md` - Reproduce the CI checks on your own machine before pushing
 - `VALIDATION_AND_BENCHMARKS.md` - Performance validation results and benchmark data
 
 ### 📁 Deployment/
 Deployment guides and operational checklists, including [`DEPLOY_TO_RENDER.md`](Deployment/DEPLOY_TO_RENDER.md).
+
+### 📁 Design/
+Design descriptions for units inside the certification boundary. These are traceability
+evidence: the certification gate verifies that the design elements they name exist.
+- `AdvancedCFDSolver.md` - Design description for the CFD solver
+
+### 📁 Security/
+- `SECURITY_INCIDENT_RESPONSE.md` - Record of a past credential-exposure alert and its response
 
 ### 📁 Communication/
 Project updates, research templates, and communication notes.
