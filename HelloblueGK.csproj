@@ -6,6 +6,11 @@
     <Nullable>enable</Nullable>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
+    <!-- The Web SDK globs content from this directory, which is the repository
+         root. Without these excludes it picks up the sibling projects and their
+         build output, copies them into this project's output, then re-copies the
+         larger output on the next build. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);PlasticityDemo/**;Tests/**;WebAPI/**;bin/**;obj/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
