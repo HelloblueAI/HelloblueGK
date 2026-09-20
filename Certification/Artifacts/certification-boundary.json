@@ -106,6 +106,40 @@
           }
         ]
       },
+      "requirements": [
+        {
+          "requirementNumber": "REQ-CFD-001",
+          "title": "CFD solver allocates its fields before producing results",
+          "description": "RunSimulation shall produce a complete set of pressure, velocity, turbulence, and heat-transfer results whether or not the caller invoked Initialize first, and a repeated call shall not reallocate the field arrays.",
+          "priority": "Critical",
+          "designElementId": "DE-CFD-INIT",
+          "designDocument": "Docs/Design/AdvancedCFDSolver.md",
+          "codeFile": "Physics/AdvancedCFDSolver.cs",
+          "functionName": "RunSimulation",
+          "lineStart": 46,
+          "lineEnd": 68,
+          "testCaseId": "TC-CFD-SOLVER-001",
+          "testFile": "Tests/Unit/Physics/PhysicsSolverContractTests.cs",
+          "testMethod": "AdvancedCFDSolver_RunSimulationSelfInitializesWhenInitializeWasSkipped",
+          "coverageType": "MCDC"
+        },
+        {
+          "requirementNumber": "REQ-CFD-002",
+          "title": "Convergence analysis terminates on the residual threshold",
+          "description": "RunConvergenceAnalysis shall stop recording residuals once the residual falls below 1e-6, and shall carry a bounded iteration count so the loop cannot run indefinitely.",
+          "priority": "Critical",
+          "designElementId": "DE-CFD-CONVERGENCE",
+          "designDocument": "Docs/Design/AdvancedCFDSolver.md",
+          "codeFile": "Physics/AdvancedCFDSolver.cs",
+          "functionName": "RunConvergenceAnalysis",
+          "lineStart": 140,
+          "lineEnd": 156,
+          "testCaseId": "TC-CFD-SOLVER-001",
+          "testFile": "Tests/Unit/Physics/PhysicsSolverContractTests.cs",
+          "testMethod": "AdvancedCFDSolver_RunSimulationSelfInitializesWhenInitializeWasSkipped",
+          "coverageType": "MCDC"
+        }
+      ],
       "toolFidelityNotes": [
         "Coverlet reports 14 of 14 branch outcomes covered for this file, which includes",
         "the outcome recorded above as infeasible. Coverlet instruments loop branches",

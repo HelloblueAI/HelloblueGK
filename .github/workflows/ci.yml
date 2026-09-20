@@ -43,7 +43,9 @@ jobs:
       run: dotnet build Tests/HelloblueGK.Tests.csproj --no-restore --configuration Release
       
     - name: Run unit tests
-      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build --logger "console;verbosity=normal"
+      # The trx is consumed by the certification gate, which verifies a requirement's
+      # test link only against a test that actually ran and passed in this build.
+      run: dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --verbosity normal --collect:"XPlat Code Coverage" --results-directory:"${{ github.workspace }}/TestResults" --no-build --logger "console;verbosity=normal" --logger "trx;LogFileName=test-results.trx"
       timeout-minutes: 15
       
     # Runs the DO-178C Level A gates against the declared certification boundary using
@@ -57,8 +59,14 @@ jobs:
           echo "No coverage report found; cannot verify the certification boundary."
           exit 1
         fi
+        trx=$(find "${{ github.workspace }}/TestResults" -name "test-results.trx" | head -1)
+        if [ -z "$trx" ]; then
+          echo "No trx test results found; requirement test links cannot be verified."
+          exit 1
+        fi
         dotnet run --project Tools/CertificationGate/CertificationGate.csproj --configuration Release -- \
           --coverage "$report" \
+          --test-results "$trx" \
           --boundary Certification/Artifacts/certification-boundary.json
 
     - name: Generate coverage report

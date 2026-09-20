@@ -21,6 +21,8 @@ internal static class Program
     {
         string? coveragePath = null;
         string? boundaryPath = null;
+        string? testResultsPath = null;
+        var repoRoot = Directory.GetCurrentDirectory();
 
         for (var i = 0; i < args.Length - 1; i++)
         {
@@ -31,6 +33,12 @@ internal static class Program
                     break;
                 case "--boundary":
                     boundaryPath = args[i + 1];
+                    break;
+                case "--test-results":
+                    testResultsPath = args[i + 1];
+                    break;
+                case "--repo-root":
+                    repoRoot = args[i + 1];
                     break;
                 default:
                     break;
@@ -168,15 +176,229 @@ internal static class Program
             Console.WriteLine();
         }
 
+        var traceabilityOk = await VerifyRequirementsAsync(boundary, repoRoot, testResultsPath);
+
         if (!check.IsCompliant)
         {
             Console.Error.WriteLine(
-                "FAIL: the declared certification boundary no longer meets DO-178C Level A.");
+                "FAIL: the declared certification boundary no longer meets DO-178C Level A coverage objectives.");
+        }
+
+        if (!check.IsCompliant || !traceabilityOk)
+        {
             return 1;
         }
 
         Console.WriteLine("PASS: every unit in the declared certification boundary meets DO-178C Level A.");
         return 0;
+    }
+
+    /// <summary>
+    /// Runs the requirements traceability gates over the declared requirements.
+    ///
+    /// A link is only marked verified when this tool can confirm the evidence exists:
+    /// the design document contains the design element, the code file contains the named
+    /// function within the recorded line range, and the test method is recorded as passed
+    /// in this run's test results. Rubber-stamping every link would make the gate vacuous,
+    /// which is the failure mode the whole boundary exists to avoid.
+    /// </summary>
+    private static async Task<bool> VerifyRequirementsAsync(
+        Boundary boundary,
+        string repoRoot,
+        string? testResultsPath)
+    {
+        var requirements = boundary.Units.SelectMany(u => u.Requirements).ToList();
+        if (requirements.Count == 0)
+        {
+            return true;
+        }
+
+        Console.WriteLine("Requirements traceability");
+
+        if (testResultsPath is null || !File.Exists(testResultsPath))
+        {
+            Console.Error.WriteLine(
+                "  FAIL: requirements are declared but no test results were supplied, so test links cannot be verified.");
+            return false;
+        }
+
+        var passedTests = ReadPassedTests(testResultsPath);
+        Console.WriteLine($"  passing tests in this run: {passedTests.Count}");
+
+        var options = new DbContextOptionsBuilder<RequirementsDbContext>()
+            .UseSqlite($"Data Source=file:certgate-rtm-{Guid.NewGuid():N}?mode=memory&cache=shared")
+            .Options;
+
+        await using var context = new RequirementsDbContext(options);
+        await context.Database.OpenConnectionAsync();
+        await context.Database.EnsureCreatedAsync();
+
+        var system = new RequirementsTraceabilitySystem(
+            context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var evidenceMissing = false;
+
+        foreach (var declared in requirements)
+        {
+            if (!Enum.TryParse<RequirementPriority>(declared.Priority, ignoreCase: true, out var priority))
+            {
+                Console.Error.WriteLine(
+                    $"  FAIL {declared.RequirementNumber}: unknown priority '{declared.Priority}'.");
+                return false;
+            }
+
+            if (!Enum.TryParse<TestCoverageType>(declared.CoverageType, ignoreCase: true, out var coverageType))
+            {
+                Console.Error.WriteLine(
+                    $"  FAIL {declared.RequirementNumber}: unknown coverage type '{declared.CoverageType}'.");
+                return false;
+            }
+
+            Requirement requirement;
+            RequirementDesignLink designLink;
+            RequirementCodeLink codeLink;
+            RequirementTestLink testLink;
+
+            // The traceability system rejects placeholder identities and evidence paths
+            // outside the allowed prefixes. Report that as a gate failure rather than an
+            // unhandled exception, since a malformed artifact is a finding, not a crash.
+            try
+            {
+                requirement = await system.CreateRequirementAsync(new Requirement
+                {
+                    RequirementNumber = declared.RequirementNumber,
+                    Title = declared.Title,
+                    Description = declared.Description,
+                    Priority = priority,
+                    Status = RequirementStatus.Implemented,
+                    CreatedBy = "certification-gate"
+                });
+
+                designLink = await system.LinkToDesignAsync(
+                    requirement.Id, declared.DesignElementId, declared.DesignDocument);
+                codeLink = await system.LinkToCodeAsync(
+                    requirement.Id, declared.CodeFile, declared.LineStart, declared.LineEnd, declared.FunctionName);
+                testLink = await system.LinkToTestAsync(
+                    requirement.Id, declared.TestCaseId, declared.TestFile, coverageType);
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine(
+                    $"  FAIL {declared.RequirementNumber}: rejected by the traceability system — {ex.Message}");
+                return false;
+            }
+
+            var designPresent = FileContains(repoRoot, declared.DesignDocument, declared.DesignElementId);
+            var codePresent = CodeEvidencePresent(repoRoot, declared);
+            var testPresent = passedTests.Contains(declared.TestMethod)
+                              && FileContains(repoRoot, declared.TestFile, declared.TestMethod);
+
+            if (designPresent)
+                await system.VerifyLinkAsync(requirement.Id, designLink.Id, RequirementLinkKind.Design);
+            if (codePresent)
+                await system.VerifyLinkAsync(requirement.Id, codeLink.Id, RequirementLinkKind.Code);
+            if (testPresent)
+            {
+                // The result has to be recorded first: the system refuses to verify a test
+                // link that has not passed, which is the ordering a real process implies.
+                await system.RecordTestResultAsync(requirement.Id, testLink.Id, TestResult.Passed);
+                await system.VerifyLinkAsync(requirement.Id, testLink.Id, RequirementLinkKind.Test);
+            }
+
+            Console.WriteLine(
+                $"  {declared.RequirementNumber}  design {Mark(designPresent)}" +
+                $"  code {Mark(codePresent)}  test {Mark(testPresent)}");
+
+            if (!designPresent)
+                Console.Error.WriteLine(
+                    $"    {declared.DesignElementId} not found in {declared.DesignDocument}");
+            if (!codePresent)
+                Console.Error.WriteLine(
+                    $"    {declared.FunctionName} not found in {declared.CodeFile} within lines {declared.LineStart}-{declared.LineEnd}");
+            if (!testPresent)
+                Console.Error.WriteLine(
+                    $"    {declared.TestMethod} did not pass in this run, or is absent from {declared.TestFile}");
+
+            evidenceMissing |= !designPresent || !codePresent || !testPresent;
+        }
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        Console.WriteLine($"  requirements          {report.TotalRequirements}");
+        Console.WriteLine($"  issues                {report.IssuesFound} ({report.CriticalIssues} critical)");
+        Console.WriteLine();
+
+        foreach (var issue in report.Issues)
+        {
+            Console.WriteLine($"  - [{issue.Severity}] {issue.RequirementNumber}: {issue.Description}");
+        }
+
+        if (!report.IsCompliant || evidenceMissing)
+        {
+            Console.Error.WriteLine("FAIL: declared requirements are not fully traced to verified evidence.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string Mark(bool ok) => ok ? "ok" : "MISSING";
+
+    /// <summary>
+    /// Confirms the named function appears inside the recorded line range. A line range
+    /// that has drifted away from the function it claims to describe is stale trace data,
+    /// so it is treated as missing evidence rather than quietly accepted.
+    /// </summary>
+    private static bool CodeEvidencePresent(string repoRoot, BoundaryRequirement declared)
+    {
+        var path = Path.Combine(repoRoot, declared.CodeFile);
+        if (!File.Exists(path))
+            return false;
+
+        var lines = File.ReadAllLines(path);
+        if (declared.LineStart < 1 || declared.LineEnd > lines.Length || declared.LineStart > declared.LineEnd)
+            return false;
+
+        for (var i = declared.LineStart - 1; i < declared.LineEnd; i++)
+        {
+            if (lines[i].Contains(declared.FunctionName, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool FileContains(string repoRoot, string relativePath, string needle)
+    {
+        var path = Path.Combine(repoRoot, relativePath);
+        return File.Exists(path)
+               && File.ReadAllText(path).Contains(needle, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Reads the passing test method names from a VSTest trx file. Test links are only
+    /// verified against tests that actually ran and passed in this build.
+    /// </summary>
+    private static HashSet<string> ReadPassedTests(string trxPath)
+    {
+        var passed = new HashSet<string>(StringComparer.Ordinal);
+        var ns = XNamespace.Get("http://microsoft.com/schemas/VisualStudio/TeamTest/2010");
+
+        foreach (var result in XDocument.Load(trxPath).Descendants(ns + "UnitTestResult"))
+        {
+            if (!string.Equals((string?)result.Attribute("outcome"), "Passed", StringComparison.Ordinal))
+                continue;
+
+            var testName = (string?)result.Attribute("testName");
+            if (string.IsNullOrWhiteSpace(testName))
+                continue;
+
+            // trx records the fully qualified name, sometimes with a data-driven suffix.
+            var withoutArguments = testName.Split('(')[0];
+            passed.Add(withoutArguments[(withoutArguments.LastIndexOf('.') + 1)..]);
+        }
+
+        return passed;
     }
 
     private static bool IsDemonstrated(BoundaryPair pair) =>
@@ -310,6 +532,25 @@ internal static class Program
         public bool IsSafetyCritical { get; set; }
         public List<BoundaryEvidence> TestEvidence { get; set; } = new();
         public BoundaryMcdcAnalysis? McdcAnalysis { get; set; }
+        public List<BoundaryRequirement> Requirements { get; set; } = new();
+    }
+
+    private sealed class BoundaryRequirement
+    {
+        public string RequirementNumber { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Priority { get; set; } = string.Empty;
+        public string DesignElementId { get; set; } = string.Empty;
+        public string DesignDocument { get; set; } = string.Empty;
+        public string CodeFile { get; set; } = string.Empty;
+        public string FunctionName { get; set; } = string.Empty;
+        public int LineStart { get; set; }
+        public int LineEnd { get; set; }
+        public string TestCaseId { get; set; } = string.Empty;
+        public string TestFile { get; set; } = string.Empty;
+        public string TestMethod { get; set; } = string.Empty;
+        public string CoverageType { get; set; } = string.Empty;
     }
 
     private sealed class BoundaryEvidence
