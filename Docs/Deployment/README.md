@@ -4,9 +4,8 @@ This directory contains all deployment-related documentation and guides for the 
 
 ## Quick Start Guides
 
-- **`QUICK_DEPLOY.md`** - Fastest path to production (15 minutes)
-- **`DEPLOY_NOW.md`** - Step-by-step deployment instructions
-- **`DEPLOY_NOW_STEPS.md`** - Detailed deployment steps
+- **`DEPLOY_TO_RENDER.md`** - Deploying to Render, start here
+- **`RENDER_DEPLOY_INSTRUCTIONS.md`** - Step-by-step Render walkthrough
 
 ## Platform-Specific Guides
 
@@ -18,13 +17,12 @@ This directory contains all deployment-related documentation and guides for the 
 
 ### General Deployment
 - **`DEPLOYMENT_CHECKLIST.md`** - Pre-deployment checklist
-- **`DEPLOYMENT_SUCCESS.md`** - Post-deployment verification
 
 ## Related Resources
 
 - **Deployment Scripts:** `../../Scripts/Deployment/`
 - **Docker Configuration:** `../../Docker/`
-- **Project Status:** `../Project/PRODUCTION_READY.md`
+- **Verification scope:** `../VERIFICATION_SCOPE.md`
 
 ## Deployment Options
 

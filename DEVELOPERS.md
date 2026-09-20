@@ -115,7 +115,7 @@ dotnet build --configuration Release
 dotnet test Tests/HelloblueGK.Tests.csproj --configuration Release --no-build
 ```
 
-See [Docs/internal/github-runbooks/TEST_LOCALLY.md](Docs/internal/github-runbooks/TEST_LOCALLY.md) for the full CI simulation.
+See [Docs/Technical/TESTING_LOCALLY.md](Docs/Technical/TESTING_LOCALLY.md) for the full CI simulation.
 
 ## Where to contribute
 

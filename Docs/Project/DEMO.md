@@ -5,7 +5,7 @@ This guide will help you run the interactive demo of the HelloblueGK aerospace e
 ## Prerequisites
 
 - **.NET 9.0 SDK** must be installed
-- If you see "command not found: dotnet", see [INSTALL_DOTNET.md](INSTALL_DOTNET.md)
+- If you see "command not found: dotnet", see [INSTALL_DOTNET.md](../Technical/INSTALL_DOTNET.md)
 
 ## Quick Start
 
@@ -21,7 +21,7 @@ export PATH="$HOME/.dotnet:$PATH"
 dotnet --version
 ```
 
-See [INSTALL_DOTNET.md](INSTALL_DOTNET.md) for detailed installation instructions.
+See [INSTALL_DOTNET.md](../Technical/INSTALL_DOTNET.md) for detailed installation instructions.
 
 ### Option 1: Run with Docker (Recommended)
 
@@ -130,14 +130,14 @@ If Docker build fails:
 ## Next Steps
 
 - **Explore the API**: Use Swagger UI to test endpoints
-- **Read the Documentation**: Check [README.md](README.md) for full documentation
-- **Contribute**: See [CONTRIBUTING.md](CONTRIBUTING.md) to contribute improvements
+- **Read the Documentation**: Check [README.md](../../README.md) for full documentation
+- **Contribute**: See [CONTRIBUTING.md](../../CONTRIBUTING.md) to contribute improvements
 
 ## Need Help?
 
 - Open an [issue](https://github.com/HelloblueAI/HelloblueGK/issues) on GitHub
-- Check the [documentation](README.md)
-- Review [API examples](README.md#api-documentation)
+- Check the [documentation](../../README.md)
+- Review [API examples](../../README.md#api-documentation)
 
 ---
 
