@@ -760,7 +760,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// ("n/a") and from FunctionName / TestCaseId letter gates.
         /// </summary>
         private static bool HasAlphabeticRequirementBody(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
+            CertificationIdentityTokens.HasAlphabeticIdentity(value);
 
         /// <summary>
         /// Leftover empty/whitespace, placeholder, or punctuation-only
@@ -782,7 +782,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// letter gates — leftover numeric ids such as 1.2.3 and 123 still comply.
         /// </summary>
         private static bool HasLetterOrDigitRequirementNumber(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetterOrDigit);
+            CertificationIdentityTokens.HasLetterOrDigitIdentity(value);
 
         internal static bool HasRealRequirementIdentity(string? value) =>
             !string.IsNullOrWhiteSpace(value) && !IsPlaceholderRequirementIdentity(value);
@@ -796,7 +796,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// from RequirementNumber (numeric ids such as 1.2.3 stay valid).
         /// </summary>
         private static bool HasAlphabeticRequirementTitle(string? value) =>
-            !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetter);
+            CertificationIdentityTokens.HasAlphabeticIdentity(value);
 
         internal static bool IsPlaceholderRequirementIdentity(string value)
         {

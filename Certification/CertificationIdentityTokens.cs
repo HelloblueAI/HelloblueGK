@@ -3,6 +3,8 @@ namespace HB_NLP_Research_Lab.Certification
     /// <summary>
     /// Shared placeholder-token checks for certification identity fields (function names,
     /// configuration metadata, etc.). Empty/whitespace is handled separately at each gate.
+    /// New leftover-identity gates should compose these predicates rather than redefining
+    /// equivalent one-liners next to their own call sites.
     /// </summary>
     internal static class CertificationIdentityTokens
     {
