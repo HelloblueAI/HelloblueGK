@@ -373,7 +373,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         }
 
         // Helper methods for mission level requirements
-        private int GetTRLForMissionLevel(MissionLevel level) => level switch
+        internal int GetTRLForMissionLevel(MissionLevel level) => level switch
         {
             MissionLevel.Research => 3,
             MissionLevel.Prototype => 6,
@@ -383,7 +383,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             _ => 6
         };
 
-        private int GetFlightHeritageForMissionLevel(MissionLevel level) => level switch
+        internal int GetFlightHeritageForMissionLevel(MissionLevel level) => level switch
         {
             MissionLevel.Research => 0,
             MissionLevel.Prototype => 5,
@@ -393,7 +393,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             _ => 10
         };
 
-        private double GetSafetyFactorForMissionLevel(MissionLevel level) => level switch
+        internal double GetSafetyFactorForMissionLevel(MissionLevel level) => level switch
         {
             MissionLevel.Research => 1.5,
             MissionLevel.Prototype => 2.0,
@@ -403,7 +403,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             _ => 2.0
         };
 
-        private int GetRedundancyLevelForMissionLevel(MissionLevel level) => level switch
+        internal int GetRedundancyLevelForMissionLevel(MissionLevel level) => level switch
         {
             MissionLevel.Research => 1,
             MissionLevel.Prototype => 2,
@@ -413,7 +413,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             _ => 2
         };
 
-        private double GetMTBFForMissionLevel(MissionLevel level) => level switch
+        internal double GetMTBFForMissionLevel(MissionLevel level) => level switch
         {
             MissionLevel.Research => 1000,
             MissionLevel.Prototype => 5000,
@@ -423,7 +423,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             _ => 5000
         };
 
-        private double GetMTTRForMissionLevel(MissionLevel level) => level switch
+        internal double GetMTTRForMissionLevel(MissionLevel level) => level switch
         {
             MissionLevel.Research => 24,
             MissionLevel.Prototype => 12,
@@ -434,7 +434,7 @@ namespace HB_NLP_Research_Lab.Aerospace
         };
 
         // Calculation methods
-        private double CalculateOverallReadinessScore(AerospaceReadinessReport report)
+        internal double CalculateOverallReadinessScore(AerospaceReadinessReport report)
         {
             if (report.ReadinessCategories.Count == 0) return 0.0;
 
@@ -443,14 +443,24 @@ namespace HB_NLP_Research_Lab.Aerospace
 
             // Weight critical categories more heavily
             var criticalCategories = new[] { ReadinessCategory.Safety, ReadinessCategory.Regulatory, ReadinessCategory.Technical };
-            var criticalScore = report.ReadinessCategories
+            var criticalScores = report.ReadinessCategories
                 .Where(c => criticalCategories.Contains(c.Category))
-                .Average(c => c.ReadinessScore);
+                .Select(c => c.ReadinessScore)
+                .ToList();
 
-            return (averageScore * 0.6) + (criticalScore * 0.4);
+            // A partial report may carry no critical category at all. Averaging an empty
+            // sequence throws, so a caller assessing only operational or financial readiness
+            // would have crashed rather than received a score. With nothing critical to
+            // weight, the plain average is the whole of what was measured.
+            if (criticalScores.Count == 0)
+            {
+                return averageScore;
+            }
+
+            return (averageScore * 0.6) + (criticalScores.Average() * 0.4);
         }
 
-        private string DetermineReadinessStatus(double readinessScore, MissionLevel missionLevel)
+        internal string DetermineReadinessStatus(double readinessScore, MissionLevel missionLevel)
         {
             var threshold = missionLevel switch
             {
@@ -465,7 +475,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             return readinessScore >= threshold ? "READY" : "NOT READY";
         }
 
-        private double CalculateTechnicalReadinessScore(TechnicalReadinessAssessment assessment, MissionLevel missionLevel)
+        internal double CalculateTechnicalReadinessScore(TechnicalReadinessAssessment assessment, MissionLevel missionLevel)
         {
             var baseScore = 0.95; // High base score for technical excellence
             var trlScore = assessment.TechnologyReadinessLevel / 9.0;
@@ -475,7 +485,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             return (baseScore + trlScore + performanceScore + reliabilityScore) / 4.0;
         }
 
-        private double CalculateSafetyReadinessScore(SafetyReadinessAssessment assessment, MissionLevel missionLevel)
+        internal double CalculateSafetyReadinessScore(SafetyReadinessAssessment assessment, MissionLevel missionLevel)
         {
             var baseScore = 0.98; // High base score for safety
             var safetyFactorScore = Math.Min(assessment.SafetyFactor / 4.0, 1.0);
@@ -485,7 +495,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             return (baseScore + safetyFactorScore + redundancyScore + faultToleranceScore) / 4.0;
         }
 
-        private double CalculateComplianceReadinessScore(ComplianceReport complianceReport, MissionLevel missionLevel)
+        internal double CalculateComplianceReadinessScore(ComplianceReport complianceReport, MissionLevel missionLevel)
         {
             if (complianceReport.OverallCompliance)
             {
@@ -506,7 +516,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             return 0.0;
         }
 
-        private double CalculateOperationalReadinessScore(OperationalReadinessAssessment assessment, MissionLevel missionLevel)
+        internal double CalculateOperationalReadinessScore(OperationalReadinessAssessment assessment, MissionLevel missionLevel)
         {
             var baseScore = 0.95;
             var availabilityScore = assessment.Availability;

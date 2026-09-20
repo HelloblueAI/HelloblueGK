@@ -12,14 +12,14 @@
     "lines that appear under more than one class."
   ],
   "measuredOn": {
-    "commit": "217bbc0",
+    "commit": "9eb6108 plus the Aerospace/AI verification work",
     "totalLines": 23988,
-    "overallLineCoverage": 46.56,
-    "overallBranchCoverage": 47.78
+    "overallLineCoverage": 48.63,
+    "overallBranchCoverage": 50.82
   },
   "overall": {
-    "minLineCoverage": 46.0,
-    "minBranchCoverage": 47.0
+    "minLineCoverage": 48.0,
+    "minBranchCoverage": 50.0
   },
   "directories": [
     {
@@ -35,10 +35,34 @@
       "rationale": "Measured 61.20% line, 52.51% branch."
     },
     {
+      "path": "Aerospace",
+      "minLineCoverage": 20.0,
+      "minBranchCoverage": 49.0,
+      "rationale": [
+        "Line coverage is low because most of this directory is hardcoded specification",
+        "data and console-printing demo scaffolding with no decisions in it. Branch",
+        "coverage is the meaningful number here and it went from 0% to 50.29%: the",
+        "compliance checks, the mission-level requirement tables, and the readiness",
+        "thresholds are the code that actually decides something, and those are now",
+        "verified. Hold the branch floor even if the line floor stays modest."
+      ]
+    },
+    {
       "path": "Core",
-      "minLineCoverage": 43.0,
+      "minLineCoverage": 44.0,
       "minBranchCoverage": 31.0,
-      "rationale": "Largest directory at 8021 lines. Measured 43.95% line, 32.41% branch."
+      "rationale": "Largest directory at 8021 lines. Measured 44.91% line, 32.41% branch."
+    },
+    {
+      "path": "AI",
+      "minLineCoverage": 17.0,
+      "minBranchCoverage": 40.0,
+      "rationale": [
+        "Branch coverage went from 0% to 41.03% by verifying the reinforcement-learning",
+        "controller's value update, reward shaping, and action dynamics. The remaining",
+        "uncovered lines are generative and quantum scaffolding that returns constants",
+        "after Task.Delay; see Docs/VERIFICATION_SCOPE.md."
+      ]
     },
     {
       "path": "Physics",
@@ -49,13 +73,12 @@
   ],
   "unflooredDirectories": [
     {
-      "paths": ["Aerospace", "AI", "Models"],
+      "paths": ["Models"],
       "reason": [
-        "Aerospace is at 10.68% line and 0% branch across 2697 lines, AI at 10.18% and 0%",
-        "across 1100, and Models at 0% across 326. A floor pinned to those numbers would",
-        "ratify the gap rather than close it, and would pass while the code stays untested.",
-        "They are recorded here so the omission is deliberate and visible rather than an",
-        "oversight. Closing it needs tests, tracked as its own work."
+        "Models is data-transfer objects with no behaviour. Its 14.42% line coverage is an",
+        "incidental by-product of other tests constructing those objects, not evidence of",
+        "anything, and 0% branch coverage simply reflects that there are no branches to",
+        "cover. A floor here would measure nothing."
       ]
     }
   ]

@@ -9,22 +9,21 @@ namespace HB_NLP_Research_Lab.AI
     {
         private readonly Dictionary<string, double> _qTable = new Dictionary<string, double>();
         private readonly RLConfig _config;
-        private readonly Random _random = new Random();
+        private readonly Random _random;
 
-        public ReinforcementLearningEngine(RLConfig config)
+        /// <param name="random">
+        /// Supply a seeded instance to make exploration reproducible. Verification of an
+        /// epsilon-greedy policy is only possible when the exploration draw is controlled,
+        /// and a control algorithm whose behaviour cannot be reproduced cannot be reviewed.
+        /// </param>
+        public ReinforcementLearningEngine(RLConfig config, Random? random = null)
         {
             _config = config;
+            _random = random ?? new Random();
         }
 
         public async Task<EngineAction> SelectOptimalActionAsync(EngineState state)
         {
-            var stateKey = state.ToString();
-            
-            if (!_qTable.ContainsKey(stateKey))
-            {
-                _qTable[stateKey] = 0.0;
-            }
-
             // Epsilon-greedy strategy
             if (_random.NextDouble() < _config.Epsilon)
             {
@@ -38,28 +37,55 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task UpdateQValueAsync(EngineState state, EngineAction action, double reward, EngineState nextState)
         {
-            var stateKey = $"{state}_{action}";
-            var nextStateKey = nextState.ToString();
-            
-            if (!_qTable.ContainsKey(stateKey))
-            {
-                _qTable[stateKey] = 0.0;
-            }
-            
-            if (!_qTable.ContainsKey(nextStateKey))
-            {
-                _qTable[nextStateKey] = 0.0;
-            }
+            var stateKey = QKey(state, action);
 
-            var currentQ = _qTable[stateKey];
-            var maxNextQ = _qTable[nextStateKey];
-            
+            var currentQ = _qTable.TryGetValue(stateKey, out var stored) ? stored : 0.0;
+
+            // The lookahead term is max over actions of Q(nextState, a), which is what makes
+            // this Q-learning rather than a running average of immediate reward. It must be
+            // read with the same (state, action) key schema the update writes: keying it on
+            // the next state alone reads an entry no update ever writes, pinning the term at
+            // zero and silently removing the agent's ability to learn delayed consequences.
+            var maxNextQ = MaxQOver(nextState);
+
             // Q-learning update rule
             var newQ = currentQ + _config.LearningRate * (reward + _config.DiscountFactor * maxNextQ - currentQ);
             _qTable[stateKey] = newQ;
             
             await Task.Delay(1); // Simulate computation
         }
+
+        /// <summary>
+        /// Highest action-value currently estimated for <paramref name="state"/>. Unvisited
+        /// pairs are treated as 0.0, matching the optimistic-at-zero initialisation used when
+        /// an update first touches a pair.
+        /// </summary>
+        internal double MaxQOver(EngineState state)
+        {
+            var best = double.MinValue;
+
+            foreach (var action in Enum.GetValues<EngineAction>())
+            {
+                var value = _qTable.TryGetValue(QKey(state, action), out var stored) ? stored : 0.0;
+
+                if (value > best)
+                {
+                    best = value;
+                }
+            }
+
+            return best;
+        }
+
+        /// <summary>
+        /// Single definition of the Q-table key schema. Every read and write goes through
+        /// this so the lookahead term and the greedy policy cannot drift onto different
+        /// key formats, which is how the lookahead term came to be permanently zero.
+        /// </summary>
+        internal static string QKey(EngineState state, EngineAction action) => $"{state}_{action}";
+
+        internal double QValueFor(EngineState state, EngineAction action) =>
+            _qTable.TryGetValue(QKey(state, action), out var stored) ? stored : 0.0;
 
         public async Task TrainAsync(int episodes)
         {
@@ -102,7 +128,7 @@ namespace HB_NLP_Research_Lab.AI
             }
         }
 
-        private async Task<EngineAction> GetBestActionAsync(EngineState state)
+        internal async Task<EngineAction> GetBestActionAsync(EngineState state)
         {
             var actions = Enum.GetValues<EngineAction>();
             var bestAction = actions[0];
@@ -110,9 +136,7 @@ namespace HB_NLP_Research_Lab.AI
             
             foreach (var action in actions)
             {
-                var stateKey = $"{state}_{action}";
-                // Use TryGetValue instead of ContainsKey + indexer for efficiency
-                var qValue = _qTable.TryGetValue(stateKey, out var value) ? value : 0.0;
+                var qValue = QValueFor(state, action);
                 
                 if (qValue > bestQ)
                 {
@@ -131,7 +155,7 @@ namespace HB_NLP_Research_Lab.AI
             return actions[_random.Next(actions.Length)];
         }
 
-        private async Task<EngineState> SimulateActionAsync(EngineState state, EngineAction action)
+        internal async Task<EngineState> SimulateActionAsync(EngineState state, EngineAction action)
         {
             var nextState = new EngineState
             {
@@ -174,7 +198,7 @@ namespace HB_NLP_Research_Lab.AI
             return nextState;
         }
 
-        private double CalculateReward(EngineState state, EngineAction action, EngineState nextState)
+        internal static double CalculateReward(EngineState state, EngineAction action, EngineState nextState)
         {
             var reward = 0.0;
             
