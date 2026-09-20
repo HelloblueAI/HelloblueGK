@@ -70,6 +70,7 @@ namespace HB_NLP_Research_Lab.Certification
         /// placeholder token ("n/a", "none", "todo") — including slash-containing
         /// tokens such as Tests/n/a and Core/n/a.cs — are not repository evidence.
         /// Matching leftover Core/Sensors.cs still has real path identity.
+        /// Distinct from HasAlphabeticPathIdentity (punctuation / digit-only stems).
         /// </summary>
         public static bool HasPlaceholderPathIdentity(string? path)
         {
@@ -98,6 +99,34 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Evidence path file identity must contain a letter. Leftover
+        /// punctuation-only / digit-only file stems ("Core/....cs",
+        /// "Core/___.cs", "Tests/123.cs") previously satisfied
+        /// HasSafeRepositoryPath after placeholder path tokens were rejected.
+        /// The allowed prefix (Core/, Tests/) always has letters and is not
+        /// path identity — only the filename stem is checked. Matching leftover
+        /// Core/Sensors.cs still qualifies. Leftover n/a stays on
+        /// HasPlaceholderPathIdentity (n/a has letters). Do not use this for
+        /// versions (1.0.0) or hex checksums.
+        /// </summary>
+        public static bool HasAlphabeticPathIdentity(string? path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            var normalized = path.Trim().Replace('\\', '/');
+            var segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return false;
+            }
+
+            return FileStem(segments[^1]).Any(char.IsLetter);
         }
 
         private static string FileStem(string pathSlice)

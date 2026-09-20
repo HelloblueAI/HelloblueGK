@@ -669,6 +669,36 @@ public class RequirementsTraceabilitySystemTests
     }
 
     [Theory]
+    [InlineData("Core/....cs")]
+    [InlineData("Core/___.cs")]
+    [InlineData("Core/123.cs")]
+    public async Task LinkToCodeAsync_RejectsPunctuationOnlyCodeFile(string leftoverCodeFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PUNCTUATION-PATH",
+            Title = "Valve timing",
+            Description = "Code links must name a real file, not punctuation-only or digit-only path identity",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToCodeAsync(
+            requirement.Id,
+            leftoverCodeFile,
+            1,
+            20,
+            "ValidateSensor");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only or digit-only*")
+            .WithParameterName("codeFile");
+        context.RequirementCodeLinks.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("Tests/n/a")]
     [InlineData("Tests/todo")]
     [InlineData("Tests/none.cs")]
@@ -693,6 +723,35 @@ public class RequirementsTraceabilitySystemTests
 
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*placeholder*")
+            .WithParameterName("testFile");
+        context.RequirementTestLinks.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("Tests/....cs")]
+    [InlineData("Tests/___.cs")]
+    [InlineData("Tests/123.cs")]
+    public async Task LinkToTestAsync_RejectsPunctuationOnlyTestFile(string leftoverTestFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PUNCTUATION-TEST-PATH",
+            Title = "Valve timing",
+            Description = "Test links must name a real file, not punctuation-only or digit-only path identity",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToTestAsync(
+            requirement.Id,
+            "TC-VALVE-001",
+            leftoverTestFile,
+            TestCoverageType.MCDC);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only or digit-only*")
             .WithParameterName("testFile");
         context.RequirementTestLinks.Should().BeEmpty();
     }
@@ -726,6 +785,34 @@ public class RequirementsTraceabilitySystemTests
     }
 
     [Theory]
+    [InlineData("Docs/....md")]
+    [InlineData("Docs/___.md")]
+    [InlineData("Docs/123.md")]
+    public async Task LinkToDesignAsync_RejectsPunctuationOnlyDesignDocument(string leftoverDesignDocument)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+
+        var requirement = await system.CreateRequirementAsync(new Requirement
+        {
+            RequirementNumber = "REQ-PUNCTUATION-DESIGN-PATH",
+            Title = "Valve timing",
+            Description = "Design links must name a real document, not punctuation-only or digit-only path identity",
+            CreatedBy = "alice"
+        });
+
+        var act = async () => await system.LinkToDesignAsync(
+            requirement.Id,
+            "DE-VALVE-001",
+            leftoverDesignDocument);
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only or digit-only*")
+            .WithParameterName("designDocument");
+        context.RequirementDesignLinks.Should().BeEmpty();
+    }
+
+    [Theory]
     [InlineData("Core/n/a.cs")]
     [InlineData("Core/todo.cs")]
     public async Task VerifyTraceabilityAsync_LeftoverPlaceholderCodeFile_IsNotCompliant(string leftoverCodeFile)
@@ -733,6 +820,26 @@ public class RequirementsTraceabilitySystemTests
         await using var context = CreateContext();
         var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
         await SeedLeftoverVerifiedRequirementAsync(context, system, "REQ-PLACEHOLDER-CODE-PATH", "Legacy placeholder code path");
+
+        var leftover = await context.RequirementCodeLinks.SingleAsync();
+        leftover.CodeFile = leftoverCodeFile;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingCodeLink);
+    }
+
+    [Theory]
+    [InlineData("Core/....cs")]
+    [InlineData("Core/___.cs")]
+    [InlineData("Core/123.cs")]
+    public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyCodeFile_IsNotCompliant(string leftoverCodeFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(context, system, "REQ-PUNCTUATION-CODE-PATH", "Legacy punctuation-only code path");
 
         var leftover = await context.RequirementCodeLinks.SingleAsync();
         leftover.CodeFile = leftoverCodeFile;
@@ -762,6 +869,47 @@ public class RequirementsTraceabilitySystemTests
         report.IsCompliant.Should().BeFalse();
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
         report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
+    [Theory]
+    [InlineData("Tests/....cs")]
+    [InlineData("Tests/___.cs")]
+    [InlineData("Tests/123.cs")]
+    public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyTestFile_IsNotCompliant(string leftoverTestFile)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(context, system, "REQ-PUNCTUATION-TEST-PATH-LEFT", "Legacy punctuation-only test path");
+
+        var leftover = await context.RequirementTestLinks.SingleAsync();
+        leftover.TestFile = leftoverTestFile;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingTestLink);
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingMCDCCoverage);
+    }
+
+    [Theory]
+    [InlineData("Docs/....md")]
+    [InlineData("Docs/___.md")]
+    [InlineData("Docs/123.md")]
+    public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyDesignDocument_IsNotCompliant(string leftoverDesignDocument)
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(context, system, "REQ-PUNCTUATION-DESIGN-PATH-LEFT", "Legacy punctuation-only design path");
+
+        var leftover = await context.RequirementDesignLinks.SingleAsync();
+        leftover.DesignDocument = leftoverDesignDocument;
+        await context.SaveChangesAsync();
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeFalse();
+        report.Issues.Should().Contain(i => i.IssueType == TraceabilityIssueType.MissingDesignLink);
     }
 
     [Fact]
