@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "description": [
+    "Per-directory coverage floors enforced directly in CI from the Cobertura report that",
+    "dotnet test produces. These are the authoritative floors for this repository.",
+    "The equivalent targets in codecov.yml are for dashboards and PR comments only;",
+    "Codecov has never successfully processed a report for this project, so nothing there",
+    "is load-bearing.",
+    "Each floor sits roughly a point below measured coverage so it ratchets against",
+    "regression without blocking current work. Raise a floor when its directory improves.",
+    "Branch percentages are computed from Cobertura condition outcomes, deduplicating",
+    "lines that appear under more than one class."
+  ],
+  "measuredOn": {
+    "commit": "217bbc0",
+    "totalLines": 23988,
+    "overallLineCoverage": 46.56,
+    "overallBranchCoverage": 47.78
+  },
+  "overall": {
+    "minLineCoverage": 46.0,
+    "minBranchCoverage": 47.0
+  },
+  "directories": [
+    {
+      "path": "Certification",
+      "minLineCoverage": 90.0,
+      "minBranchCoverage": 74.0,
+      "rationale": "Holds the DO-178C and NPR 7150.2 evidence gates. Measured 91.52% line, 75.25% branch."
+    },
+    {
+      "path": "WebAPI",
+      "minLineCoverage": 60.0,
+      "minBranchCoverage": 51.0,
+      "rationale": "Measured 61.20% line, 52.51% branch."
+    },
+    {
+      "path": "Core",
+      "minLineCoverage": 43.0,
+      "minBranchCoverage": 31.0,
+      "rationale": "Largest directory at 8021 lines. Measured 43.95% line, 32.41% branch."
+    },
+    {
+      "path": "Physics",
+      "minLineCoverage": 29.0,
+      "minBranchCoverage": 30.0,
+      "rationale": "Measured 30.40% line, 31.98% branch."
+    }
+  ],
+  "unflooredDirectories": [
+    {
+      "paths": ["Aerospace", "AI", "Models"],
+      "reason": [
+        "Aerospace is at 10.68% line and 0% branch across 2697 lines, AI at 10.18% and 0%",
+        "across 1100, and Models at 0% across 326. A floor pinned to those numbers would",
+        "ratify the gap rather than close it, and would pass while the code stays untested.",
+        "They are recorded here so the omission is deliberate and visible rather than an",
+        "oversight. Closing it needs tests, tracked as its own work."
+      ]
+    }
+  ]
+}
