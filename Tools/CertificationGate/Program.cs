@@ -142,6 +142,17 @@ internal static class Program
             }
 
             Console.WriteLine($"{unit.FilePath}{(unit.IsSafetyCritical ? " [safety-critical]" : string.Empty)}");
+            if (unit.Limitations.Count > 0)
+            {
+                // Surfaced on every run so a passing gate is never read as a broader claim
+                // than it makes.
+                Console.WriteLine("  recorded limitations:");
+                foreach (var limitation in unit.Limitations)
+                {
+                    Console.WriteLine($"    {limitation}");
+                }
+            }
+
             Console.WriteLine(
                 $"  statements {file.CoveredLines}/{file.TotalLines}" +
                 $"   decisions {file.CoveredDecisions}/{file.TotalDecisions}" +
@@ -189,7 +200,11 @@ internal static class Program
             return 1;
         }
 
-        Console.WriteLine("PASS: every unit in the declared certification boundary meets DO-178C Level A.");
+        Console.WriteLine(
+            "PASS: every unit in the declared boundary meets the DO-178C Level A coverage and");
+        Console.WriteLine(
+            "traceability objectives. This is not a validation claim — see claimScope and the");
+        Console.WriteLine("recorded limitations in the boundary artifact for what is out of scope.");
         return 0;
     }
 
@@ -532,6 +547,7 @@ internal static class Program
         public bool IsSafetyCritical { get; set; }
         public List<BoundaryEvidence> TestEvidence { get; set; } = new();
         public BoundaryMcdcAnalysis? McdcAnalysis { get; set; }
+        public List<string> Limitations { get; set; } = new();
         public List<BoundaryRequirement> Requirements { get; set; } = new();
     }
 

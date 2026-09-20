@@ -9,6 +9,20 @@ Scope is limited to `Physics/AdvancedCFDSolver.cs`. It describes what the code d
 today, not what it might do later — a design document that outruns the implementation
 cannot serve as trace evidence.
 
+## Known limitation — the model parameter is ignored
+
+`RunSimulation(object model)` never reads `model`. The parameter is present in the
+signature and unreferenced in the body, so the solver returns identical results for
+every input: pressure and velocity are functions of grid index alone, and turbulence
+intensity and heat transfer derive from hardcoded constants.
+
+This is recorded here and in the boundary artifact because it bounds what the
+certification evidence means. Coverage and traceability are complete for the code as
+written; that is a statement about the code, not about whether the solver analyses the
+engine it is handed. The requirements traced to this document are deliberately scoped to
+initialization and convergence behaviour, which the implementation genuinely exhibits,
+rather than to physical accuracy, which cannot be claimed while the input is unused.
+
 ## DE-CFD-INIT — Initialization guard
 
 `RunSimulation` must produce valid fields whether or not the caller invoked

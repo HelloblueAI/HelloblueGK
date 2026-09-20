@@ -10,6 +10,16 @@
     "recorded below. Removing a unit is a de-certification and needs the same scrutiny",
     "as adding one."
   ],
+  "claimScope": [
+    "What a passing run establishes: every declared unit has full statement and",
+    "decision coverage, its MC/DC independence pairs are demonstrated or justified as",
+    "infeasible, and each declared requirement traces to a design element, an",
+    "implementing function, and a test that passed in that run.",
+    "What it does not establish: that the algorithms are physically correct, validated",
+    "against reference data, or that their outputs respond to the model under analysis.",
+    "Those are validation questions, and the per-unit limitations below record where",
+    "the current implementation falls short of them."
+  ],
   "units": [
     {
       "filePath": "Physics/AdvancedCFDSolver.cs",
@@ -19,6 +29,19 @@
         "engine design decisions. A wrong result here propagates into the geometry and",
         "operating envelope of a combustion device, which is the definition of a",
         "contribution to a hazardous condition."
+      ],
+      "limitations": [
+        "RunSimulation does not read its model parameter. The parameter appears in the",
+        "signature and is never referenced, so the solver returns the same fields for",
+        "every input: pressure and velocity are functions of grid index, and turbulence",
+        "and heat transfer are functions of hardcoded constants.",
+        "The evidence recorded here therefore covers the code as written. It does not",
+        "establish that the solver analyses the engine it is given. Until the model is",
+        "consumed, the unit should be read as a fixed reference computation that is fully",
+        "covered and fully traced, not as a validated CFD analysis.",
+        "The two requirements below are scoped to properties the code genuinely has —",
+        "field allocation and convergence termination — rather than to physical accuracy,",
+        "which cannot be claimed while the input is ignored."
       ],
       "testEvidence": [
         {
