@@ -22,6 +22,7 @@ internal static class Program
         string? coveragePath = null;
         string? boundaryPath = null;
         string? testResultsPath = null;
+        string? floorsPath = null;
         var repoRoot = Directory.GetCurrentDirectory();
 
         for (var i = 0; i < args.Length - 1; i++)
@@ -39,6 +40,9 @@ internal static class Program
                     break;
                 case "--repo-root":
                     repoRoot = args[i + 1];
+                    break;
+                case "--floors":
+                    floorsPath = args[i + 1];
                     break;
                 default:
                     break;
@@ -188,6 +192,7 @@ internal static class Program
         }
 
         var traceabilityOk = await VerifyRequirementsAsync(boundary, repoRoot, testResultsPath);
+        var floorsOk = floorsPath is null || EvaluateCoverageFloors(measured, floorsPath);
 
         if (!check.IsCompliant)
         {
@@ -195,7 +200,7 @@ internal static class Program
                 "FAIL: the declared certification boundary no longer meets DO-178C Level A coverage objectives.");
         }
 
-        if (!check.IsCompliant || !traceabilityOk)
+        if (!check.IsCompliant || !traceabilityOk || !floorsOk)
         {
             return 1;
         }
@@ -358,6 +363,143 @@ internal static class Program
     }
 
     private static string Mark(bool ok) => ok ? "ok" : "MISSING";
+
+    /// <summary>
+    /// Enforces per-directory coverage floors from the same report the boundary gate reads.
+    ///
+    /// This deliberately does not depend on Codecov. Its uploads are accepted but have never
+    /// been processed for this project, so a floor expressed only in codecov.yml is enforced
+    /// by nothing. A floor that silently enforces nothing is the failure mode worth avoiding.
+    /// </summary>
+    private static bool EvaluateCoverageFloors(
+        Dictionary<string, MeasuredFile> measured,
+        string floorsPath)
+    {
+        Console.WriteLine();
+        Console.WriteLine("Coverage floors");
+
+        if (!File.Exists(floorsPath))
+        {
+            Console.Error.WriteLine($"  FAIL: floors artifact not found: {floorsPath}");
+            return false;
+        }
+
+        var floors = JsonSerializer.Deserialize<CoverageFloors>(
+            File.ReadAllText(floorsPath),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+
+        if (floors is null)
+        {
+            Console.Error.WriteLine($"  FAIL: could not read floors artifact: {floorsPath}");
+            return false;
+        }
+
+        var byDirectory = new Dictionary<string, Totals>(StringComparer.OrdinalIgnoreCase);
+        var overall = new Totals();
+
+        foreach (var (fileName, file) in measured)
+        {
+            var separator = fileName.IndexOf('/', StringComparison.Ordinal);
+            var top = separator > 0 ? fileName[..separator] : "(root)";
+
+            if (!byDirectory.TryGetValue(top, out var totals))
+            {
+                totals = new Totals();
+                byDirectory[top] = totals;
+            }
+
+            foreach (var target in new[] { totals, overall })
+            {
+                target.TotalLines += file.TotalLines;
+                target.CoveredLines += file.CoveredLines;
+                target.TotalOutcomes += file.TotalOutcomes;
+                target.CoveredOutcomes += file.CoveredOutcomes;
+            }
+        }
+
+        var passed = true;
+
+        if (floors.Overall is not null)
+        {
+            passed &= ReportFloor("overall", overall, floors.Overall);
+        }
+
+        foreach (var directory in floors.Directories)
+        {
+            if (!byDirectory.TryGetValue(directory.Path, out var totals) || totals.TotalLines == 0)
+            {
+                Console.Error.WriteLine(
+                    $"  FAIL {directory.Path}: declared floor but absent from the coverage report.");
+                passed = false;
+                continue;
+            }
+
+            passed &= ReportFloor(directory.Path, totals, directory);
+        }
+
+        if (!passed)
+        {
+            Console.Error.WriteLine("FAIL: coverage fell below a declared floor.");
+        }
+
+        return passed;
+    }
+
+    private static bool ReportFloor(string label, Totals totals, ICoverageFloor floor)
+    {
+        var line = totals.TotalLines == 0 ? 0 : (double)totals.CoveredLines / totals.TotalLines * 100.0;
+        var branch = totals.TotalOutcomes == 0
+            ? (double?)null
+            : (double)totals.CoveredOutcomes / totals.TotalOutcomes * 100.0;
+
+        var lineOk = line + Tolerance >= floor.MinLineCoverage;
+        var branchOk = branch is null || branch.Value + Tolerance >= floor.MinBranchCoverage;
+
+        var branchText = branch is null ? "n/a" : $"{branch.Value:F2}%";
+        var status = lineOk && branchOk ? "ok" : "BELOW FLOOR";
+
+        Console.WriteLine(
+            $"  {label,-16} line {line,6:F2}% (min {floor.MinLineCoverage,5:F1}%)" +
+            $"   branch {branchText,7} (min {floor.MinBranchCoverage,5:F1}%)   {status}");
+
+        return lineOk && branchOk;
+    }
+
+    // Guards against a floor failing on floating-point noise when coverage is exactly at it.
+    private const double Tolerance = 0.005;
+
+    private sealed class Totals
+    {
+        public int TotalLines { get; set; }
+        public int CoveredLines { get; set; }
+        public int TotalOutcomes { get; set; }
+        public int CoveredOutcomes { get; set; }
+    }
+
+    private interface ICoverageFloor
+    {
+        double MinLineCoverage { get; }
+        double MinBranchCoverage { get; }
+    }
+
+    private sealed class CoverageFloors
+    {
+        public OverallFloor? Overall { get; set; }
+        public List<DirectoryFloor> Directories { get; set; } = new();
+    }
+
+    private sealed class OverallFloor : ICoverageFloor
+    {
+        public double MinLineCoverage { get; set; }
+        public double MinBranchCoverage { get; set; }
+    }
+
+    private sealed class DirectoryFloor : ICoverageFloor
+    {
+        public string Path { get; set; } = string.Empty;
+        public double MinLineCoverage { get; set; }
+        public double MinBranchCoverage { get; set; }
+    }
 
     /// <summary>
     /// Confirms the named function appears inside the recorded line range. A line range

@@ -8,10 +8,15 @@ coverage:
   round: down
   range: "46...100"
 
-  # Floors are set just below measured coverage so they ratchet against regression
-  # rather than block current work. Measured on main at 46.56% line coverage overall:
-  # Certification 91.5%, WebAPI 61.2%, Core 44.0%, Physics 30.4%, Aerospace 10.7%,
-  # AI 10.2%, Models 0%. Raise each floor as its directory improves.
+  # These targets drive the Codecov dashboard and PR comments only. They are NOT the
+  # enforced floors: Codecov accepts this project's uploads but has never successfully
+  # processed one, leaving every commit in an error state with an empty report, so a
+  # floor expressed only here is enforced by nothing.
+  #
+  # The authoritative, CI-enforced floors live in
+  # Certification/Artifacts/coverage-floors.json and are checked by Tools/CertificationGate
+  # against the Cobertura report from the same run. Keep the two in step when raising a
+  # floor, and treat the JSON as the source of truth.
   status:
     project:
       default:

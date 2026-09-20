@@ -49,10 +49,11 @@ jobs:
       timeout-minutes: 15
       
     # Runs the DO-178C Level A gates against the declared certification boundary using
-    # the coverage just measured. This is a hard gate: the boundary is a small set of
-    # files the project genuinely meets, so any regression inside it fails the build.
-    # Files outside the boundary are not evaluated here.
-    - name: Verify certification boundary
+    # the coverage just measured, and enforces the per-directory coverage floors. Both
+    # are hard gates. The boundary is a small set of files the project genuinely meets,
+    # so any regression inside it fails the build; files outside it are not evaluated
+    # against Level A, only against their directory floor.
+    - name: Verify certification boundary and coverage floors
       run: |
         report=$(find "${{ github.workspace }}/TestResults" -name "coverage.cobertura.xml" | head -1)
         if [ -z "$report" ]; then
@@ -67,7 +68,8 @@ jobs:
         dotnet run --project Tools/CertificationGate/CertificationGate.csproj --configuration Release -- \
           --coverage "$report" \
           --test-results "$trx" \
-          --boundary Certification/Artifacts/certification-boundary.json
+          --boundary Certification/Artifacts/certification-boundary.json \
+          --floors Certification/Artifacts/coverage-floors.json
 
     - name: Generate coverage report
       if: always()
