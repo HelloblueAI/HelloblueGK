@@ -478,7 +478,10 @@ namespace HB_NLP_Research_Lab.Aerospace
         public List<GeometryState> GeometryStates { get; set; }
         public MorphingMechanism MorphingMechanism { get; set; }
         public AdaptiveControlSystem AdaptiveControl { get; set; }
-        public new string Name { get; set; }
+
+        // Name is inherited from RevolutionaryEngine and must not be redeclared: the engine
+        // registry stores these by base type, so a shadowing copy would leave every lookup
+        // reading an unassigned base property and reporting a nameless engine.
     }
 
     public class GeometryState

@@ -241,12 +241,12 @@ namespace HB_NLP_Research_Lab.Aerospace
         public Dictionary<string, double> PerformanceMetrics { get; set; } = new();
         public Dictionary<string, double> InnovationMetrics { get; set; } = new();
         
-        // Existing properties
-        public new string Name { get; set; } = string.Empty;
-        public new string Propellant { get; set; } = string.Empty;
-        public new double Thrust { get; set; }
-        public new double SpecificImpulse { get; set; }
-        public new double ChamberPressure { get; set; }
+        // Name, Propellant, Thrust, SpecificImpulse, and ChamberPressure are inherited from
+        // RocketEngineBase and deliberately not redeclared here. Redeclaring them with `new`
+        // shadows rather than overrides: the constructor would populate the derived copies
+        // while every RocketEngineBase reference — any list of engines, any comparison across
+        // engine types — kept reading the base copies, which nothing ever assigned, and so
+        // reported a thrust of zero for a 2.2 MN engine.
         public Vector2 ThrottleRange { get; set; }
         public Vector3 VectoringAngles { get; set; }
         public double Weight { get; set; }
