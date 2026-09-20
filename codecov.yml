@@ -6,18 +6,64 @@ codecov:
 coverage:
   precision: 2
   round: down
-  range: "40...100"
-  
+  range: "46...100"
+
+  # Floors are set just below measured coverage so they ratchet against regression
+  # rather than block current work. Measured on main at 46.56% line coverage overall:
+  # Certification 91.5%, WebAPI 61.2%, Core 44.0%, Physics 30.4%, Aerospace 10.7%,
+  # AI 10.2%, Models 0%. Raise each floor as its directory improves.
   status:
     project:
       default:
-        # Realistic Community Edition floor; raise as Physics/Aerospace coverage grows.
-        target: 40%
-        threshold: 2%
+        target: 46%
+        threshold: 1%
         base: auto
+
+      # Certification code carries the DO-178C / NPR 7150.2 evidence gates, so it is
+      # held to its own floor. The global target would let it regress ~50 points
+      # without failing anything.
+      certification:
+        paths:
+          - "Certification/"
+        target: 90%
+        threshold: 1%
+        base: auto
+
+      webapi:
+        paths:
+          - "WebAPI/"
+        target: 60%
+        threshold: 1%
+        base: auto
+
+      core:
+        paths:
+          - "Core/"
+        target: 43%
+        threshold: 1%
+        base: auto
+
+      physics:
+        paths:
+          - "Physics/"
+        target: 29%
+        threshold: 1%
+        base: auto
+
+    # Aerospace/, AI/, and Models/ are close to untested. They are deliberately left
+    # without a floor: a 10% target would ratify the gap rather than close it. They
+    # need tests, tracked separately, not a status check.
     patch:
       default:
-        target: 50%
+        target: 60%
+        threshold: 5%
+        base: auto
+
+      # New or changed certification logic must arrive with its tests.
+      certification:
+        paths:
+          - "Certification/"
+        target: 90%
         threshold: 5%
         base: auto
 
