@@ -75,10 +75,16 @@ jobs:
       if: always()
       uses: codecov/codecov-action@v7
       with:
+        # Codecov rejects tokenless uploads on protected branches, so without this the
+        # upload failed on every run and fail_ci_if_error hid it. The coverage floors in
+        # codecov.yml were never evaluated because Codecov never received a report.
+        token: ${{ secrets.CODECOV_TOKEN }}
         files: ${{ github.workspace }}/TestResults/**/coverage.cobertura.xml
         flags: unittests
         name: codecov-umbrella
-        fail_ci_if_error: false
+        # A coverage gate that fails silently is worse than no gate: it reports success
+        # while measuring nothing. Surface upload failures instead of masking them.
+        fail_ci_if_error: true
         
     - name: Upload test results
       if: always()
