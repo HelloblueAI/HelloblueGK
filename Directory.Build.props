@@ -1,0 +1,14 @@
+<Project>
+
+  <!--
+    Compiler and analyzer diagnostics are build-breaking so safety-critical code
+    cannot accumulate warnings. Cosmetic style rules (IDE*) are deliberately not
+    enforced here — those stay with the `dotnet format` step in CI.
+  -->
+  <PropertyGroup>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+
+</Project>

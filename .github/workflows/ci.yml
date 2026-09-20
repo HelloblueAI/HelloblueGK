@@ -123,17 +123,23 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
       
-    # Soft until a dedicated format PR lands; restore/format OOMs on some local hosts.
+    # The solution argument is required: without it dotnet format aborts because
+    # the repository root holds both a project file and a solution file. Still
+    # advisory while the IDE0161 file-scoped-namespace pass is outstanding.
     - name: Check code formatting
-      run: dotnet format --verify-no-changes --verbosity minimal
+      run: dotnet format HelloblueGK.sln --verify-no-changes --verbosity minimal
       continue-on-error: true
       
+    # Style rules stay advisory here. Compiler and analyzer diagnostics are the
+    # hard gate, enforced for every project by Directory.Build.props in the
+    # Build and Test job.
     - name: Run code analysis
       run: >
         dotnet build --no-restore --configuration Release
         /p:RunAnalyzers=true
         /p:AnalysisLevel=latest
         /p:EnforceCodeStyleInBuild=true
+        /p:TreatWarningsAsErrors=false
 
   security-scan:
     name: Security Scan

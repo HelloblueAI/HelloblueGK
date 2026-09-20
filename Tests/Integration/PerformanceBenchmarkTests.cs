@@ -28,7 +28,7 @@ public class PerformanceBenchmarkTests
     }
 
     [Fact]
-    public async Task PerformanceMonitoring_RecordMetric_ShouldBeFast()
+    public void PerformanceMonitoring_RecordMetric_ShouldBeFast()
     {
         // Arrange
         const int iterations = 10000;
@@ -245,7 +245,7 @@ public class PerformanceBenchmarkTests
     }
 
     [Fact]
-    public async Task ResourceCleanup_ShouldNotLeakResources()
+    public void ResourceCleanup_ShouldNotLeakResources()
     {
         // Arrange
         var initialHandleCount = Process.GetCurrentProcess().HandleCount;

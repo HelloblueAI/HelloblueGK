@@ -1,6 +1,9 @@
 # Code Owners for HelloblueGK
 # This file defines code owners who will be requested for review on PRs
 
+# Certification evidence gates — safety-critical, always needs an owner review
+/Certification/ @HelloblueAI/hb-nlp-research-lab
+
 # Core system components
 /Core/ @HelloblueAI/hb-nlp-research-lab
 /Aerospace/ @HelloblueAI/hb-nlp-research-lab
