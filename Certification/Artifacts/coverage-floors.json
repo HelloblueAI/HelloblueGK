@@ -2,10 +2,11 @@
   "schemaVersion": 1,
   "description": [
     "Per-directory coverage floors enforced directly in CI from the Cobertura report that",
-    "dotnet test produces. These are the authoritative floors for this repository.",
-    "The equivalent targets in codecov.yml are for dashboards and PR comments only;",
-    "Codecov has never successfully processed a report for this project, so nothing there",
-    "is load-bearing.",
+    "dotnet test produces. These are the only coverage floors this repository has.",
+    "Codecov previously held an equivalent set of targets in codecov.yml. It accepted every",
+    "upload and processed none of them, leaving each commit in an error state with an empty",
+    "report, so it never posted a status and the targets enforced nothing. Both the upload",
+    "step and that config were removed rather than left in place looking like a gate.",
     "Each floor sits roughly a point below measured coverage so it ratchets against",
     "regression without blocking current work. Raise a floor when its directory improves.",
     "Branch percentages are computed from Cobertura condition outcomes, deduplicating",
@@ -18,8 +19,8 @@
     "overallBranchCoverage": 50.82
   },
   "overall": {
-    "minLineCoverage": 48.0,
-    "minBranchCoverage": 50.0
+    "minLineCoverage": 49.0,
+    "minBranchCoverage": 51.0
   },
   "directories": [
     {
@@ -49,8 +50,8 @@
     },
     {
       "path": "Core",
-      "minLineCoverage": 44.0,
-      "minBranchCoverage": 31.0,
+      "minLineCoverage": 46.0,
+      "minBranchCoverage": 33.0,
       "rationale": "Largest directory at 8021 lines. Measured 44.91% line, 32.41% branch."
     },
     {
