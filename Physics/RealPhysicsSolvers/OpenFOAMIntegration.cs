@@ -9,8 +9,8 @@ using HB_NLP_Research_Lab.Core;
 namespace HB_NLP_Research_Lab.Physics.RealPhysicsSolvers
 {
     /// <summary>
-    /// Real OpenFOAM Integration for High-Fidelity CFD Analysis
-    /// Enterprise-Grade Computational Fluid Dynamics Solver
+    /// OpenFOAM integration for CFD analysis. Fidelity depends entirely on the
+    /// OpenFOAM case supplied; this class does not itself validate results.
     /// </summary>
     public class OpenFOAMIntegration : IPhysicsSolver
     {

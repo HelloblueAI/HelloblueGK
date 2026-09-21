@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 HB-NLP Research Lab - Advanced Aerospace Engine Design Image Generator
-Creates a stunning enterprise-grade technical diagram that amazes big tech companies
+Creates a technical diagram of the engine concept
 """
 
 import matplotlib.pyplot as plt
@@ -211,19 +211,17 @@ def create_advanced_engine_diagram():
     title.set_path_effects([path_effects.withStroke(linewidth=4, foreground='#ffaa00')])
     
     # Add advanced subtitle
-    subtitle = ax.text(10, 10.6, 'BEYOND SPACEX CAPABILITIES - WORLD\'S MOST ADVANCED TECHNOLOGY', 
+    subtitle = ax.text(10, 10.6, 'CONCEPT DESIGN - NOT BUILT, TESTED, OR CERTIFIED', 
                       ha='center', fontsize=14, fontweight='bold', color='#ffaa00')
     
     # Add enterprise specifications with professional styling
     specs = [
-        'Thrust: 2,300 kN (Advanced)',
-        'Specific Impulse: 350 s (Beyond Industry Standard)', 
-        'Chamber Pressure: 300 bar (Ultra-High Performance)',
-        'Propellant: Methane/LOX (Next-Generation)',
-        'Expansion Ratio: 40:1 (Advanced Design)',
-        'Mass Flow Rate: 650 kg/s (High-Efficiency)',
-        'Innovation Score: 98.0% (Advanced)',
-        'AI Accuracy: 99.9% (Industry Leading)'
+        'Thrust: 2,300 kN',
+        'Specific Impulse: 350 s',
+        'Chamber Pressure: 300 bar',
+        'Propellant: Methane/LOX',
+        'Expansion Ratio: 40:1',
+        'Mass Flow Rate: 650 kg/s',
     ]
     
     for i, spec in enumerate(specs):
@@ -249,15 +247,14 @@ def create_advanced_engine_diagram():
                     alpha=0.95, edgecolor='#ffaa00', linewidth=3))
     
     # Add performance metrics with stunning styling
-    metrics_text = """ENTERPRISE PERFORMANCE METRICS:
-• Innovation Score: 98.0% (Advanced)
-• AI Accuracy: 99.9% (Industry Leading)
-• Multi-Physics Efficiency: 97.0% (Advanced)
-• Digital Twin Accuracy: 99.900% (Breakthrough)
-• Quantum Advantage: Achieved (First Ever)
-• Reliability: 99.5% (Beyond Industry Standard)
-• Scalability: 10/10 (Enterprise Grade)
-• Production Ready: YES (Live Deployment)"""
+    metrics_text = """DECLARED DESIGN PARAMETERS:
+• Thrust: 3.5 MN
+• Specific impulse: 420 s
+• Chamber pressure: 280 bar
+• Expansion ratio: 28.5:1
+• Propellant: methane / LOX
+
+Concept design. Not measured, tested, or certified."""
     
     ax.text(16, 1, metrics_text, fontsize=11, color='white',
            bbox=dict(boxstyle="round,pad=0.6", facecolor="#222222", 

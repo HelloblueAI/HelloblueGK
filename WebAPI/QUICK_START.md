@@ -88,5 +88,5 @@ The `wwwroot` directory is now created. This warning will disappear on next run.
 
 ---
 
-**Enjoy your enterprise-grade aerospace engine simulation API!** 🚀
+**Enjoy the aerospace engine simulation API!** 🚀
 

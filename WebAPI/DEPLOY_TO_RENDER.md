@@ -149,7 +149,7 @@ Update your README.md with your live URL:
 - ✅ **Global CDN** - Fast worldwide
 - ✅ **Auto-scaling** - Handles traffic spikes
 - ✅ **Zero maintenance** - Render manages everything
-- ✅ **Professional** - Enterprise-grade infrastructure
+- ✅ **Managed** - Render handles TLS, builds, and restarts
 
 ---
 
@@ -308,5 +308,5 @@ Every time you push to `main` branch:
 *Deployment time: ~15 minutes*  
 *Maintenance: Zero*  
 *Cost: Free to start*  
-*Quality: Enterprise-grade*
+
 

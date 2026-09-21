@@ -66,28 +66,28 @@ namespace HB_NLP_Research_Lab
                 var isReadyForMissionCritical = await aerospaceReadiness.IsReadyForMissionCriticalOperationsAsync();
 
                 Console.WriteLine("\n🎯 READINESS EVALUATION RESULTS:");
-                Console.WriteLine("================================================================================\n");
+                Console.WriteLine("================================================================================");
+                Console.WriteLine("Scores below are computed from the declared design inputs in this repository.");
+                Console.WriteLine("They are not measurements, test results, or certification findings.\n");
 
                 if (isReadyForAdvanced)
                 {
-                    Console.WriteLine("✅ ADVANCED AEROSPACE READY");
-                    Console.WriteLine("   - Ready for advanced aerospace applications");
-                    Console.WriteLine("   - Meets industry-leading standards");
-                    Console.WriteLine("   - Suitable for research and development");
+                    Console.WriteLine("✅ ADVANCED THRESHOLD MET");
+                    Console.WriteLine("   - The assessment's advanced-aerospace score threshold is met");
+                    Console.WriteLine("   - Intended for research and development use");
                 }
 
                 if (isReadyForMissionCritical)
                 {
-                    Console.WriteLine("🚀 MISSION-CRITICAL OPERATIONS READY");
-                    Console.WriteLine("   - Ready for mission-critical operations");
-                    Console.WriteLine("   - Meets human-rated safety standards");
-                    Console.WriteLine("   - Suitable for operational missions");
-                    Console.WriteLine("   - Compliant with all aerospace regulations");
+                    Console.WriteLine("🚀 MISSION-CRITICAL THRESHOLD MET");
+                    Console.WriteLine("   - The assessment's mission-critical score threshold is met");
+                    Console.WriteLine("   - This is a score against declared inputs, not a safety case");
+                    Console.WriteLine("   - Operational use requires your own qualification program");
                 }
 
                 if (!isReadyForAdvanced && !isReadyForMissionCritical)
                 {
-                    Console.WriteLine("⚠️  ADDITIONAL DEVELOPMENT REQUIRED");
+                    Console.WriteLine("⚠️  THRESHOLDS NOT MET");
                     Console.WriteLine("   - Some readiness criteria not met");
                     Console.WriteLine("   - Review recommendations for improvement");
                     Console.WriteLine("   - Continue development and testing");
@@ -138,10 +138,10 @@ namespace HB_NLP_Research_Lab
 
                 if (isReadyForMissionCritical)
                 {
-                    Console.WriteLine("🏆 ACHIEVEMENT: MISSION-CRITICAL READINESS ACHIEVED!");
-                    Console.WriteLine("   Your platform is ready for the most demanding aerospace applications.");
-                    Console.WriteLine("   All critical safety, quality, and compliance standards have been met.");
-                    Console.WriteLine("   Ready for human-rated operations and mission-critical deployments.\n");
+                    Console.WriteLine("🏆 MISSION-CRITICAL SCORE THRESHOLD MET");
+                    Console.WriteLine("   Every criterion this assessment models scored above its threshold.");
+                    Console.WriteLine("   The criteria are derived from declared inputs, not from testing, so this");
+                    Console.WriteLine("   is not evidence of flight, safety, or regulatory readiness.\n");
                 }
                 else if (isReadyForAdvanced)
                 {
@@ -159,7 +159,7 @@ namespace HB_NLP_Research_Lab
                 }
 
                 Console.WriteLine("🚀 HB-NLP Research Lab - Advanced Aerospace Technology");
-                Console.WriteLine("   Beyond Current Capabilities - World's Most Advanced Engine Design Platform");
+                Console.WriteLine("   Concept design exploration - see Docs/VERIFICATION_SCOPE.md for limits");
                 
                 // Display enhanced features status
                 Console.WriteLine("\n🔧 ENHANCED FEATURES STATUS:");

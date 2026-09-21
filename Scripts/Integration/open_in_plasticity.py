@@ -193,7 +193,7 @@ export_step(engine_assembly, "{self.engine_name}_3d_model.step")
 - **Temperature**: {self.design_data['performance_metrics']['temperature']}°C
 - **Power Consumption**: {self.design_data['performance_metrics']['power_consumption']} W
 
-## Status: PRODUCTION READY ✅
+## Status: working
 """
 
         summary_file = self.design_dir / "design_summary.md"

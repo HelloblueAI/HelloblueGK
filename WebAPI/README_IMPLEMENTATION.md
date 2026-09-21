@@ -2,7 +2,7 @@
 
 ## 🎉 New Features Implemented
 
-This document describes all the enterprise-grade features that have been added to the HelloblueGK WebAPI.
+This document describes the features that have been added to the HelloblueGK WebAPI.
 
 ---
 

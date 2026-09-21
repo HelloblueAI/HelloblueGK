@@ -29,6 +29,6 @@ This directory contains all deployment-related documentation and guides for the 
 1. **Render (Recommended)** - Cloud platform, 15-minute setup
 2. **Docker** - Containerized deployment
 3. **Systemd** - Linux service deployment (see WebAPI docs)
-4. **Kubernetes** - Enterprise orchestration (see k8s-deployment.yaml)
+4. **Kubernetes** - Container orchestration (see `k8s-deployment.yaml` for a generic example)
 
-For production deployments, see `PRODUCTION_READY.md` in the Project directory.
+Render is the supported path; see [DEPLOY_TO_RENDER.md](DEPLOY_TO_RENDER.md).

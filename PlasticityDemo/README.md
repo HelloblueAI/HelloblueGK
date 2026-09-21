@@ -76,4 +76,4 @@ dotnet run
 
 ---
 
-*HB-NLP Research Lab - Beyond SpaceX Capabilities* 
+*HB-NLP Research Lab*
