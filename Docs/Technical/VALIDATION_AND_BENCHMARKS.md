@@ -1,156 +1,121 @@
 # Validation and Benchmarks
 
-## Executive Summary
+This document records what has actually been validated in this repository, and against what. Every
+figure below is either produced by a test in `Tests/` or read from a version-controlled artifact, so
+it can be reproduced from a clean checkout. Where something is not validated, it is listed as not
+validated rather than omitted.
 
-This document provides validated performance metrics, benchmarking data, and industry-standard validation results for the HelloblueGK aerospace engine simulation platform. All data presented has been verified through industry-standard testing methodologies.
+`Docs/VERIFICATION_SCOPE.md` is the companion document: it describes which parts of the codebase
+contain verified logic and which are simulation scaffolding.
 
-## Performance Benchmarks
+## Validated: quasi-1D nozzle performance against published engine data
 
-### Computational Performance
+`Physics/IdealRocketNozzle.cs` implements quasi-one-dimensional isentropic nozzle flow after Sutton
+and Biblarz, *Rocket Propulsion Elements*, 9th ed., chapters 3 and 5, and NASA SP-8120. Given
+published chamber conditions and expansion ratios, it reproduces the published specific impulse of
+three flight engines.
 
-| Metric | Measured Value | Industry Benchmark | Status |
-|--------|----------------|-------------------|---------|
-| **CFD Mesh Resolution** | 1M-10M elements | 100K-50M elements | ✅ Competitive |
-| **Thermal Analysis Nodes** | 500K-2M nodes | 100K-10M nodes | ✅ Competitive |
-| **Structural Analysis Elements** | 250K-1M elements | 100K-5M elements | ✅ Competitive |
-| **Simulation Speed** | 100K-1M calc/sec | 5K-200K calc/sec | ✅ **Industry Leading** |
-| **Memory Usage** | 8-32 GB RAM | 4-64 GB RAM | ✅ Standard |
-| **Parallel Processing** | 8-64 cores | 4-128 cores | ✅ **Highly Scalable** |
-| **AI Optimization** | Multi-stage ML | Single-stage | ✅ **Innovative** |
-| **Real-Time Validation** | Live data integration | Batch processing | ✅ **Advanced** |
+| Engine | Published Isp | Computed | Delta |
+|--------|---------------|----------|-------|
+| Merlin 1D, sea level | 282.0 s | 284.2 s | +0.79% |
+| Raptor, sea level | 330.0 s | 332.7 s | +0.83% |
+| RS-25, vacuum | 452.3 s | 453.0 s | +0.15% |
 
-### Validation Results
+Source: `Tests/Unit/Physics/IdealRocketNozzleTests.cs`,
+`Solve_ReproducesPublishedSpecificImpulseOfFlightEngines`.
 
-#### CFD Validation
-- **Laminar Flow**: 98.2% accuracy vs. analytical solutions
-- **Turbulent Flow**: 95.1% accuracy vs. experimental data
-- **Boundary Layer**: 96.8% accuracy vs. wind tunnel data
-- **Shock Waves**: 92.3% accuracy vs. supersonic test data
+The direction of the error matters more than its size. Ideal theory assumes complete combustion, no
+friction, no heat loss, and fully axial exit flow, so it must *overpredict* a real engine. All three
+deltas are positive, and a separate test
+(`Solve_DoesNotUnderpredictRealEnginePerformance`) asserts this one-sided bound directly. A model
+that matched published values exactly, or came in below them, would indicate an error in the
+relations or in the propellant properties rather than a better model.
 
-#### Thermal Analysis Validation
-- **Heat Transfer**: 94.7% accuracy vs. thermal test data
-- **Thermal Stress**: 91.8% accuracy vs. structural test data
-- **Cooling Systems**: 93.2% accuracy vs. engine test data
+The assertion band in the test is 3% rather than 1%, deliberately wider than the agreement observed,
+because a tolerance tight enough to exclude the physical loss margin would be pinning coincidence
+rather than testing the model.
 
-#### Structural Analysis Validation
-- **Static Loading**: 96.1% accuracy vs. tensile test data
-- **Fatigue Analysis**: 89.4% accuracy vs. cyclic test data
-- **Buckling Analysis**: 92.7% accuracy vs. compression test data
+### Invariants pinned by test
 
-## Industry Standards Compliance
+These are properties of the physics rather than comparisons to data, and each is enforced by a test:
 
-### Software Quality Metrics
+- **Scale invariance** — thrust scales linearly with throat area while specific impulse does not
+  change, since Isp is intensive.
+- **Vacuum exceeds sea level** — for identical geometry, vacuum thrust and Isp both exceed sea-level
+  values.
+- **Thrust coefficient bounds** — stays within 1.0 to 2.3 across the tested envelope.
+- **Characteristic velocity ordering** — computed c* falls in the published 1,700–2,350 m/s band and
+  orders propellant combinations correctly, with hydrogen highest because its products are lightest.
+- **Area–Mach round trip** — `ExitMachNumber` and `AreaRatioForMach` invert each other.
+- **Internal consistency** — specific impulse and effective exhaust velocity agree by construction.
 
-| Metric | Target | Achieved | Status |
-|--------|--------|----------|---------|
-| **Code Coverage** | ≥90% | 95.2% | ✅ Exceeds |
-| **Cyclomatic Complexity** | ≤10 | 6.8 | ✅ Exceeds |
-| **Maintainability Index** | ≥65 | 78.3 | ✅ Exceeds |
-| **Technical Debt Ratio** | ≤5% | 3.2% | ✅ Exceeds |
+`Physics/IdealRocketNozzle.cs`, `Physics/EngineOperatingPoint.cs`, and `Physics/NozzleFlowSolver.cs`
+are at 100% line and 100% branch coverage.
 
-### Aerospace Standards
+## Validated: certification tooling behaviour
 
-| Standard | Requirement | Implementation | Status |
-|----------|-------------|----------------|---------|
-| **DO-178C** | Level A | Level A compliant | ✅ Compliant |
-| **AS9100** | Quality Management | Full implementation | ✅ Compliant |
-| **NASA NPR 7150.2** | Class A | Class A compliant | ✅ Compliant |
-| **FIPS 140-2** | Level 2 | Level 2 compliant | ✅ Compliant |
+The certification systems under `Certification/` are verified to fail closed: placeholder identity
+tokens, missing separation of duties, unverified evidence, and vacuous requirement text are all
+rejected rather than silently accepted. This is behavioural verification of the tooling, and is not
+a statement that any artifact produced by it has been accepted by a certification authority.
 
-## Real-World Validation
+The DO-178C Level A gate in `Tools/CertificationGate/` runs in CI against a deliberately narrow
+declared boundary in `Certification/Artifacts/certification-boundary.json`. It verifies statement
+and decision coverage, MC/DC with recorded independence pairs, requirements traceability, and
+per-directory coverage floors. The boundary currently contains **one file**. The gate's own output
+states what a pass does and does not establish.
 
-### Engine Performance Validation
+## Measured: coverage
 
-#### Raptor Engine Comparison
-| Parameter | SpaceX Raptor | HB-NLP Simulation | Accuracy |
-|-----------|---------------|-------------------|----------|
-| **Thrust (kN)** | 2,300 | 2,287 | 99.4% |
-| **Specific Impulse (s)** | 350 | 347 | 99.1% |
-| **Chamber Pressure (bar)** | 300 | 298 | 99.3% |
+`Certification/Artifacts/coverage-floors.json` holds the authoritative, CI-enforced minimum line and
+branch coverage per directory. It is checked on every run from the Cobertura report that
+`dotnet test` produces, so it cannot drift from reality without failing the build.
 
-#### Merlin Engine Comparison
-| Parameter | SpaceX Merlin | HB-NLP Simulation | Accuracy |
-|-----------|---------------|-------------------|----------|
-| **Thrust (kN)** | 845 | 839 | 99.3% |
-| **Specific Impulse (s)** | 282 | 280 | 99.3% |
-| **Chamber Pressure (bar)** | 98 | 97 | 99.0% |
+Read that file for current values rather than relying on a number transcribed here. Coverage across
+`Aerospace/` and `AI/` is low by design: much of those directories is specification data and demo
+scaffolding with no decisions in it, and `VERIFICATION_SCOPE.md` explains why raising those numbers
+by testing stubs would be misleading rather than useful.
 
-### Material Properties Validation
+## Not validated
 
-| Material | Property | Literature Value | HB-NLP Value | Accuracy |
-|----------|----------|------------------|--------------|----------|
-| **Inconel 718** | Tensile Strength (MPa) | 1,240 | 1,238 | 99.8% |
-| **Titanium 6Al-4V** | Yield Strength (MPa) | 825 | 821 | 99.5% |
-| **Carbon-Carbon** | Density (kg/m³) | 1,800 | 1,802 | 99.9% |
+Listed explicitly, because their absence is easy to mistake for an oversight.
 
-## Benchmarking Methodology
+- **The legacy CFD, thermal, and structural solvers do not consume their inputs.** `AdvancedCFDSolver`
+  and `AdvancedStructuralSolver` accept a `model` parameter and ignore it, so their outputs are fixed
+  constants rather than analyses of the system passed in. No comparison against wind tunnel data,
+  engine test data, or analytical solutions has been performed for them. `NozzleFlowSolver` is the
+  only solver that computes from its inputs.
+- **No material property model exists.** Material temperature and strength figures in the engine
+  definitions are declared constants, not predictions, and nothing validates them against literature
+  databases.
+- **The concept engine's declared parameters are internally inconsistent.** Its expansion ratio,
+  thrust, and specific impulse disagree with each other and with first-principles theory; see
+  `VERIFICATION_SCOPE.md` and `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`. These figures
+  should not be cited as the specification of anything.
+- **No performance or throughput benchmarking has been conducted.** There are no measured figures for
+  mesh sizes, calculations per second, memory footprint, or parallel scaling.
 
-### CFD Validation Process
-1. **Analytical Solutions**: Comparison with known analytical solutions for simple geometries
-2. **Experimental Data**: Validation against published wind tunnel and engine test data
-3. **Industry Standards**: Comparison with industry-standard CFD validation cases
-4. **Grid Convergence**: Systematic grid refinement studies to ensure numerical accuracy
+## Standards posture
 
-### Thermal Analysis Validation
-1. **Heat Transfer**: Validation against published heat transfer correlations
-2. **Thermal Stress**: Comparison with structural analysis software results
-3. **Cooling Systems**: Validation against engine cooling system test data
+The repository implements workflows *oriented toward* the standards below and, where noted, systems
+that *evaluate* compliance against them. Nothing here constitutes certification, qualification, or
+third-party assessment, and none has been sought or granted.
 
-### Structural Analysis Validation
-1. **Material Properties**: Verification against material property databases
-2. **Loading Conditions**: Validation against published structural test data
-3. **Failure Modes**: Comparison with experimental failure analysis results
+| Standard | What exists in this repository |
+|----------|-------------------------------|
+| DO-178C | Objectives-oriented tooling, and a Level A gate over a one-file declared boundary |
+| NASA NPR 7150.2 | Workflow structure oriented to its software engineering requirements |
+| AS9100 / ISO 9001 | `Core/QualityAssuranceSystem.cs` implements audit checks that evaluate these criteria and can report non-compliance |
+| FIPS 140-2 | `Aerospace/AerospaceComplianceSystem.cs` implements a compliance *check*. The Community Edition makes no FIPS claim and is not validated |
 
-## Performance Limitations
+A compliance check that can fail is a tool. It is not evidence that the project passes it.
 
-### Current Limitations
-- **Quantum Computing**: Framework ready, but no quantum hardware integration yet
-- **Real-Time Performance**: Limited by classical computing constraints
-- **Material Discovery**: Theoretical framework implemented, experimental validation pending
-- **Nuclear Propulsion**: Conceptual design complete, detailed analysis pending
+## Reproducing these results
 
-### Future Enhancements
-- **Quantum Integration**: Ready for quantum computing hardware integration
-- **Advanced Materials**: Framework for novel material property prediction
-- **Real-Time Optimization**: Enhanced algorithms for faster convergence
-- **Multi-Physics Coupling**: Improved coupling algorithms for complex interactions
+```bash
+dotnet test Tests/HelloblueGK.Tests.csproj -c Release
+```
 
-## Enhanced Capabilities
-
-### **High-Performance Physics Engine**
-- **Parallel Processing**: Multi-core optimization with 100K-1M calc/sec performance
-- **Real-Time Analysis**: Live performance monitoring and optimization
-- **Advanced Solvers**: High-fidelity CFD, thermal, and structural analysis
-- **Performance Optimization**: 95% optimization level with real-time tuning
-
-### **Real-Time Validation Engine**
-- **Live Data Integration**: Real-time validation against flight and test stand data
-- **Multi-Source Validation**: Flight telemetry, test stand data, industry standards
-- **Caching System**: Intelligent caching for performance optimization
-- **Confidence Scoring**: Real-time confidence level assessment
-
-### **Advanced AI Optimization Engine**
-- **Multi-Stage Optimization**: Genetic algorithms, neural networks, multi-objective optimization
-- **Performance Prediction**: AI-driven performance forecasting with 85-100% confidence
-- **Innovation Analysis**: Novelty and feasibility scoring for design innovation
-- **Continuous Learning**: Adaptive optimization based on simulation results
-
-## Validation Summary
-
-The HelloblueGK platform demonstrates:
-- ✅ **Industry-Leading Performance**: 100K-1M calc/sec simulation speed
-- ✅ **Real-Time Validation**: Live integration with flight and test data
-- ✅ **Advanced AI Capabilities**: Multi-stage machine learning optimization
-- ✅ **High-Fidelity Analysis**: 90-98% accuracy across all analysis types
-- ✅ **Industry Compliance**: Full compliance with aerospace standards
-- ✅ **Scalable Architecture**: Ready for enterprise deployment
-- ✅ **Future-Ready**: Framework prepared for quantum computing integration
-
-## Conclusion
-
-The validation results demonstrate that HelloblueGK is a credible, production-ready aerospace simulation platform that meets industry standards and provides validated performance capabilities. The platform is ready for professional use in aerospace engineering applications.
-
----
-
-*HB-NLP Research Lab - Validated Aerospace Technology*
-*Last Updated: 2025*
+The physics validation cases are in `Tests/Unit/Physics/IdealRocketNozzleTests.cs`. The coverage
+floors and certification boundary are evaluated by `Tools/CertificationGate/` in CI; see
+`.github/workflows/ci.yml` for the exact invocation.

@@ -267,7 +267,11 @@ Example: `/api/v1/Auth/login`
 ## Best Practices
 
 ### 1. Token Management
-- Store tokens securely (never in localStorage for web apps)
+- Store tokens securely. For web apps, keep the token in memory rather than in `localStorage` or
+  `sessionStorage`: both are readable by any script on the page, so a single XSS flaw leaks the
+  token, and it survives there until explicitly cleared.
+- To persist a session across page reloads, have the server issue an `HttpOnly`, `Secure`,
+  `SameSite` cookie. JavaScript cannot read it, which is the point.
 - Refresh tokens before expiration
 - Handle token expiration gracefully
 
@@ -291,6 +295,11 @@ Example: `/api/v1/Auth/login`
 ### JavaScript/TypeScript
 
 ```javascript
+// Held in module scope so it never reaches localStorage, where any script on the
+// page could read it. It is lost on reload by design; see Token Management above
+// for persisting a session with an HttpOnly cookie instead.
+let accessToken = null;
+
 // Login
 async function login(username, password) {
   const response = await fetch('https://hellobluegk.onrender.com/api/v1/Auth/login', {
@@ -306,16 +315,15 @@ async function login(username, password) {
   }
   
   const data = await response.json();
-  localStorage.setItem('token', data.token);
+  accessToken = data.token;
   return data;
 }
 
 // Authenticated Request
 async function getCurrentUser() {
-  const token = localStorage.getItem('token');
   const response = await fetch('https://hellobluegk.onrender.com/api/v1/Auth/me', {
     headers: {
-      'Authorization': `Bearer ${token}`
+      'Authorization': `Bearer ${accessToken}`
     }
   });
   
