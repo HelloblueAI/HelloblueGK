@@ -104,7 +104,7 @@ This project is now on the path to becoming **certified production flight softwa
 ### Current State
 - ✅ **Foundation systems:** All implemented
 - ✅ **Code compiles:** Yes, all systems ready
-- ✅ **Architecture:** Production-ready
+- **Architecture:** Layered, with tests covering the certification workflows
 - ⏳ **Integration:** Next step
 
 ### Path Forward

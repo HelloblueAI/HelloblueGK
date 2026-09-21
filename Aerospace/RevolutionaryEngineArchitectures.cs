@@ -10,7 +10,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 {
     /// <summary>
     /// Revolutionary Engine Architectures
-    /// World's Most Advanced Engine Design Concepts Beyond Current Technology
+    /// Speculative engine architecture concepts. Not analysed or validated.
     /// </summary>
     public class RevolutionaryEngineArchitectures
     {

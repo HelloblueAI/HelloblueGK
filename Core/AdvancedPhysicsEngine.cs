@@ -9,7 +9,8 @@ namespace HB_NLP_Research_Lab.Core
 {
     /// <summary>
     /// Advanced Physics Engine for Enterprise Aerospace Applications
-    /// World's Most Advanced Multi-Physics Solver with Real-World Validation
+    /// Multi-physics orchestration layer. See Docs/VERIFICATION_SCOPE.md for which
+    /// solvers are verified and which are simulation scaffolding.
     /// </summary>
     public class AdvancedPhysicsEngine : IAdvancedPhysicsEngine
     {

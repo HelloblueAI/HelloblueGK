@@ -88,7 +88,7 @@ builder.Services.AddSwaggerGen(c =>
     {
         Title = "HelloblueGK Aerospace Engine Simulation API",
         Version = "v1",
-        Description = "Advanced aerospace engine simulation platform with multi-physics coupling, AI optimization, and enterprise-grade compliance.",
+        Description = "Aerospace engine simulation platform with multi-physics coupling, AI optimization, and certification-workflow APIs. Not certified flight software.",
         Contact = new OpenApiContact
         {
             Name = "HB-NLP Research Lab",

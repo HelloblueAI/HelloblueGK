@@ -4,7 +4,6 @@ This directory contains automation scripts for deploying the HelloblueGK platfor
 
 ## Scripts
 
-- **`deploy-production.sh`** - Deploy to production environment
 - **`deploy-to-render.sh`** - Deploy to Render cloud platform using Render CLI
 - **`verify-deployment.sh`** - Verify deployment health and accessibility
 
@@ -15,11 +14,6 @@ This directory contains automation scripts for deploying the HelloblueGK platfor
 ./deploy-to-render.sh
 ```
 Requires Render CLI to be installed and authenticated. See deployment documentation for setup.
-
-### Production Deployment
-```bash
-./deploy-production.sh
-```
 
 ### Verify Deployment
 ```bash

@@ -7,7 +7,7 @@
 - 30+ endpoints operational
 - Database connected (PostgreSQL)
 - Health checks passing
-- Production-ready
+- Suitable for a reference deployment
 
 ❌ **Railway**: Health check failing
 - Build succeeds

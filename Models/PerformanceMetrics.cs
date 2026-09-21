@@ -6,7 +6,6 @@ namespace HB_NLP_Research_Lab.Models
 {
     /// <summary>
     /// Comprehensive performance metrics for aerospace engines
-    /// Enterprise-grade metrics for SpaceX, NASA, and Boeing applications
     /// </summary>
     public class PerformanceMetrics
     {
