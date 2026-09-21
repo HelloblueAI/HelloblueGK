@@ -52,6 +52,8 @@ public static class CertificationDatabaseInitializer
     
     private static async Task EnsureTablesExistAsync(DbContext context, ILogger logger)
     {
+        var contextName = context.GetType().Name;
+
         try
         {
             // First ensure database exists
@@ -63,84 +65,186 @@ public static class CertificationDatabaseInitializer
                 logger.LogInformation("Database created: {Created}", created);
                 return;
             }
-            
-            // Database exists, but tables might not
-            // For multiple DbContexts sharing the same database, EnsureCreated() 
-            // returns false if database exists, even if tables don't exist
-            // We need to force table creation by attempting to use the context
-            
-            // Try to query the first entity to force table creation
-            var model = context.Model;
-            var entityTypes = model.GetEntityTypes().ToList();
-            
-            if (entityTypes.Any())
+
+            // Every table in the model is probed, not just the first one. Probing a single table
+            // hid tables added to a context after its schema was first created: the probe passed
+            // on the pre-existing table, so the missing ones were never created and every call
+            // that touched them failed at runtime.
+            var missing = new List<TableName>();
+            foreach (var table in ModelTables(context))
             {
-                // Get table name for first entity
-                var firstEntity = entityTypes.First();
-                var tableName = firstEntity.GetTableName();
-                
-                if (!string.IsNullOrEmpty(tableName))
+                if (!await TableExistsAsync(context, table))
                 {
-                    // Check if table exists by querying it
-                    try
-                    {
-                        // Try to query the table - this will fail if it doesn't exist
-                        var sql = $"SELECT COUNT(*) FROM \"{tableName}\"";
-                        await context.Database.ExecuteSqlRawAsync(sql);
-                        logger.LogInformation("Table {TableName} exists", tableName);
-                    }
-                    catch
-                    {
-                        // Table doesn't exist - we need to create it manually
-                        // EnsureCreated() won't work because database already exists
-                        logger.LogInformation("Table {TableName} does not exist, creating...", tableName);
-                        
-                        // Use Database.EnsureCreatedAsync() which should create tables even if DB exists
-                        // But if that fails, we'll need to use migrations or manual SQL
-                        try
-                        {
-                            // Force table creation by dropping and recreating the database schema
-                            // This is a workaround - in production, use migrations
-                            var created = await context.Database.EnsureCreatedAsync();
-                            
-                            if (!created)
-                            {
-                                // EnsureCreated returned false, but we know table doesn't exist
-                                // Try to create tables using the model
-                                logger.LogWarning("EnsureCreated returned false, but table doesn't exist. Attempting manual creation...");
-                                
-                                // Generate SQL from model and execute it
-                                var sql = context.Database.GenerateCreateScript();
-                                if (!string.IsNullOrEmpty(sql))
-                                {
-                                    // Execute the create script
-                                    await context.Database.ExecuteSqlRawAsync(sql);
-                                    logger.LogInformation("Tables created manually using model SQL");
-                                }
-                            }
-                            else
-                            {
-                                logger.LogInformation("Tables created successfully. Created: {Created}", created);
-                            }
-                        }
-                        catch (Exception createEx)
-                        {
-                            logger.LogError(createEx, "Failed to create table {TableName}. Error: {Error}", tableName, createEx.Message);
-                            // Continue - tables might be created on first use
-                        }
-                    }
+                    missing.Add(table);
                 }
             }
-            
+
+            if (missing.Count == 0)
+            {
+                logger.LogInformation("All {Count} tables for {ContextType} exist", ModelTables(context).Count, contextName);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Missing tables for {ContextType}: {Tables}. Creating...",
+                    contextName,
+                    string.Join(", ", missing));
+
+                // EnsureCreated returns false when the database already exists, even if this
+                // context's tables are absent, which is the normal case when several contexts
+                // share one database.
+                if (await context.Database.EnsureCreatedAsync())
+                {
+                    logger.LogInformation("Schema for {ContextType} created", contextName);
+                }
+                else
+                {
+                    await CreateMissingTablesAsync(context, logger);
+                }
+
+                var stillMissing = new List<TableName>();
+                foreach (var table in missing)
+                {
+                    if (!await TableExistsAsync(context, table))
+                    {
+                        stillMissing.Add(table);
+                    }
+                }
+
+                if (stillMissing.Count > 0)
+                {
+                    logger.LogError(
+                        "Tables still missing for {ContextType} after creation: {Tables}",
+                        contextName,
+                        string.Join(", ", stillMissing));
+                }
+                else
+                {
+                    logger.LogInformation("Created {Count} missing tables for {ContextType}", missing.Count, contextName);
+                }
+            }
+
             // Verify connection works
             await context.Database.ExecuteSqlRawAsync("SELECT 1");
             logger.LogInformation("Database connection verified");
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error ensuring tables exist for {ContextType}: {Error}", context.GetType().Name, ex.Message);
+            logger.LogError(ex, "Error ensuring tables exist for {ContextType}: {Error}", contextName, ex.Message);
             // Don't throw - allow application to continue
         }
+    }
+
+    /// <summary>
+    /// The generated create script covers the whole context, so it necessarily includes tables
+    /// that are already present. PostgreSQL aborts an entire batch on the first duplicate, which
+    /// is why running the script as one statement created nothing. Each statement therefore runs
+    /// on its own, and one that reports an object already exists is skipped rather than fatal.
+    /// </summary>
+    private static async Task CreateMissingTablesAsync(DbContext context, ILogger logger)
+    {
+        var script = context.Database.GenerateCreateScript();
+        if (string.IsNullOrWhiteSpace(script))
+        {
+            return;
+        }
+
+        var applied = 0;
+        var alreadyPresent = 0;
+
+        foreach (var statement in SplitStatements(script))
+        {
+            try
+            {
+                await context.Database.ExecuteSqlRawAsync(statement);
+                applied++;
+            }
+            catch (Exception ex) when (DescribesExistingObject(ex))
+            {
+                alreadyPresent++;
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "DDL statement failed for {ContextType}: {Statement}",
+                    context.GetType().Name,
+                    Excerpt(statement));
+            }
+        }
+
+        logger.LogInformation(
+            "Applied {Applied} DDL statements for {ContextType}; {AlreadyPresent} objects already existed",
+            applied,
+            context.GetType().Name,
+            alreadyPresent);
+    }
+
+    private static List<TableName> ModelTables(DbContext context) =>
+        context.Model.GetEntityTypes()
+            .Select(entity => new TableName(entity.GetSchema(), entity.GetTableName()))
+            .Where(table => !string.IsNullOrEmpty(table.Table))
+            .Distinct()
+            .ToList();
+
+    private static async Task<bool> TableExistsAsync(DbContext context, TableName table)
+    {
+        // A table identifier cannot be parameterised. The name comes from the EF model rather than
+        // from a request, and Quoted() escapes embedded quotes.
+        var sql = "SELECT COUNT(*) FROM " + table.Quoted();
+
+        try
+        {
+            await context.Database.ExecuteSqlRawAsync(sql);
+            return true;
+        }
+        catch (DbException)
+        {
+            return false;
+        }
+    }
+
+    private static IEnumerable<string> SplitStatements(string script)
+    {
+        foreach (var candidate in System.Text.RegularExpressions.Regex.Split(script, @";[ \t]*(?:\r?\n|$)"))
+        {
+            var statement = candidate.Trim();
+            if (statement.Length > 0)
+            {
+                yield return statement;
+            }
+        }
+    }
+
+    private static bool DescribesExistingObject(Exception exception)
+    {
+        for (Exception? ex = exception; ex is not null; ex = ex.InnerException)
+        {
+            if (ex.Message.Contains("already exists", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static string Excerpt(string statement)
+    {
+        var singleLine = statement.ReplaceLineEndings(" ");
+        return singleLine.Length <= 120 ? singleLine : singleLine[..120] + "...";
+    }
+
+    private readonly record struct TableName(string? Schema, string? Table)
+    {
+        public string Quoted() =>
+            Schema is null
+                ? $"\"{Escape(Table!)}\""
+                : $"\"{Escape(Schema)}\".\"{Escape(Table!)}\"";
+
+        public override string ToString() => Schema is null ? Table! : $"{Schema}.{Table}";
+
+        private static string Escape(string identifier) => identifier.Replace("\"", "\"\"", StringComparison.Ordinal);
     }
 
     /// <summary>
