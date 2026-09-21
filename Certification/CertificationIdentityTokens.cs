@@ -106,15 +106,17 @@ namespace HB_NLP_Research_Lab.Certification
         }
 
         /// <summary>
-        /// Evidence path file identity must contain a letter. Leftover
+        /// Every evidence-path segment must contain a letter. Leftover
         /// punctuation-only / digit-only file stems ("Core/....cs",
         /// "Core/___.cs", "Tests/123.cs") previously satisfied
         /// HasSafeRepositoryPath after placeholder path tokens were rejected.
-        /// The allowed prefix (Core/, Tests/) always has letters and is not
-        /// path identity — only the filename stem is checked. Matching leftover
-        /// Core/Sensors.cs still qualifies. Leftover n/a stays on
-        /// HasPlaceholderPathIdentity (n/a has letters). Do not use this for
-        /// versions (1.0.0) or hex checksums.
+        /// Leftover vacuous directories ("Core/..../Sensors.cs",
+        /// "Core/___/Sensors.cs", "Tests/123/EngineTests.cs",
+        /// "Core/....cs/Sensors.cs") later passed because only the filename
+        /// stem was checked while Sensors / EngineTests have letters. Matching
+        /// leftover Core/Sensors.cs and Tests/Unit/Core/EngineTests.cs still
+        /// qualify. Leftover n/a stays on HasPlaceholderPathIdentity (n/a has
+        /// letters). Do not use this for versions (1.0.0) or hex checksums.
         /// </summary>
         public static bool HasAlphabeticPathIdentity(string? path)
         {
@@ -130,7 +132,9 @@ namespace HB_NLP_Research_Lab.Certification
                 return false;
             }
 
-            return FileStem(segments[^1]).Any(char.IsLetter);
+            // FileStem so leftover Core/....cs/Sensors.cs fails on directory
+            // identity "..." rather than inheriting letters from a fake .cs suffix.
+            return segments.All(segment => FileStem(segment).Any(char.IsLetter));
         }
 
         private static string FileStem(string pathSlice)

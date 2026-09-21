@@ -75,7 +75,8 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Prefix letters (Core/, Tests/) are not path identity. Leftover
-            // Core/....cs / Tests/123.cs must not count as repository evidence.
+            // Core/....cs / Tests/123.cs / Core/..../Sensors.cs must not count
+            // as repository evidence.
             if (!CertificationIdentityTokens.HasAlphabeticPathIdentity(canonical))
             {
                 return false;

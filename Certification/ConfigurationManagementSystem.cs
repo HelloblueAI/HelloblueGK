@@ -654,7 +654,8 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Prefix letters are not path identity. Leftover Core/....cs /
-            // Tests/123.cs must not stamp leftover audit or mint an SCI.
+            // Tests/123.cs / Core/..../Sensors.cs must not stamp leftover
+            // audit or mint an SCI.
             if (!CertificationIdentityTokens.HasAlphabeticPathIdentity(normalized))
             {
                 error = "Configuration item file path must be a real evidence path, not punctuation-only or digit-only text.";

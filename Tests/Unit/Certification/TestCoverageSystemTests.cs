@@ -830,6 +830,10 @@ public class TestCoverageSystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task RegisterRequiredFileAsync_RejectsPunctuationOnlyFilePath(string leftoverFilePath)
     {
         await using var context = CreateContext();
@@ -849,6 +853,9 @@ public class TestCoverageSystemTests
     [InlineData("Tests/....cs")]
     [InlineData("Tests/___.cs")]
     [InlineData("Tests/123.cs")]
+    [InlineData("Tests/..../EngineTests.cs")]
+    [InlineData("Tests/___/EngineTests.cs")]
+    [InlineData("Tests/123/EngineTests.cs")]
     public async Task LinkTestCaseAsync_RejectsPunctuationOnlyTestFile(string leftoverTestFile)
     {
         await using var context = CreateContext();
@@ -905,6 +912,9 @@ public class TestCoverageSystemTests
     [InlineData("Tests/....cs")]
     [InlineData("Tests/___.cs")]
     [InlineData("Tests/123.cs")]
+    [InlineData("Tests/..../EngineTests.cs")]
+    [InlineData("Tests/___/EngineTests.cs")]
+    [InlineData("Tests/123/EngineTests.cs")]
     public async Task VerifyComplianceAsync_LeftoverPunctuationOnlyTestFile_FailsClosed(string leftoverTestFile)
     {
         await using var context = CreateContext();
@@ -984,6 +994,10 @@ public class TestCoverageSystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task VerifyComplianceAsync_LeftoverPunctuationOnlyRosterPath_FailsClosed(string leftoverFilePath)
     {
         await using var context = CreateContext();

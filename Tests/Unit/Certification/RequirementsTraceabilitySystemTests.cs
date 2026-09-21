@@ -672,6 +672,10 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task LinkToCodeAsync_RejectsPunctuationOnlyCodeFile(string leftoverCodeFile)
     {
         await using var context = CreateContext();
@@ -731,6 +735,9 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("Tests/....cs")]
     [InlineData("Tests/___.cs")]
     [InlineData("Tests/123.cs")]
+    [InlineData("Tests/..../EngineTests.cs")]
+    [InlineData("Tests/___/EngineTests.cs")]
+    [InlineData("Tests/123/EngineTests.cs")]
     public async Task LinkToTestAsync_RejectsPunctuationOnlyTestFile(string leftoverTestFile)
     {
         await using var context = CreateContext();
@@ -788,6 +795,9 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("Docs/....md")]
     [InlineData("Docs/___.md")]
     [InlineData("Docs/123.md")]
+    [InlineData("Docs/..../Design.md")]
+    [InlineData("Docs/___/Design.md")]
+    [InlineData("Docs/123/Design.md")]
     public async Task LinkToDesignAsync_RejectsPunctuationOnlyDesignDocument(string leftoverDesignDocument)
     {
         await using var context = CreateContext();
@@ -835,6 +845,10 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyCodeFile_IsNotCompliant(string leftoverCodeFile)
     {
         await using var context = CreateContext();
@@ -875,6 +889,9 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("Tests/....cs")]
     [InlineData("Tests/___.cs")]
     [InlineData("Tests/123.cs")]
+    [InlineData("Tests/..../EngineTests.cs")]
+    [InlineData("Tests/___/EngineTests.cs")]
+    [InlineData("Tests/123/EngineTests.cs")]
     public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyTestFile_IsNotCompliant(string leftoverTestFile)
     {
         await using var context = CreateContext();
@@ -896,6 +913,9 @@ public class RequirementsTraceabilitySystemTests
     [InlineData("Docs/....md")]
     [InlineData("Docs/___.md")]
     [InlineData("Docs/123.md")]
+    [InlineData("Docs/..../Design.md")]
+    [InlineData("Docs/___/Design.md")]
+    [InlineData("Docs/123/Design.md")]
     public async Task VerifyTraceabilityAsync_LeftoverPunctuationOnlyDesignDocument_IsNotCompliant(string leftoverDesignDocument)
     {
         await using var context = CreateContext();
@@ -1392,6 +1412,31 @@ public class RequirementsTraceabilitySystemTests
             system,
             requirementNumber: "REQ-NAMED-DESC-LEFTOVER",
             title: "Legacy leftover named description");
+
+        var report = await system.VerifyTraceabilityAsync();
+
+        report.IsCompliant.Should().BeTrue();
+        report.CriticalIssues.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VerifyTraceabilityAsync_LeftoverMatchingNestedNamedPaths_StillComplies()
+    {
+        await using var context = CreateContext();
+        var system = new RequirementsTraceabilitySystem(context, NullLogger<RequirementsTraceabilitySystem>.Instance);
+        await SeedLeftoverVerifiedRequirementAsync(
+            context,
+            system,
+            requirementNumber: "REQ-NESTED-NAMED-PATH",
+            title: "Legacy leftover nested named paths");
+
+        var leftoverDesign = await context.RequirementDesignLinks.SingleAsync();
+        leftoverDesign.DesignDocument = "Docs/Design/ChamberPressure.md";
+        var leftoverCode = await context.RequirementCodeLinks.SingleAsync();
+        leftoverCode.CodeFile = "Core/Sensors/ChamberPressure.cs";
+        var leftoverTest = await context.RequirementTestLinks.SingleAsync();
+        leftoverTest.TestFile = "Tests/Unit/Core/EngineTests.cs";
+        await context.SaveChangesAsync();
 
         var report = await system.VerifyTraceabilityAsync();
 

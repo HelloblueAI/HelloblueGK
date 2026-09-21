@@ -2296,6 +2296,10 @@ public class ConfigurationManagementSystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task CreateConfigurationItemAsync_RejectsPunctuationOnlyFilePath(string leftoverFilePath)
     {
         await using var context = CreateContext();
@@ -2345,6 +2349,10 @@ public class ConfigurationManagementSystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task PerformAuditAsync_LeftoverPunctuationOnlyFilePath_FailsClosed(string leftoverFilePath)
     {
         await using var context = CreateContext();
