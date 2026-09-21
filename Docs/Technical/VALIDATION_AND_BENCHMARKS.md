@@ -73,7 +73,7 @@ branch coverage per directory. It is checked on every run from the Cobertura rep
 
 Read that file for current values rather than relying on a number transcribed here. Coverage across
 `Aerospace/` and `AI/` is low by design: much of those directories is specification data and demo
-scaffolding with no decisions in it, and `VERIFICATION_SCOPE.md` explains why raising those numbers
+scaffolding with no decisions in it, and `Docs/VERIFICATION_SCOPE.md` explains why raising those numbers
 by testing stubs would be misleading rather than useful.
 
 ## Not validated
@@ -90,7 +90,7 @@ Listed explicitly, because their absence is easy to mistake for an oversight.
   databases.
 - **The concept engine's declared parameters are internally inconsistent.** Its expansion ratio,
   thrust, and specific impulse disagree with each other and with first-principles theory; see
-  `VERIFICATION_SCOPE.md` and `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`. These figures
+  `Docs/VERIFICATION_SCOPE.md` and `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`. These figures
   should not be cited as the specification of anything.
 - **No performance or throughput benchmarking has been conducted.** There are no measured figures for
   mesh sizes, calculations per second, memory footprint, or parallel scaling.
