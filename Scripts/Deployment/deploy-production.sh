@@ -158,7 +158,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: admin@helloblue.com
+    email: admin@helloblue.ai
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
@@ -301,7 +301,7 @@ main() {
     log "🎉 Production deployment completed successfully!"
     log ""
     log "📊 Deployment Information:"
-    log "   - API Endpoint: https://api.helloblue.com"
+    log "   - API Endpoint: https://api.helloblue.ai"
     log "   - Grafana Dashboard: http://localhost:3000"
     log "   - Prometheus: http://localhost:9090"
     log "   - Kubernetes Dashboard: kubectl proxy"

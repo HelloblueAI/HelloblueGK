@@ -52,9 +52,9 @@ spec:
               name: hellobluegk-secrets
               key: jwt-secret
         - name: Jwt__Issuer
-          value: "https://api.helloblue.com"
+          value: "https://api.helloblue.ai"
         - name: Jwt__Audience
-          value: "https://app.helloblue.com"
+          value: "https://app.helloblue.ai"
         - name: OPENFOAM_VERSION
           value: "8"
         # Multi-replica shared DB: age-gate startup reconciliation so rolling
@@ -150,10 +150,10 @@ metadata:
 spec:
   tls:
   - hosts:
-    - api.helloblue.com
+    - api.helloblue.ai
     secretName: hellobluegk-tls
   rules:
-  - host: api.helloblue.com
+  - host: api.helloblue.ai
     http:
       paths:
       - path: /
