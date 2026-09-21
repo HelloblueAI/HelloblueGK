@@ -334,6 +334,7 @@ gates. [CONTRIBUTING.md](CONTRIBUTING.md) describes the first-hour path and how 
 | [Docs/Technical/VALIDATION_AND_BENCHMARKS.md](Docs/Technical/VALIDATION_AND_BENCHMARKS.md) | Validation results and benchmark data |
 | [Docs/Design/AdvancedCFDSolver.md](Docs/Design/AdvancedCFDSolver.md) | Design description for a unit inside the certification boundary |
 | [Docs/README.md](Docs/README.md) | Index of all documentation |
+| [.github/CONFIGURATION.md](.github/CONFIGURATION.md) | CI workflows, templates, and what CI enforces on a PR |
 
 ---
 

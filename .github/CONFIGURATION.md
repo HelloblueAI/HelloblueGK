@@ -2,6 +2,11 @@
 
 This folder contains **automation and templates** for contributors.
 
+> Deliberately not named `README.md`. GitHub selects the repository's landing-page README from
+> `.github/`, then the root, then `docs/` — so a `README.md` here silently replaces the project
+> README on the repository home page. Renaming this file back would hide
+> [the project README](../README.md) again.
+
 ## For contributors
 
 | File | Purpose |
