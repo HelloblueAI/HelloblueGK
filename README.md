@@ -261,9 +261,9 @@ CI-validated path.
 Bearer-token authentication with issuer and audience validation, request rate limiting and body-size
 guards, input validation, security headers, and CORS restricted by configuration.
 
-CodeQL analyses C#, Python, and the workflows themselves. A required **Security Scan** job fails the
-build on a known-vulnerable NuGet package, and a scheduled daily audit repeats that check and reports
-deprecated packages.
+CodeQL analyses C#, Python, and the workflows themselves, and GitGuardian scans every pull request
+for committed secrets. A required **Security Scan** job fails the build on a known-vulnerable NuGet
+package, and a scheduled daily audit repeats that check and reports deprecated packages.
 
 `main` requires passing **Build and Test**, **Integration Tests**, **Code Quality Checks**, and
 **Security Scan**, plus code-owner review, linear history, and resolved conversations.
