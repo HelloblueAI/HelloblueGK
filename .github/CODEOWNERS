@@ -30,5 +30,4 @@
 # Configuration files
 /*.csproj @HelloblueAI/hb-nlp-research-lab
 /appsettings.json @HelloblueAI/hb-nlp-research-lab
-/codecov.yml @HelloblueAI/hb-nlp-research-lab
 
