@@ -142,3 +142,48 @@ that is an accurate reflection of how much of those directories contains logic w
 verifying, not a gap to be closed by writing tests against stubs. The way to raise these
 numbers honestly is to replace the scaffolding with implementations that consume their inputs,
 at which point the new logic earns real tests.
+
+## The concept engine's declared parameters are internally inconsistent
+
+`HB_NLP_RevolutionaryEngine` is a concept design, and its declared numbers do not agree with each
+other. This was found by pointing the validated `IdealRocketNozzle` relations at the declaration —
+a check the repository could have run at any time and never had.
+
+| Declared | First principles | Gap |
+|----------|------------------|-----|
+| `ExpansionRatio = 28.5` | The declared 0.12 m throat and 3.4 m exit give an area ratio of 802.8 | The diameter ratio is 28.33, so 28.5 appears to be a diameter ratio stored in an area-ratio field |
+| `Thrust = 3.5 MN` | 280 bar through a 0.12 m throat gives 587 kN in vacuum | 6× overstated; 3.5 MN at the declared expansion ratio needs a 0.293 m throat |
+| `SpecificImpulse = 420 s` | 351.5 s at the declared expansion ratio, 390.4 s even at the geometric 802.8 | 420 s is 98.6% of the propellant's thermodynamic ceiling of 425.8 s |
+
+Ideal theory neglects combustion inefficiency, friction, heat loss, and divergence, so it bounds a
+real engine from above. A declared value that exceeds it cannot be recovered by better engineering,
+which is what makes these gaps errors in the declaration rather than optimism about the design.
+
+At most one of the geometry and the expansion ratio can describe the intended engine, so these
+figures should not be cited as the specification of anything. They are read by the API, the design
+exports, and the Blender visualization, so the error propagates wherever they are displayed.
+
+`Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs` now gates this. The three discrepancies are
+recorded there as a waiver register under configuration control rather than suppressed: a new
+inconsistency fails the build, a registered one whose magnitude drifts fails the build, and
+reconciling one also fails the build until its entry is deleted. The numbers cannot quietly get
+worse, and they cannot quietly get better without the record being updated.
+
+The specific impulse and ceiling checks assume a chamber temperature of 3600 K, since the engine
+declares none; the geometry and thrust checks do not depend on it, because a thrust coefficient is
+set by the specific heat ratio and the area ratio alone.
+
+### Claims outside physics that are also unsupported
+
+Recorded here rather than changed, since editing them is a decision about how the project describes
+itself:
+
+- `TechnologyReadinessLevel = "TRL 8"`. Under NPR 7123.1, TRL 8 means an actual system completed and
+  flight-qualified through test and demonstration. This engine has never been built.
+- `EngineType = "quantum_classical_hybrid"` and `QuantumComputing = true`, both still present after
+  the quantum scaffolding they referred to was deleted.
+- `InnovationLevel = 0.98`, `Efficiency = 0.96`, and `CombustionEfficiency = 0.99` have no stated
+  basis or derivation.
+
+`MixtureRatio = 3.5` is, for contrast, a reasonable oxidizer-to-fuel ratio for methane/LOX against a
+stoichiometric 4.0, and a 280 bar chamber is aggressive but in the same class as Raptor's 300 bar.

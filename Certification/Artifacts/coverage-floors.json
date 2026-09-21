@@ -19,7 +19,7 @@
     "overallBranchCoverage": 52.09
   },
   "overall": {
-    "minLineCoverage": 50.0,
+    "minLineCoverage": 52.0,
     "minBranchCoverage": 52.0
   },
   "directories": [
@@ -37,15 +37,15 @@
     },
     {
       "path": "Aerospace",
-      "minLineCoverage": 20.0,
-      "minBranchCoverage": 49.0,
+      "minLineCoverage": 33.0,
+      "minBranchCoverage": 50.0,
       "rationale": [
-        "Line coverage is low because most of this directory is hardcoded specification",
-        "data and console-printing demo scaffolding with no decisions in it. Branch",
-        "coverage is the meaningful number here and it went from 0% to 50.29%: the",
-        "compliance checks, the mission-level requirement tables, and the readiness",
-        "thresholds are the code that actually decides something, and those are now",
-        "verified. Hold the branch floor even if the line floor stays modest."
+        "Much of this directory is hardcoded specification data and console-printing demo",
+        "scaffolding with no decisions in it, so line coverage will stay modest. Branch",
+        "coverage is the meaningful number: the compliance checks, mission-level requirement",
+        "tables, and readiness thresholds are the code that decides something, and those are",
+        "verified. Line coverage rose from 21% to 34% once the engine parameter consistency",
+        "gate began exercising the concept design declaration end to end."
       ]
     },
     {
@@ -81,7 +81,9 @@
   ],
   "unflooredDirectories": [
     {
-      "paths": ["Models"],
+      "paths": [
+        "Models"
+      ],
       "reason": [
         "Models is data-transfer objects with no behaviour. Its 14.42% line coverage is an",
         "incidental by-product of other tests constructing those objects, not evidence of",
