@@ -26,14 +26,14 @@
   },
   "Jwt": {
     "Key": "CHANGE-THIS-TO-A-SECURE-RANDOM-STRING-MINIMUM-32-CHARACTERS-LONG",
-    "Issuer": "https://api.helloblue.com",
-    "Audience": "https://app.helloblue.com",
+    "Issuer": "https://api.helloblue.ai",
+    "Audience": "https://app.helloblue.ai",
     "TokenExpirationHours": "24",
     "RefreshTokenExpirationDays": "7"
   },
-  "AllowedHosts": "*.helloblue.com",
+  "AllowedHosts": "*.helloblue.ai",
   "Cors": {
-    "Origins": "https://app.helloblue.com,https://www.helloblue.com"
+    "Origins": "https://app.helloblue.ai,https://www.helloblue.ai"
   }
 }
 

@@ -3,25 +3,33 @@
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
+[![Line Coverage](https://img.shields.io/badge/line%20coverage-50.7%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-52.1%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Tests](https://img.shields.io/badge/tests-1174%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
-> **Community Edition** (Apache 2.0) — reference aerospace simulation platform for integration, research, and contribution.  
-> **Not certified flight software.** See [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) for tiers, warranties, and compliance boundaries.  
-> **License:** [Apache 2.0](LICENSE) · **Contributing:** [CONTRIBUTING.md](CONTRIBUTING.md) · **Security:** [SECURITY.md](SECURITY.md)
+<div align="center">
 
-### Project identity
+<img src="Assets/Images/HB-NLP-Digital-Twin-Visualization.png" alt="HB-NLP Revolutionary Engine digital twin — a 3D visualization of the engine with a telemetry overlay reading 3.5 MN thrust, 280 bar chamber pressure, 3500 K chamber temperature against a 3800 K material limit, 2.8 m nozzle length, LOX oxidizer, and an active morphing nozzle" width="900"/>
 
-**HelloblueGK** is an independent open-source project maintained by [Helloblue](https://helloblue.com). It is **not** a GitHub fork of, affiliated with, or endorsed by [LEAP 71's PicoGK](https://github.com/leap71/PicoGK) geometry kernel. This repository ships original HelloblueGK code (aerospace engine simulation); it does **not** vendor PicoGK source.
+**HB-NLP Revolutionary Engine — digital twin visualization**
 
-| Question | Answer |
-|----------|--------|
-| **Is this PicoGK?** | No — different product and maintainer. |
-| **Is this a fork of leap71/PicoGK?** | No — separate repository and codebase. |
-| **Clone folder name** | Use `HelloblueGK` (not `PicoGK`). See [DEVELOPERS.md](DEVELOPERS.md). |
-| **Future geometry integration** | Optional; may reference PicoGK as an external library later. See [ARCHITECTURE.md](ARCHITECTURE.md#optional-geometry-integration-picogk). |
+*Concept visualization, not flight certified.* The overlaid operating point — 280 bar chamber
+pressure at 3500 K against a 3800 K material limit — is the kind of input the
+[nozzle solver](Physics/IdealRocketNozzle.cs) turns into thrust and specific impulse.
+
+</div>
+
+A .NET 9 platform for rocket engine performance analysis, with a nozzle solver validated against
+published flight-engine data and a DO-178C Level A verification gate enforced on every build.
+
+> **Community Edition** (Apache 2.0) — reference platform for integration, research, and contribution.
+> **Not certified flight software.** [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) is authoritative for
+> tiers, warranties, and compliance boundaries.
 
 ---
 
-## New here? Start in 5 minutes
+## Start here
 
 ```bash
 git clone https://github.com/HelloblueAI/HelloblueGK.git
@@ -36,1258 +44,312 @@ cd WebAPI && dotnet run
 
 | I want to… | Go to |
 |------------|-------|
+| **Know what is verified vs simulated** | [Docs/VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md) |
 | **Understand what's public vs commercial** | [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) |
 | **Set up locally** | [DEVELOPERS.md](DEVELOPERS.md) |
 | **Understand the codebase** | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| **Make your first PR** | [CONTRIBUTING.md](CONTRIBUTING.md) — small docs/tests first |
+| **Read the API reference** | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) |
+| **Make a first PR** | [CONTRIBUTING.md](CONTRIBUTING.md) — docs and tests are the safe start |
 | **Pick a starter task** | [good first issues](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22) |
 | **Report a bug** | [Issue template](https://github.com/HelloblueAI/HelloblueGK/issues/new?template=bug_report.yml) |
-| **API reference** | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) |
 | **Run the interactive demo** | [Docs/Project/DEMO.md](Docs/Project/DEMO.md) |
 | **Deploy your own instance** | [Docs/Deployment/DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md) |
-
-### Product tiers (how we open source)
-
-| Tier | Available | Notes |
-|------|-----------|--------|
-| **Community Edition** | This repo | Apache 2.0 — APIs, reference code, tests, docs |
-| **Hosted Platform** | [hellobluegk.onrender.com](https://hellobluegk.onrender.com) | Reference deployment; auth required; not open signup |
-| **Enterprise / Certification** | Commercial | Formal compliance packages, SLAs, production support — **not in this repo** |
-
-Full boundaries: **[OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md)**
-
-### What's in this repository
-
-| What | Public? | Notes |
-|------|---------|--------|
-| **Source code (Community)** | Yes | Fork, study, contribute under Apache 2.0 |
-| **API reference** | Yes | [API_DOCUMENTATION.md](API_DOCUMENTATION.md) |
-| **Certification workflow APIs** | Yes (reference) | Tooling only — **not** formal flight certification |
-| **Production cert evidence / ITAR data** | No | Enterprise / controlled — not published here |
-| **Secrets** | Never in git | Use env vars for your deployment |
-
-Clone and run your own instance — you control registration, SSO, and secrets. The hosted demo is our reference deployment, not an open sandbox.
-
-### Community
-
-New contributors are welcome. You do not need to touch certification or security gates for a first PR.
-
-- **[CONTRIBUTING.md](CONTRIBUTING.md)** — first-hour path, safe folders, and how we review
-- [good first issues](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
-- [Code of Conduct](CODE_OF_CONDUCT.md)
-- [GitHub Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions) — questions before you write code
-- [GitHub Issues](https://github.com/HelloblueAI/HelloblueGK/issues) — bugs and features
+| **Reproduce CI locally** | [Docs/Technical/TESTING_LOCALLY.md](Docs/Technical/TESTING_LOCALLY.md) |
 
 ---
 
-## Full project documentation
+## What is actually verified
 
-> **Note:** Sections below describe platform capabilities and roadmap. For **legal scope, warranties, and certification boundaries**, [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) is authoritative.
+This project draws a hard line between code whose behaviour is verified and code that produces
+well-formed output for demonstration. The line is documented in
+[VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md) and enforced in CI, because the difference is
+not visible from a method signature.
 
-The sections below cover capabilities, architecture diagrams, deployment, API examples, and technical specifications in depth.
+### Nozzle performance, validated against flight engines
 
-### Quick Start (hosted reference)
+`IdealRocketNozzle` implements quasi-one-dimensional ideal rocket theory — characteristic
+velocity, choked mass flow, the area–Mach relation and its numerical inverse, isentropic exit
+conditions, and thrust as the momentum term plus the pressure term. Given published chamber
+conditions and area ratios, it reproduces published specific impulse:
 
-**API Base URL:** [https://hellobluegk.onrender.com](https://hellobluegk.onrender.com)
+| Engine | Computed Isp | Published | Agreement |
+|--------|-------------:|----------:|----------:|
+| Merlin 1D, sea level | 284.2 s | 282 s | +0.8% |
+| Raptor, sea level | 332.7 s | 330 s | +0.8% |
+| RS-25, vacuum | 453.0 s | 452.3 s | +0.1% |
 
-- **Health Check:** [https://hellobluegk.onrender.com/Health](https://hellobluegk.onrender.com/Health) — no auth
-- **API Documentation:** [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+The tests additionally assert that ideal theory never *under*predicts a real engine: every loss the
+ideal model neglects reduces real performance, so underprediction would indicate an error in the
+algebra rather than a conservative result. `IdealRocketNozzle.cs`, `EngineOperatingPoint.cs`, and
+`NozzleFlowSolver.cs` are at 100% line and 100% branch coverage.
 
-### Certification workflow APIs (reference — Community Edition)
+Sources: Sutton & Biblarz, *Rocket Propulsion Elements*, 9th ed., ch. 3 and 5; NASA SP-8120.
 
-Reference tooling that **supports** aerospace software lifecycle practices (requirements traceability, problem reports, configuration management, test coverage, code reviews). **This is not certified flight software** and does not replace your own qualification program or commercial certification packages.
+**Not claimed:** this is a one-dimensional equilibrium model, not a flow solver. It says nothing
+about combustion stability, boundary layers, flow separation, nozzle heat transfer, or off-design
+transients.
 
-- [Certification Systems Overview](Certification/README.md)
-- [Certification Progress](Certification/CERTIFICATION_PROGRESS.md)
-- [API Quick Start](Certification/API_QUICK_START.md)
+### A DO-178C Level A gate that can fail the build
 
-**Reference modules in this repo:**
-- Requirements traceability — requirements → design → code → tests
-- Problem reporting — formal problem report tracking
-- Configuration management — software baseline and change management
-- Test coverage — coverage and MC/DC tracking APIs
-- Code reviews — formal code review workflow APIs
+[`Tools/CertificationGate`](Tools/CertificationGate) runs on every build against a declared
+boundary in [`certification-boundary.json`](Certification/Artifacts/certification-boundary.json).
+It verifies statement and decision coverage, MC-DC with recorded independence pairs, and
+requirements traceability from requirement through design and code to a passing test — then fails
+the build if any objective regresses.
 
-**Example endpoints:**
-- `/api/v1/certification/requirements`
-- `/api/v1/certification/problem-reports`
-- `/api/v1/certification/configuration`
-- `/api/v1/certification/test-coverage`
-- `/api/v1/certification/code-reviews`
+The boundary is deliberately narrow: a small set of files the project genuinely meets, rather than
+a claim over the whole repository. What a passing gate does and does not establish is recorded in
+the artifact itself.
 
-**Design targets** (achieved only through your organization's qualification program, not by using this repo alone):
-- DO-178C-oriented workflows
-- NASA NPR 7150.2-oriented workflows
-- Export-controlled programs require separate legal review
+### Coverage floors enforced per directory
 
-**Quick Example (local dev — enable registration in `appsettings.Development.json`):**
+[`coverage-floors.json`](Certification/Artifacts/coverage-floors.json) sets minimum line and branch
+coverage per directory, checked in CI from the measured report. Current: **50.7% line, 52.1%
+branch** overall across 23,303 lines, with **1,174 tests** passing and zero build warnings.
+
+### What is simulation scaffolding
+
+The legacy `AdvancedCFDSolver` and `AdvancedStructuralSolver` accept a model parameter and do not
+read it, so their output is the same for every engine analysed. Several generative and orchestration
+methods return constants after `Task.Delay`. None of it is verified engineering, and no result it
+produces should be cited as an analysis of a physical system. Each case is named in
+[VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md).
+
+---
+
+## Engine reference models
+
+Published parameters for engines used as validation references and design comparisons.
+
+| Engine | Thrust | Isp | Chamber pressure | Propellant | Status |
+|--------|-------:|----:|-----------------:|------------|--------|
+| **Raptor** | 2,200 kN | 330 s | 300 bar | Methane/LOX | Flight proven |
+| **Merlin 1D** | 845 kN | 282 s | 98 bar | RP-1/LOX | Flight proven |
+| **RS-25** | 1,860 kN | 452 s | 207 bar | Hydrogen/LOX | Flight proven |
+| **HB-NLP-REV-001** | 3,500 kN | 420 s | 280 bar | — | Concept design |
+
+The first three are the references the nozzle solver is validated against. HB-NLP-REV-001 is a
+concept design generated by this repository, not a built or tested engine.
+
+---
+
+## Platform capabilities
+
+| Area | What exists | Verification status |
+|------|-------------|---------------------|
+| **Nozzle performance** | Ideal rocket theory solver, input-driven | Validated against three flight engines |
+| **Certification workflows** | Requirements traceability, problem reporting, configuration management, test coverage, formal code review — with REST APIs and persistence | 91.5% line coverage; gates fail closed on placeholder or unverified evidence |
+| **Reinforcement learning** | Q-learning controller for engine parameter tuning | Bellman backup, reward shaping, and action dynamics pinned by tests |
+| **Aerospace readiness** | Mission-level classification and compliance scoring | Decision logic tested; scores derive from fixed inputs, not measurements |
+| **Web API** | ASP.NET Core 9, JWT auth, API versioning, rate limiting, Swagger, PostgreSQL | 61.2% line coverage |
+| **Multi-physics solvers** | CFD, structural, thermal interfaces and couplers | Control flow verified; **results are not input-dependent** |
+| **Digital twin / generative design** | Interfaces and orchestration | Simulation scaffolding |
+
+---
+
+## Certification workflow APIs
+
+Reference tooling that **supports** aerospace software lifecycle practices. This is not certified
+flight software and does not replace a qualification program.
+
+```
+/api/v1/certification/requirements     requirements → design → code → test traceability
+/api/v1/certification/problem-reports  formal problem report tracking
+/api/v1/certification/configuration    baseline and change management
+/api/v1/certification/test-coverage    coverage and MC-DC tracking
+/api/v1/certification/code-reviews     formal review workflow
+```
+
+These systems fail closed. A baseline cannot be approved by the person who created it, evidence
+naming a placeholder such as `n/a` or `TBD` does not satisfy a gate, and a requirement cannot be
+marked verified against a test that has not passed.
+
+Details: [Certification/README.md](Certification/README.md) ·
+[API Quick Start](Certification/API_QUICK_START.md) ·
+[Progress](Certification/CERTIFICATION_PROGRESS.md)
+
+**Design targets**, achieved only through your organization's own qualification program:
+DO-178C-oriented and NASA NPR 7150.2-oriented workflows. Export-controlled programs require
+separate legal review.
+
+---
+
+## Architecture
+
+```
+WebAPI (ASP.NET Core 9)      auth, versioning, rate limiting, Swagger
+      │
+      ├── Certification/     RTM, problem reports, config management, coverage, reviews
+      ├── Physics/           nozzle solver (validated), CFD/structural/thermal (scaffolding)
+      ├── Aerospace/         engine models, compliance and readiness assessment
+      ├── AI/                reinforcement learning, generative design scaffolding
+      ├── Core/              telemetry, health, configuration, performance services
+      └── Models/            shared domain types
+
+Tools/CertificationGate      DO-178C Level A gate, runs in CI
+```
+
+Full description, including the optional geometry-integration boundary:
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+---
+
+## Hosted reference
+
+**Base URL:** [hellobluegk.onrender.com](https://hellobluegk.onrender.com)
+
+| Endpoint | Auth | Purpose |
+|----------|------|---------|
+| `/Health` | none | liveness |
+| `/Health/detailed` | bearer token | component detail |
+| `/Health/engine` | bearer token | engine subsystem status |
+| `/metrics` | bearer token | Prometheus exposition |
+| `/swagger` | Microsoft Entra ID SSO | interactive API browser |
+
+Swagger is treated as internal documentation: in production it redirects to corporate single sign-on
+rather than being publicly readable, as described in
+[INTERNAL_SWAGGER_SSO.md](Docs/Deployment/INTERNAL_SWAGGER_SSO.md). `/Health` is the only
+unauthenticated endpoint.
+
+This is a reference deployment, not an open sandbox — registration is disabled. Clone and run your
+own instance if you need one you control.
+
 ```bash
-# Login (hosted demo — registration disabled on production)
-curl -X POST https://hellobluegk.onrender.com/api/v1/Auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username":"YOUR_USER","password":"YOUR_PASSWORD"}'
+curl https://hellobluegk.onrender.com/Health
 
-# Use token for API calls
+# Authenticated calls use a bearer token from /api/v1/Auth/login
 curl https://hellobluegk.onrender.com/api/v1/engines \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
-** Deploy Your Own:** Follow [DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md). On Render: set `DATABASE_URL` and `Jwt__Key` in your service Environment — see [RENDER_POSTGRESQL_SETUP.md](Docs/Deployment/RENDER_POSTGRESQL_SETUP.md).
-
-**Run Locally:**
-```bash
-# Clone the repository
-git clone https://github.com/HelloblueAI/HelloblueGK.git
-cd HelloblueGK
-
-# Run the demo
-cd WebAPI
-dotnet run
-
-# Open http://localhost:5000/swagger in your browser
-```
-
-See [DEMO.md](Docs/Project/DEMO.md) for detailed demo instructions.
-
-
-<div align="left">
-<img src="Assets/Images/HB-NLP-Advanced-Engine-Design.png?v=4" alt="HB-NLP Advanced Aerospace Engine Design" width="600"/>
-
-```ascii
-    ╔══════════════════════════════════════════════════════════════╗
-    ║                    AEROSPACE ENGINE KERNEL                   ║
-    ║                                                              ║
-    ║ ████████████████████████████████████████████████████████████ ║
-    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
-    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
-    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
-    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
-    ║ ████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░████ ║
-    ║ ████████████████████████████████████████████████████████████ ║
-    ║                                                              ║
-    ║  [CFD] [FEA] [THERMAL] [VALIDATION] [ENTERPRISE]             ║
-    ╚══════════════════════════════════════════════════════════════╝
-```
-
-</div>
-
-## **Aerospace Readiness Assessment System**
-
-### Aerospace Industry Compliance (reference orientation)
-
-Documentation below describes **design targets** and **workflow orientation** — not certifications granted by Helloblue or any agency. See [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
-
-### **Aerospace Compliance System**
-- **DO-178C-oriented workflows**: Software lifecycle practices aligned with Level A goals
-- **NASA NPR 7150.2-oriented workflows**: Class A process orientation for human-rated systems
-- **Export control awareness**: Users must comply with ITAR/EAR and applicable regulations
-- **Security practices**: Industry-standard patterns — not FIPS certification claims for Community Edition
-- **Environmental Compliance**: Sustainable aerospace practices
-
-### **Security Audit System**
-- **FIPS 140-2 Cryptographic Security**: Military-grade encryption
-- **Network Security**: Zero Trust architecture implementation
-- **Application Security**: OWASP Top 10 protection
-- **Physical Security**: Multi-layer facility protection
-- **Access Control**: Zero Trust access management
-- **Data Protection**: Comprehensive data security
-- **Incident Response**: Complete incident management
-- **Compliance Audit**: Multi-standard compliance verification
-
-### **Quality Assurance System**
-- **AS9100 Aerospace Quality**: Industry-leading aerospace standards
-- **ISO 9001 Quality Management**: International quality standards
-- **Six Sigma Process Excellence**: 3.4 DPMO defect rate achievement
-- **Mission-Critical Quality**: 99.99% reliability standards
-- **Software Quality**: 95% code coverage, low complexity
-- **Hardware Quality**: Comprehensive manufacturing standards
-- **Process Quality**: Complete process management
-- **Supplier Quality**: End-to-end supply chain quality
-
-### **Aerospace Readiness Assessment**
-- **Mission Level Classification**: Research → Prototype → Qualification → Operational → Critical
-- **Comprehensive Evaluation**: 8 readiness categories assessed
-- **Real-time Scoring**: Dynamic readiness calculation
-- **Actionable Recommendations**: Specific improvement guidance
-- **Certification Tracking**: Complete compliance documentation
-- **Risk Assessment**: Comprehensive risk evaluation
-
-## **Current Status**
-
-**Overall Readiness: 77.787%** (Excellent foundation, needs refinement for mission-critical operations)
-
-**Strengths:**
-- ✅ **Technical Readiness**: 98.75% (EXCELLENT)
-- ✅ **Safety Readiness**: 99.50% (EXCELLENT) 
-- ✅ **Operational Readiness**: 97.99% (EXCELLENT)
-- ✅ **Quality Assurance**: 97.74% (EXCELLENT)
-- ✅ **Security Readiness**: 97.00% (EXCELLENT)
-- ✅ **Environmental Compliance**: 97.50% (EXCELLENT)
-- ✅ **Financial Readiness**: 96.25% (EXCELLENT)
-
-**Areas for Improvement:**
-- 🔧 **Regulatory Compliance**: Needs refinement to meet 99%+ thresholds
-- 📋 **Certification Enhancement**: Additional compliance documentation
+Full endpoint reference: [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
 ---
 
-## Overview
-
-**HelloblueGK** is a sophisticated aerospace engine simulation platform that integrates AI-driven design optimization, advanced multi-physics coupling, digital twin technology, and enterprise-grade architecture. Built for demanding aerospace applications, from rocket engine design to aircraft propulsion systems.
-
-### **Validated Capabilities**
-
-- **AI-Driven Design Optimization**: Machine learning-based engine parameter optimization with validated performance improvements
-- **Advanced Multi-Physics Coupling**: Integrated CFD, thermal, and structural analysis with industry-standard solvers
-- **Digital Twin Technology**: Real-time simulation and predictive modeling capabilities
-- **Modular Engine Architectures**: Configurable engine designs with validated performance characteristics
-- **Nuclear Thermal Propulsion**: Theoretical framework for advanced propulsion concepts
-- **Hybrid Electric Propulsion**: Electric-combustion hybrid system modeling
-- **Live Learning Capabilities**: Continuous model improvement through simulation data
-- **Predictive Analytics**: Failure prediction and preventive maintenance modeling
-
-## Engine Design Architecture
-
-### Engine Models
-
-| Engine Model | Thrust (kN) | ISP (s) | Chamber Pressure (bar) | Propellant | Technology Status |
-|-------------|-------------|---------|------------------------|------------|------------------|
-| **Raptor** | 2,300 | 350 | 300 | Methane/LOX | Flight Proven |
-| **Merlin** | 845 | 282 | 98 | RP-1/LOX | Flight Proven |
-| **RS-25** | 1,860 | 452 | 207 | Hydrogen/LOX | Flight Proven |
-| **HB-NLP Custom** | 1,500 | 380 | 250 | Methane/LOX | Simulation Validated |
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                Enterprise Web API                           │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   Auth &    │  │   Request   │  │   Response  │          │
-│  │  Security   │  │  Validation │  │  Processing │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│                AI-Driven Autonomous Designer                │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   Neural    │  │   Genetic   │  │Reinforcement│          │
-│  │  Networks   │  │  Algorithms │  │  Learning   │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│                Advanced Multi-Physics Coupler               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   CFD Solver│  │  Thermal    │  │ Structural  │          │
-│  │ (OpenFOAM)  │  │  Analysis   │  │   Solver    │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│                Digital Twin Engine                          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   Live      │  │  Predictive │  │  Real-Time  │          │
-│  │  Learning   │  │  Modeling   │  │  Learning   │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-                              │
-┌─────────────────────────────────────────────────────────────┐
-│                    Engine Architecture Types                │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │   Variable  │  │   Modular   │  │ Distributed │          │
-│  │  Geometry   │  │   Systems   │  │ Propulsion  │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Technology Capabilities
-
-### AI-Driven Design Optimization
-- **Parameter Optimization**: AI-driven engine parameter tuning with validated performance improvements
-- **Design Space Exploration**: Automated exploration of engine design parameters
-- **Failure Prediction**: Predictive modeling for engine component reliability
-- **Performance Optimization**: Continuous improvement through simulation data
-
-### Multi-Physics Coupling
-- **Integrated Physics**: CFD, thermal, and structural analysis coupling
-- **Coupling Efficiency**: Validated coupling algorithms with industry-standard solvers
-- **Real-Time Feedback**: Continuous parameter adjustment during simulation
-- **Convergence Monitoring**: Robust convergence tracking and validation
-
-### Digital Twin Technology
-- **Real-Time Simulation**: Live engine performance monitoring and simulation
-- **Predictive Modeling**: Data-driven failure prediction and maintenance scheduling
-- **Model Improvement**: Continuous learning from simulation and operational data
-- **Performance Analytics**: Comprehensive engine performance analysis
-
-### Engine Architectures
-- **Variable Geometry**: Configurable engine geometries for different mission profiles
-- **Modular Systems**: Standardized engine components for maintainability
-- **Distributed Propulsion**: Multi-engine coordination and optimization
-- **Advanced Concepts**: Theoretical frameworks for nuclear thermal and hybrid propulsion
-
-### Hybrid Computing Framework
-- **Classical Computing**: High-performance classical algorithms for current applications
-- **Optimization Algorithms**: Advanced optimization techniques for engine design
-- **Scalable Computing**: Distributed computing capabilities for large-scale simulations
-
-## Features
-
-## Physics Engine Integration
-
-```ascii
-┌─────────────────────────────────────────────────────────────────┐
-│                    PHYSICS ENGINE MODULES                       │
-├─────────────────────────────────────────────────────────────────┤
-│  CFD Solver      │  Thermal Analysis     │  Structural FEA      │
-│  • k-ε Model     │  • Heat Transfer      │  • Stress Analysis   │
-│  • k-ω Model     │  • Thermal Stress     │  • Fatigue Analysis  │
-│  • Turbulence    │  • Cooling Systems    │  • Material Props    │
-│  • OpenFOAM      │  • Finite Elements    │  • Buckling Analysis │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-- **Computational Fluid Dynamics (CFD)**: Flow simulation with turbulence modeling using k-ε and k-ω models
-- **Thermal Analysis**: Heat transfer, thermal stress, and cooling system optimization with finite element analysis
-- **Structural Analysis**: Finite element analysis for stress, strain, and fatigue with material property databases
-- **Modular Architecture**: Easy integration of real physics solvers (OpenFOAM, ANSYS, Abaqus, etc.)
-
-## Optimization Algorithms
-
-```ascii
-┌─────────────────────────────────────────────────────────────────┐
-│                    AI OPTIMIZATION ENGINE                       │
-├─────────────────────────────────────────────────────────────────┤
-│  Genetic Algorithms    │  Design Space Explorer                 │
-│  • NSGA-II             │  • Latin Hypercube Sampling            │
-│  • SPEA2               │  • Parameter Sweeping                  │
-│  • Multi-Objective     │  • Sensitivity Analysis                │
-│  • Pareto Front        │  • Neural Networks                     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-- **Genetic Algorithms**: Multi-objective optimization for thrust, efficiency, weight using NSGA-II and SPEA2
-- **Design Space Exploration**: Automated parameter sweeping and sensitivity analysis with Latin Hypercube Sampling
-- **Machine Learning**: Predictive models for engine performance and reliability using neural networks
-- **Convergence Tracking**: Real-time optimization progress monitoring with Pareto front visualization
-
-## Parametric Design System
-- **Custom Engine Creation**: Define engines by thrust, ISP, propellant, dimensions with constraint validation
-- **Batch Simulation**: Run thousands of engine configurations simultaneously using parallel processing
-- **Design Validation**: Automatic verification of design constraints and manufacturability analysis
-- **Export Capabilities**: CAD/CAE format export for manufacturing (STEP, IGES, STL formats)
-
-## Enterprise Integration
-
-## Industry Standards Compliance
-- **SpaceX Compatibility**: Raptor engine analysis and optimization with methane/LOX propellant systems
-- **Boeing Standards**: Aerospace industry requirements met with AS9100 compliance
-- **NASA Requirements**: Space exploration mission ready with human-rating standards
-- **Real-time Telemetry**: Live engine monitoring and diagnostics with 100Hz sampling rates
-- **Predictive Maintenance**: AI-driven failure prediction with 99.9% accuracy
-
-## Performance Benchmarks
-
-```ascii
-┌─────────────────────────────────────────────────────────────────┐
-│                    PERFORMANCE METRICS                          │
-├─────────────────────────────────────────────────────────────────┤
-│ Simulation Speed: 10K-100K calc/sec │ CFD Accuracy: 95-98%      │
-│ Scalability: Enterprise Grade       │ Code Quality: 95% coverage│
-│ Cloud Ready                         │ Industry Standards        │
-│ Validated Algorithms                │ Production Hardened       │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-- **Simulation Speed**: 10,000-100,000 calculations/second on multi-core systems (benchmarked)
-- **CFD Accuracy**: 95-98% accuracy validated against industry-standard test cases
-- **Scalability**: Enterprise-grade architecture with proven cloud deployment capabilities
-- **Code Quality**: 95% test coverage with industry-standard validation practices
-
-## Installation & Setup
-
-## Prerequisites
-
-- **.NET 9.0 SDK** (Latest framework)
-- **Docker** (for containerized deployment)
-- **Kubernetes** (for production deployment)
-- **OpenFOAM 8** (for CFD simulations)
-
-## Quick Start
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/HelloblueAI/HelloblueGK.git
-   cd HelloblueGK
-   ```
-
-2. **Install Plasticity v25.2.2**
-   ```bash
-   # Download Plasticity from GitHub releases
-   wget https://github.com/nkallen/plasticity/releases/download/v25.2.2/plasticity_25.2.2_amd64.deb
-   
-   # Install on Ubuntu/Debian
-   sudo dpkg -i plasticity_25.2.2_amd64.deb
-   
-   # Verify installation
-   which plasticity
-   ```
-
-3. **Run the Plasticity Demo**
-   ```bash
-   # Build and run the demo
-   cd PlasticityDemo
-   dotnet build
-   dotnet run
-   ```
-
-4. **Open Engine Design in Plasticity**
-   ```bash
-   # Generate and open design in Plasticity
-   python3 Scripts/Integration/open_in_plasticity.py
-   ```
-
-5. **Build the main application (optional)**
-   ```bash
-   dotnet build
-   dotnet run
-   ```
-
-## How to Use
-
-### **Step-by-Step User Guide**
-
-#### **1. Getting Started with Plasticity Demo**
-
-The easiest way to experience the engine design is through our working demo:
+## Testing
 
 ```bash
-# Navigate to the demo directory
-cd PlasticityDemo
-
-# Build the demo
-dotnet build
-
-# Run the demo to see the engine design
-dotnet run
+dotnet test Tests/HelloblueGK.Tests.csproj                        # all 1,174 tests
+dotnet test --filter Category=Integration                         # integration suite
+dotnet test --filter Category=Performance                         # performance benchmarks
+dotnet test --filter 'FullyQualifiedName~IdealRocketNozzleTests'  # nozzle validation
 ```
 
-**Expected Output:**
-```
-HB-NLP Research Lab - Advanced Aerospace Engine Design
-Opening Engine Design in Plasticity v25.2.2
-================================================================
-Plasticity Hardware Engine v25.2.2 initialized successfully
-Hardware acceleration: ENABLED
-Real-time 3D modeling: ACTIVE
-CFD simulation: RUNNING
-Multi-physics coupling: OPERATIONAL
+`Integration` and `Performance` are the only category traits defined, so other `Category=` filters
+match nothing and pass while running zero tests.
 
-HB-NLP Engine Design:
-   Thrust: 2,000,000 N (2 MN)
-   Specific Impulse: 450 s
-   Chamber Pressure: 300 bar
-   Expansion Ratio: 25:1
-   Efficiency: 95%
-   Technology Readiness Level: 9
+Coverage and the certification gate run in the **Build and Test** job, which is a required check on
+`main` — the gate and the floors can fail a merge. To reproduce the full pipeline locally, see
+[TESTING_LOCALLY.md](Docs/Technical/TESTING_LOCALLY.md).
 
-ENGINE DESIGN COMPLETE!
-Ready for production and testing!
-```
+---
 
-#### **2. Opening Engine Design in Plasticity**
-
-To visualize and analyze the engine design in Plasticity:
+## Deployment
 
 ```bash
-# Generate design files and open in Plasticity
-python3 Scripts/Integration/open_in_plasticity.py
-```
-
-This will:
-- ✅ Create engine design specifications (`Docs/Designs/HB-NLP-REV-001/design.json`)
-- ✅ Generate 3D model script (`Docs/Designs/HB-NLP-REV-001/design_script.py`)
-- ✅ Launch Plasticity with the design
-- ✅ Provide step-by-step instructions
-
-#### **3. Working with Design Files**
-
-**Generated Files:**
-- `Docs/Designs/HB-NLP-REV-001/design.json` - Complete engine specifications
-- `Docs/Designs/HB-NLP-REV-001/design_script.py` - Plasticity 3D model generation script
-- `Docs/Designs/HB-NLP-REV-001/design_summary.md` - Comprehensive design documentation
-
-**Using the Design Script in Plasticity:**
-1. Open Plasticity software
-2. Load `Docs/Designs/HB-NLP-REV-001/design_script.py`
-3. Run the script to generate the 3D model
-4. Analyze CFD, thermal, and structural properties
-5. Optimize design parameters
-6. Export results for production
-
-#### **4. Customizing the Engine Design**
-
-You can modify the engine specifications by editing the design files:
-
-```python
-# Edit Docs/Designs/HB-NLP-REV-001/design.json to change specifications
-{
-  "specifications": {
-    "thrust": 2000000,  # Modify thrust (N)
-    "specific_impulse": 450,  # Modify ISP (s)
-    "chamber_pressure": 300,  # Modify pressure (bar)
-    "efficiency": 0.95  # Modify efficiency
-  }
-}
-```
-
-#### **5. Advanced Usage - Main Application**
-
-For advanced users who want to work with the full codebase:
-
-```bash
-# Build the main application
-dotnet build
-
-# Run the main simulation
-dotnet run
-```
-
-**Note:** The main application has some build complexities. We recommend starting with the PlasticityDemo for the best experience.
-
-### **Troubleshooting**
-
-#### **Common Issues and Solutions**
-
-**1. Plasticity Installation Issues:**
-```bash
-# If dpkg fails, try:
-sudo apt-get update
-sudo apt-get install -f
-sudo dpkg -i plasticity_25.2.2_amd64.deb
-```
-
-**2. Python Script Issues:**
-```bash
-# Ensure Python 3 is installed
-python3 --version
-
-# Install required packages (if needed)
-pip3 install json pathlib
-```
-
-**3. Build Issues:**
-```bash
-# Clean and rebuild
-dotnet clean
-dotnet build
-
-# If main project fails, use the demo:
-cd PlasticityDemo
-dotnet build
-dotnet run
-```
-
-**4. Large File Download Issues:**
-- Plasticity .deb file is ~213MB
-- Download directly from: https://github.com/nkallen/plasticity/releases/tag/v25.2.2
-- Choose `plasticity_25.2.2_amd64.deb` for Linux
-
-#### **System Requirements**
-
-- **OS**: Ubuntu 20.04+ / Debian 11+ / Linux
-- **RAM**: 8GB minimum, 16GB recommended
-- **Storage**: 2GB free space
-- **GPU**: Any modern GPU (for hardware acceleration)
-- **.NET**: 9.0 SDK
-- **Python**: 3.7+
-
-### **Sample Output**
-
-```
-HB-NLP Research Lab - Aerospace Engine Simulation Platform
-================================================================================
-Advanced Aerospace Simulation Technology - Industry-Standard Capabilities
-================================================================================
-
-[Aerospace Engine System] Initializing aerospace simulation platform...
-
-[AI-Driven Engine Design] Demonstrating AI-driven design optimization...
-[AI-Driven Engine Design] AI-optimized engine: HB_NLP_Engine_v1
-[AI-Driven Engine Design] Performance improvement: 12.5 %
-[AI-Driven Engine Design] Optimization efficiency: 89.3 %
-[AI-Driven Engine Design] Failure prediction accuracy: 87.2 %
-
-[Advanced Multi-Physics] Running integrated CFD, thermal, and structural analysis...
-[Advanced Multi-Physics] Total iterations: 15
-[Advanced Multi-Physics] Coupling efficiency: 92.1 %
-[Advanced Multi-Physics] Convergence achieved: True
-
-[Digital Twin] Creating digital twin with simulation capabilities...
-[Digital Twin] Digital twin created: HB_NLP_Engine_1
-[Digital Twin] Prediction accuracy: 91.8 %
-[Digital Twin] Model improvement: 8.3 %
-[Digital Twin] Optimization improvement: 6.7 %
-[Digital Twin] Failure prediction improvement: 5.2 %
-
-[Engine Architectures] Configurable Engine Systems
-[Engine Architectures] Variable geometry engine: Configurable
-[Engine Architectures] Modularity level: 87.5 %
-[Engine Architectures] Modular engine: Standardized Design
-[Engine Architectures] Standardization level: 89.2 %
-[Engine Architectures] Distributed propulsion: Multi-Engine Coordination
-[Engine Architectures] Coordination efficiency: 91.8 %
-
-[Hybrid Computing] Classical performance: 100.0 %
-[Hybrid Computing] Material analysis accuracy: 89.7 %
-[Hybrid Computing] Analyzed materials: 15
-[Hybrid Computing] Optimization improvement: 12.3 %
-[Hybrid Computing] Convergence speed: 1.2x
-
-[Technology Capabilities Summary]
-================================================================================
-AI-Driven Design: 89.3 % optimization efficiency
-Multi-Physics Coupling: 92.1 % coupling efficiency
-Digital Twin Technology: 91.8 % prediction accuracy
-Engine Architectures: 89.2 % modularity
-
-[Validated Capabilities] Industry-Standard Technology:
-  ✓ AI-Driven Engine Parameter Optimization - Validated Performance
-  ✓ Integrated Multi-Physics Analysis - Industry-Standard Solvers
-  ✓ Digital Twin Simulation - Real-Time Performance Monitoring
-  ✓ Configurable Engine Geometries - Mission-Adaptive Design
-  ✓ Advanced Propulsion Concepts - Theoretical Frameworks
-  ✓ Multi-Engine Coordination - Distributed Propulsion Modeling
-  ✓ Hybrid Electric Systems - Electric-Combustion Integration
-  ✓ Modular Engine Systems - Standardized Architecture
-  ✓ Advanced Material Analysis - Aerospace Material Properties
-
-================================================================================
-AEROSPACE ENGINE SIMULATION PLATFORM
-Industry-Standard Capabilities - Production-Ready Technology
-================================================================================
-```
-
-## Technical Specifications
-
-### Engine Performance Parameters
-
-| Parameter | Raptor | Merlin | RS-25 | HB-NLP Custom  |
-|-----------|--------|--------|-------|----------------|
-| **Thrust (kN)**    | 2,300  | 845   | 1,860 | 1,500  | 
-| **Specific Impulse (s)** | 350 |282 | 452   | 380    |
-| **Chamber Pressure (bar)**  | 300   | 98    | 207    |   
-| **Propellant**     | Methane/LOX    | RP-1/LOX | Hydrogen/LOX | Methane/LOX |
-| **Mixture Ratio**  | 3.6:1  | 2.36:1| 6.0:1 | 3.8:1  |
-| **Expansion Ratio** | 40:1  | 16:1  | 77.5:1| 35:1   |
-| **Mass Flow Rate (kg/s)**   | 650   | 300   | 470 | 400|
-
-### Computational Performance
-
-| Metric | Value | Benchmark |
-|--------|-------|-----------|
-| **CFD Mesh Resolution**    | 10M elements | Industry standard |
-| **Thermal Analysis**       | 1M nodes | High-fidelity |
-| **Structural Analysis**    | 500K elements | Detailed stress |
-| **Optimization Speed**     | 1000 iterations/hour | Real-time capable |
-| **Memory Usage**           | 16GB RAM | Scalable |
-| **Parallel Processing**    | 32 cores | Enterprise-grade |
-
-## API Documentation
-
-### Authentication
-
-All API endpoints require JWT authentication. Include the Bearer token in the Authorization header:
-
-```bash
-curl -H "Authorization: Bearer YOUR_JWT_TOKEN" \
-     https://api.helloblue.com/api/v1/engine/simulate
-```
-
-### Endpoints
-
-#### AI-Driven Autonomous Engine Design
-
-```http
-POST /api/v1/ai/design-engine
-Content-Type: application/json
-Authorization: Bearer YOUR_JWT_TOKEN
-
-{
-  "engineType": "hybrid_engine",
-  "innovationLevel": 98.0,
-  "optimizationTargets": {
-    "thrust": 2000000,
-    "efficiency": 0.95,
-    "reliability": 0.999
-  },
-  "autonomousFeatures": {
-    "selfOptimization": true,
-    "failurePrediction": true,
-    "realTimeLearning": true
-  }
-}
-```
-
-#### Digital Twin Creation and Learning
-
-```http
-POST /api/v1/digital-twin/create
-Content-Type: application/json
-Authorization: Bearer YOUR_JWT_TOKEN
-
-{
-  "engineId": "HB_NLP_Engine_1",
-  "engineModel": {
-    "name": "HB-NLP Engine",
-    "parameters": {
-      "thrust": 2000000,
-      "efficiency": 0.95
-    }
-  },
-  "learningCapabilities": {
-    "realTimeLearning": true,
-    "predictiveModeling": true,
-    "failurePrediction": true
-  }
-}
-```
-
-#### Engine Architectures
-
-```http
-POST /api/v1/architectures/variable-geometry
-Content-Type: application/json
-Authorization: Bearer YOUR_JWT_TOKEN
-
-{
-  "engineId": "Variable_Geometry_1",
-  "geometryStates": 3,
-  "morphingResponseTime": 0.1,
-  "innovationLevel": 95.0,
-  "shapeShiftingTechnology": true
-}
-```
-
-## Production Deployment
-
-### **LIVE DEPLOYMENT STATUS**
-
-**HelloblueGK is now LIVE and running in production!**
-
-- **Docker Container**: Successfully deployed and running
-- **All Features**: Active and demonstrating
-- **Enterprise Ready**: Production-hardened architecture
-- **High-Performance Engine**: Advanced design features
-
-### Enterprise Deployment
-
-HelloblueGK follows the same deployment patterns used by **Google, Microsoft, Amazon, Netflix, and other tech giants**. See [Enterprise Deployment Guide](Docs/Technical/ENTERPRISE_DEPLOYMENT.md) for details.
-
-#### Quick Production Setup
-
-**🎯 Recommended: Managed Cloud (What 80% of Companies Do)**
-
-**Deploy to Render (Easiest - 15 minutes):**
-1. Go to https://dashboard.render.com
-2. Create Web Service → Connect GitHub
-3. Configure:
-   - Root Directory: `WebAPI`
-   - Build: `dotnet publish -c Release -o ./publish`
-   - Start: `cd publish && dotnet HelloblueGK.WebAPI.dll`
-4. Deploy! Your API is live with HTTPS, auto-scaling, and zero maintenance.
-
-**Why Managed Cloud?**
-- ✅ **Fastest** - Deploy in 15 minutes
-- ✅ **Easiest** - Zero infrastructure management
-- ✅ **Professional** - Always-on, reliable, secure
-- ✅ **Free tier** - Perfect for production
-- ✅ **Auto-scaling** - Handles traffic automatically
-- ✅ **SSL included** - HTTPS by default
-
-See `WebAPI/DEPLOYMENT_RECOMMENDATION.md` for detailed comparison.
-
-**Other Options:**
-
-**Option 1: Systemd Service (Your Own Server)**
-```bash
-cd WebAPI
-./setup-production.sh
-```
-- Best for: Your own VPS/server, full control
-
-**Option 2: Docker Container (Industry Standard)**
-```bash
-# From repo root: primary WebAPI image (port 8080)
 docker build -t hellobluegk:latest -f Docker/Dockerfile .
-# Production: add -e Jwt__Key="your-secure-key-32-chars-min" and -e ConnectionStrings__DefaultConnection for DB
-docker run -d -p 8080:8080 -e Jwt__Key="your-secure-key-at-least-32-chars" --name hellobluegk hellobluegk:latest
-
-# Or: docker build -t hellobluegk:latest -f WebAPI/Dockerfile . (same WebAPI image, port 8080)
-```
-- Best for: Portability, multiple environments
-
-**Option 3: Kubernetes (Big Tech Standard)**
-```bash
-kubectl apply -f k8s-deployment.yaml
-```
-- Best for: Large scale, enterprise, high traffic
-
-**Option 4: Other Managed Cloud Services**
-- Railway, Fly.io, Azure, AWS, Google Cloud
-- See `WebAPI/PRODUCTION_SETUP.md` for detailed instructions
-
-#### Production Deployment Scripts
-
-```bash
-# Make deployment script executable
-chmod +x deploy-production.sh
-
-# Run production deployment
-./deploy-production.sh
+docker run -p 8080:8080 -e Jwt__Key="a-secret-of-at-least-32-characters" hellobluegk:latest
+# http://localhost:8080/swagger
 ```
 
-#### Production Documentation
+Set `DATABASE_URL` and `Jwt__Key` from the environment; never commit secrets. Render is the supported
+path and is described in [DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md), with database
+setup in [RENDER_POSTGRESQL_SETUP.md](Docs/Deployment/RENDER_POSTGRESQL_SETUP.md). The deployed
+service builds `Docker/Dockerfile.render`; the plain `Docker/Dockerfile` above is the local
+equivalent. A Kubernetes manifest (`k8s-deployment.yaml`) is provided as a starting point rather than
+a CI-validated path.
 
-- **[Enterprise Deployment Guide](Docs/Technical/ENTERPRISE_DEPLOYMENT.md)** - How big tech companies deploy
-- **[Production Setup Guide](WebAPI/PRODUCTION_SETUP.md)** - Detailed production setup
-- **[Running the Application](WebAPI/RUNNING_THE_APPLICATION.md)** - Development vs Production
+---
 
-### Docker Deployment (LIVE)
+## Security
 
-```bash
-# Build the WebAPI image (from repo root)
-docker build -t hellobluegk:latest -f Docker/Dockerfile .
+Bearer-token authentication with issuer and audience validation, request rate limiting and body-size
+guards, input validation, security headers, and CORS restricted by configuration.
 
-# Run the container (set JWT key for production; use a 32+ character secret)
-docker run -p 8080:8080 -e Jwt__Key="your-secure-key-at-least-32-characters-long" hellobluegk:latest
-# Then open http://localhost:8080/swagger and http://localhost:8080/Health
-```
+CodeQL analyses C#, Python, and the workflows themselves, and GitGuardian scans every pull request
+for committed secrets. A required **Security Scan** job fails the build on a known-vulnerable NuGet
+package, and a scheduled daily audit repeats that check and reports deprecated packages.
 
-**Docker files:** `Docker/Dockerfile` = WebAPI (default); `Dockerfile.render` = Render/Railway; `Docker/Dockerfile.console` = CLI/PlasticityDemo only.
+`main` requires passing **Build and Test**, **Integration Tests**, **Code Quality Checks**, and
+**Security Scan**, plus code-owner review, linear history, and resolved conversations.
 
-**If you see "client version 1.43 too old":** run `./Docker/build.sh` to build with the legacy builder (see `Docker/README.md`). Upgrade Docker to fix it permanently.
+Report vulnerabilities per [SECURITY.md](SECURITY.md) — please do not open a public issue.
+Industry-standard patterns are used throughout; the Community Edition makes no FIPS or formal
+accreditation claim.
 
-### Kubernetes Deployment
+---
 
-```bash
-# Apply Kubernetes configuration
-kubectl apply -f k8s-deployment.yaml
+## Project identity
 
-# Check deployment status
-kubectl get pods -n hellobluegk
-```
+**HelloblueGK** is an independent open-source project maintained by [Helloblue](https://helloblue.ai).
+It is **not** a fork of, affiliated with, or endorsed by [LEAP 71's PicoGK](https://github.com/leap71/PicoGK)
+geometry kernel, and it does not vendor PicoGK source.
 
-### Environment Configuration
+| Question | Answer |
+|----------|--------|
+| Is this PicoGK? | No — different product and maintainer. |
+| Is this a fork of `leap71/PicoGK`? | No — separate repository and codebase. |
+| Clone folder name | Use `HelloblueGK`. See [DEVELOPERS.md](DEVELOPERS.md). |
+| Future geometry integration | Optional; may reference PicoGK as an external library later. See [ARCHITECTURE.md](ARCHITECTURE.md#optional-geometry-integration-picogk). |
 
-Create `appsettings.Production.json`:
+### Product tiers
 
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Information",
-      "Microsoft.AspNetCore": "Warning"
-    }
-  },
-  "ConnectionStrings": {
-    "DefaultConnection": "SET_VIA_ENV_OR_USER_SECRETS"
-  },
-  "Jwt": {
-    "Key": "YOUR_SECURE_JWT_KEY",
-    "Issuer": "https://api.helloblue.com",
-    "Audience": "https://app.helloblue.com"
-  },
-  "EngineFeatures": {
-    "AIDrivenDesign": true,
-    "DigitalTwinLearning": true,
-    "AdvancedArchitectures": true,
-    "MultiPhysicsCoupling": true,
-    "RealTimeLearning": true,
-    "PredictiveModeling": true,
-    "AutonomousTesting": true
-  },
-  "EngineConfiguration": {
-    "UseAdvancedSolvers": true,
-    "OpenFOAMPath": "/opt/openfoam8",
-    "MaxSimulationTime": 3600,
-    "EnableRealTimeTelemetry": true,
-    "EnableShapeShifting": true
-  }
-}
-```
+| Tier | Available | Notes |
+|------|-----------|-------|
+| **Community Edition** | This repository | Apache 2.0 — APIs, reference code, tests, docs |
+| **Hosted Platform** | [hellobluegk.onrender.com](https://hellobluegk.onrender.com) | Reference deployment; auth required, no open signup |
+| **Enterprise / Certification** | Commercial | Formal compliance packages, SLAs, production support — **not in this repository** |
 
-## Monitoring & Observability
+Production certification evidence and export-controlled data are not published here.
 
-### Prometheus Metrics
-
-The application exposes Prometheus metrics at `/metrics`:
-
-- `hellobluegk_ai_innovation_score`
-- `hellobluegk_digital_twin_accuracy`
-- `hellobluegk_engine_architectures`
-- `hellobluegk_multi_physics_efficiency`
-- `hellobluegk_real_time_learning_events`
-
-### Grafana Dashboards
-
-Pre-configured dashboards for:
-- AI-driven design performance
-- Digital twin learning progress
-- Architecture innovation
-- Multi-physics coupling efficiency
-- Real-time learning capabilities
-
-### Health Checks
-
-- Application health: `/Health`
-- AI model availability: `/health/ai`
-- Digital twin status: `/health/digital-twin`
-- Features: `/health/engine`
-
-## Security Features
-
-- **JWT Authentication**: Secure token-based authentication
-- **HTTPS/TLS**: End-to-end encryption
-- **Network Policies**: Kubernetes network isolation
-- **Pod Security Standards**: Restricted security context
-- **Secret Management**: Kubernetes secrets for sensitive data
-- **CORS Configuration**: Enterprise domain restrictions
-- **AI Model Security**: Encrypted AI model storage
-
-## High Performance & Scalability
-
-- **Horizontal Pod Autoscaling**: Automatic scaling based on AI workload
-- **Load Balancing**: Kubernetes service load balancing
-- **Resource Limits**: CPU and memory constraints
-- **Persistent Storage**: High-performance SSD storage
-- **Caching**: Redis-based caching layer
-- **CDN Integration**: Global content delivery
-- **Real-Time Learning**: Continuous model improvement
-
-
-
-##  Testing
-
-### CI/CD Pipeline
-
-The project includes a comprehensive CI/CD pipeline that runs automatically on every push and pull request:
-
-- **Automated Build**: Compiles the solution in Release configuration
-- **Unit Tests**: Runs all unit tests with code coverage collection
-- **Integration Tests**: Executes integration and performance tests
-- **Code Quality**: Performs code formatting and analysis checks
-- **Security Scan**: Checks for vulnerabilities and security issues
-- **Docker Build**: Verifies Docker image builds successfully
-- **Code Coverage**: Measures line and branch coverage and enforces per-directory floors in CI
-
-View the pipeline status: [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
-
-### Unit Tests
-
-```bash
-dotnet test
-```
-
-### Integration Tests
-
-```bash
-dotnet test --filter Category=Integration
-```
-
-### Performance Tests
-
-```bash
-dotnet test --filter Category=Performance
-```
-
-### AI Model Validation
-
-```bash
-dotnet test --filter Category=AI
-```
-
-### Test Coverage
-
-Current test coverage exceeds **95%** for core components:
-- ✅ HelloblueGKEngine - Comprehensive engine analysis tests
-- ✅ ValidationEngine - Full validation logic coverage
-- ✅ RealTimeValidationEngine - Real-time validation tests
-- ✅ DigitalTwinEngine - Digital twin operations tests
-- ✅ PerformanceMonitoringService - Performance monitoring tests
-- ✅ RateLimitingService - Rate limiting tests
-- ✅ ConfigurationValidationService - Configuration validation tests
-- ✅ StructuredLoggingService - Logging functionality tests
-- ✅ AdvancedHealthCheckService - Health check system tests
-
-
-
-```ascii
-┌─────────────────────────────────────────────────────────────────┐
-│                    TECHNICAL EXCELLENCE                         │
-├─────────────────────────────────────────────────────────────────┤
-│  100% Original Code       │  Enterprise Architecture            │
-│  Real-World Accuracy      │  Algorithms                         │
-│  Peer Reviewed            │  Cutting-Edge Technology            │
-│  Scalable Design          │  Production Ready                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-- **100% Original Code**: No dependencies on external libraries, complete control over algorithms
-- **Enterprise Architecture**: Modular, extensible, and future-proof with clean separation of concerns
-- **Real-World Accuracy**: Based on actual engine specifications from test data and flight records
-- **Advanced Algorithms**: Cutting-edge optimization and machine learning techniques
-
-### Professional Standards
-- **Industry Ready**: Meets aerospace industry standards with AS9100 compliance
-- **Research Grade**: Suitable for academic and research institutions with peer-reviewed methods
-- **Manufacturing Ready**: Direct integration with CAD/CAE systems for production
-- **Cloud Deployable**: Scalable for enterprise cloud environments with containerization
-
+---
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md), [DEVELOPERS.md](DEVELOPERS.md), and [ARCHITECTURE.md](ARCHITECTURE.md).
+New contributors are welcome, and a first PR does not need to touch certification or security
+gates. [CONTRIBUTING.md](CONTRIBUTING.md) describes the first-hour path and how review works.
 
-## HelloblueGK - Advanced Aerospace Engine Simulation Platform
+- [Good first issues](https://github.com/HelloblueAI/HelloblueGK/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22)
+- [Discussions](https://github.com/HelloblueAI/HelloblueGK/discussions) — questions before you write code
+- [Issues](https://github.com/HelloblueAI/HelloblueGK/issues) — bugs and features
+- [Code of Conduct](CODE_OF_CONDUCT.md)
 
-## Additional Documentation
+---
 
-For detailed documentation, see the [Docs/](Docs/) directory.
+## Further documentation
 
-### **Validation and Benchmarks**
-For detailed performance metrics, validation results, and industry benchmarks, see [Docs/Technical/VALIDATION_AND_BENCHMARKS.md](Docs/Technical/VALIDATION_AND_BENCHMARKS.md).
-
-### **Technical Limitations and Roadmap**
-For an honest assessment of current limitations and future development plans, see [Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md](Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md).
-
-### **Professional Summary**
-For a precise account of which parts of this project are verified engineering and which are
-simulation scaffolding, see [Docs/VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md).
-
-### **Project Health Report**
-For the coverage floors enforced on every build, see
-[Certification/Artifacts/coverage-floors.json](Certification/Artifacts/coverage-floors.json).
+| Document | Contents |
+|----------|----------|
+| [Docs/VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md) | Verified engineering versus simulation scaffolding |
+| [Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md](Docs/Technical/TECHNICAL_LIMITATIONS_AND_ROADMAP.md) | Known limitations and development roadmap |
+| [Docs/Technical/VALIDATION_AND_BENCHMARKS.md](Docs/Technical/VALIDATION_AND_BENCHMARKS.md) | Validation results and benchmark data |
+| [Docs/Design/AdvancedCFDSolver.md](Docs/Design/AdvancedCFDSolver.md) | Design description for a unit inside the certification boundary |
+| [Docs/README.md](Docs/README.md) | Index of all documentation |
 
 ---
 
 ## License
 
-### Apache License 2.0
+Apache License 2.0 — see [LICENSE](LICENSE). You may use, modify, and distribute this software,
+including commercially, provided you retain the copyright and license notices and state significant
+changes. It is provided "as is", without warranties or conditions of any kind.
 
-Copyright (c) 2026 Helloblue, Inc. HB-NLP Research Lab
+Nothing in this repository constitutes a certification, airworthiness approval, or regulatory
+finding. Users are responsible for their own qualification programs and for compliance with
+ITAR, EAR, and other applicable regulations.
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may 
-obtain a copy of the License at:
-
-http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WIT
-HOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
-
-### License Terms Summary
-
-**Permissions:**
-- ✅ Commercial use
-- ✅ Modification
-- ✅ Distribution
-- ✅ Patent use
-- ✅ Private use
-
-**Limitations:**
-- ❌ Liability
-- ❌ Warranty
-
-**Conditions:**
-- 📋 License and copyright notice must be included
-- 📋 State changes must be documented
-
-### Aerospace Industry Compliance
-
-This software is intended for **engineering simulation and reference APIs**. Users are responsible for:
-
-- **Validation**: Ensuring simulation results meet their specific requirements
-- **Safety**: Following aerospace industry safety protocols in their own programs
-- **Compliance**: Adhering to export control and regulatory requirements (see [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md))
-- **Testing**: Conducting appropriate validation before production or flight use
-
-Community Edition is **not warranted** for human-rated or mission-critical flight without a separate qualification program.
-
-
+---
 
 ## Acknowledgments
 
-- **OpenFOAM Foundation** for CFD solver integration
-- **NASA** for engine performance data validation
-- **SpaceX** for published Raptor engine specifications
-- **Blue Origin** for BE-4 engine insights
-- **AI Research Community** for autonomous design breakthroughs
-- **Digital Twin Innovators** for real-time learning capabilities
-
----
-
-
-### **LIVE PRODUCTION DEPLOYMENT (Hosted reference)**
-- **Docker Container**: Reference deployment available
-- **API surface**: Demonstrates platform capabilities
-- **Community Edition**: Source in this repository under Apache 2.0
-
-### **Technology highlights (simulation / reference)**
-- **AI-Driven Design**: 98.0% innovation score
-- **Digital Twin Learning**: 99.900% accuracy
-- **Multi-Physics Coupling**: 97.0% efficiency
-- **Architectures**: 92.3% innovation
-
-### **Hosted reference status**
-The hosted platform demonstrates Community Edition capabilities. For production mission use, see [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md).
-
-
-
-##  HB-NLP Engine Design
-
-### **HB-NLP-REV-001: Advanced Aerospace Engine**
-
-Our aerospace engine has been successfully designed and optimized using **Plasticity v25.2.2** hardware acceleration engine.
-
-#### **Performance Specifications**
-- **Thrust**: 1,500,000 N (1.5 MN) - Validated simulation performance
-- **Specific Impulse**: 380 s - Industry-standard efficiency
-- **Chamber Pressure**: 250 bar - Advanced propulsion parameters
-- **Expansion Ratio**: 25.0:1 - Optimized nozzle design
-- **Efficiency**: 89.2% - Validated performance
-- **Technology Readiness Level**: 6 - Technology demonstration
-
-
-#### **Geometry**
-- **Chamber Diameter**: 2.5 m
-- **Chamber Length**: 3.0 m
-- **Throat Diameter**: 0.8 m
-- **Exit Diameter**: 4.0 m
-- **Nozzle Length**: 6.0 m
-- **Expansion Angle**: 15.0°
-
-#### **Materials**
-- **Chamber**: Advanced Superalloy
-- **Nozzle**: Carbon-Carbon Composite
-- **Injector**: Titanium Alloy
-- **Turbopump**: Inconel 718
-
-#### **Analysis Results**
-- **CFD Convergence**: 99.8% - Excellent numerical stability
-- **Hardware Utilization**: 87.0% - Efficient resource usage
-- **Computation Speed**: 1.5 TFLOPS - High-performance computing
-- **Memory Usage**: 8.2 GB - Optimized memory management
-- **Temperature**: 45.2°C - Safe operating conditions
-- **Power Consumption**: 320 W - Energy efficient
-
-##  Plasticity Integration
-
-### **Hardware Acceleration Engine**
-- **Plasticity Version**: v25.2.2
-- **Hardware Acceleration**: ENABLED
-- **Real-time 3D Modeling**: ACTIVE
-- **CFD Simulation**: RUNNING
-- **Multi-physics Coupling**: OPERATIONAL
-
-### **Design Files Generated**
-- `Docs/Designs/HB-NLP-REV-001/design.json` - Engine specifications
-- `Docs/Designs/HB-NLP-REV-001/design_script.py` - Plasticity 3D model script
-- `Docs/Designs/HB-NLP-REV-001/design_summary.md` - Comprehensive design summary
-
-### **Opening Design in Plasticity**
-```bash
-# Generate and open design in Plasticity
-python3 Scripts/Integration/open_in_plasticity.py
-```
-
-##  Plasticity Integration Status
-
-### **Model Details**
-- **Model ID**: HB-NLP-REV-001
-- **Element Count**: 2,847,392 - High-resolution mesh
-- **Node Count**: 1,423,696 - Detailed geometry
-- **Mesh Quality**: Excellent
-- **Status**: OPTIMIZED
-
-### **Hardware Performance**
-- **Hardware Available**: ✅ ENABLED
-- **Active Simulations**: 1
-- **Hardware Utilization**: 87%
-- **GPU Utilization**: 92%
-- **CPU Utilization**: 78%
-- **Memory Usage**: 8.2 GB
-- **Temperature**: 45.2°C
-- **Power Consumption**: 320W
-
-## 🎮 Real-time Simulation
-
-### **Simulation Performance**
-- **Simulation Time**: 5.7 s - Fast real-time processing
-- **Frame Rate**: 60 FPS - Smooth visualization
-- **Latency**: 1.2 ms - Ultra-low latency
-- **Accuracy**: 99.7% - High precision
-
-### **Optimization Results**
-- **Objective Value**: +15.3% - Significant performance improvement
-- **Iterations**: 1,247 - Thorough optimization process
-- **Computation Time**: 2.3 s - Fast convergence
-- **Convergence Rate**: 99.9% - Excellent optimization
-
-##  Next Steps
-
-### **Production Roadmap**
-1. **Production Testing**: Validate engine performance in real-world conditions
-2. **Manufacturing**: Begin production of engine components
-3. **Space Applications**: Deploy for advanced aerospace missions
-4. **Commercialization**: Scale for commercial aerospace applications
-
-### **Future Development**
-- **Advanced Materials**: Novel aerospace materials discovery
-- **Quantum Computing**: Enhanced quantum-classical hybrid systems
-- **Autonomous Testing**: Self-validating engine systems
-- **Space Applications**: Interplanetary propulsion systems
-- **Commercial Scale**: Mass production capabilities
-
----
-
-## **ENGINE DESIGN COMPLETE!**
-
-The **HB-NLP reference engine design** is generated and exported through the Plasticity integration. See [VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md) for what this pipeline establishes and what it does not.
-
-**Status**: ✅ **OPERATIONAL**  
-**Technology Readiness Level**: 6  
-**Performance Score**: 89.2%  
-**Simulation Capability**: Validated  
-
----
-
-*HB-NLP Research Lab 
-*Helloblue Aerospace Technology - Operational Platform*
-
-
-
+- **SpaceX** for published Raptor and Merlin engine specifications
+- **NASA** for published RS-25 performance data and the NPR 7150.2 software engineering requirements
+- **RTCA** for DO-178C, the basis of the verification objectives enforced here
+- **Sutton & Biblarz** for *Rocket Propulsion Elements*, the source of the nozzle relations
+- **The .NET and open-source communities** for the tooling this platform is built on
 
 <div align="center">
 
-[![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![Technology](https://img.shields.io/badge/technology-advanced-blue)](https://github.com/HelloblueAI/HelloblueGK)
-[![Line Coverage](https://img.shields.io/badge/line%20coverage-50.7%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-52.1%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
-[![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
-[![C#](https://img.shields.io/badge/C%23-239120?style=flat&logo=c-sharp&logoColor=white)](https://docs.microsoft.com/en-us/dotnet/csharp/)
-[![CFD](https://img.shields.io/badge/CFD-Computational%20Fluid%20Dynamics-orange?style=flat)](https://www.openfoam.org/)
-[![FEA](https://img.shields.io/badge/FEA-Finite%20Element%20Analysis-red?style=flat)](https://en.wikipedia.org/wiki/Finite_element_method)
-[![Thermal](https://img.shields.io/badge/Thermal-Heat%20Transfer%20Analysis-yellow?style=flat)](https://en.wikipedia.org/wiki/Heat_transfer)
-[![Verification](https://img.shields.io/badge/verification-DO--178C%20Level%20A%20boundary-green?style=flat)](Docs/VERIFICATION_SCOPE.md)
-[![Enterprise](https://img.shields.io/badge/Enterprise-Grade%20Architecture-purple?style=flat)](https://en.wikipedia.org/wiki/Enterprise_software)
-[![AI-Driven Design](https://img.shields.io/badge/AI--Driven%20Design-Autonomous%20Innovation-teal?style=for-the-badge&logo=robot)](https://en.wikipedia.org/wiki/Artificial_intelligence)
-[![Digital Twin](https://img.shields.io/badge/Digital%20Twin-Real%20Time%20Learning-blue?style=for-the-badge&logo=digital)](https://en.wikipedia.org/wiki/Digital_twin)
-
-[![Helloblue, Inc. 2026 HB-NLP Research Lab](https://img.shields.io/badge/Helloblue%2C%20Inc.%202026%20HB--NLP%20Research%20Lab-Aerospace%20Engine%20Kernel-blue?style=for-the-badge&logo=rocket)](https://helloblue.com/)
+**[Helloblue, Inc.](https://helloblue.ai) · HB-NLP Research Lab**
 
 </div>
-
----
