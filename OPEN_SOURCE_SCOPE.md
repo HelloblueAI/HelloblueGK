@@ -26,7 +26,7 @@ No upstream attribution to LEAP 71 is required for code in this repository becau
 |------|------------|----------------|
 | **Community Edition** | Reference implementation, APIs, docs, tests, sample workflows | **This repository** (Apache 2.0) |
 | **Hosted Platform** | Managed deployment, auth, uptime, operations | [hellobluegk.onrender.com](https://hellobluegk.onrender.com) (reference demo; not open signup) |
-| **Enterprise / Certification** | Production support, formal compliance packages, custom deployments, SLAs | **Not in this repo** — contact [Helloblue](https://helloblue.com) |
+| **Enterprise / Certification** | Production support, formal compliance packages, custom deployments, SLAs | **Not in this repo** — contact [Helloblue](https://helloblue.ai) |
 
 This is the same pattern used by companies that publish SDKs and reference stacks in the open while keeping production certification assets, proprietary models, and managed services commercial.
 
@@ -115,7 +115,7 @@ Report export-control concerns via [security@helloblue.ai](mailto:security@hello
 
 For hosted production, formal certification support, private modules, or partnership:
 
-- **Website:** [helloblue.com](https://helloblue.com)
+- **Website:** [helloblue.ai](https://helloblue.ai)
 - **Security:** [security@helloblue.ai](mailto:security@helloblue.ai)
 - **Conduct:** [conduct@helloblue.ai](mailto:conduct@helloblue.ai)
 

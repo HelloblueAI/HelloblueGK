@@ -57,12 +57,12 @@ var engine = await _engineRepository.GetByIdAsync(id);
 **Usage:**
 ```bash
 # Login
-curl -X POST https://api.helloblue.com/api/v1/auth/login \
+curl -X POST https://api.helloblue.ai/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"user","password":"pass"}'
 
 # Use token
-curl -X GET https://api.helloblue.com/api/v1/auth/me \
+curl -X GET https://api.helloblue.ai/api/v1/auth/me \
   -H "Authorization: Bearer YOUR_TOKEN"
 ```
 
