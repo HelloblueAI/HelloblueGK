@@ -201,14 +201,18 @@ Full description, including the optional geometry-integration boundary:
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
 | `/Health` | none | liveness |
-| `/Health/detailed` | none | component detail |
-| `/Health/engine` | none | engine subsystem status |
-| `/swagger` | none | interactive API browser |
-| `/metrics` | none | Prometheus exposition |
+| `/Health/detailed` | bearer token | component detail |
+| `/Health/engine` | bearer token | engine subsystem status |
+| `/metrics` | bearer token | Prometheus exposition |
+| `/swagger` | Microsoft Entra ID SSO | interactive API browser |
 
-This is a reference deployment, not an open sandbox: registration is disabled and it runs on a free
-instance that sleeps when idle, so the first request after a pause is slow. Clone and run your own
-instance if you need one you control.
+Swagger is treated as internal documentation: in production it redirects to corporate single sign-on
+rather than being publicly readable, as described in
+[INTERNAL_SWAGGER_SSO.md](Docs/Deployment/INTERNAL_SWAGGER_SSO.md). `/Health` is the only
+unauthenticated endpoint.
+
+This is a reference deployment, not an open sandbox — registration is disabled. Clone and run your
+own instance if you need one you control.
 
 ```bash
 curl https://hellobluegk.onrender.com/Health
@@ -248,11 +252,12 @@ docker run -p 8080:8080 -e Jwt__Key="a-secret-of-at-least-32-characters" hellobl
 # http://localhost:8080/swagger
 ```
 
-Set `DATABASE_URL` and `Jwt__Key` from the environment; never commit secrets. Render is the
-supported path and is described in [DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md), with
-database setup in [RENDER_POSTGRESQL_SETUP.md](Docs/Deployment/RENDER_POSTGRESQL_SETUP.md). A
-Kubernetes manifest (`k8s-deployment.yaml`) is provided as a starting point rather than a
-CI-validated path.
+Set `DATABASE_URL` and `Jwt__Key` from the environment; never commit secrets. Render is the supported
+path and is described in [DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md), with database
+setup in [RENDER_POSTGRESQL_SETUP.md](Docs/Deployment/RENDER_POSTGRESQL_SETUP.md). The deployed
+service builds `Docker/Dockerfile.render`; the plain `Docker/Dockerfile` above is the local
+equivalent. A Kubernetes manifest (`k8s-deployment.yaml`) is provided as a starting point rather than
+a CI-validated path.
 
 ---
 
