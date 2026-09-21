@@ -50,6 +50,12 @@ namespace HB_NLP_Research_Lab.Certification
                     "Baseline version must be a real version identity, not a placeholder such as 'n/a'",
                     nameof(version));
             }
+            if (HasNonEmptyPunctuationOnlyVersion(version))
+            {
+                throw new ArgumentException(
+                    "Baseline version must be a real version identity, not punctuation-only text",
+                    nameof(version));
+            }
 
             var baseline = new SoftwareBaseline
             {
@@ -133,6 +139,27 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot be approved with a placeholder version");
             }
 
+            // Punctuation-only leftover versions ("..." / "___" / "---") are not
+            // configuration identity. Create/Add already reject them; leftover
+            // Draft rows must not freeze into an official baseline. Placeholder
+            // tokens stay on the Invalid* gate above. Do not letter-gate versions
+            // such as 1.0.0 — leftover digit versions still qualify.
+            if (HasPunctuationOnlyVersion(baseline.Version, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only version");
+            }
+
+            // Punctuation-only leftover checksums ("..." / "___" / "---") are not
+            // integrity evidence. HasChecksumEvidence already rejects placeholders;
+            // leftover Draft rows with "..." must not freeze into an official
+            // baseline. Do not letter-gate hex checksums.
+            if (HasPunctuationOnlyChecksum(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only checksum");
+            }
+
             // Placeholder name tokens are not configuration identity. Create already
             // rejects them; leftover Draft rows must not freeze into an official
             // baseline. Empty leftover names are a separate MissingBaselineName /
@@ -199,6 +226,8 @@ namespace HB_NLP_Research_Lab.Certification
                 || !AllItemsHaveNames(claimedItems)
                 || !HasIdentifiableVersions(baseline)
                 || HasPlaceholderVersion(baseline.Version, claimedItems)
+                || HasPunctuationOnlyVersion(baseline.Version, claimedItems)
+                || HasPunctuationOnlyChecksum(claimedItems)
                 || HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems)
                 || HasPunctuationOnlyConfigurationName(baseline.BaselineName, claimedItems))
             {
@@ -220,9 +249,13 @@ namespace HB_NLP_Research_Lab.Certification
                                     ? $"Baseline {baseline.BaselineName} cannot be approved until the baseline and every configuration item have a version"
                                     : HasPlaceholderVersion(baseline.Version, claimedItems)
                                         ? $"Baseline {baseline.BaselineName} cannot be approved with a placeholder version"
-                                        : HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems)
-                                            ? $"Baseline {baseline.BaselineName} cannot be approved with a placeholder configuration name"
-                                            : $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only or digit-only configuration name");
+                                        : HasPunctuationOnlyVersion(baseline.Version, claimedItems)
+                                            ? $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only version"
+                                            : HasPunctuationOnlyChecksum(claimedItems)
+                                                ? $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only checksum"
+                                                : HasPlaceholderConfigurationName(baseline.BaselineName, claimedItems)
+                                                    ? $"Baseline {baseline.BaselineName} cannot be approved with a placeholder configuration name"
+                                                    : $"Baseline {baseline.BaselineName} cannot be approved with a punctuation-only or digit-only configuration name");
             }
 
             baseline.Status = BaselineStatus.Approved;
@@ -275,6 +308,12 @@ namespace HB_NLP_Research_Lab.Certification
             {
                 throw new ArgumentException(
                     "Configuration item version must be a real version identity, not a placeholder such as 'n/a'",
+                    nameof(version));
+            }
+            if (HasNonEmptyPunctuationOnlyVersion(version))
+            {
+                throw new ArgumentException(
+                    "Configuration item version must be a real version identity, not punctuation-only text",
                     nameof(version));
             }
 
@@ -705,6 +744,25 @@ namespace HB_NLP_Research_Lab.Certification
                     $"Baseline {baseline.BaselineName} cannot produce an SCI with a placeholder version");
             }
 
+            // Leftover Approved/Released + punctuation-only version previously
+            // minted an SCI whose identity was "..." / "___" / "---".
+            // Do not letter-gate versions such as 1.0.0.
+            if (HasPunctuationOnlyVersion(baseline.Version, baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI with a punctuation-only version");
+            }
+
+            // Leftover Approved/Released + punctuation-only checksum previously
+            // minted an SCI whose integrity evidence was "..." / "___" / "---".
+            // Placeholder checksums stay on HasReleasedChecksumEvidence.
+            // Do not letter-gate hex checksums.
+            if (HasPunctuationOnlyChecksum(baseline.ConfigurationItems))
+            {
+                throw new InvalidOperationException(
+                    $"Baseline {baseline.BaselineName} cannot produce an SCI with a punctuation-only checksum");
+            }
+
             // Leftover Approved/Released + placeholder name previously minted
             // an SCI whose identity was "n/a" / "none" / "todo". Empty leftover
             // names are a separate MissingBaselineName / MissingItemName gate.
@@ -766,10 +824,14 @@ namespace HB_NLP_Research_Lab.Certification
 
             // Check for missing or placeholder checksums. Whitespace-only values
             // are MissingChecksum (leftover "   " must not stamp IsCompliant).
-            // Placeholder checksum tokens are InvalidChecksum. Placeholder version
-            // tokens are InvalidVersion; empty leftover versions use MissingVersion.
-            // Placeholder name tokens are InvalidBaselineName / InvalidItemName;
-            // empty leftover names use MissingBaselineName / MissingItemName.
+            // Placeholder checksum tokens are InvalidChecksum. Punctuation-only
+            // leftover checksums ("..." / "___" / "---") are also InvalidChecksum
+            // — do not fold them into HasChecksumEvidence / MissingChecksum, and
+            // do not letter-gate hex. Placeholder version tokens are InvalidVersion;
+            // punctuation-only leftover versions are also InvalidVersion; empty
+            // leftover versions use MissingVersion. Placeholder name tokens are
+            // InvalidBaselineName / InvalidItemName; empty leftover names use
+            // MissingBaselineName / MissingItemName.
             var links = baseline.ConfigurationItems.ToList();
             var items = links.Select(bci => bci.ConfigurationItem).ToList();
             foreach (var link in links)
@@ -806,6 +868,17 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = AuditIssueType.InvalidChecksum,
                         Severity = IssueSeverity.Major,
                         Description = $"Configuration item {itemLabel} has a placeholder checksum that is not integrity evidence"
+                    });
+                }
+                else if (HasNonEmptyPunctuationOnlyChecksum(item.Checksum))
+                {
+                    var itemLabel = item.ItemName ?? string.Empty;
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = itemLabel,
+                        IssueType = AuditIssueType.InvalidChecksum,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {itemLabel} has a punctuation-only checksum that is not integrity evidence"
                     });
                 }
 
@@ -854,6 +927,17 @@ namespace HB_NLP_Research_Lab.Certification
                         IssueType = AuditIssueType.InvalidVersion,
                         Severity = IssueSeverity.Major,
                         Description = $"Configuration item {itemLabel} has a placeholder version that is not configuration identity"
+                    });
+                }
+                else if (HasNonEmptyPunctuationOnlyVersion(link.Version))
+                {
+                    var itemLabel = item.ItemName ?? string.Empty;
+                    report.Issues.Add(new ConfigurationAuditIssue
+                    {
+                        ItemName = itemLabel,
+                        IssueType = AuditIssueType.InvalidVersion,
+                        Severity = IssueSeverity.Major,
+                        Description = $"Configuration item {itemLabel} has a punctuation-only version that is not configuration identity"
                     });
                 }
 
@@ -910,6 +994,16 @@ namespace HB_NLP_Research_Lab.Certification
                     IssueType = AuditIssueType.InvalidVersion,
                     Severity = IssueSeverity.Critical,
                     Description = $"Baseline {baseline.BaselineName} has a placeholder version that is not configuration identity"
+                });
+            }
+            else if (HasNonEmptyPunctuationOnlyVersion(baseline.Version))
+            {
+                report.Issues.Add(new ConfigurationAuditIssue
+                {
+                    ItemName = baseline.BaselineName,
+                    IssueType = AuditIssueType.InvalidVersion,
+                    Severity = IssueSeverity.Critical,
+                    Description = $"Baseline {baseline.BaselineName} has a punctuation-only version that is not configuration identity"
                 });
             }
 
@@ -1191,6 +1285,35 @@ namespace HB_NLP_Research_Lab.Certification
 
         private static bool HasVersionEvidence(string? version) =>
             !string.IsNullOrWhiteSpace(version);
+
+        /// <summary>
+        /// Leftover punctuation-only versions ("..." / "___" / "---") are not
+        /// configuration identity. Placeholder tokens stay on IsPlaceholderVersion
+        /// so leftover "n/a" remains InvalidVersion, not MissingVersion. Do not
+        /// letter-gate versions — leftover 1.0.0 and digit-only 123 still qualify.
+        /// </summary>
+        private static bool HasNonEmptyPunctuationOnlyVersion(string? version) =>
+            !string.IsNullOrWhiteSpace(version)
+            && !IsPlaceholderVersion(version)
+            && !CertificationIdentityTokens.HasLetterOrDigitIdentity(version);
+
+        /// <summary>
+        /// Leftover punctuation-only checksums ("..." / "___" / "---") are not
+        /// integrity evidence. Placeholder tokens stay on IsPlaceholderChecksum
+        /// so leftover "n/a" remains InvalidChecksum, not MissingChecksum. Do not
+        /// letter-gate hex — leftover deadbeef / 0123456789abcdef still qualify.
+        /// </summary>
+        private static bool HasNonEmptyPunctuationOnlyChecksum(string? checksum) =>
+            !string.IsNullOrWhiteSpace(checksum)
+            && !IsPlaceholderChecksum(checksum)
+            && !CertificationIdentityTokens.HasLetterOrDigitIdentity(checksum);
+
+        private static bool HasPunctuationOnlyVersion(string? baselineVersion, IEnumerable<BaselineConfigurationItem>? links) =>
+            HasNonEmptyPunctuationOnlyVersion(baselineVersion) ||
+            (links?.Any(link => HasNonEmptyPunctuationOnlyVersion(link.Version)) ?? false);
+
+        private static bool HasPunctuationOnlyChecksum(IEnumerable<BaselineConfigurationItem>? links) =>
+            links?.Any(link => HasNonEmptyPunctuationOnlyChecksum(link.ConfigurationItem?.Checksum)) ?? false;
 
         private static bool HasIdentifiableItemVersions(IEnumerable<BaselineConfigurationItem> links) =>
             links.All(link => HasVersionEvidence(link.Version));

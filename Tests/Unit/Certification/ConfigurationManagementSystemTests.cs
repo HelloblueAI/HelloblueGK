@@ -76,6 +76,23 @@ public class ConfigurationManagementSystemTests
         context.SoftwareBaselines.Should().BeEmpty();
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task CreateBaselineAsync_RejectsPunctuationOnlyVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var act = async () => await system.CreateBaselineAsync("SCI-1", version, "initial", "alice");
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only*")
+            .WithParameterName("version");
+
+        context.SoftwareBaselines.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task CreateConfigurationItemAsync_RejectsEmptyNameAndTraversalPath()
     {
@@ -518,6 +535,54 @@ public class ConfigurationManagementSystemTests
     }
 
     [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPunctuationBaselineVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Punctuation-Version", "0.1.0", "punctuation", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        // Create already rejects punctuation-only versions. Stamp leftover Draft + "...".
+        baseline.Version = version;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only version*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPunctuationItemVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Punctuation-Item-Version", "0.1.0", "punctuation", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var link = context.BaselineConfigurationItems.Single();
+        link.Version = version;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only version*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
     [InlineData("n/a")]
     [InlineData("none")]
     [InlineData("todo")]
@@ -544,6 +609,38 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*Released with a checksum*");
+
+        var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
+        persisted.Status.Should().Be(BaselineStatus.Draft);
+        persisted.ApprovedBy.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task ApproveBaselineAsync_RejectsLeftoverPunctuationChecksum(string checksum)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Draft-Punctuation-Checksum", "0.1.0", "punctuation", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = checksum,
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = checksum;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+
+        var act = async () => await system.ApproveBaselineAsync(baseline.Id, "bob");
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only checksum*");
 
         var persisted = await context.SoftwareBaselines.AsNoTracking().SingleAsync(b => b.Id == baseline.Id);
         persisted.Status.Should().Be(BaselineStatus.Draft);
@@ -659,6 +756,80 @@ public class ConfigurationManagementSystemTests
         audit.Issues.Should().Contain(i =>
             i.IssueType == AuditIssueType.InvalidChecksum &&
             i.ItemName == "core.c");
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task PerformAuditAsync_LeftoverApprovedPunctuationChecksum_FailsClosed(string checksum)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + punctuation-only checksum — leftover rows
+        // previously stamped audit IsCompliant and minted an SCI.
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Checksum", "1.0.0", "leftover", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = checksum,
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = checksum;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidChecksum &&
+            i.ItemName == "core.c" &&
+            i.Description.Contains("punctuation-only"));
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only checksum*");
+    }
+
+    [Theory]
+    [InlineData("deadbeef")]
+    [InlineData("0123456789abcdef")]
+    public async Task PerformAuditAsync_LeftoverApprovedMatchingHexChecksum_IsCompliant(string checksum)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Matching-Hex-Checksum", "1.0.0", "leftover ok", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c",
+            Checksum = checksum,
+            Size = 128
+        });
+        item.Status = ConfigurationItemStatus.Released;
+        item.Checksum = checksum;
+        await context.SaveChangesAsync();
+        await system.AddItemToBaselineAsync(baseline.Id, item.Id, "1.0.0");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
     }
 
     [Fact]
@@ -819,6 +990,28 @@ public class ConfigurationManagementSystemTests
     }
 
     [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task GenerateSCIAsync_RejectsApprovedBaselineWithPunctuationVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-SCI-Version", "1.0.0", "leftover punctuation", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.Version = version;
+        await context.SaveChangesAsync();
+
+        var act = async () => await system.GenerateSCIAsync(baseline.Id);
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only version*");
+    }
+
+    [Theory]
     [InlineData("n/a")]
     [InlineData("none")]
     [InlineData("todo")]
@@ -874,6 +1067,69 @@ public class ConfigurationManagementSystemTests
             .WithMessage("*placeholder version*");
     }
 
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task PerformAuditAsync_LeftoverApprovedPunctuationVersion_FailsClosed(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        // Legacy Approved + Released + punctuation-only version — leftover rows
+        // previously stamped audit IsCompliant and minted an SCI.
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Version", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        baseline.Version = version;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidVersion &&
+            i.ItemName == "Legacy-Punctuation-Version" &&
+            i.Description.Contains("punctuation-only"));
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only version*");
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task PerformAuditAsync_LeftoverApprovedPunctuationItemVersion_FailsClosed(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Punctuation-Item-Version", "1.0.0", "leftover", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        var link = context.BaselineConfigurationItems.Single();
+        link.Version = version;
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeFalse();
+        audit.Issues.Should().Contain(i =>
+            i.IssueType == AuditIssueType.InvalidVersion &&
+            i.ItemName == "core.c" &&
+            i.Description.Contains("punctuation-only"));
+
+        var sci = async () => await system.GenerateSCIAsync(baseline.Id);
+        await sci.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*punctuation-only version*");
+    }
+
     [Fact]
     public async Task PerformAuditAsync_LeftoverApprovedMatchingVersion_IsCompliant()
     {
@@ -881,6 +1137,25 @@ public class ConfigurationManagementSystemTests
         var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
 
         var baseline = await system.CreateBaselineAsync("Legacy-Matching-Version", "1.0.0", "leftover ok", "alice");
+        await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
+        baseline.Status = BaselineStatus.Approved;
+        baseline.ApprovedBy = "bob";
+        baseline.ApprovedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+
+        var audit = await system.PerformAuditAsync(baseline.Id);
+
+        audit.IsCompliant.Should().BeTrue();
+        audit.Issues.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task PerformAuditAsync_LeftoverApprovedMatchingDigitVersion_IsCompliant()
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("Legacy-Matching-Digit-Version", "123", "leftover ok", "alice");
         await AddReleasedItemAsync(system, context, baseline.Id, "core.c");
         baseline.Status = BaselineStatus.Approved;
         baseline.ApprovedBy = "bob";
@@ -1588,6 +1863,31 @@ public class ConfigurationManagementSystemTests
         var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, version);
         await act.Should().ThrowAsync<ArgumentException>()
             .WithMessage("*real version identity*")
+            .WithParameterName("version");
+
+        context.BaselineConfigurationItems.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("...")]
+    [InlineData("___")]
+    [InlineData("---")]
+    public async Task AddItemToBaselineAsync_RejectsPunctuationOnlyVersion(string version)
+    {
+        await using var context = CreateContext();
+        var system = new ConfigurationManagementSystem(context, NullLogger<ConfigurationManagementSystem>.Instance);
+
+        var baseline = await system.CreateBaselineAsync("SCI-2", "1.0.0", "initial", "alice");
+        var item = await system.CreateConfigurationItemAsync(new ConfigurationItem
+        {
+            ItemName = "core.c",
+            ItemType = ConfigurationItemType.SourceCode,
+            FilePath = "Core/core.c"
+        });
+
+        var act = async () => await system.AddItemToBaselineAsync(baseline.Id, item.Id, version);
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithMessage("*punctuation-only*")
             .WithParameterName("version");
 
         context.BaselineConfigurationItems.Should().BeEmpty();
