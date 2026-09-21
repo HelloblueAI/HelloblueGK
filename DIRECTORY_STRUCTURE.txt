@@ -57,8 +57,7 @@ ROOT: HelloblueGK/   (clone path; avoid naming the folder PicoGK)
 ├── obj/ .................................. Build artifacts
 ├── Dockerfile ............................ Docker configuration
 ├── Dockerfile.production ................. Production Docker config
-├── k8s-deployment.yaml ................... Kubernetes deployment
-├── deploy-production.sh .................. Deployment script
+├── k8s-deployment.yaml ................... Kubernetes deployment example
 ├── appsettings.json ...................... Application settings
 ├── HelloblueGK.csproj .................... Main project file
 └── LICENSE ............................... Apache 2.0 License

@@ -265,8 +265,8 @@ Set `DATABASE_URL` and `Jwt__Key` from the environment; never commit secrets. Re
 path and is described in [DEPLOY_TO_RENDER.md](Docs/Deployment/DEPLOY_TO_RENDER.md), with database
 setup in [RENDER_POSTGRESQL_SETUP.md](Docs/Deployment/RENDER_POSTGRESQL_SETUP.md). The deployed
 service builds `Docker/Dockerfile.render`; the plain `Docker/Dockerfile` above is the local
-equivalent. A Kubernetes manifest (`k8s-deployment.yaml`) is provided as a starting point rather than
-a CI-validated path.
+equivalent. A generic Kubernetes manifest (`k8s-deployment.yaml`) is included as an illustrative
+example with placeholder hostnames and minimal resources; it is not exercised by CI.
 
 ---
 

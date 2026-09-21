@@ -102,5 +102,3 @@ To make this fully functional:
 4. **Add Mixture Ratio Controller**: Fuel/oxidizer ratio control
 5. **RTOS Integration**: Real-time operating system support
 6. **Testing**: Hardware-in-the-loop testing
-
-See `Docs/Technical/REAL_TIME_ENGINE_CONTROL.md` for complete implementation plan.
