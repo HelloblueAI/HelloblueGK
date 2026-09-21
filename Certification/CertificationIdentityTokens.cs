@@ -54,8 +54,10 @@ namespace HB_NLP_Research_Lab.Certification
         /// punctuation-only values ("...", "___", "---") previously satisfied
         /// leftover creator / author / approver gates after placeholder tokens
         /// were rejected. Matching leftover alice / bob / admin still qualify.
-        /// Do not use this for versions (1.0.0) or hex checksums, and do not
-        /// letter-gate actors — leftover alice must remain a real identity.
+        /// This is also the leftover gate for CM versions and checksums:
+        /// punctuation-only "..." / "___" / "---" fail, while 1.0.0 and hex
+        /// (including digit-only hex) still qualify. Do not letter-gate actors,
+        /// versions, or checksums with HasRealIdentity / HasAlphabeticIdentity.
         /// </summary>
         public static bool HasLetterOrDigitIdentity(string? value) =>
             !string.IsNullOrWhiteSpace(value) && value.Any(char.IsLetterOrDigit);
