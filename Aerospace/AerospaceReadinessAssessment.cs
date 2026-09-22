@@ -129,7 +129,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
             var technicalAssessment = new TechnicalReadinessAssessment
             {
-                TechnologyReadinessLevel = (int)evidence.Measured("Technical.TechnologyReadinessLevel"),
+                TechnologyReadinessLevel = CountFromEvidence(evidence.Measured("Technical.TechnologyReadinessLevel")),
                 PerformanceValidation = evidence.Attested("Technical.PerformanceValidation"),
                 ReliabilityAnalysis = evidence.Attested("Technical.ReliabilityAnalysis"),
                 EnvironmentalTesting = evidence.Attested("Technical.EnvironmentalTesting"),
@@ -139,7 +139,7 @@ namespace HB_NLP_Research_Lab.Aerospace
                 VerificationTesting = evidence.Attested("Technical.VerificationTesting"),
                 ValidationTesting = evidence.Attested("Technical.ValidationTesting"),
                 QualificationTesting = evidence.Attested("Technical.QualificationTesting"),
-                FlightHeritage = (int)evidence.Measured("Technical.FlightHeritage"),
+                FlightHeritage = CountFromEvidence(evidence.Measured("Technical.FlightHeritage")),
                 PerformanceMetrics = GetPerformanceMetricsForMissionLevel(missionLevel),
                 InnovationLevel = evidence.Measured("Technical.InnovationLevel"),
                 ComputationalCapability = evidence.Measured("Technical.ComputationalCapability"),
@@ -173,7 +173,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             var safetyAssessment = new SafetyReadinessAssessment
             {
                 SafetyFactor = evidence.Measured("Safety.SafetyFactor"),
-                RedundancyLevel = (int)evidence.Measured("Safety.RedundancyLevel"),
+                RedundancyLevel = CountFromEvidence(evidence.Measured("Safety.RedundancyLevel")),
                 FaultTolerance = evidence.Measured("Safety.FaultTolerance"),
                 MeanTimeBetweenFailures = evidence.Measured("Safety.MeanTimeBetweenFailures"),
                 MeanTimeToRepair = evidence.Measured("Safety.MeanTimeToRepair"),
@@ -447,14 +447,19 @@ namespace HB_NLP_Research_Lab.Aerospace
         {
             if (report.ReadinessCategories.Count == 0) return 0.0;
 
-            var totalScore = report.ReadinessCategories.Sum(c => c.ReadinessScore);
-            var averageScore = totalScore / report.ReadinessCategories.Count;
+            // A category score outside [0, 1] is not a stronger result. Leaving it raw lets
+            // one inflated measurement outvote every unmet requirement and move the go/no-go
+            // threshold the mission tables are written against.
+            var scored = report.ReadinessCategories
+                .Select(c => (c.Category, Score: UnitCredit(c.ReadinessScore)))
+                .ToList();
+            var averageScore = scored.Average(c => c.Score);
 
             // Weight critical categories more heavily
             var criticalCategories = new[] { ReadinessCategory.Safety, ReadinessCategory.Regulatory, ReadinessCategory.Technical };
-            var criticalScores = report.ReadinessCategories
+            var criticalScores = scored
                 .Where(c => criticalCategories.Contains(c.Category))
-                .Select(c => c.ReadinessScore)
+                .Select(c => c.Score)
                 .ToList();
 
             // A partial report may carry no critical category at all. Averaging an empty
@@ -486,7 +491,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         internal double CalculateTechnicalReadinessScore(TechnicalReadinessAssessment assessment, MissionLevel missionLevel)
         {
-            var trlScore = assessment.TechnologyReadinessLevel / 9.0;
+            var trlScore = UnitCredit(assessment.TechnologyReadinessLevel / 9.0);
             var performanceScore = assessment.PerformanceValidation ? 1.0 : 0.0;
             var reliabilityScore = assessment.ReliabilityAnalysis ? 1.0 : 0.0;
 
@@ -495,9 +500,9 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         internal double CalculateSafetyReadinessScore(SafetyReadinessAssessment assessment, MissionLevel missionLevel)
         {
-            var safetyFactorScore = Math.Min(assessment.SafetyFactor / 4.0, 1.0);
-            var redundancyScore = Math.Min(assessment.RedundancyLevel / 4.0, 1.0);
-            var faultToleranceScore = assessment.FaultTolerance;
+            var safetyFactorScore = UnitCredit(assessment.SafetyFactor / 4.0);
+            var redundancyScore = UnitCredit(assessment.RedundancyLevel / 4.0);
+            var faultToleranceScore = UnitCredit(assessment.FaultTolerance);
 
             return (safetyFactorScore + redundancyScore + faultToleranceScore) / 3.0;
         }
@@ -525,9 +530,9 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         internal double CalculateOperationalReadinessScore(OperationalReadinessAssessment assessment, MissionLevel missionLevel)
         {
-            var availabilityScore = assessment.Availability;
-            var maintainabilityScore = assessment.Maintainability;
-            var supportabilityScore = assessment.Supportability;
+            var availabilityScore = UnitCredit(assessment.Availability);
+            var maintainabilityScore = UnitCredit(assessment.Maintainability);
+            var supportabilityScore = UnitCredit(assessment.Supportability);
 
             return (availabilityScore + maintainabilityScore + supportabilityScore) / 3.0;
         }
@@ -554,8 +559,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         private double CalculateFinancialReadinessScore(FinancialReadinessAssessment assessment, MissionLevel missionLevel)
         {
             var stabilityScore = assessment.FinancialStability ? 1.0 : 0.0;
-            var roiScore = Math.Min(assessment.ReturnOnInvestment / 0.25, 1.0);
-            var efficiencyScore = assessment.CostEfficiency;
+            var roiScore = UnitCredit(assessment.ReturnOnInvestment / 0.25);
+            var efficiencyScore = UnitCredit(assessment.CostEfficiency);
 
             return (stabilityScore + roiScore + efficiencyScore) / 3.0;
         }
@@ -708,6 +713,35 @@ namespace HB_NLP_Research_Lab.Aerospace
                 MissionLevel.Critical => new Dictionary<string, double> { ["ROI"] = 0.35, ["Efficiency"] = 0.99 },
                 _ => new Dictionary<string, double> { ["ROI"] = 0.20, ["Efficiency"] = 0.90 }
             };
+        }
+
+        /// <summary>
+        /// Credit for one measured fraction of a category score. Non-finite values and
+        /// anything outside [0, 1] contribute nothing above a fully met requirement:
+        /// fault tolerance of one million is not a million times ready, and NaN must
+        /// not propagate into the go/no-go comparison.
+        /// </summary>
+        private static double UnitCredit(double value) =>
+            double.IsFinite(value) ? Math.Clamp(value, 0.0, 1.0) : 0.0;
+
+        /// <summary>
+        /// Whole-number evidence such as TRL or redundancy. Values that do not fit in
+        /// an <see cref="int"/>, including infinities, used to throw out of the
+        /// assessment; they now saturate so a bad measurement fails closed.
+        /// </summary>
+        private static int CountFromEvidence(double value)
+        {
+            if (!double.IsFinite(value) || value <= 0)
+            {
+                return 0;
+            }
+
+            if (value >= int.MaxValue)
+            {
+                return int.MaxValue;
+            }
+
+            return (int)Math.Floor(value);
         }
 
         public async Task<bool> IsReadyForAdvancedAerospaceAsync(MissionLevel missionLevel = MissionLevel.Critical, AuditEvidence? evidence = null)

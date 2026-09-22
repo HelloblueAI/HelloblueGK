@@ -533,4 +533,147 @@ public class AerospaceReadinessAssessmentTests
                 level).Should().BeInRange(0.0, 1.0);
         }
     }
+
+    /// <summary>
+    /// Credit above fully ready is not a stronger result. One term left unclamped — fault
+    /// tolerance was — lets a single absurd measurement outvote safety factor and redundancy
+    /// and push the weighted total through the mission-critical gate.
+    /// </summary>
+    [Fact]
+    public void SafetyReadiness_DoesNotLetUnboundedFaultToleranceMaskMissingMargin()
+    {
+        var assessment = Subject();
+        var atCap = new SafetyReadinessAssessment { SafetyFactor = 4.0, RedundancyLevel = 4, FaultTolerance = 1.0 };
+        var onlyInflatedTolerance = new SafetyReadinessAssessment { FaultTolerance = 1_000_000 };
+        var excessOnAnOtherwiseCompleteDesign = new SafetyReadinessAssessment
+        {
+            SafetyFactor = 400.0,
+            RedundancyLevel = 400,
+            FaultTolerance = 1_000_000
+        };
+        var nonFinite = new SafetyReadinessAssessment
+        {
+            SafetyFactor = double.NaN,
+            RedundancyLevel = -4,
+            FaultTolerance = double.PositiveInfinity
+        };
+
+        assessment.CalculateSafetyReadinessScore(onlyInflatedTolerance, MissionLevel.Critical)
+            .Should().BeApproximately(1.0 / 3.0, 1e-9);
+        assessment.CalculateSafetyReadinessScore(onlyInflatedTolerance, MissionLevel.Critical)
+            .Should().BeLessThan(assessment.CalculateSafetyReadinessScore(atCap, MissionLevel.Critical));
+        assessment.CalculateSafetyReadinessScore(excessOnAnOtherwiseCompleteDesign, MissionLevel.Critical)
+            .Should().Be(assessment.CalculateSafetyReadinessScore(atCap, MissionLevel.Critical));
+        assessment.CalculateSafetyReadinessScore(nonFinite, MissionLevel.Critical).Should().Be(0.0);
+    }
+
+    /// <summary>
+    /// TRL is a fraction of 9. An impossible maturity level must not score as more than fully
+    /// mature, and a negative level must not drag the other terms below zero.
+    /// </summary>
+    [Fact]
+    public void TechnicalReadiness_DoesNotTreatAnImpossibleTrlAsExtraCredit()
+    {
+        var assessment = Subject();
+        var mature = new TechnicalReadinessAssessment
+        {
+            TechnologyReadinessLevel = 9,
+            PerformanceValidation = true,
+            ReliabilityAnalysis = true
+        };
+        var impossible = new TechnicalReadinessAssessment
+        {
+            TechnologyReadinessLevel = 90,
+            PerformanceValidation = true,
+            ReliabilityAnalysis = true
+        };
+        var onlyImpossible = new TechnicalReadinessAssessment { TechnologyReadinessLevel = 90 };
+        var negative = new TechnicalReadinessAssessment
+        {
+            TechnologyReadinessLevel = -9,
+            PerformanceValidation = true,
+            ReliabilityAnalysis = true
+        };
+
+        assessment.CalculateTechnicalReadinessScore(impossible, MissionLevel.Critical)
+            .Should().Be(assessment.CalculateTechnicalReadinessScore(mature, MissionLevel.Critical));
+        assessment.CalculateTechnicalReadinessScore(onlyImpossible, MissionLevel.Critical)
+            .Should().BeApproximately(1.0 / 3.0, 1e-9);
+        assessment.CalculateTechnicalReadinessScore(negative, MissionLevel.Critical)
+            .Should().BeApproximately(2.0 / 3.0, 1e-9);
+    }
+
+    /// <summary>
+    /// Availability, maintainability, and supportability are fractions. A value of 50 is not
+    /// fifty times as ready as a value of 1, and a non-finite term contributes nothing.
+    /// </summary>
+    [Fact]
+    public void OperationalReadiness_ClampsEachTermToTheUnitInterval()
+    {
+        var assessment = Subject();
+        var saturated = new OperationalReadinessAssessment { Availability = 1, Maintainability = 1, Supportability = 1 };
+        var inflated = new OperationalReadinessAssessment { Availability = 50, Maintainability = 50, Supportability = 50 };
+        var oneInflated = new OperationalReadinessAssessment { Availability = 50 };
+        var nonFinite = new OperationalReadinessAssessment
+        {
+            Availability = -1,
+            Maintainability = double.NaN,
+            Supportability = double.NegativeInfinity
+        };
+
+        assessment.CalculateOperationalReadinessScore(inflated, MissionLevel.Operational)
+            .Should().Be(assessment.CalculateOperationalReadinessScore(saturated, MissionLevel.Operational));
+        assessment.CalculateOperationalReadinessScore(oneInflated, MissionLevel.Operational)
+            .Should().BeApproximately(1.0 / 3.0, 1e-9);
+        assessment.CalculateOperationalReadinessScore(nonFinite, MissionLevel.Operational).Should().Be(0.0);
+    }
+
+    /// <summary>
+    /// The aggregator is the go/no-go input. A category handed in above 1 must be treated as
+    /// fully ready for that category, not as extra weight that clears a stricter mission.
+    /// </summary>
+    [Fact]
+    public void OverallReadiness_IgnoresCreditAboveFullyReady()
+    {
+        var assessment = Subject();
+        var inflated = ReportWith(
+            (ReadinessCategory.Safety, 1_000),
+            (ReadinessCategory.Regulatory, 0),
+            (ReadinessCategory.Technical, 0),
+            (ReadinessCategory.Operational, 0),
+            (ReadinessCategory.Financial, 0),
+            (ReadinessCategory.Quality, 0),
+            (ReadinessCategory.Security, 0),
+            (ReadinessCategory.Environmental, 0));
+        var capped = ReportWith(
+            (ReadinessCategory.Safety, 1),
+            (ReadinessCategory.Regulatory, 0),
+            (ReadinessCategory.Technical, 0),
+            (ReadinessCategory.Operational, 0),
+            (ReadinessCategory.Financial, 0),
+            (ReadinessCategory.Quality, 0),
+            (ReadinessCategory.Security, 0),
+            (ReadinessCategory.Environmental, 0));
+
+        var score = assessment.CalculateOverallReadinessScore(inflated);
+
+        score.Should().BeApproximately(assessment.CalculateOverallReadinessScore(capped), 1e-9);
+        score.Should().BeInRange(0.0, 1.0);
+        assessment.DetermineReadinessStatus(score, MissionLevel.Critical).Should().Be("NOT READY");
+    }
+
+    /// <summary>
+    /// NaN and infinities must not survive into the weighted total. A NaN comparison against
+    /// the threshold is not a decision, and infinity clears every mission level.
+    /// </summary>
+    [Fact]
+    public void OverallReadiness_TreatsNonFiniteCategoryScoresAsNoCredit()
+    {
+        var report = ReportWith(
+            (ReadinessCategory.Safety, double.NaN),
+            (ReadinessCategory.Technical, double.PositiveInfinity),
+            (ReadinessCategory.Regulatory, double.NegativeInfinity));
+
+        Subject().CalculateOverallReadinessScore(report).Should().Be(0.0);
+    }
 }
