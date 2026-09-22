@@ -67,8 +67,9 @@ namespace HB_NLP_Research_Lab
 
                 Console.WriteLine("\n🎯 READINESS EVALUATION RESULTS:");
                 Console.WriteLine("================================================================================");
-                Console.WriteLine("Scores below are computed from the declared design inputs in this repository.");
-                Console.WriteLine("They are not measurements, test results, or certification findings.\n");
+                Console.WriteLine("The assessment scores whatever evidence the operating organisation supplies.");
+                Console.WriteLine("This repository ships no such evidence, so every category scores zero and no");
+                Console.WriteLine("threshold is met. See Docs/VERIFICATION_SCOPE.md.\n");
 
                 if (isReadyForAdvanced)
                 {
@@ -88,9 +89,9 @@ namespace HB_NLP_Research_Lab
                 if (!isReadyForAdvanced && !isReadyForMissionCritical)
                 {
                     Console.WriteLine("⚠️  THRESHOLDS NOT MET");
-                    Console.WriteLine("   - Some readiness criteria not met");
-                    Console.WriteLine("   - Review recommendations for improvement");
-                    Console.WriteLine("   - Continue development and testing");
+                    Console.WriteLine("   - Expected with no evidence supplied: the audits fail closed");
+                    Console.WriteLine("   - Supply an AuditEvidence instance to score a real programme");
+                    Console.WriteLine("   - Scores are only as good as the evidence behind them");
                 }
 
                 // Perform engine analysis

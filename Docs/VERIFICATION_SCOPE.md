@@ -54,6 +54,34 @@ empty category list, then averaged only the *critical* categories — which thro
 sequence. Assessing only operational and financial readiness, a reasonable request, threw
 `InvalidOperationException` instead of returning a score.
 
+**Every audit passed itself.** `QualityAssuranceSystem`, `SecurityAuditSystem`,
+`AerospaceComplianceSystem`, and `AerospaceReadinessAssessment` constructed their own inputs —
+every boolean literally `true`, every metric a passing constant such as `Reliability = 0.9999`,
+`CodeCoverage = 0.95`, `DefectRate = 3.4`, and `FIPS140Compliance = true` — and then graded
+those inputs against thresholds. The thresholds were real and the arithmetic was correct, but
+the verdict was a tautology: AS9100, ISO 9001, Six Sigma, DO-178C, NASA NPR 7150.2, ITAR, and
+FIPS 140 all reported compliant unconditionally, and the code minted certification documents
+naming the FAA, NASA, and NIST as the certifying authority. Nothing about the system under
+audit could change any of it.
+
+Two further mechanisms inflated readiness. Each category score began from a `baseScore` of
+0.90 to 0.98 awarded before any input was examined, and a failed check scored 0.5 rather than
+0. Worse, mission *requirements* were scored as *achievements*: `TechnologyReadinessLevel` was
+set from `GetTRLForMissionLevel(missionLevel)`, so declaring a mission critical enough to
+require TRL 9 was what credited the system with TRL 9. The more demanding the mission, the
+higher it scored.
+
+These systems now read every input from an `AuditEvidence` instance supplied by the caller.
+An absent key yields `false`, `0`, or an empty string, so an audit with no evidence fails its
+thresholds instead of passing them, category scores derive entirely from supplied values, and
+the certifying authority is named by the evidence rather than asserted. This repository ships
+no evidence, so running the audits scores zero across every category and issues no
+certification — which is the correct result for a repository that has none.
+`Tests/Unit/Core/AuditEvidenceGatingTests.cs` pins that, so reintroducing a hardcoded
+attestation fails the build. The mission-level requirement tables are unchanged and still
+state what each mission level demands; they are simply no longer mistaken for evidence that
+those demands are met.
+
 ## One solver now computes from its inputs
 
 `NozzleFlowSolver` and the `IdealRocketNozzle` relations behind it are the first physics in this
@@ -117,9 +145,9 @@ better than carrying both.
 Coverage in these areas is deliberately not pursued. Tests asserting that a stub returns its
 hardcoded constant would raise the coverage percentage while establishing nothing, and would
 make the suite actively misleading — the number would imply verification that does not exist.
-This is why `Aerospace/` carries a 49% *branch* floor against only a 20% *line* floor: the
-decision logic is verified, and the constant-returning scaffolding around it is not counted as
-though it were.
+This is why `Aerospace/` carries a higher *branch* floor than *line* floor: the decision logic
+is verified, and the constant-returning scaffolding around it is not counted as though it were.
+`Certification/Artifacts/coverage-floors.json` holds the current numbers.
 
 ## Known limitations carried deliberately
 

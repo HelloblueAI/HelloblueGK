@@ -60,8 +60,11 @@ namespace HB_NLP_Research_Lab.Aerospace
     }
 
     /// <summary>
-    /// Aerospace Compliance System for NASA/SpaceX Standards
-    /// Implements DO-178C, NPR 7150.2, ITAR, and mission-critical requirements
+    /// Scores supplied evidence against the objectives of DO-178C, NPR 7150.2, ITAR, FIPS 140,
+    /// and mission-critical practice, and records which objectives that evidence covers. It
+    /// does not implement those standards, and a report it produces is not a certification.
+    /// Inputs come from the <see cref="AuditEvidence"/> handed to the audit, so an objective
+    /// with no evidence behind it fails and no certification document is issued for it.
     /// </summary>
     public class AerospaceComplianceSystem
     {
@@ -91,9 +94,15 @@ namespace HB_NLP_Research_Lab.Aerospace
             };
         }
 
-        public async Task<ComplianceReport> PerformFullComplianceAuditAsync()
+        public async Task<ComplianceReport> PerformFullComplianceAuditAsync(AuditEvidence? evidence = null)
         {
             Console.WriteLine("[Aerospace Compliance] 🔍 Performing comprehensive compliance audit...");
+            evidence ??= AuditEvidence.None;
+            if (evidence.IsEmpty)
+            {
+                Console.WriteLine("[Aerospace Compliance] No evidence supplied; no compliance objective can be assessed.");
+            }
+
 
             var report = new ComplianceReport
             {
@@ -105,31 +114,31 @@ namespace HB_NLP_Research_Lab.Aerospace
             };
 
             // DO-178C Compliance Check
-            await CheckDO178CComplianceAsync(report);
+            await CheckDO178CComplianceAsync(report, evidence);
 
             // NASA NPR 7150.2 Compliance Check
-            await CheckNASANPR7150ComplianceAsync(report);
+            await CheckNASANPR7150ComplianceAsync(report, evidence);
 
             // ITAR Compliance Check
-            await CheckITARComplianceAsync(report);
+            await CheckITARComplianceAsync(report, evidence);
 
             // FIPS 140-2 Cryptographic Compliance
-            await CheckFIPS140ComplianceAsync(report);
+            await CheckFIPS140ComplianceAsync(report, evidence);
 
             // Mission-Critical Safety Compliance
-            await CheckMissionCriticalComplianceAsync(report);
+            await CheckMissionCriticalComplianceAsync(report, evidence);
 
             // Quality Assurance Compliance
-            await CheckQualityAssuranceComplianceAsync(report);
+            await CheckQualityAssuranceComplianceAsync(report, evidence);
 
             // Security Compliance
-            await CheckSecurityComplianceAsync(report);
+            await CheckSecurityComplianceAsync(report, evidence);
 
             // Environmental Compliance
-            await CheckEnvironmentalComplianceAsync(report);
+            await CheckEnvironmentalComplianceAsync(report, evidence);
 
             // Export Control Compliance
-            await CheckExportControlComplianceAsync(report);
+            await CheckExportControlComplianceAsync(report, evidence);
 
             // Determine overall compliance
             report.OverallCompliance = report.Violations.Count == 0;
@@ -139,28 +148,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             return report;
         }
 
-        private async Task CheckDO178CComplianceAsync(ComplianceReport report)
+        private async Task CheckDO178CComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 📋 Checking DO-178C compliance...");
 
-            var do178cCheck = new DO178CComplianceCheck
-            {
-                SoftwareLevel = SoftwareLevel.LevelA, // Human-rated systems
-                RequirementsTraceability = true,
-                DesignReviews = true,
-                CodeReviews = true,
-                UnitTesting = true,
-                IntegrationTesting = true,
-                SystemTesting = true,
-                VerificationTesting = true,
-                ConfigurationManagement = true,
-                QualityAssurance = true,
-                ToolQualification = true,
-                ChangeControl = true,
-                ProblemReporting = true,
-                SoftwareLifecycleData = true
-            };
+            var do178cCheck = evidence.Build<DO178CComplianceCheck>("DO178C");
 
             if (do178cCheck.IsCompliant())
             {
@@ -168,9 +161,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "DO-178C",
                     Level = "Level A",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(2),
-                    CertifyingAuthority = "FAA"
+                    CertifyingAuthority = evidence.Recorded("DO178C.CertifyingAuthority")
                 });
             }
             else
@@ -185,26 +178,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        private async Task CheckNASANPR7150ComplianceAsync(ComplianceReport report)
+        private async Task CheckNASANPR7150ComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 🚀 Checking NASA NPR 7150.2 compliance...");
 
-            var nasaCheck = new NASANPR7150ComplianceCheck
-            {
-                SoftwareClass = NASASoftwareClass.ClassA,
-                RequirementsManagement = true,
-                ArchitectureDesign = true,
-                Implementation = true,
-                Integration = true,
-                Verification = true,
-                Validation = true,
-                ConfigurationManagement = true,
-                QualityAssurance = true,
-                RiskManagement = true,
-                MetricsCollection = true,
-                IndependentVerification = true
-            };
+            var nasaCheck = evidence.Build<NASANPR7150ComplianceCheck>("NASANPR7150");
 
             if (nasaCheck.IsCompliant())
             {
@@ -212,9 +191,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "NASA NPR 7150.2",
                     Level = "Class A",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(3),
-                    CertifyingAuthority = "NASA"
+                    CertifyingAuthority = evidence.Recorded("NASANPR7150.CertifyingAuthority")
                 });
             }
             else
@@ -229,24 +208,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        private async Task CheckITARComplianceAsync(ComplianceReport report)
+        private async Task CheckITARComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 🛡️ Checking ITAR compliance...");
 
-            var itarCheck = new ITARComplianceCheck
-            {
-                Category = ITARCategory.CategoryIV, // Launch vehicles
-                ExportControl = true,
-                TechnicalDataControl = true,
-                ForeignPersonnelControl = true,
-                PhysicalSecurity = true,
-                InformationSecurity = true,
-                RecordKeeping = true,
-                TrainingProgram = true,
-                AuditTrail = true,
-                ViolationReporting = true
-            };
+            var itarCheck = evidence.Build<ITARComplianceCheck>("ITAR");
 
             if (itarCheck.IsCompliant())
             {
@@ -254,9 +221,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "ITAR",
                     Level = "Category IV",
-                    Status = "Compliant",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(1),
-                    CertifyingAuthority = "DDTC"
+                    CertifyingAuthority = evidence.Recorded("ITAR.CertifyingAuthority")
                 });
             }
             else
@@ -271,23 +238,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        private async Task CheckFIPS140ComplianceAsync(ComplianceReport report)
+        private async Task CheckFIPS140ComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 🔐 Checking FIPS 140-2 compliance...");
 
-            var fipsCheck = new FIPS140ComplianceCheck
-            {
-                Level = 2, // Level 2: Tamper-evident physical security
-                CryptographicModule = true,
-                CryptographicAlgorithms = true,
-                KeyManagement = true,
-                PhysicalSecurity = true,
-                OperationalEnvironment = true,
-                SelfTests = true,
-                DesignAssurance = true,
-                MitigationOfOtherAttacks = true
-            };
+            var fipsCheck = evidence.Build<FIPS140ComplianceCheck>("FIPS140");
 
             if (fipsCheck.IsCompliant())
             {
@@ -295,9 +251,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "FIPS 140-2",
                     Level = "Level 2",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(5),
-                    CertifyingAuthority = "NIST"
+                    CertifyingAuthority = evidence.Recorded("FIPS140.CertifyingAuthority")
                 });
             }
             else
@@ -312,24 +268,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        private async Task CheckMissionCriticalComplianceAsync(ComplianceReport report)
+        private async Task CheckMissionCriticalComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 🎯 Checking mission-critical compliance...");
 
-            var missionCheck = new MissionCriticalComplianceCheck
-            {
-                RedundancyLevel = 3, // Triple redundancy
-                FaultTolerance = 0.9999, // 99.99% fault tolerance
-                MeanTimeBetweenFailures = 10000, // 10,000 hours
-                MeanTimeToRepair = 1, // 1 hour
-                SafetyFactor = 2.5, // 2.5x safety factor
-                EmergencyShutdown = true,
-                FailureModeAnalysis = true,
-                RiskAssessment = true,
-                ContingencyPlanning = true,
-                RealTimeMonitoring = true
-            };
+            var missionCheck = evidence.Build<MissionCriticalComplianceCheck>("MissionCritical");
 
             if (missionCheck.IsCompliant())
             {
@@ -337,9 +281,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "Mission Critical",
                     Level = "Human Rated",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(1),
-                    CertifyingAuthority = "NASA/SpaceX"
+                    CertifyingAuthority = evidence.Recorded("MissionCritical.CertifyingAuthority")
                 });
             }
             else
@@ -354,12 +298,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        private async Task CheckQualityAssuranceComplianceAsync(ComplianceReport report)
+        private async Task CheckQualityAssuranceComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] ✅ Checking quality assurance compliance...");
 
-            var qaCheck = await _qualityAssurance.PerformQualityAuditAsync();
+            var qaCheck = await _qualityAssurance.PerformQualityAuditAsync(evidence);
 
             if (qaCheck.OverallQuality >= 0.99) // 99% quality threshold
             {
@@ -367,9 +311,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "Quality Assurance",
                     Level = "Aerospace Grade",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(1),
-                    CertifyingAuthority = "Internal QA"
+                    CertifyingAuthority = evidence.Recorded("QualityAssurance.CertifyingAuthority")
                 });
             }
             else
@@ -384,12 +328,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        private async Task CheckSecurityComplianceAsync(ComplianceReport report)
+        private async Task CheckSecurityComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 🔒 Checking security compliance...");
 
-            var securityCheck = await _securityAudit.PerformSecurityAuditAsync();
+            var securityCheck = await _securityAudit.PerformSecurityAuditAsync(evidence);
 
             if (securityCheck.OverallSecurity >= 0.99) // 99% security threshold
             {
@@ -397,9 +341,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "Security",
                     Level = "Aerospace Grade",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(1),
-                    CertifyingAuthority = "Internal Security"
+                    CertifyingAuthority = evidence.Recorded("SecurityCompliance.CertifyingAuthority")
                 });
             }
             else
@@ -414,22 +358,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        private async Task CheckEnvironmentalComplianceAsync(ComplianceReport report)
+        private async Task CheckEnvironmentalComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 🌍 Checking environmental compliance...");
 
-            var envCheck = new EnvironmentalComplianceCheck
-            {
-                EmissionsControl = true,
-                NoiseReduction = true,
-                WasteManagement = true,
-                EnergyEfficiency = true,
-                SustainableMaterials = true,
-                LifecycleAssessment = true,
-                EnvironmentalImpact = "Minimal",
-                CarbonFootprint = "Low"
-            };
+            var envCheck = evidence.Build<EnvironmentalComplianceCheck>("Environmental");
 
             if (envCheck.IsCompliant())
             {
@@ -437,29 +371,19 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "Environmental",
                     Level = "Sustainable",
-                    Status = "Compliant",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(2),
-                    CertifyingAuthority = "EPA"
+                    CertifyingAuthority = evidence.Recorded("Environmental.CertifyingAuthority")
                 });
             }
         }
 
-        private async Task CheckExportControlComplianceAsync(ComplianceReport report)
+        private async Task CheckExportControlComplianceAsync(ComplianceReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Compliance] 📦 Checking export control compliance...");
 
-            var exportCheck = new ExportControlComplianceCheck
-            {
-                EARCompliance = true, // Export Administration Regulations
-                ITARCompliance = true,
-                WassenaarCompliance = true,
-                DualUseControl = true,
-                TechnologyTransferControl = true,
-                EndUserScreening = true,
-                LicenseManagement = true,
-                RecordKeeping = true
-            };
+            var exportCheck = evidence.Build<ExportControlComplianceCheck>("ExportControl");
 
             if (exportCheck.IsCompliant())
             {
@@ -467,9 +391,9 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "Export Control",
                     Level = "Comprehensive",
-                    Status = "Compliant",
+                    Status = "Evidence accepted",
                     ExpiryDate = DateTime.UtcNow.AddYears(1),
-                    CertifyingAuthority = "BIS"
+                    CertifyingAuthority = evidence.Recorded("ExportControl.CertifyingAuthority")
                 });
             }
             else
@@ -484,22 +408,22 @@ namespace HB_NLP_Research_Lab.Aerospace
             }
         }
 
-        public async Task<bool> IsReadyForNASAAsync()
+        public async Task<bool> IsReadyForNASAAsync(AuditEvidence? evidence = null)
         {
-            var audit = await PerformFullComplianceAuditAsync();
+            var audit = await PerformFullComplianceAuditAsync(evidence);
             return audit.OverallCompliance && 
-                   audit.Certifications.Any(c => c.Type == "DO-178C" && c.Status == "Certified") &&
-                   audit.Certifications.Any(c => c.Type == "NASA NPR 7150.2" && c.Status == "Certified") &&
-                   audit.Certifications.Any(c => c.Type == "Mission Critical" && c.Status == "Certified");
+                   audit.Certifications.Any(c => c.Type == "DO-178C" && c.Status == "Evidence accepted") &&
+                   audit.Certifications.Any(c => c.Type == "NASA NPR 7150.2" && c.Status == "Evidence accepted") &&
+                   audit.Certifications.Any(c => c.Type == "Mission Critical" && c.Status == "Evidence accepted");
         }
 
-        public async Task<bool> IsReadyForSpaceXAsync()
+        public async Task<bool> IsReadyForSpaceXAsync(AuditEvidence? evidence = null)
         {
-            var audit = await PerformFullComplianceAuditAsync();
+            var audit = await PerformFullComplianceAuditAsync(evidence);
             return audit.OverallCompliance && 
-                   audit.Certifications.Any(c => c.Type == "DO-178C" && c.Status == "Certified") &&
-                   audit.Certifications.Any(c => c.Type == "ITAR" && c.Status == "Compliant") &&
-                   audit.Certifications.Any(c => c.Type == "Mission Critical" && c.Status == "Certified");
+                   audit.Certifications.Any(c => c.Type == "DO-178C" && c.Status == "Evidence accepted") &&
+                   audit.Certifications.Any(c => c.Type == "ITAR" && c.Status == "Evidence accepted") &&
+                   audit.Certifications.Any(c => c.Type == "Mission Critical" && c.Status == "Evidence accepted");
         }
     }
 
