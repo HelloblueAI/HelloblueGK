@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Numerics;
 using HB_NLP_Research_Lab.Core;
-using HB_NLP_Research_Lab.Physics;
 using HB_NLP_Research_Lab.Models;
 
 namespace HB_NLP_Research_Lab.Aerospace
@@ -14,8 +13,6 @@ namespace HB_NLP_Research_Lab.Aerospace
     /// </summary>
     public class RevolutionaryEngineArchitectures
     {
-        private readonly AdvancedPhysicsEngine _physicsEngine;
-        private readonly AdvancedMultiPhysicsCoupler _multiPhysicsCoupler;
         private readonly DigitalTwinEngine _digitalTwin;
         
         private readonly Dictionary<string, RevolutionaryEngine> _revolutionaryEngines;
@@ -24,8 +21,6 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public RevolutionaryEngineArchitectures()
         {
-            _physicsEngine = new AdvancedPhysicsEngine();
-            _multiPhysicsCoupler = new AdvancedMultiPhysicsCoupler();
             _digitalTwin = new DigitalTwinEngine();
             
             _revolutionaryEngines = new Dictionary<string, RevolutionaryEngine>();
@@ -261,7 +256,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             return engine;
         }
 
-        public async Task<ArchitecturePerformance> AnalyzeRevolutionaryEngineAsync(string engineId)
+        public Task<ArchitecturePerformance> AnalyzeRevolutionaryEngineAsync(string engineId)
         {
             Console.WriteLine($"[Engine Architectures] 🔬 Analyzing revolutionary engine: {engineId}");
             
@@ -270,70 +265,11 @@ namespace HB_NLP_Research_Lab.Aerospace
             {
                 throw new ArgumentException($"Engine {engineId} not found");
             }
-            var engineModel = new HB_NLP_Research_Lab.Physics.EngineModel { Name = engine.Name };
-            
-            // Run comprehensive analysis
-            await _physicsEngine.RunCfdAnalysisAsync();
-            await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(engineModel);
-            
-            // Convert results to the expected types
-            var convertedPhysicsResult = new HB_NLP_Research_Lab.Models.CfdAnalysisResult
-            {
-                PressureDistribution = new Dictionary<string, double>(),
-                VelocityField = new Dictionary<string, System.Numerics.Vector3>(),
-                TemperatureField = new Dictionary<string, double>(),
-                TurbulenceIntensity = new Dictionary<string, double>(),
-                WallShearStress = new Dictionary<string, double>(),
-                ConvergenceHistory = new List<double>(),
-                PerformanceMetrics = new CfdPerformanceMetrics()
-            };
-            
-            var convertedMultiPhysicsResult = new HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult
-            {
-                FluidAnalysis = convertedPhysicsResult,
-                StructuralAnalysis = new HB_NLP_Research_Lab.Models.StructuralAnalysisResult(),
-                ThermalAnalysis = new HB_NLP_Research_Lab.Models.ThermalAnalysisResult(),
-                ElectromagneticAnalysis = new ElectromagneticAnalysisResult(),
-                CouplingMetrics = new CouplingMetrics()
-            };
-            
-            var performance = new ArchitecturePerformance
-            {
-                EngineId = engineId,
-                ArchitectureType = engine.ArchitectureType,
-                InnovationLevel = engine.InnovationLevel,
-                PhysicsAnalysis = convertedPhysicsResult,
-                MultiPhysicsAnalysis = convertedMultiPhysicsResult,
-                PerformanceMetrics = new HB_NLP_Research_Lab.Models.PerformanceMetrics
-                {
-                    ThrustEfficiency = 0.92f,
-                    FuelConsumption = 0.85f,
-                    ThermalEfficiency = 0.91f,
-                    WeightToThrust = 0.95f,
-                    OverallEfficiency = 0.93f,
-                    EnvironmentalImpact = new EnvironmentalMetrics()
-                },
-                InnovationMetrics = new InnovationMetrics
-                {
-                    TechnologyReadinessLevel = "TRL 8",
-                    NoveltyScore = 0.95f,
-                    DisruptivePotential = 0.92f,
-                    MarketImpact = 0.90f,
-                    Patentability = 0.88f,
-                    CostEffectiveness = 0.91f,
-                    Scalability = 0.93f,
-                    Sustainability = 0.94f
-                },
-                TechnologyReadinessLevel = CalculateTechnologyReadinessLevel(engine)
-            };
-            
-            _performanceData[engineId] = performance;
-            
-            Console.WriteLine($"[Engine Architectures] Analysis complete for {engineId}");
-            Console.WriteLine($"[Engine Architectures] Innovation level: {engine.InnovationLevel:P1}");
-            Console.WriteLine($"[Engine Architectures] Technology readiness: {performance.TechnologyReadinessLevel}");
-            
-            return performance;
+            throw new ArgumentException(
+                $"Engine '{engine.Name}' has no chamber pressure, so the schematic solvers cannot be run. "
+                + "This architecture record does not carry one, and the analysis used to discard the solver "
+                + "result and return fixed performance figures.",
+                nameof(engineId));
         }
 
         public async Task<RevolutionaryArchitectureSummary> GenerateArchitectureSummaryAsync()
@@ -357,19 +293,6 @@ namespace HB_NLP_Research_Lab.Aerospace
             Console.WriteLine($"[Engine Architectures] Average innovation: {summary.AverageInnovationLevel:P1}");
             
             return summary;
-        }
-
-        private string CalculateTechnologyReadinessLevel(RevolutionaryEngine engine)
-        {
-            return engine.ArchitectureType switch
-            {
-                "Variable Geometry" => "TRL 6",
-                "Modular Design" => "TRL 7",
-                "Distributed Propulsion" => "TRL 5",
-                "Hybrid Electric" => "TRL 6",
-                "Nuclear Thermal" => "TRL 4",
-                _ => "TRL 5"
-            };
         }
 
         private List<TechnologyBreakthrough> GenerateTechnologyBreakthroughs()

@@ -185,37 +185,13 @@ namespace HB_NLP_Research_Lab.Physics
             }
         }
 
-        public async Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync(string engineId)
+        public Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync(string engineId)
         {
-            if (!_isInitialized)
-                await InitializeAsync();
-
-            Console.WriteLine($"[Multi-Physics] Running complete multi-physics analysis for engine: {engineId}");
-            await Task.Delay(300);
-
-            var cfdResult = await RunCFDAnalysisAsync();
-            var thermalResult = await RunThermalAnalysisAsync();
-            var structuralResult = await RunStructuralAnalysisAsync();
-            var electromagneticResult = await RunElectromagneticAnalysisAsync();
-            var molecularResult = await RunMolecularDynamicsAnalysisAsync();
-
-            var result = new MultiPhysicsResult
-            {
-                CfdAnalysis = cfdResult,
-                ThermalAnalysis = thermalResult,
-                StructuralAnalysis = structuralResult,
-                ElectromagneticAnalysis = electromagneticResult,
-                MolecularAnalysis = molecularResult,
-                CouplingHistory = new List<CouplingIteration>(),
-                TotalIterations = 15,
-                AnalysisTime = TimeSpan.FromSeconds(2.5),
-                ConvergenceAchieved = true,
-                FinalResidualNorm = 1e-6,
-                CouplingEfficiency = 0.97,
-                PhysicsIntegrationLevel = "Advanced Multi-Physics"
-            };
-
-            return result;
+            throw new ArgumentException(
+                $"Engine id '{engineId}' does not carry a chamber pressure. "
+                + "Call RunCoupledAnalysisAsync with an EngineModel whose Parameters include "
+                + "\"ChamberPressure\" in pascals.",
+                nameof(engineId));
         }
 
         public async Task<FluidStructureThermalElectromagneticResult> RunCompletePhysicsIntegrationAsync(EngineModel engineModel)
@@ -546,40 +522,6 @@ namespace HB_NLP_Research_Lab.Physics
             await Task.Delay(10); // Simulate real-time update
         }
 
-        private async Task<AdvancedCFDResult> RunCFDAnalysisAsync()
-        {
-            await Task.Delay(50);
-            var result = _cfdSolver.RunSimulation(new object()) as AdvancedCFDResult;
-            return result ?? new AdvancedCFDResult();
-        }
-
-        private async Task<AdvancedThermalResult> RunThermalAnalysisAsync()
-        {
-            await Task.Delay(50);
-            var result = _thermalSolver.RunSimulation(new object()) as AdvancedThermalResult;
-            return result ?? new AdvancedThermalResult();
-        }
-
-        private async Task<AdvancedStructuralResult> RunStructuralAnalysisAsync()
-        {
-            await Task.Delay(50);
-            var result = _structuralSolver.RunSimulation(new object()) as AdvancedStructuralResult;
-            return result ?? new AdvancedStructuralResult();
-        }
-
-        private async Task<ElectromagneticResult> RunElectromagneticAnalysisAsync()
-        {
-            await Task.Delay(50);
-            var result = _electromagneticSolver.RunSimulation(new object()) as ElectromagneticResult;
-            return result ?? new ElectromagneticResult();
-        }
-
-        private async Task<MolecularDynamicsResult> RunMolecularDynamicsAnalysisAsync()
-        {
-            await Task.Delay(50);
-            var result = _molecularSolver.RunSimulation(new object()) as MolecularDynamicsResult;
-            return result ?? new MolecularDynamicsResult();
-        }
     }
 
     // Supporting Classes
