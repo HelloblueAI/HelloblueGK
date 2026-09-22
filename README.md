@@ -213,12 +213,12 @@ Full description, including the optional geometry-integration boundary:
 | `/Health/detailed` | bearer token | component detail |
 | `/Health/engine` | bearer token | engine subsystem status |
 | `/metrics` | bearer token | Prometheus exposition |
-| `/swagger` | Microsoft Entra ID SSO | interactive API browser |
+| `/swagger` | authenticated | interactive API browser |
 
-Swagger is treated as internal documentation: in production it redirects to corporate single sign-on
-rather than being publicly readable, as described in
-[INTERNAL_SWAGGER_SSO.md](Docs/Deployment/INTERNAL_SWAGGER_SSO.md). `/Health` is the only
-unauthenticated endpoint.
+Swagger requires authentication rather than being publicly readable. To configure that in your own
+deployment, including optional OpenID Connect, see
+[SWAGGER_ACCESS.md](Docs/Deployment/SWAGGER_ACCESS.md). `/Health` is the only unauthenticated
+endpoint.
 
 This is a reference deployment, not an open sandbox — registration is disabled. Clone and run your
 own instance if you need one you control.
