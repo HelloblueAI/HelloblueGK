@@ -65,7 +65,7 @@ namespace HB_NLP_Research_Lab.Aerospace
             };
         }
 
-        public async Task<AerospaceReadinessReport> PerformComprehensiveAssessmentAsync(MissionLevel missionLevel = MissionLevel.Critical, AuditEvidence? evidence = null)
+        public virtual async Task<AerospaceReadinessReport> PerformComprehensiveAssessmentAsync(MissionLevel missionLevel = MissionLevel.Critical, AuditEvidence? evidence = null)
         {
             Console.WriteLine($"[Aerospace Readiness] 🚀 Performing comprehensive aerospace readiness assessment for {missionLevel} level...");
 
@@ -718,7 +718,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         public async Task<bool> IsReadyForMissionCriticalOperationsAsync(AuditEvidence? evidence = null)
         {
-            var assessment = await PerformComprehensiveAssessmentAsync(MissionLevel.Critical);
+            var assessment = await PerformComprehensiveAssessmentAsync(MissionLevel.Critical, evidence);
             return assessment.ReadinessStatus == "READY" && assessment.OverallReadiness >= 0.98;
         }
     }
