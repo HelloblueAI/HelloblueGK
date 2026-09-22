@@ -191,6 +191,41 @@ public class AuditEvidenceGatingTests
         subject.ReceivedMissionLevel.Should().Be(MissionLevel.Critical);
     }
 
+    /// <summary>
+    /// Measurements are fractions of a requirement, not unbounded magnitudes. Fault tolerance,
+    /// TRL, availability, and cost efficiency used to be added raw, so a single value of
+    /// one million carried a category — and the mission-critical predicate — through READY
+    /// while every other requirement was absent. The same path threw when a count such as
+    /// redundancy did not fit in an int.
+    /// </summary>
+    [Fact]
+    public async Task MissionCriticalReadiness_CannotBeForgedByMeasurementsOutsideTheUnitInterval()
+    {
+        var evidence = new AuditEvidence()
+            .Measure("Safety.FaultTolerance", 1_000_000)
+            .Measure("Safety.SafetyFactor", 1_000_000)
+            .Measure("Safety.RedundancyLevel", double.PositiveInfinity)
+            .Measure("Technical.TechnologyReadinessLevel", 1_000_000)
+            .Measure("Technical.FlightHeritage", double.NaN)
+            .Measure("Operational.Availability", 1_000_000)
+            .Measure("Operational.Maintainability", 1_000_000)
+            .Measure("Operational.Supportability", double.NaN)
+            .Measure("Financial.CostEfficiency", 1_000_000)
+            .Measure("Financial.ReturnOnInvestment", double.PositiveInfinity);
+
+        var subject = new AerospaceReadinessAssessment();
+
+        var report = await subject.PerformComprehensiveAssessmentAsync(MissionLevel.Critical, evidence);
+
+        report.ReadinessCategories.Should().OnlyContain(
+            c => c.ReadinessScore >= 0.0 && c.ReadinessScore <= 1.0,
+            "no category may score above fully ready");
+        report.OverallReadiness.Should().BeInRange(0.0, 1.0);
+        report.ReadinessStatus.Should().NotBe("READY");
+        (await subject.IsReadyForMissionCriticalOperationsAsync(evidence)).Should().BeFalse();
+        (await subject.IsReadyForAdvancedAerospaceAsync(MissionLevel.Critical, evidence)).Should().BeFalse();
+    }
+
     [Fact]
     public void EvidenceKeys_MustNotBeBlank()
     {
