@@ -16,28 +16,25 @@ class EngineVisualizer:
         self.engine_name = "HB-NLP-REV-001"
         self.design_data = {
             "name": "HB-NLP Quantum-Classical Hybrid Engine",
-            "version": "v25.2.2",
+            "version": "Advanced v2.5",
             "specifications": {
-                "thrust": 2000000,  # 2 MN
-                "specific_impulse": 450,  # seconds
-                "chamber_pressure": 300,  # bar
-                "expansion_ratio": 25.0,
-                "efficiency": 0.95,
-                "technology_readiness_level": 9
+                "thrust": 3500000,  # N, 3.5 MN
+                "specific_impulse": 351.5,  # seconds
+                "chamber_pressure": 280,  # bar
+                "expansion_ratio": 28.5
             },
             "geometry": {
-                "chamber_diameter": 2.5,  # meters
-                "chamber_length": 3.0,    # meters
-                "throat_diameter": 0.8,   # meters
-                "exit_diameter": 4.0,     # meters
-                "nozzle_length": 6.0,     # meters
-                "expansion_angle": 15.0    # degrees
+                "chamber_diameter": 0.65,  # meters
+                "chamber_length": 1.4,    # meters
+                "throat_diameter": 0.293,   # meters
+                "exit_diameter": 1.564192,     # meters
+                "nozzle_length": 2.8     # meters
             },
             "materials": {
-                "chamber": "Advanced Superalloy",
-                "nozzle": "Carbon-Carbon Composite",
-                "injector": "Titanium Alloy",
-                "turbopump": "Inconel 718"
+                "chamber": "Quantum-Enhanced Chamber Alloy",
+                "nozzle": "Self-Healing Nozzle Composite",
+                "injector": "not declared by the engine",
+                "turbopump": "not declared by the engine"
             }
         }
     
@@ -147,7 +144,7 @@ class EngineVisualizer:
         metrics = {
             'Thrust (MN)': self.design_data['specifications']['thrust'] / 1e6,
             'Specific Impulse (s)': self.design_data['specifications']['specific_impulse'],
-            'Efficiency (%)': self.design_data['specifications']['efficiency'] * 100,
+            'Expansion ratio': self.design_data['specifications']['expansion_ratio'],
             'Chamber Pressure (bar)': self.design_data['specifications']['chamber_pressure']
         }
         
@@ -175,13 +172,12 @@ class EngineVisualizer:
         ax3.set_ylabel('Meters')
         ax3.tick_params(axis='x', rotation=45)
         
-        # Technology readiness level
-        trl = self.design_data['specifications']['technology_readiness_level']
-        ax4.bar(['TRL'], [trl], color='#FF6B6B')
-        ax4.set_ylim(0, 9)
-        ax4.set_title('Technology Readiness Level')
-        ax4.set_ylabel('TRL Level')
-        ax4.text(0, trl + 0.1, f'TRL {trl}', ha='center', va='bottom', fontweight='bold')
+        ax4.axis('off')
+        ax4.set_title('Not a technology readiness level')
+        ax4.text(
+            0.5, 0.5,
+            'No TRL is claimed.\nNothing here has been\nbuilt, fired, or flown.',
+            ha='center', va='center', fontsize=12)
         
         plt.tight_layout()
         return fig

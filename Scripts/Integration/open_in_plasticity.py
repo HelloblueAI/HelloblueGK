@@ -19,38 +19,31 @@ class PlasticityEngineDesigner:
         self.design_dir = self.base_dir / "Docs" / "Designs" / self.engine_name
         self.design_dir.mkdir(parents=True, exist_ok=True)
         
+        # Same declaration as Aerospace/HB_NLP_RevolutionaryEngine.cs. Do not put a
+        # technology readiness level, an efficiency, or a solver-convergence figure here:
+        # this repository has no measurement that would support one.
         self.design_data = {
             "name": "HB-NLP Quantum-Classical Hybrid Engine",
-            "version": "v25.2.2",
+            "model_id": self.engine_name,
+            "version": "Advanced v2.5",
             "specifications": {
-                "thrust": 2000000,  # 2 MN
-                "specific_impulse": 450,  # seconds
-                "chamber_pressure": 300,  # bar
-                "expansion_ratio": 25.0,
-                "efficiency": 0.95,
-                "technology_readiness_level": 9,
+                "thrust": 3500000,  # N, 3.5 MN
+                "specific_impulse": 351.5,  # seconds, ideal methane/LOX at this expansion
+                "chamber_pressure": 280,  # bar
+                "expansion_ratio": 28.5,  # area ratio
             },
             "geometry": {
-                "chamber_diameter": 2.5,  # meters
-                "chamber_length": 3.0,  # meters
-                "throat_diameter": 0.8,  # meters
-                "exit_diameter": 4.0,  # meters
-                "nozzle_length": 6.0,  # meters
-                "expansion_angle": 15.0,  # degrees
+                "chamber_diameter": 0.65,  # meters
+                "chamber_length": 1.4,  # meters
+                "throat_diameter": 0.293,  # meters
+                "exit_diameter": 1.564192,  # meters, throat * sqrt(28.5)
+                "nozzle_length": 2.8,  # meters
             },
             "materials": {
-                "chamber": "Advanced Superalloy",
-                "nozzle": "Carbon-Carbon Composite",
-                "injector": "Titanium Alloy",
-                "turbopump": "Inconel 718",
-            },
-            "performance_metrics": {
-                "cfd_convergence": 0.998,
-                "hardware_utilization": 0.87,
-                "computation_speed": 1.5e12,  # 1.5 TFLOPS
-                "memory_usage": 8.2,  # GB
-                "temperature": 45.2,  # Celsius
-                "power_consumption": 320,  # Watts
+                "chamber": "Quantum-Enhanced Chamber Alloy",
+                "nozzle": "Self-Healing Nozzle Composite",
+                "injector": "not declared by the engine",
+                "turbopump": "not declared by the engine",
             },
         }
 
@@ -69,6 +62,9 @@ class PlasticityEngineDesigner:
         script_content = f"""
 # HB-NLP Revolutionary Engine Design Script for Plasticity
 # Engine: {self.engine_name}
+#
+# Diameters and lengths are the declaration in Aerospace/HB_NLP_RevolutionaryEngine.cs.
+# Throat axial length, and the injector and turbopump sizes, are not declared.
 
 # Engine Chamber
 chamber = create_cylinder(
@@ -164,13 +160,16 @@ export_step(engine_assembly, "{self.engine_name}_3d_model.step")
         summary = f"""
 # HB-NLP Revolutionary Engine Design Summary
 
+Concept design. These are declared inputs, not measurements, and no technology readiness level is claimed.
+
 ## Engine Specifications
 - **Name**: {self.design_data['name']}
+- **Model ID**: {self.design_data['model_id']}
 - **Version**: {self.design_data['version']}
 - **Thrust**: {self.design_data['specifications']['thrust']:,} N ({self.design_data['specifications']['thrust']/1e6:.1f} MN)
 - **Specific Impulse**: {self.design_data['specifications']['specific_impulse']} s
-- **Efficiency**: {self.design_data['specifications']['efficiency']*100:.1f}%
-- **Technology Readiness Level**: {self.design_data['specifications']['technology_readiness_level']}
+- **Chamber Pressure**: {self.design_data['specifications']['chamber_pressure']} bar
+- **Expansion Ratio**: {self.design_data['specifications']['expansion_ratio']}:1
 
 ## Geometry
 - **Chamber Diameter**: {self.design_data['geometry']['chamber_diameter']} m
@@ -184,16 +183,6 @@ export_step(engine_assembly, "{self.engine_name}_3d_model.step")
 - **Nozzle**: {self.design_data['materials']['nozzle']}
 - **Injector**: {self.design_data['materials']['injector']}
 - **Turbopump**: {self.design_data['materials']['turbopump']}
-
-## Performance Metrics
-- **CFD Convergence**: {self.design_data['performance_metrics']['cfd_convergence']:.3f}
-- **Hardware Utilization**: {self.design_data['performance_metrics']['hardware_utilization']:.2f}
-- **Computation Speed**: {self.design_data['performance_metrics']['computation_speed']/1e12:.1f} TFLOPS
-- **Memory Usage**: {self.design_data['performance_metrics']['memory_usage']} GB
-- **Temperature**: {self.design_data['performance_metrics']['temperature']}°C
-- **Power Consumption**: {self.design_data['performance_metrics']['power_consumption']} W
-
-## Status: working
 """
 
         summary_file = self.design_dir / "design_summary.md"
