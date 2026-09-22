@@ -9,14 +9,17 @@
     "step and that config were removed rather than left in place looking like a gate.",
     "Each floor sits roughly a point below measured coverage so it ratchets against",
     "regression without blocking current work. Raise a floor when its directory improves.",
+    "A floor may be lowered only when covered code is deleted rather than broken: removing",
+    "executed-but-meaningless lines drops the ratio without reducing verified behaviour. Any",
+    "such change must say what was deleted and why, as the Aerospace entry below does.",
     "Branch percentages are computed from Cobertura condition outcomes, deduplicating",
     "lines that appear under more than one class."
   ],
   "measuredOn": {
-    "commit": "e4d96d0 plus the quantum/neural removal, the nozzle solver, and the audit evidence gate",
+    "commit": "f2f3bce plus the audit evidence gate and the Raptor reference-model cleanup",
     "totalLines": 23303,
-    "overallLineCoverage": 58.39,
-    "overallBranchCoverage": 56.42
+    "overallLineCoverage": 58.01,
+    "overallBranchCoverage": 56.39
   },
   "overall": {
     "minLineCoverage": 57.0,
@@ -37,15 +40,22 @@
     },
     {
       "path": "Aerospace",
-      "minLineCoverage": 54.0,
+      "minLineCoverage": 51.0,
       "minBranchCoverage": 63.0,
       "rationale": [
-        "Measured 55.75% line, 64.94% branch. Line coverage rose from 21% to 34% once the",
+        "Measured 51.81% line, 64.94% branch. Line coverage rose from 21% to 34% once the",
         "engine parameter consistency gate began exercising the concept design declaration",
         "end to end, then to 55.75% when the compliance and readiness audits stopped",
-        "asserting their own inputs. Several hundred lines of hardcoded attestations were",
-        "replaced by lookups against supplied AuditEvidence, so what remains is decision",
-        "logic rather than untested specification data."
+        "asserting their own inputs.",
+        "The line floor was then lowered from 54.0, the one place in this file where a floor",
+        "has moved down. RaptorEngine.cs carried roughly 280 lines of constructor assignments",
+        "-- invented costs, reliability figures, emissions, failure rates, and a fabricated",
+        "test and flight history -- every one of which counted as a covered line because",
+        "instantiating the class executed it. Deleting that data removed covered lines from",
+        "both the numerator and the denominator, so the percentage fell while the amount of",
+        "verified behaviour did not change. Propping the ratio back up would have meant",
+        "keeping unsourced data about another company's hardware. Branch coverage, which is",
+        "the number that tracks decisions rather than declarations, was unaffected."
       ]
     },
     {
@@ -73,10 +83,10 @@
     },
     {
       "path": "Physics",
-      "minLineCoverage": 33.0,
+      "minLineCoverage": 37.0,
       "minBranchCoverage": 43.0,
       "rationale": [
-        "Measured 34.60% line, 43.75% branch. The jump from 30.40%/31.98% is the ideal rocket",
+        "Measured 38.86% line, 44.23% branch. The jump from 30.40%/31.98% is the ideal rocket",
         "nozzle solver, at 100% line and 100% branch coverage across IdealRocketNozzle.cs,",
         "EngineOperatingPoint.cs, and NozzleFlowSolver.cs. The uncovered remainder is the",
         "legacy constant-output solvers; see Docs/VERIFICATION_SCOPE.md."
