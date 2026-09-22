@@ -34,8 +34,11 @@ namespace HB_NLP_Research_Lab.Aerospace
     }
 
     /// <summary>
-    /// Aerospace Readiness Assessment System
-    /// Comprehensive evaluation for mission-critical aerospace applications
+    /// Scores a programme's own evidence across eight readiness categories against the
+    /// requirements of a chosen mission level. The mission-level tables state what a level
+    /// demands; the <see cref="AuditEvidence"/> handed in states what has been achieved. The
+    /// two are deliberately separate, because requiring TRL 9 is not evidence of having
+    /// reached it. With no evidence supplied every category scores zero.
     /// </summary>
     public class AerospaceReadinessAssessment
     {
@@ -62,9 +65,15 @@ namespace HB_NLP_Research_Lab.Aerospace
             };
         }
 
-        public async Task<AerospaceReadinessReport> PerformComprehensiveAssessmentAsync(MissionLevel missionLevel = MissionLevel.Critical)
+        public async Task<AerospaceReadinessReport> PerformComprehensiveAssessmentAsync(MissionLevel missionLevel = MissionLevel.Critical, AuditEvidence? evidence = null)
         {
             Console.WriteLine($"[Aerospace Readiness] 🚀 Performing comprehensive aerospace readiness assessment for {missionLevel} level...");
+
+            evidence ??= AuditEvidence.None;
+            if (evidence.IsEmpty)
+            {
+                Console.WriteLine("[Aerospace Readiness] No evidence supplied; every category scores zero.");
+            }
 
             var report = new AerospaceReadinessReport
             {
@@ -79,28 +88,28 @@ namespace HB_NLP_Research_Lab.Aerospace
             };
 
             // Technical Readiness Assessment
-            await AssessTechnicalReadinessAsync(report, missionLevel);
+            await AssessTechnicalReadinessAsync(report, missionLevel, evidence);
 
             // Safety Readiness Assessment
-            await AssessSafetyReadinessAsync(report, missionLevel);
+            await AssessSafetyReadinessAsync(report, missionLevel, evidence);
 
             // Regulatory Compliance Assessment
-            await AssessRegulatoryComplianceAsync(report, missionLevel);
+            await AssessRegulatoryComplianceAsync(report, missionLevel, evidence);
 
             // Operational Readiness Assessment
-            await AssessOperationalReadinessAsync(report, missionLevel);
+            await AssessOperationalReadinessAsync(report, missionLevel, evidence);
 
             // Quality Assurance Assessment
-            await AssessQualityAssuranceAsync(report, missionLevel);
+            await AssessQualityAssuranceAsync(report, missionLevel, evidence);
 
             // Security Readiness Assessment
-            await AssessSecurityReadinessAsync(report, missionLevel);
+            await AssessSecurityReadinessAsync(report, missionLevel, evidence);
 
             // Environmental Compliance Assessment
-            await AssessEnvironmentalComplianceAsync(report, missionLevel);
+            await AssessEnvironmentalComplianceAsync(report, missionLevel, evidence);
 
             // Financial Readiness Assessment
-            await AssessFinancialReadinessAsync(report, missionLevel);
+            await AssessFinancialReadinessAsync(report, missionLevel, evidence);
 
             // Calculate overall readiness score
             report.OverallReadiness = CalculateOverallReadinessScore(report);
@@ -113,35 +122,35 @@ namespace HB_NLP_Research_Lab.Aerospace
             return report;
         }
 
-        private async Task AssessTechnicalReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessTechnicalReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] 🔬 Assessing technical readiness...");
 
             var technicalAssessment = new TechnicalReadinessAssessment
             {
-                TechnologyReadinessLevel = GetTRLForMissionLevel(missionLevel),
-                PerformanceValidation = true,
-                ReliabilityAnalysis = true,
-                EnvironmentalTesting = true,
-                LifecycleTesting = true,
-                FailureModeAnalysis = true,
-                RiskAssessment = true,
-                VerificationTesting = true,
-                ValidationTesting = true,
-                QualificationTesting = true,
-                FlightHeritage = GetFlightHeritageForMissionLevel(missionLevel),
+                TechnologyReadinessLevel = (int)evidence.Measured("Technical.TechnologyReadinessLevel"),
+                PerformanceValidation = evidence.Attested("Technical.PerformanceValidation"),
+                ReliabilityAnalysis = evidence.Attested("Technical.ReliabilityAnalysis"),
+                EnvironmentalTesting = evidence.Attested("Technical.EnvironmentalTesting"),
+                LifecycleTesting = evidence.Attested("Technical.LifecycleTesting"),
+                FailureModeAnalysis = evidence.Attested("Technical.FailureModeAnalysis"),
+                RiskAssessment = evidence.Attested("Technical.RiskAssessment"),
+                VerificationTesting = evidence.Attested("Technical.VerificationTesting"),
+                ValidationTesting = evidence.Attested("Technical.ValidationTesting"),
+                QualificationTesting = evidence.Attested("Technical.QualificationTesting"),
+                FlightHeritage = (int)evidence.Measured("Technical.FlightHeritage"),
                 PerformanceMetrics = GetPerformanceMetricsForMissionLevel(missionLevel),
-                InnovationLevel = 0.98, // 98% innovation score
-                ComputationalCapability = 1.5e12, // 1.5 TFLOPS
-                MemoryCapacity = 16e9, // 16 GB
-                StorageCapacity = 1e12, // 1 TB
-                NetworkBandwidth = 10e9, // 10 Gbps
-                RealTimeProcessing = true,
-                Scalability = true,
-                Interoperability = true,
-                Maintainability = 0.99, // 99% maintainability
-                Upgradability = true
+                InnovationLevel = evidence.Measured("Technical.InnovationLevel"),
+                ComputationalCapability = evidence.Measured("Technical.ComputationalCapability"),
+                MemoryCapacity = evidence.Measured("Technical.MemoryCapacity"),
+                StorageCapacity = evidence.Measured("Technical.StorageCapacity"),
+                NetworkBandwidth = evidence.Measured("Technical.NetworkBandwidth"),
+                RealTimeProcessing = evidence.Attested("Technical.RealTimeProcessing"),
+                Scalability = evidence.Attested("Technical.Scalability"),
+                Interoperability = evidence.Attested("Technical.Interoperability"),
+                Maintainability = evidence.Measured("Technical.Maintainability"),
+                Upgradability = evidence.Attested("Technical.Upgradability")
             };
 
             var readinessScore = CalculateTechnicalReadinessScore(technicalAssessment, missionLevel);
@@ -156,29 +165,29 @@ namespace HB_NLP_Research_Lab.Aerospace
             });
         }
 
-        private async Task AssessSafetyReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessSafetyReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] 🛡️ Assessing safety readiness...");
 
             var safetyAssessment = new SafetyReadinessAssessment
             {
-                SafetyFactor = GetSafetyFactorForMissionLevel(missionLevel),
-                RedundancyLevel = GetRedundancyLevelForMissionLevel(missionLevel),
-                FaultTolerance = 0.9999, // 99.99% fault tolerance
-                MeanTimeBetweenFailures = GetMTBFForMissionLevel(missionLevel),
-                MeanTimeToRepair = GetMTTRForMissionLevel(missionLevel),
-                EmergencyShutdown = true,
-                FailureModeAnalysis = true,
-                RiskAssessment = true,
-                ContingencyPlanning = true,
-                RealTimeMonitoring = true,
-                SafetyCertification = true,
-                HumanRated = missionLevel >= MissionLevel.Operational,
-                SafetyTraining = true,
-                SafetyProcedures = true,
-                IncidentResponse = true,
-                SafetyAudit = true
+                SafetyFactor = evidence.Measured("Safety.SafetyFactor"),
+                RedundancyLevel = (int)evidence.Measured("Safety.RedundancyLevel"),
+                FaultTolerance = evidence.Measured("Safety.FaultTolerance"),
+                MeanTimeBetweenFailures = evidence.Measured("Safety.MeanTimeBetweenFailures"),
+                MeanTimeToRepair = evidence.Measured("Safety.MeanTimeToRepair"),
+                EmergencyShutdown = evidence.Attested("Safety.EmergencyShutdown"),
+                FailureModeAnalysis = evidence.Attested("Safety.FailureModeAnalysis"),
+                RiskAssessment = evidence.Attested("Safety.RiskAssessment"),
+                ContingencyPlanning = evidence.Attested("Safety.ContingencyPlanning"),
+                RealTimeMonitoring = evidence.Attested("Safety.RealTimeMonitoring"),
+                SafetyCertification = evidence.Attested("Safety.SafetyCertification"),
+                HumanRated = evidence.Attested("Safety.HumanRated"),
+                SafetyTraining = evidence.Attested("Safety.SafetyTraining"),
+                SafetyProcedures = evidence.Attested("Safety.SafetyProcedures"),
+                IncidentResponse = evidence.Attested("Safety.IncidentResponse"),
+                SafetyAudit = evidence.Attested("Safety.SafetyAudit")
             };
 
             var readinessScore = CalculateSafetyReadinessScore(safetyAssessment, missionLevel);
@@ -193,12 +202,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             });
         }
 
-        private async Task AssessRegulatoryComplianceAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessRegulatoryComplianceAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] 📋 Assessing regulatory compliance...");
 
-            var complianceReport = await _complianceSystem.PerformFullComplianceAuditAsync();
+            var complianceReport = await _complianceSystem.PerformFullComplianceAuditAsync(evidence);
 
             report.ComplianceStatus.AddRange(complianceReport.Certifications.Select(c => new ComplianceStatus
             {
@@ -221,31 +230,31 @@ namespace HB_NLP_Research_Lab.Aerospace
             });
         }
 
-        private async Task AssessOperationalReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessOperationalReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] ⚙️ Assessing operational readiness...");
 
             var operationalAssessment = new OperationalReadinessAssessment
             {
-                OperationalProcedures = true,
-                TrainingProgram = true,
-                PersonnelQualification = true,
-                EquipmentReadiness = true,
-                FacilityReadiness = true,
-                SupplyChainReadiness = true,
-                CommunicationSystems = true,
-                DataManagement = true,
-                Documentation = true,
-                ChangeManagement = true,
-                PerformanceMonitoring = true,
-                ContinuousImprovement = true,
+                OperationalProcedures = evidence.Attested("Operational.OperationalProcedures"),
+                TrainingProgram = evidence.Attested("Operational.TrainingProgram"),
+                PersonnelQualification = evidence.Attested("Operational.PersonnelQualification"),
+                EquipmentReadiness = evidence.Attested("Operational.EquipmentReadiness"),
+                FacilityReadiness = evidence.Attested("Operational.FacilityReadiness"),
+                SupplyChainReadiness = evidence.Attested("Operational.SupplyChainReadiness"),
+                CommunicationSystems = evidence.Attested("Operational.CommunicationSystems"),
+                DataManagement = evidence.Attested("Operational.DataManagement"),
+                Documentation = evidence.Attested("Operational.Documentation"),
+                ChangeManagement = evidence.Attested("Operational.ChangeManagement"),
+                PerformanceMonitoring = evidence.Attested("Operational.PerformanceMonitoring"),
+                ContinuousImprovement = evidence.Attested("Operational.ContinuousImprovement"),
                 OperationalMetrics = GetOperationalMetricsForMissionLevel(missionLevel),
-                Availability = 0.9995, // 99.95% availability
-                Maintainability = 0.99, // 99% maintainability
-                Supportability = 0.98, // 98% supportability
-                Interoperability = true,
-                Scalability = true
+                Availability = evidence.Measured("Operational.Availability"),
+                Maintainability = evidence.Measured("Operational.Maintainability"),
+                Supportability = evidence.Measured("Operational.Supportability"),
+                Interoperability = evidence.Attested("Operational.Interoperability"),
+                Scalability = evidence.Attested("Operational.Scalability")
             };
 
             var readinessScore = CalculateOperationalReadinessScore(operationalAssessment, missionLevel);
@@ -260,12 +269,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             });
         }
 
-        private async Task AssessQualityAssuranceAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessQualityAssuranceAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] ✅ Assessing quality assurance...");
 
-            var qualityReport = await _qualityAssurance.PerformQualityAuditAsync();
+            var qualityReport = await _qualityAssurance.PerformQualityAuditAsync(evidence);
 
             var readinessScore = CalculateQualityReadinessScore(qualityReport, missionLevel);
 
@@ -279,12 +288,12 @@ namespace HB_NLP_Research_Lab.Aerospace
             });
         }
 
-        private async Task AssessSecurityReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessSecurityReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] 🔒 Assessing security readiness...");
 
-            var securityReport = await _securityAudit.PerformSecurityAuditAsync();
+            var securityReport = await _securityAudit.PerformSecurityAuditAsync(evidence);
 
             var readinessScore = CalculateSecurityReadinessScore(securityReport, missionLevel);
 
@@ -298,28 +307,28 @@ namespace HB_NLP_Research_Lab.Aerospace
             });
         }
 
-        private async Task AssessEnvironmentalComplianceAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessEnvironmentalComplianceAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] 🌍 Assessing environmental compliance...");
 
             var environmentalAssessment = new EnvironmentalComplianceAssessment
             {
-                EmissionsControl = true,
-                NoiseReduction = true,
-                WasteManagement = true,
-                EnergyEfficiency = true,
-                SustainableMaterials = true,
-                LifecycleAssessment = true,
-                EnvironmentalImpact = "Minimal",
-                CarbonFootprint = "Low",
-                ResourceConservation = true,
-                EnvironmentalMonitoring = true,
-                ComplianceReporting = true,
-                EnvironmentalTraining = true,
-                GreenTechnology = true,
-                RenewableEnergy = true,
-                EnvironmentalCertification = true
+                EmissionsControl = evidence.Attested("Environmental.EmissionsControl"),
+                NoiseReduction = evidence.Attested("Environmental.NoiseReduction"),
+                WasteManagement = evidence.Attested("Environmental.WasteManagement"),
+                EnergyEfficiency = evidence.Attested("Environmental.EnergyEfficiency"),
+                SustainableMaterials = evidence.Attested("Environmental.SustainableMaterials"),
+                LifecycleAssessment = evidence.Attested("Environmental.LifecycleAssessment"),
+                EnvironmentalImpact = evidence.Recorded("Environmental.EnvironmentalImpact"),
+                CarbonFootprint = evidence.Recorded("Environmental.CarbonFootprint"),
+                ResourceConservation = evidence.Attested("Environmental.ResourceConservation"),
+                EnvironmentalMonitoring = evidence.Attested("Environmental.EnvironmentalMonitoring"),
+                ComplianceReporting = evidence.Attested("Environmental.ComplianceReporting"),
+                EnvironmentalTraining = evidence.Attested("Environmental.EnvironmentalTraining"),
+                GreenTechnology = evidence.Attested("Environmental.GreenTechnology"),
+                RenewableEnergy = evidence.Attested("Environmental.RenewableEnergy"),
+                EnvironmentalCertification = evidence.Attested("Environmental.EnvironmentalCertification")
             };
 
             var readinessScore = CalculateEnvironmentalReadinessScore(environmentalAssessment, missionLevel);
@@ -334,30 +343,30 @@ namespace HB_NLP_Research_Lab.Aerospace
             });
         }
 
-        private async Task AssessFinancialReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel)
+        private async Task AssessFinancialReadinessAsync(AerospaceReadinessReport report, MissionLevel missionLevel, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Aerospace Readiness] 💰 Assessing financial readiness...");
 
             var financialAssessment = new FinancialReadinessAssessment
             {
-                BudgetAllocation = true,
-                CostControl = true,
-                FinancialPlanning = true,
-                RiskManagement = true,
-                InsuranceCoverage = true,
-                ContingencyFunding = true,
-                FinancialReporting = true,
-                AuditCompliance = true,
-                InvestmentStrategy = true,
-                RevenueProjections = true,
-                CostBenefitAnalysis = true,
-                FinancialStability = true,
-                FundingSources = true,
+                BudgetAllocation = evidence.Attested("Financial.BudgetAllocation"),
+                CostControl = evidence.Attested("Financial.CostControl"),
+                FinancialPlanning = evidence.Attested("Financial.FinancialPlanning"),
+                RiskManagement = evidence.Attested("Financial.RiskManagement"),
+                InsuranceCoverage = evidence.Attested("Financial.InsuranceCoverage"),
+                ContingencyFunding = evidence.Attested("Financial.ContingencyFunding"),
+                FinancialReporting = evidence.Attested("Financial.FinancialReporting"),
+                AuditCompliance = evidence.Attested("Financial.AuditCompliance"),
+                InvestmentStrategy = evidence.Attested("Financial.InvestmentStrategy"),
+                RevenueProjections = evidence.Attested("Financial.RevenueProjections"),
+                CostBenefitAnalysis = evidence.Attested("Financial.CostBenefitAnalysis"),
+                FinancialStability = evidence.Attested("Financial.FinancialStability"),
+                FundingSources = evidence.Attested("Financial.FundingSources"),
                 FinancialMetrics = GetFinancialMetricsForMissionLevel(missionLevel),
-                ReturnOnInvestment = 0.25, // 25% ROI
-                CostEfficiency = 0.95, // 95% cost efficiency
-                BudgetPerformance = 0.98 // 98% budget performance
+                ReturnOnInvestment = evidence.Measured("Financial.ReturnOnInvestment"),
+                CostEfficiency = evidence.Measured("Financial.CostEfficiency"),
+                BudgetPerformance = evidence.Measured("Financial.BudgetPerformance")
             };
 
             var readinessScore = CalculateFinancialReadinessScore(financialAssessment, missionLevel);
@@ -477,22 +486,20 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         internal double CalculateTechnicalReadinessScore(TechnicalReadinessAssessment assessment, MissionLevel missionLevel)
         {
-            var baseScore = 0.95; // High base score for technical excellence
             var trlScore = assessment.TechnologyReadinessLevel / 9.0;
-            var performanceScore = assessment.PerformanceValidation ? 1.0 : 0.5;
-            var reliabilityScore = assessment.ReliabilityAnalysis ? 1.0 : 0.5;
+            var performanceScore = assessment.PerformanceValidation ? 1.0 : 0.0;
+            var reliabilityScore = assessment.ReliabilityAnalysis ? 1.0 : 0.0;
 
-            return (baseScore + trlScore + performanceScore + reliabilityScore) / 4.0;
+            return (trlScore + performanceScore + reliabilityScore) / 3.0;
         }
 
         internal double CalculateSafetyReadinessScore(SafetyReadinessAssessment assessment, MissionLevel missionLevel)
         {
-            var baseScore = 0.98; // High base score for safety
             var safetyFactorScore = Math.Min(assessment.SafetyFactor / 4.0, 1.0);
-            var redundancyScore = assessment.RedundancyLevel / 4.0;
+            var redundancyScore = Math.Min(assessment.RedundancyLevel / 4.0, 1.0);
             var faultToleranceScore = assessment.FaultTolerance;
 
-            return (baseScore + safetyFactorScore + redundancyScore + faultToleranceScore) / 4.0;
+            return (safetyFactorScore + redundancyScore + faultToleranceScore) / 3.0;
         }
 
         internal double CalculateComplianceReadinessScore(ComplianceReport complianceReport, MissionLevel missionLevel)
@@ -518,12 +525,11 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         internal double CalculateOperationalReadinessScore(OperationalReadinessAssessment assessment, MissionLevel missionLevel)
         {
-            var baseScore = 0.95;
             var availabilityScore = assessment.Availability;
             var maintainabilityScore = assessment.Maintainability;
             var supportabilityScore = assessment.Supportability;
 
-            return (baseScore + availabilityScore + maintainabilityScore + supportabilityScore) / 4.0;
+            return (availabilityScore + maintainabilityScore + supportabilityScore) / 3.0;
         }
 
         private double CalculateQualityReadinessScore(QualityAuditReport qualityReport, MissionLevel missionLevel)
@@ -538,22 +544,20 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         private double CalculateEnvironmentalReadinessScore(EnvironmentalComplianceAssessment assessment, MissionLevel missionLevel)
         {
-            var baseScore = 0.90;
-            var complianceScore = assessment.EnvironmentalCertification ? 1.0 : 0.5;
-            var efficiencyScore = assessment.EnergyEfficiency ? 1.0 : 0.5;
-            var sustainabilityScore = assessment.SustainableMaterials ? 1.0 : 0.5;
+            var complianceScore = assessment.EnvironmentalCertification ? 1.0 : 0.0;
+            var efficiencyScore = assessment.EnergyEfficiency ? 1.0 : 0.0;
+            var sustainabilityScore = assessment.SustainableMaterials ? 1.0 : 0.0;
 
-            return (baseScore + complianceScore + efficiencyScore + sustainabilityScore) / 4.0;
+            return (complianceScore + efficiencyScore + sustainabilityScore) / 3.0;
         }
 
         private double CalculateFinancialReadinessScore(FinancialReadinessAssessment assessment, MissionLevel missionLevel)
         {
-            var baseScore = 0.90;
-            var stabilityScore = assessment.FinancialStability ? 1.0 : 0.5;
+            var stabilityScore = assessment.FinancialStability ? 1.0 : 0.0;
             var roiScore = Math.Min(assessment.ReturnOnInvestment / 0.25, 1.0);
             var efficiencyScore = assessment.CostEfficiency;
 
-            return (baseScore + stabilityScore + roiScore + efficiencyScore) / 4.0;
+            return (stabilityScore + roiScore + efficiencyScore) / 3.0;
         }
 
         private string GetReadinessStatus(double score)
@@ -706,13 +710,13 @@ namespace HB_NLP_Research_Lab.Aerospace
             };
         }
 
-        public async Task<bool> IsReadyForAdvancedAerospaceAsync(MissionLevel missionLevel = MissionLevel.Critical)
+        public async Task<bool> IsReadyForAdvancedAerospaceAsync(MissionLevel missionLevel = MissionLevel.Critical, AuditEvidence? evidence = null)
         {
-            var assessment = await PerformComprehensiveAssessmentAsync(missionLevel);
+            var assessment = await PerformComprehensiveAssessmentAsync(missionLevel, evidence);
             return assessment.ReadinessStatus == "READY" && assessment.OverallReadiness >= 0.95;
         }
 
-        public async Task<bool> IsReadyForMissionCriticalOperationsAsync()
+        public async Task<bool> IsReadyForMissionCriticalOperationsAsync(AuditEvidence? evidence = null)
         {
             var assessment = await PerformComprehensiveAssessmentAsync(MissionLevel.Critical);
             return assessment.ReadinessStatus == "READY" && assessment.OverallReadiness >= 0.98;

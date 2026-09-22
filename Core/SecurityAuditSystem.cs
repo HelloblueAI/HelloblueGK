@@ -9,8 +9,10 @@ using System.Linq;
 namespace HB_NLP_Research_Lab.Core
 {
     /// <summary>
-    /// Aerospace-Grade Security Audit System
-    /// Implements FIPS 140-2, penetration testing, and vulnerability assessment
+    /// Scores supplied evidence against common security objectives, including those of
+    /// FIPS 140-2. It performs no scanning or penetration testing of its own: inputs come from
+    /// the <see cref="AuditEvidence"/> handed to the audit, and a control with no evidence
+    /// behind it fails.
     /// </summary>
     public class SecurityAuditSystem
     {
@@ -47,8 +49,14 @@ namespace HB_NLP_Research_Lab.Core
             };
         }
 
-        public async Task<SecurityAuditReport> PerformSecurityAuditAsync()
+        public async Task<SecurityAuditReport> PerformSecurityAuditAsync(AuditEvidence? evidence = null)
         {
+
+            evidence ??= AuditEvidence.None;
+            if (evidence.IsEmpty)
+            {
+                Console.WriteLine("[Security Audit] No evidence supplied; no security objective can be assessed.");
+            }
             Console.WriteLine("[Security Audit] 🔒 Performing comprehensive security audit...");
 
             var report = new SecurityAuditReport
@@ -62,28 +70,28 @@ namespace HB_NLP_Research_Lab.Core
             };
 
             // Cryptographic Security Audit
-            await PerformCryptographicAuditAsync(report);
+            await PerformCryptographicAuditAsync(report, evidence);
 
             // Network Security Audit
-            await PerformNetworkSecurityAuditAsync(report);
+            await PerformNetworkSecurityAuditAsync(report, evidence);
 
             // Application Security Audit
-            await PerformApplicationSecurityAuditAsync(report);
+            await PerformApplicationSecurityAuditAsync(report, evidence);
 
             // Physical Security Audit
-            await PerformPhysicalSecurityAuditAsync(report);
+            await PerformPhysicalSecurityAuditAsync(report, evidence);
 
             // Access Control Audit
-            await PerformAccessControlAuditAsync(report);
+            await PerformAccessControlAuditAsync(report, evidence);
 
             // Data Protection Audit
-            await PerformDataProtectionAuditAsync(report);
+            await PerformDataProtectionAuditAsync(report, evidence);
 
             // Incident Response Audit
-            await PerformIncidentResponseAuditAsync(report);
+            await PerformIncidentResponseAuditAsync(report, evidence);
 
             // Compliance Audit
-            await PerformComplianceAuditAsync(report);
+            await PerformComplianceAuditAsync(report, evidence);
 
             // Calculate overall security score
             report.OverallSecurity = CalculateOverallSecurityScore(report);
@@ -93,24 +101,12 @@ namespace HB_NLP_Research_Lab.Core
             return report;
         }
 
-        private async Task PerformCryptographicAuditAsync(SecurityAuditReport report)
+        private async Task PerformCryptographicAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 🔐 Performing cryptographic security audit...");
 
-            var cryptoAudit = new CryptographicSecurityAudit
-            {
-                FIPS140Compliance = true,
-                AlgorithmStrength = "AES-256",
-                KeyManagement = true,
-                RandomNumberGeneration = true,
-                CertificateManagement = true,
-                DigitalSignatures = true,
-                EncryptionAtRest = true,
-                EncryptionInTransit = true,
-                KeyRotation = true,
-                HardwareSecurityModules = true
-            };
+            var cryptoAudit = evidence.Build<CryptographicSecurityAudit>("Cryptographic");
 
             if (cryptoAudit.IsCompliant())
             {
@@ -136,24 +132,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformNetworkSecurityAuditAsync(SecurityAuditReport report)
+        private async Task PerformNetworkSecurityAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 🌐 Performing network security audit...");
 
-            var networkAudit = new NetworkSecurityAudit
-            {
-                FirewallProtection = true,
-                IntrusionDetection = true,
-                IntrusionPrevention = true,
-                NetworkSegmentation = true,
-                VPNAccess = true,
-                DDoSProtection = true,
-                NetworkMonitoring = true,
-                TrafficAnalysis = true,
-                ZeroTrustArchitecture = true,
-                SecureDNS = true
-            };
+            var networkAudit = evidence.Build<NetworkSecurityAudit>("Network");
 
             if (networkAudit.IsCompliant())
             {
@@ -179,28 +163,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformApplicationSecurityAuditAsync(SecurityAuditReport report)
+        private async Task PerformApplicationSecurityAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 🛡️ Performing application security audit...");
 
-            var appAudit = new ApplicationSecurityAudit
-            {
-                InputValidation = true,
-                OutputEncoding = true,
-                SQLInjectionProtection = true,
-                XSSProtection = true,
-                CSRFProtection = true,
-                Authentication = true,
-                Authorization = true,
-                SessionManagement = true,
-                ErrorHandling = true,
-                Logging = true,
-                CodeReview = true,
-                StaticAnalysis = true,
-                DynamicAnalysis = true,
-                PenetrationTesting = true
-            };
+            var appAudit = evidence.Build<ApplicationSecurityAudit>("Application");
 
             if (appAudit.IsCompliant())
             {
@@ -226,24 +194,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformPhysicalSecurityAuditAsync(SecurityAuditReport report)
+        private async Task PerformPhysicalSecurityAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 🏢 Performing physical security audit...");
 
-            var physicalAudit = new PhysicalSecurityAudit
-            {
-                AccessControl = true,
-                Surveillance = true,
-                EnvironmentalControls = true,
-                FireSuppression = true,
-                PowerBackup = true,
-                EnvironmentalMonitoring = true,
-                AssetManagement = true,
-                VisitorManagement = true,
-                SecurityPersonnel = true,
-                EmergencyProcedures = true
-            };
+            var physicalAudit = evidence.Build<PhysicalSecurityAudit>("Physical");
 
             if (physicalAudit.IsCompliant())
             {
@@ -269,24 +225,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformAccessControlAuditAsync(SecurityAuditReport report)
+        private async Task PerformAccessControlAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 🔑 Performing access control audit...");
 
-            var accessAudit = new AccessControlAudit
-            {
-                MultiFactorAuthentication = true,
-                RoleBasedAccessControl = true,
-                PrivilegedAccessManagement = true,
-                IdentityManagement = true,
-                SingleSignOn = true,
-                PasswordPolicy = true,
-                AccountLockout = true,
-                SessionTimeout = true,
-                AuditLogging = true,
-                AccessReviews = true
-            };
+            var accessAudit = evidence.Build<AccessControlAudit>("AccessControl");
 
             if (accessAudit.IsCompliant())
             {
@@ -312,24 +256,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformDataProtectionAuditAsync(SecurityAuditReport report)
+        private async Task PerformDataProtectionAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 📊 Performing data protection audit...");
 
-            var dataAudit = new DataProtectionAudit
-            {
-                DataClassification = true,
-                DataEncryption = true,
-                DataBackup = true,
-                DataRetention = true,
-                DataLossPrevention = true,
-                PrivacyCompliance = true,
-                DataGovernance = true,
-                DataInventory = true,
-                DataAccessLogging = true,
-                DataBreachResponse = true
-            };
+            var dataAudit = evidence.Build<DataProtectionAudit>("DataProtection");
 
             if (dataAudit.IsCompliant())
             {
@@ -355,24 +287,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformIncidentResponseAuditAsync(SecurityAuditReport report)
+        private async Task PerformIncidentResponseAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 🚨 Performing incident response audit...");
 
-            var incidentAudit = new IncidentResponseAudit
-            {
-                IncidentResponsePlan = true,
-                IncidentResponseTeam = true,
-                IncidentDetection = true,
-                IncidentClassification = true,
-                IncidentContainment = true,
-                IncidentEradication = true,
-                IncidentRecovery = true,
-                IncidentLessonsLearned = true,
-                IncidentCommunication = true,
-                IncidentDocumentation = true
-            };
+            var incidentAudit = evidence.Build<IncidentResponseAudit>("IncidentResponse");
 
             if (incidentAudit.IsCompliant())
             {
@@ -398,24 +318,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformComplianceAuditAsync(SecurityAuditReport report)
+        private async Task PerformComplianceAuditAsync(SecurityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Security Audit] 📋 Performing compliance audit...");
 
-            var complianceAudit = new SecurityComplianceAudit
-            {
-                SOXCompliance = true,
-                HIPAACompliance = true,
-                PCICompliance = true,
-                GDPRCompliance = true,
-                ISO27001Compliance = true,
-                NISTCompliance = true,
-                SOC2Compliance = true,
-                FedRAMPCompliance = true,
-                RegularAudits = true,
-                ComplianceReporting = true
-            };
+            var complianceAudit = evidence.Build<SecurityComplianceAudit>("SecurityCompliance");
 
             if (complianceAudit.IsCompliant())
             {

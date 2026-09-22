@@ -13,14 +13,14 @@
     "lines that appear under more than one class."
   ],
   "measuredOn": {
-    "commit": "e4d96d0 plus the quantum/neural removal and the nozzle solver",
+    "commit": "e4d96d0 plus the quantum/neural removal, the nozzle solver, and the audit evidence gate",
     "totalLines": 23303,
-    "overallLineCoverage": 50.68,
-    "overallBranchCoverage": 52.09
+    "overallLineCoverage": 58.39,
+    "overallBranchCoverage": 56.42
   },
   "overall": {
-    "minLineCoverage": 52.0,
-    "minBranchCoverage": 52.0
+    "minLineCoverage": 57.0,
+    "minBranchCoverage": 55.0
   },
   "directories": [
     {
@@ -37,22 +37,26 @@
     },
     {
       "path": "Aerospace",
-      "minLineCoverage": 33.0,
-      "minBranchCoverage": 50.0,
+      "minLineCoverage": 54.0,
+      "minBranchCoverage": 63.0,
       "rationale": [
-        "Much of this directory is hardcoded specification data and console-printing demo",
-        "scaffolding with no decisions in it, so line coverage will stay modest. Branch",
-        "coverage is the meaningful number: the compliance checks, mission-level requirement",
-        "tables, and readiness thresholds are the code that decides something, and those are",
-        "verified. Line coverage rose from 21% to 34% once the engine parameter consistency",
-        "gate began exercising the concept design declaration end to end."
+        "Measured 55.75% line, 64.94% branch. Line coverage rose from 21% to 34% once the",
+        "engine parameter consistency gate began exercising the concept design declaration",
+        "end to end, then to 55.75% when the compliance and readiness audits stopped",
+        "asserting their own inputs. Several hundred lines of hardcoded attestations were",
+        "replaced by lookups against supplied AuditEvidence, so what remains is decision",
+        "logic rather than untested specification data."
       ]
     },
     {
       "path": "Core",
-      "minLineCoverage": 46.0,
-      "minBranchCoverage": 33.0,
-      "rationale": "Largest directory. Measured 47.33% line, 34.05% branch after removing unreferenced dead code."
+      "minLineCoverage": 55.0,
+      "minBranchCoverage": 43.0,
+      "rationale": [
+        "Largest directory. Measured 56.56% line, 44.77% branch. The rise from 47.33%/34.05%",
+        "came from the quality and security audits reading their inputs from AuditEvidence",
+        "instead of declaring them inline, which removed a few hundred untested lines."
+      ]
     },
     {
       "path": "AI",

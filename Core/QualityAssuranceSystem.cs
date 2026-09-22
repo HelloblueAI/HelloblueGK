@@ -6,8 +6,11 @@ using System.Linq;
 namespace HB_NLP_Research_Lab.Core
 {
     /// <summary>
-    /// Aerospace-Grade Quality Assurance System
-    /// Implements AS9100, ISO 9001, Six Sigma, and mission-critical quality standards
+    /// Scores supplied evidence against the objectives of AS9100, ISO 9001, Six Sigma, and
+    /// mission-critical quality practice. It records what the evidence shows; it does not
+    /// implement those standards and cannot establish conformance to them. Inputs come from
+    /// the <see cref="AuditEvidence"/> handed to the audit, and an objective with no evidence
+    /// behind it fails.
     /// </summary>
     public class QualityAssuranceSystem
     {
@@ -45,9 +48,15 @@ namespace HB_NLP_Research_Lab.Core
             };
         }
 
-        public async Task<QualityAuditReport> PerformQualityAuditAsync()
+        public async Task<QualityAuditReport> PerformQualityAuditAsync(AuditEvidence? evidence = null)
         {
             Console.WriteLine("[Quality Assurance] ✅ Performing comprehensive quality audit...");
+            evidence ??= AuditEvidence.None;
+            if (evidence.IsEmpty)
+            {
+                Console.WriteLine("[Quality Assurance] No evidence supplied; no quality objective can be assessed.");
+            }
+
 
             var report = new QualityAuditReport
             {
@@ -60,28 +69,28 @@ namespace HB_NLP_Research_Lab.Core
             };
 
             // AS9100 Aerospace Quality Management System Audit
-            await PerformAS9100AuditAsync(report);
+            await PerformAS9100AuditAsync(report, evidence);
 
             // ISO 9001 Quality Management System Audit
-            await PerformISO9001AuditAsync(report);
+            await PerformISO9001AuditAsync(report, evidence);
 
             // Six Sigma Process Quality Audit
-            await PerformSixSigmaAuditAsync(report);
+            await PerformSixSigmaAuditAsync(report, evidence);
 
             // Mission-Critical Quality Audit
-            await PerformMissionCriticalQualityAuditAsync(report);
+            await PerformMissionCriticalQualityAuditAsync(report, evidence);
 
             // Software Quality Audit
-            await PerformSoftwareQualityAuditAsync(report);
+            await PerformSoftwareQualityAuditAsync(report, evidence);
 
             // Hardware Quality Audit
-            await PerformHardwareQualityAuditAsync(report);
+            await PerformHardwareQualityAuditAsync(report, evidence);
 
             // Process Quality Audit
-            await PerformProcessQualityAuditAsync(report);
+            await PerformProcessQualityAuditAsync(report, evidence);
 
             // Supplier Quality Audit
-            await PerformSupplierQualityAuditAsync(report);
+            await PerformSupplierQualityAuditAsync(report, evidence);
 
             // Calculate overall quality score
             report.OverallQuality = CalculateOverallQualityScore(report);
@@ -91,29 +100,12 @@ namespace HB_NLP_Research_Lab.Core
             return report;
         }
 
-        private async Task PerformAS9100AuditAsync(QualityAuditReport report)
+        private async Task PerformAS9100AuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] 🚀 Performing AS9100 aerospace quality audit...");
 
-            var as9100Audit = new AS9100QualityAudit
-            {
-                QualityManagementSystem = true,
-                ManagementResponsibility = true,
-                ResourceManagement = true,
-                ProductRealization = true,
-                MeasurementAnalysis = true,
-                ContinuousImprovement = true,
-                RiskManagement = true,
-                ConfigurationManagement = true,
-                FirstArticleInspection = true,
-                SpecialProcesses = true,
-                KeyCharacteristics = true,
-                CounterfeitPartsPrevention = true,
-                ForeignObjectDebrisPrevention = true,
-                ToolControl = true,
-                Calibration = true
-            };
+            var as9100Audit = evidence.Build<AS9100QualityAudit>("AS9100");
 
             if (as9100Audit.IsCompliant())
             {
@@ -121,7 +113,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "AS9100",
                     Name = "Aerospace Quality Management System",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.99,
                     LastUpdated = DateTime.UtcNow
                 });
@@ -139,30 +131,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformISO9001AuditAsync(QualityAuditReport report)
+        private async Task PerformISO9001AuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] 📋 Performing ISO 9001 quality audit...");
 
-            var iso9001Audit = new ISO9001QualityAudit
-            {
-                QualityPolicy = true,
-                QualityObjectives = true,
-                QualityManual = true,
-                DocumentControl = true,
-                RecordControl = true,
-                ManagementReview = true,
-                InternalAudits = true,
-                CorrectiveActions = true,
-                PreventiveActions = true,
-                CustomerFocus = true,
-                Leadership = true,
-                Engagement = true,
-                ProcessApproach = true,
-                Improvement = true,
-                EvidenceBasedDecisionMaking = true,
-                RelationshipManagement = true
-            };
+            var iso9001Audit = evidence.Build<ISO9001QualityAudit>("ISO9001");
 
             if (iso9001Audit.IsCompliant())
             {
@@ -170,7 +144,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "ISO 9001",
                     Name = "Quality Management System",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.98,
                     LastUpdated = DateTime.UtcNow
                 });
@@ -188,29 +162,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformSixSigmaAuditAsync(QualityAuditReport report)
+        private async Task PerformSixSigmaAuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] 📊 Performing Six Sigma quality audit...");
 
-            var sixSigmaAudit = new SixSigmaQualityAudit
-            {
-                DefinePhase = true,
-                MeasurePhase = true,
-                AnalyzePhase = true,
-                ImprovePhase = true,
-                ControlPhase = true,
-                StatisticalProcessControl = true,
-                ProcessCapability = true,
-                DefectRate = 3.4, // 3.4 defects per million (Six Sigma level)
-                ProcessVariation = 0.001, // Very low variation
-                CustomerSatisfaction = 0.99,
-                CostOfPoorQuality = 0.01, // 1% of total cost
-                CycleTimeReduction = 0.50, // 50% reduction
-                YieldImprovement = 0.99, // 99% yield
-                RootCauseAnalysis = true,
-                ContinuousImprovement = true
-            };
+            var sixSigmaAudit = evidence.Build<SixSigmaQualityAudit>("SixSigma");
 
             if (sixSigmaAudit.IsCompliant())
             {
@@ -218,7 +175,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "Six Sigma",
                     Name = "Six Sigma Process Excellence",
-                    Status = "Achieved",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.99,
                     LastUpdated = DateTime.UtcNow
                 });
@@ -229,7 +186,7 @@ namespace HB_NLP_Research_Lab.Core
                     Value = sixSigmaAudit.DefectRate,
                     Unit = "DPMO",
                     Target = 3.4,
-                    Status = "Achieved"
+                    Status = "Evidence accepted"
                 });
             }
             else
@@ -245,29 +202,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformMissionCriticalQualityAuditAsync(QualityAuditReport report)
+        private async Task PerformMissionCriticalQualityAuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] 🎯 Performing mission-critical quality audit...");
 
-            var missionQualityAudit = new MissionCriticalQualityAudit
-            {
-                Reliability = 0.9999, // 99.99% reliability
-                Availability = 0.9995, // 99.95% availability
-                Maintainability = 0.99, // 99% maintainability
-                Safety = 0.99999, // 99.999% safety
-                FaultTolerance = 0.9999, // 99.99% fault tolerance
-                Redundancy = 3, // Triple redundancy
-                MeanTimeBetweenFailures = 10000, // 10,000 hours
-                MeanTimeToRepair = 1, // 1 hour
-                FailureModeAnalysis = true,
-                RiskAssessment = true,
-                QualityAssurance = true,
-                IndependentVerification = true,
-                ValidationTesting = true,
-                QualificationTesting = true,
-                AcceptanceTesting = true
-            };
+            var missionQualityAudit = evidence.Build<MissionCriticalQualityAudit>("MissionCritical");
 
             if (missionQualityAudit.IsCompliant())
             {
@@ -275,7 +215,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "Mission Critical",
                     Name = "Mission-Critical Quality Assurance",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.999,
                     LastUpdated = DateTime.UtcNow
                 });
@@ -286,7 +226,7 @@ namespace HB_NLP_Research_Lab.Core
                     Value = missionQualityAudit.Reliability * 100,
                     Unit = "%",
                     Target = 99.99,
-                    Status = "Achieved"
+                    Status = "Evidence accepted"
                 });
             }
             else
@@ -302,30 +242,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformSoftwareQualityAuditAsync(QualityAuditReport report)
+        private async Task PerformSoftwareQualityAuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] 💻 Performing software quality audit...");
 
-            var softwareQualityAudit = new SoftwareQualityAudit
-            {
-                CodeCoverage = 0.95, // 95% code coverage
-                CyclomaticComplexity = 10, // Low complexity
-                MaintainabilityIndex = 85, // High maintainability
-                TechnicalDebt = 0.05, // 5% technical debt
-                BugDensity = 0.1, // 0.1 bugs per KLOC
-                CodeReview = true,
-                UnitTesting = true,
-                IntegrationTesting = true,
-                SystemTesting = true,
-                PerformanceTesting = true,
-                SecurityTesting = true,
-                UsabilityTesting = true,
-                Documentation = true,
-                VersionControl = true,
-                ContinuousIntegration = true,
-                AutomatedTesting = true
-            };
+            var softwareQualityAudit = evidence.Build<SoftwareQualityAudit>("Software");
 
             if (softwareQualityAudit.IsCompliant())
             {
@@ -333,7 +255,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "Software",
                     Name = "Software Quality Assurance",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.97,
                     LastUpdated = DateTime.UtcNow
                 });
@@ -344,7 +266,7 @@ namespace HB_NLP_Research_Lab.Core
                     Value = softwareQualityAudit.CodeCoverage * 100,
                     Unit = "%",
                     Target = 95,
-                    Status = "Achieved"
+                    Status = "Evidence accepted"
                 });
             }
             else
@@ -360,30 +282,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformHardwareQualityAuditAsync(QualityAuditReport report)
+        private async Task PerformHardwareQualityAuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] 🔧 Performing hardware quality audit...");
 
-            var hardwareQualityAudit = new HardwareQualityAudit
-            {
-                MaterialSpecifications = true,
-                ManufacturingProcesses = true,
-                QualityControl = true,
-                InspectionProcedures = true,
-                Calibration = true,
-                Traceability = true,
-                NonConformingMaterial = true,
-                CorrectiveActions = true,
-                PreventiveActions = true,
-                SupplierQuality = true,
-                FirstArticleInspection = true,
-                StatisticalProcessControl = true,
-                ProcessCapability = true,
-                EnvironmentalTesting = true,
-                ReliabilityTesting = true,
-                LifecycleTesting = true
-            };
+            var hardwareQualityAudit = evidence.Build<HardwareQualityAudit>("Hardware");
 
             if (hardwareQualityAudit.IsCompliant())
             {
@@ -391,7 +295,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "Hardware",
                     Name = "Hardware Quality Assurance",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.98,
                     LastUpdated = DateTime.UtcNow
                 });
@@ -409,29 +313,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformProcessQualityAuditAsync(QualityAuditReport report)
+        private async Task PerformProcessQualityAuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] ⚙️ Performing process quality audit...");
 
-            var processQualityAudit = new ProcessQualityAudit
-            {
-                ProcessDocumentation = true,
-                ProcessControl = true,
-                ProcessMonitoring = true,
-                ProcessImprovement = true,
-                ProcessValidation = true,
-                ProcessVerification = true,
-                ProcessMetrics = true,
-                ProcessAnalysis = true,
-                ProcessOptimization = true,
-                ProcessStandardization = true,
-                ProcessTraining = true,
-                ProcessAudit = true,
-                ProcessReview = true,
-                ProcessApproval = true,
-                ProcessChangeControl = true
-            };
+            var processQualityAudit = evidence.Build<ProcessQualityAudit>("Process");
 
             if (processQualityAudit.IsCompliant())
             {
@@ -439,7 +326,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "Process",
                     Name = "Process Quality Assurance",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.96,
                     LastUpdated = DateTime.UtcNow
                 });
@@ -457,29 +344,12 @@ namespace HB_NLP_Research_Lab.Core
             }
         }
 
-        private async Task PerformSupplierQualityAuditAsync(QualityAuditReport report)
+        private async Task PerformSupplierQualityAuditAsync(QualityAuditReport report, AuditEvidence evidence)
         {
             await Task.CompletedTask;
             Console.WriteLine("[Quality Assurance] 🏭 Performing supplier quality audit...");
 
-            var supplierQualityAudit = new SupplierQualityAudit
-            {
-                SupplierQualification = true,
-                SupplierEvaluation = true,
-                SupplierMonitoring = true,
-                SupplierDevelopment = true,
-                SupplierAudit = true,
-                SupplierCertification = true,
-                SupplierPerformance = true,
-                SupplierCompliance = true,
-                SupplierRiskAssessment = true,
-                SupplierContingency = true,
-                SupplierCommunication = true,
-                SupplierDocumentation = true,
-                SupplierTraining = true,
-                SupplierImprovement = true,
-                SupplierPartnership = true
-            };
+            var supplierQualityAudit = evidence.Build<SupplierQualityAudit>("Supplier");
 
             if (supplierQualityAudit.IsCompliant())
             {
@@ -487,7 +357,7 @@ namespace HB_NLP_Research_Lab.Core
                 {
                     Type = "Supplier",
                     Name = "Supplier Quality Assurance",
-                    Status = "Certified",
+                    Status = "Evidence accepted",
                     Effectiveness = 0.95,
                     LastUpdated = DateTime.UtcNow
                 });
