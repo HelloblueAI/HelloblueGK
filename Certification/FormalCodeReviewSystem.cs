@@ -1038,7 +1038,8 @@ namespace HB_NLP_Research_Lab.Certification
             }
 
             // Prefix letters are not path identity. Leftover core/....cs /
-            // tests/123.cs must not satisfy the review roster.
+            // tests/123.cs / core/..../sensors.cs must not satisfy the review
+            // roster.
             if (!CertificationIdentityTokens.HasAlphabeticPathIdentity(normalized))
             {
                 error = "File path must be a real evidence path, not punctuation-only or digit-only text.";

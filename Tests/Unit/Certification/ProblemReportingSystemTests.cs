@@ -1776,6 +1776,10 @@ public class ProblemReportingSystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task UpdateStatusAsync_RejectsClosedCriticalWithPunctuationOnlyCodeFile(
         string leftoverCodeFile)
     {
@@ -1809,6 +1813,10 @@ public class ProblemReportingSystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithPunctuationOnlyCodeFile_FailsClosed(
         string leftoverCodeFile)
     {
@@ -1895,6 +1903,9 @@ public class ProblemReportingSystemTests
     [InlineData("Tests/....cs")]
     [InlineData("Tests/___.cs")]
     [InlineData("Tests/123.cs")]
+    [InlineData("Tests/..../EngineTests.cs")]
+    [InlineData("Tests/___/EngineTests.cs")]
+    [InlineData("Tests/123/EngineTests.cs")]
     public async Task VerifyComplianceAsync_LeftoverClosedCriticalWithPunctuationOnlyCoverageTestFile_FailsClosed(
         string leftoverTestFile)
     {

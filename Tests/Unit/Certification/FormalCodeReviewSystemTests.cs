@@ -1715,6 +1715,10 @@ public class FormalCodeReviewSystemTests
     [InlineData("Core/....cs")]
     [InlineData("Core/___.cs")]
     [InlineData("Core/123.cs")]
+    [InlineData("Core/..../Sensors.cs")]
+    [InlineData("Core/___/Sensors.cs")]
+    [InlineData("Core/123/Sensors.cs")]
+    [InlineData("Core/....cs/Sensors.cs")]
     public async Task RegisterRequiredFileAsync_RejectsPunctuationOnlyFilePath(string leftoverFilePath)
     {
         await using var context = CreateContext();
@@ -1791,6 +1795,10 @@ public class FormalCodeReviewSystemTests
     [InlineData("core/....cs")]
     [InlineData("core/___.cs")]
     [InlineData("core/123.cs")]
+    [InlineData("core/..../sensors.cs")]
+    [InlineData("core/___/sensors.cs")]
+    [InlineData("core/123/sensors.cs")]
+    [InlineData("core/....cs/sensors.cs")]
     public async Task VerifyComplianceAsync_LeftoverPunctuationOnlyRosterPath_FailsClosed(string leftoverFilePath)
     {
         await using var context = CreateContext();
