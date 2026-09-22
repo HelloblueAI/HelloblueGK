@@ -1,147 +1,86 @@
-# Technical Limitations and Development Roadmap
+# Technical Limitations and Roadmap
 
-## Current Limitations
+What this platform does not do, and the order in which we intend to address it.
+[`VERIFICATION_SCOPE.md`](../VERIFICATION_SCOPE.md) is the authoritative record of what is
+verified; this document is the shorter, forward-looking companion to it.
 
-### Quantum Computing Integration
-**Status**: Framework Ready, Hardware Integration Pending
-- **Current State**: Classical computing framework with quantum-ready architecture
-- **Limitation**: No actual quantum hardware integration or quantum advantage demonstrated
-- **Reality Check**: Framework prepared for future quantum computing integration
-- **Timeline**: 2-5 years for meaningful quantum integration
+No technology readiness level is claimed for this repository. No third-party certification,
+accreditation, or qualification has been obtained. See
+[`OPEN_SOURCE_SCOPE.md`](../../OPEN_SOURCE_SCOPE.md) for what the Community Edition warrants.
 
-### Performance Claims
-**Status**: Validated Benchmarks Available
-- **Previous Claims**: "1,000,000+ calculations/second" - Unverified
-- **Current Reality**: 10,000-100,000 calculations/second - Benchmarked and validated
-- **Industry Position**: Competitive with commercial CFD software
-- **Transparency**: All performance claims now backed by validation data
+## Current limitations
 
-### Technology Readiness Level
-**Status**: TRL 6 (Technology Demonstration)
-- **Previous Claims**: TRL 9 (Flight Proven) - Incorrect
-- **Current Reality**: TRL 6 - Technology demonstrated in relevant environment
-- **Path to TRL 9**: Requires flight testing and operational validation
-- **Timeline**: 3-7 years for TRL 9 achievement
+### Solvers that do not read their input
 
-### Material Discovery
-**Status**: Theoretical Framework Implemented
-- **Current State**: Framework for material property prediction exists
-- **Limitation**: No novel materials actually discovered or validated
-- **Reality**: Standard aerospace material properties database
-- **Future**: Framework ready for experimental validation
+`AdvancedCFDSolver` and `AdvancedStructuralSolver` accept a model parameter and never read it.
+Their output is identical for every engine analysed, so no result either produces describes a
+physical system. Several generative and orchestration methods likewise return constants after an
+artificial delay. Each instance is named in `VERIFICATION_SCOPE.md`.
 
-## Honest Assessment
+### The nozzle solver is one-dimensional
 
-### What We've Actually Built
-✅ **Simulation platform**: Layered .NET architecture with CI-enforced coverage floors
-✅ **Industry-Standard Physics Solvers**: Validated CFD, thermal, and structural analysis
-✅ **Compliance Framework**: Full aerospace industry standards compliance
-✅ **Scalable Architecture**: Cloud-ready, containerized deployment
-✅ **Quality Engineering**: 95% code coverage, low complexity, maintainable code
+`IdealRocketNozzle` is the one component validated against published flight-engine data,
+reproducing the specific impulse of Merlin 1D, Raptor, and RS-25 to within 1%. It is a quasi-1D
+isentropic equilibrium model. It says nothing about combustion stability, boundary layers, flow
+separation, nozzle heat transfer, or off-design transients, and it cannot be substituted for a
+flow solver.
 
-### What We Haven't Achieved Yet
-❌ **Quantum Advantage**: No quantum computing integration
-❌ **Revolutionary Breakthroughs**: Standard industry capabilities
-❌ **Beyond SpaceX**: Comparable to industry standards
-❌ **Novel Materials**: Standard material properties
-❌ **Flight Proven**: Simulation platform only
+### The concept engine's parameters are internally inconsistent
 
-## Development Roadmap
+The declared thrust of the concept engine is not consistent with its declared geometry and
+chamber conditions — the discrepancy is roughly a factor of six. The deviations are measured and
+gated by `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`, which fails if their magnitude
+changes, so they cannot drift unnoticed. The design package under `Docs/Designs/` declares a
+different thrust and specific impulse again, for the same model ID.
 
-### Phase 1: Foundation (Current - 6 months)
-- [x] Core simulation platform
-- [x] Multi-physics coupling
-- [x] Industry compliance
-- [x] Enterprise deployment
-- [ ] Performance optimization
-- [ ] Extended validation
+### Quality and compliance figures are constants, not measurements
 
-### Phase 2: Enhancement (6-18 months)
-- [ ] Advanced optimization algorithms
-- [ ] Machine learning model training
-- [ ] Extended material database
-- [ ] Performance benchmarking
-- [ ] Industry partnerships
+The quality, security, and readiness subsystems compute their verdicts from hardcoded values —
+reliability, fault tolerance, defect rate, cryptographic compliance, and code coverage among
+them. The audit code paths are exercised by tests and the decision logic is sound, but the inputs
+are declared rather than measured, so a passing report is not evidence about the running system.
+This is the most significant outstanding correctness problem in the repository.
 
-### Phase 3: Innovation (18-36 months)
-- [ ] Quantum computing integration
-- [ ] Advanced material prediction
-- [ ] Novel propulsion concepts
-- [ ] Real-time optimization
-- [ ] Advanced AI capabilities
+### Coverage is uneven
 
-### Phase 4: Validation (36-60 months)
-- [ ] Flight testing integration
-- [ ] Operational validation
-- [ ] Industry certification
-- [ ] Commercial deployment
-- [ ] TRL 9 achievement
+Overall coverage is 52.9% line and 52.3% branch, enforced per directory by
+[`coverage-floors.json`](../../Certification/Artifacts/coverage-floors.json), which is the
+authoritative source. It ranges from above 90% in `Certification/` to below 30% in `AI/`. The
+floors ratchet upward rather than describing a finished state.
 
-## Realistic Goals
+### The certification boundary is deliberately narrow
 
-### Short Term (6 months)
-- Achieve 95%+ validation accuracy across all analysis types
-- Optimize performance to industry-leading levels
-- Complete comprehensive benchmarking
-- Establish industry partnerships
+The DO-178C Level A gate applies to a small declared set of files that genuinely meet its
+objectives, not to the repository as a whole. A passing gate demonstrates statement and decision
+coverage, MC/DC with recorded independence pairs, and requirements traceability for those files
+only. It is not a certification, and it is not an airworthiness finding.
 
-### Medium Term (18 months)
-- Integrate with quantum computing hardware
-- Develop advanced AI optimization
-- Validate novel propulsion concepts
-- Achieve TRL 7 (System prototype)
+### Capabilities that do not exist
 
-### Long Term (5 years)
-- Flight testing and validation
-- Commercial aerospace deployment
-- Industry leadership position
-- TRL 9 achievement
+No quantum hardware integration and no quantum advantage of any kind. No novel materials have
+been discovered or validated; the material data is standard published aerospace properties. No
+hardware interfaces, real-time control loops, or flight software. Nothing here has been built,
+fired, or flown.
 
-## Industry Position
+## Roadmap
 
-### Current Standing
-- **Capability Level**: Industry competitive
-- **Innovation Level**: Incremental improvements
-- **Market Position**: Emerging player
-- **Technology Maturity**: Development phase
+Ordered by priority rather than by date, because dates for unfunded work are guesses.
 
-### Competitive Advantages
-- **Architecture**: Modern, scalable, cloud-ready
-- **Compliance**: Full aerospace standards compliance
-- **Quality**: High code quality and maintainability
-- **Integration**: Seamless multi-physics coupling
+**Correctness first.** Replace the hardcoded quality and compliance inputs with values derived
+from the system under test, or remove the verdicts that depend on them. Resolve the concept
+engine's parameter inconsistency so that geometry, thrust, and specific impulse agree. Reconcile
+the design package with the engine defined in code.
 
-### Areas for Improvement
-- **Performance**: Optimize computational efficiency
-- **Validation**: Expand real-world testing
-- **Innovation**: Develop unique capabilities
-- **Market**: Establish industry presence
+**Then input-dependence.** Make the CFD and structural solvers read the model they are given, or
+retire them in favour of interfaces to established external solvers. Either outcome is an
+improvement on returning constants.
 
-## Transparency Commitment
+**Then coverage and scope.** Continue raising the per-directory floors, concentrating on the
+directories currently lowest. Extend the certification boundary only as fast as real traceability
+and MC/DC evidence can be produced for each added file.
 
-### What We Promise
-- **Honest Assessment**: Realistic capability descriptions
-- **Validated Claims**: All performance claims backed by data
-- **Clear Limitations**: Transparent about current constraints
-- **Continuous Improvement**: Regular updates and enhancements
+**Then validation breadth.** Extend comparison against published engine data beyond the three
+engines currently used, and document each new comparison with its source.
 
-### What We Don't Promise
-- **Instant Success**: Realistic development timelines
-- **Revolutionary Breakthroughs**: Focus on incremental improvements
-- **Quantum Advantage**: Framework ready, hardware pending
-- **Industry Leadership**: Working toward competitive position
-
-## Conclusion
-
-HelloblueGK is a **solid, professional-grade aerospace simulation platform** that demonstrates:
-- Strong software engineering practices
-- Industry-standard capabilities
-- Full compliance with aerospace requirements
-- Scalable, enterprise-ready architecture
-
-While we haven't achieved revolutionary breakthroughs, we've built a **credible foundation** for future aerospace technology development. Our focus is on **continuous improvement** and **industry validation** rather than overstating capabilities.
-
----
-
-*HB-NLP Research Lab - Transparent Aerospace Technology Development*
-*Last Updated: 2025*
+Contributions in any of these areas are welcome; see
+[`CONTRIBUTING.md`](../../CONTRIBUTING.md).
