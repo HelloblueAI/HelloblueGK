@@ -105,10 +105,12 @@ third-party assessment, and none has been sought or granted.
 |----------|-------------------------------|
 | DO-178C | Objectives-oriented tooling, and a Level A gate over a one-file declared boundary |
 | NASA NPR 7150.2 | Workflow structure oriented to its software engineering requirements |
-| AS9100 / ISO 9001 | `Core/QualityAssuranceSystem.cs` implements audit checks that evaluate these criteria and can report non-compliance |
+| AS9100 / ISO 9001 | `Core/QualityAssuranceSystem.cs` implements audit checks against these criteria. They grade evidence the caller supplies; with none supplied they report non-compliance |
 | FIPS 140-2 | `Aerospace/AerospaceComplianceSystem.cs` implements a compliance *check*. The Community Edition makes no FIPS claim and is not validated |
 
-A compliance check that can fail is a tool. It is not evidence that the project passes it.
+A compliance check that can fail is a tool. It is not evidence that the project passes it. Since
+this repository supplies no evidence to these checks, they currently report nothing but
+non-compliance — see [`TECHNICAL_LIMITATIONS_AND_ROADMAP.md`](TECHNICAL_LIMITATIONS_AND_ROADMAP.md).
 
 ## Reproducing these results
 

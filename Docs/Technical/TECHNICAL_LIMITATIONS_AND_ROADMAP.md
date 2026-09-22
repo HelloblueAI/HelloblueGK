@@ -33,17 +33,22 @@ gated by `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`, which fails if 
 changes, so they cannot drift unnoticed. The design package under `Docs/Designs/` declares a
 different thrust and specific impulse again, for the same model ID.
 
-### Quality and compliance figures are constants, not measurements
+### The compliance audits need evidence this repository does not ship
 
-The quality, security, and readiness subsystems compute their verdicts from hardcoded values —
-reliability, fault tolerance, defect rate, cryptographic compliance, and code coverage among
-them. The audit code paths are exercised by tests and the decision logic is sound, but the inputs
-are declared rather than measured, so a passing report is not evidence about the running system.
-This is the most significant outstanding correctness problem in the repository.
+The quality, security, and readiness subsystems used to assert their own inputs — every boolean
+set to `true` and every metric to a passing constant — and then grade those inputs against
+thresholds, which made a passing verdict unconditional. They now read their inputs from an
+`AuditEvidence` instance supplied by the caller, and a key that is absent fails the threshold that
+depends on it.
+
+Because this repository ships no such evidence, the audits deliberately report nothing: no
+certification is issued and every readiness category scores zero. The decision logic is sound and
+tested, but these subsystems say nothing about a running system until an operator supplies
+measured evidence, and supplying it is outside the scope of the Community Edition.
 
 ### Coverage is uneven
 
-Overall coverage is 52.9% line and 52.3% branch, enforced per directory by
+Overall coverage is 58.4% line and 56.4% branch, enforced per directory by
 [`coverage-floors.json`](../../Certification/Artifacts/coverage-floors.json), which is the
 authoritative source. It ranges from above 90% in `Certification/` to below 30% in `AI/`. The
 floors ratchet upward rather than describing a finished state.
@@ -66,10 +71,9 @@ fired, or flown.
 
 Ordered by priority rather than by date, because dates for unfunded work are guesses.
 
-**Correctness first.** Replace the hardcoded quality and compliance inputs with values derived
-from the system under test, or remove the verdicts that depend on them. Resolve the concept
-engine's parameter inconsistency so that geometry, thrust, and specific impulse agree. Reconcile
-the design package with the engine defined in code.
+**Correctness first.** Resolve the concept engine's parameter inconsistency so that geometry,
+thrust, and specific impulse agree, and reconcile the design package with the engine defined in
+code. These are the last known internal contradictions in the declared design.
 
 **Then input-dependence.** Make the CFD and structural solvers read the model they are given, or
 retire them in favour of interfaces to established external solvers. Either outcome is an
