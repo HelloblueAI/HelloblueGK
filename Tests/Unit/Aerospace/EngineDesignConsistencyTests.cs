@@ -170,13 +170,17 @@ public class EngineDesignConsistencyTests
             "solver convergence, power, and hardware figures in the old package were constants, not measurements");
     }
 
+    // Path.Join concatenates these parts. Path.Combine would discard the walked
+    // directory if any later part were rooted, which is what cs/path-combine flags.
+    private static readonly string RelativeDesignPath = Path.Join(
+        "Docs", "Designs", "HB-NLP-REV-001", "design.json");
+
     private static string DesignPackagePath()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory != null)
         {
-            var candidate = Path.Combine(
-                directory.FullName, "Docs", "Designs", "HB-NLP-REV-001", "design.json");
+            var candidate = Path.Join(directory.FullName, RelativeDesignPath);
             if (File.Exists(candidate))
                 return candidate;
             directory = directory.Parent;
