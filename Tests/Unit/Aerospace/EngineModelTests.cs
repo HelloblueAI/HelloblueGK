@@ -77,6 +77,36 @@ public class EngineModelTests
     }
 
     /// <summary>
+    /// Every model must report thrust in kN and chamber pressure in bar, because callers
+    /// compare them through RocketEngineBase and a mixed-unit collection compares nothing.
+    ///
+    /// Raptor used to declare newtons and pascals while Merlin and RS-25 declared kN and bar,
+    /// so the figures differed by three orders of magnitude in the same list. The
+    /// highest-thrust test above still passed, because 2,200,000 outranks 1,860 whatever the
+    /// units are — which is precisely why it did not catch this.
+    /// </summary>
+    [Fact]
+    public void AllEngineModels_ReportThrustInKilonewtonsAndPressureInBar()
+    {
+        var engines = new List<RocketEngineBase>
+        {
+            new MerlinEngine(),
+            new RaptorEngine(),
+            new RS25Engine()
+        };
+
+        foreach (var engine in engines)
+        {
+            engine.Thrust.Should().BeInRange(100, 10_000,
+                $"{engine.Name} should report sea-level thrust in kN, not newtons");
+            engine.ChamberPressure.Should().BeInRange(10, 1_000,
+                $"{engine.Name} should report chamber pressure in bar, not pascals");
+            engine.SpecificImpulse.Should().BeInRange(200, 500,
+                $"{engine.Name} should report specific impulse in seconds");
+        }
+    }
+
+    /// <summary>
     /// Same shadowing defect, different class: the architecture registry stores engines as
     /// RevolutionaryEngine, so a shadowed Name left every registered variable-geometry
     /// engine anonymous when read back.
@@ -107,7 +137,7 @@ public class EngineModelTests
         var engine = new RaptorEngine();
 
         engine.Name.Should().Contain("Raptor");
-        engine.Thrust.Should().BeGreaterThan(1_000_000);
+        engine.Thrust.Should().BeGreaterThan(2_000); // kN
         engine.SpecificImpulse.Should().BeInRange(250, 400);
         engine.Propellant.Should().Contain("Methane");
         engine.EngineCycle.Should().Contain("Full-Flow");
