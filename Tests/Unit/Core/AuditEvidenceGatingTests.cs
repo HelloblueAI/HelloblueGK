@@ -136,6 +136,61 @@ public class AuditEvidenceGatingTests
         await Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Records what the readiness predicates hand to the assessment. Both predicates take
+    /// evidence and immediately delegate, so the only thing worth checking about them is
+    /// whether what the caller supplied actually arrives.
+    /// </summary>
+    private sealed class EvidenceRecordingAssessment : AerospaceReadinessAssessment
+    {
+        public bool WasCalled { get; private set; }
+        public AuditEvidence? ReceivedEvidence { get; private set; }
+        public MissionLevel ReceivedMissionLevel { get; private set; }
+
+        public override Task<AerospaceReadinessReport> PerformComprehensiveAssessmentAsync(
+            MissionLevel missionLevel = MissionLevel.Critical,
+            AuditEvidence? evidence = null)
+        {
+            WasCalled = true;
+            ReceivedEvidence = evidence;
+            ReceivedMissionLevel = missionLevel;
+            return Task.FromResult(new AerospaceReadinessReport());
+        }
+    }
+
+    /// <summary>
+    /// <c>IsReadyForMissionCriticalOperationsAsync</c> accepted an <see cref="AuditEvidence"/>
+    /// and then called the assessment without it, so caller-supplied evidence was silently
+    /// discarded and that path always behaved like an empty audit no matter what was proven.
+    ///
+    /// The bug was invisible to every existing test because they all called the predicate with
+    /// no evidence, where dropping the argument and honouring it produce the same answer. Its
+    /// sibling <c>IsReadyForAdvancedAerospaceAsync</c> forwarded correctly, so both are pinned
+    /// here rather than only the one that was broken.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ReadinessPredicates_ForwardTheEvidenceTheCallerSupplied(bool missionCritical)
+    {
+        var evidence = new AuditEvidence().Attest("Technical.PerformanceValidation");
+        var subject = new EvidenceRecordingAssessment();
+
+        if (missionCritical)
+        {
+            await subject.IsReadyForMissionCriticalOperationsAsync(evidence);
+        }
+        else
+        {
+            await subject.IsReadyForAdvancedAerospaceAsync(MissionLevel.Critical, evidence);
+        }
+
+        subject.WasCalled.Should().BeTrue();
+        subject.ReceivedEvidence.Should().BeSameAs(evidence,
+            "evidence the caller proved must reach the assessment, not be replaced by an empty audit");
+        subject.ReceivedMissionLevel.Should().Be(MissionLevel.Critical);
+    }
+
     [Fact]
     public void EvidenceKeys_MustNotBeBlank()
     {

@@ -327,6 +327,37 @@ public class AerospaceReadinessAssessmentTests
     }
 
     /// <summary>
+    /// A critical mission requires 12 certifications, but <c>AerospaceComplianceSystem</c> only
+    /// evaluates nine standards and so can issue at most nine. Regulatory readiness therefore
+    /// caps at 0.75 for a critical mission even when every standard is fully evidenced.
+    ///
+    /// Regulatory is one of the three categories weighted as critical, which puts the ceiling on
+    /// overall critical readiness at roughly 0.948 — below the 0.95 this mission level needs to
+    /// report READY. Both public readiness predicates gate on that status, so neither can return
+    /// true at critical no matter what evidence a caller proves. This test records the arithmetic
+    /// so the ceiling is visible and cannot move unnoticed; it is not an endorsement of it.
+    /// Closing the gap is a decision about the requirement table, not a test change.
+    /// </summary>
+    [Fact]
+    public void CriticalMissions_DemandMoreCertificationsThanTheComplianceSystemCanIssue()
+    {
+        const int standardsTheComplianceSystemEvaluates = 9;
+        var everyStandardCertified = new ComplianceReport
+        {
+            OverallCompliance = true,
+            Certifications = Enumerable.Range(0, standardsTheComplianceSystemEvaluates)
+                .Select(_ => new CertificationDocument()).ToList()
+        };
+        var assessment = Subject();
+
+        assessment.CalculateComplianceReadinessScore(everyStandardCertified, MissionLevel.Operational)
+            .Should().Be(1.0, "an operational mission needs nine, which is exactly what exists");
+        assessment.CalculateComplianceReadinessScore(everyStandardCertified, MissionLevel.Critical)
+            .Should().BeApproximately(0.75, 1e-9,
+                "a critical mission needs twelve, so three of them cannot be produced at all");
+    }
+
+    /// <summary>
     /// Surplus certification cannot push readiness above fully ready, or a well-papered
     /// programme could offset a genuine shortfall elsewhere in the weighted total.
     /// </summary>
