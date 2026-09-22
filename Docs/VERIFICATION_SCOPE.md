@@ -49,6 +49,23 @@ base class ranked the 845 kN Merlin above the 2.2 MN Raptor. The existing tests 
 because they read each engine through its concrete type, which is the one view where the
 shadowed copy looks correct. `VariableGeometryEngine.Name` had the same defect.
 
+**The same engine comparison mixed units.** `RaptorEngine` declared thrust in newtons and
+chamber pressure in pascals while `MerlinEngine` and `RS25Engine` declared kN and bar, so a
+collection typed as `RocketEngineBase` held figures differing by three orders of magnitude.
+The highest-thrust test passed throughout, because 2,200,000 outranks 1,860 regardless of
+units — which is why it never caught this. Raptor now reports kN and bar like the other two,
+`RocketEngineBase` documents the expected unit on each property, and a test pins all three
+models to those ranges.
+
+**A reference model carried invented test and flight records.** `RaptorEngine` declared a
+`TestingHistory` of five hot fire, gimbal, throttle, restart, and endurance runs and a
+`FlightHistory` of five flights, every one marked successful, alongside reliability, fault
+tolerance, MTBF, per-launch and development costs, emissions, noise, failure rates, and a
+technology readiness level of 9. None of it was sourced, and all of it described another
+company's hardware. The model now carries only approximate figures SpaceX has published or
+discussed publicly; anything else is absent rather than filled in with a plausible-looking
+number.
+
 **Partial readiness reports crashed.** `CalculateOverallReadinessScore` guarded against an
 empty category list, then averaged only the *critical* categories — which throws on an empty
 sequence. Assessing only operational and financial readiness, a reasonable request, threw
