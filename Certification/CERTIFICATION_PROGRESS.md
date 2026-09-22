@@ -1,11 +1,11 @@
 # Flight Software Certification Status
 
-## Goal: Certified Flight Software for NASA/SpaceX
+## Scope
 
-**Target Certifications:**
-- DO-178C Level A (Human-rated systems)
-- NASA NPR 7150.2 Class A (Human-rated systems)
-- ITAR Compliance (Category IV - Launch vehicles)
+The systems below are modelled on the objectives of DO-178C, NASA NPR 7150.2, and ITAR, so that a
+programme using them can produce lifecycle records in a familiar shape. Modelling a standard is not
+complying with it: none of these standards has been applied to this repository by an authority, and
+no certification, accreditation, or qualification has been obtained.
 
 ## Current Status: Foundation Complete ✅
 

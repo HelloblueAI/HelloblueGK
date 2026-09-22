@@ -126,9 +126,6 @@ All the foundational systems required for DO-178C Level A and NASA NPR 7150.2 Cl
 5. Achieve 100% coverage
 6. Execute certification process
 
-**Timeline:** 2.5 years to full certification  
-**Status:** Foundation complete, ready for implementation
-
----
-
-**This is real. This is happening. We're building certified flight software.** 🚀
+**Status:** The lifecycle systems described above are implemented and tested. Certification itself
+is not something this repository can confer; it follows from a real application, real evidence, and
+an authority's review. See [`../OPEN_SOURCE_SCOPE.md`](../OPEN_SOURCE_SCOPE.md).

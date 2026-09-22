@@ -154,10 +154,9 @@ All certification systems have:
 **Database Setup:** ✅ **100% COMPLETE**
 **Documentation:** ✅ **100% COMPLETE**
 
-**Ready for:** Production use and certification work!
-
 ---
 
-**This is a REAL certified flight software system in development!** 🚀
-
-All systems are live, integrated, and ready to use right now.
+These are working lifecycle-management systems, not certification evidence. They can record
+requirements, problem reports, configuration items, coverage, and reviews for a programme that
+supplies its own data. Nothing here is certified flight software, and running it does not produce
+a certification finding. See [`../OPEN_SOURCE_SCOPE.md`](../OPEN_SOURCE_SCOPE.md).

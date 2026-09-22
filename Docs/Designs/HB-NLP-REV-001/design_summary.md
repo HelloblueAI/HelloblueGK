@@ -47,10 +47,10 @@ These are recorded rather than removed, because the package is the output of
   `Aerospace/HB_NLP_RevolutionaryEngine.cs` declares 3.5 MN thrust, 420 s specific impulse,
   280 bar chamber pressure, and a 28.5:1 expansion ratio. This package declares 2.0 MN, 450 s,
   300 bar, and 25.0:1 for the same model ID. At least one of the two is stale.
-- **No technology readiness level is claimed here.** Earlier versions of this file claimed TRL 9,
-  which denotes hardware flown in an operational environment. Nothing in this repository supports
-  any TRL assignment; the level declared in code is a self-assessment and is listed as unsupported
-  in `VERIFICATION_SCOPE.md`.
+- **No technology readiness level is claimed here.** Nothing in this repository supports a TRL
+  assignment: TRL denotes demonstrated hardware maturity, and nothing here has been built, fired,
+  or flown. The level declared in code is a self-assessment and is listed as unsupported in
+  `VERIFICATION_SCOPE.md`.
 - **Efficiency and convergence figures are not measurements.** The 95% efficiency and the
   solver-convergence and hardware-utilization numbers in `design.json` are constants produced by
   simulation scaffolding, not computed from a model of this engine. The legacy CFD and structural
