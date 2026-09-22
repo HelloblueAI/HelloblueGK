@@ -1,34 +1,29 @@
 {
   "name": "HB-NLP Quantum-Classical Hybrid Engine",
-  "version": "v25.2.2",
+  "model_id": "HB-NLP-REV-001",
+  "version": "Advanced v2.5",
   "specifications": {
-    "thrust": 2000000,
-    "specific_impulse": 450,
-    "chamber_pressure": 300,
-    "expansion_ratio": 25.0,
-    "efficiency": 0.95,
-    "technology_readiness_level": 9
+    "thrust": 3500000,
+    "specific_impulse": 351.5,
+    "chamber_pressure": 280,
+    "expansion_ratio": 28.5
   },
   "geometry": {
-    "chamber_diameter": 2.5,
-    "chamber_length": 3.0,
-    "throat_diameter": 0.8,
-    "exit_diameter": 4.0,
-    "nozzle_length": 6.0,
-    "expansion_angle": 15.0
+    "chamber_diameter": 0.65,
+    "chamber_length": 1.4,
+    "throat_diameter": 0.293,
+    "exit_diameter": 1.564192,
+    "nozzle_length": 2.8
   },
   "materials": {
-    "chamber": "Advanced Superalloy",
-    "nozzle": "Carbon-Carbon Composite",
-    "injector": "Titanium Alloy",
-    "turbopump": "Inconel 718"
+    "chamber": "Quantum-Enhanced Chamber Alloy",
+    "nozzle": "Self-Healing Nozzle Composite",
+    "injector": "not declared by the engine",
+    "turbopump": "not declared by the engine"
   },
-  "performance_metrics": {
-    "cfd_convergence": 0.998,
-    "hardware_utilization": 0.87,
-    "computation_speed": 1500000000000.0,
-    "memory_usage": 8.2,
-    "temperature": 45.2,
-    "power_consumption": 320
-  }
+  "notes": [
+    "Declared inputs copied from Aerospace/HB_NLP_RevolutionaryEngine.cs.",
+    "Thrust, throat, exit, expansion ratio, and specific impulse agree with ideal-rocket theory at 280 bar. They are not a test result.",
+    "No technology readiness level is claimed. Efficiency and solver-convergence figures that used to appear here were constants, not measurements, and were removed."
+  ]
 }

@@ -27,14 +27,6 @@ isentropic equilibrium model. It says nothing about combustion stability, bounda
 separation, nozzle heat transfer, or off-design transients, and it cannot be substituted for a
 flow solver.
 
-### The design package does not match the engine in code
-
-The engine declared in `Aerospace/HB_NLP_RevolutionaryEngine.cs` is internally consistent: throat,
-exit, expansion ratio, thrust, and specific impulse agree with ideal-rocket theory, and
-`EngineDesignConsistencyTests` fails if they diverge. The design package under `Docs/Designs/`
-still declares a different thrust, specific impulse, chamber pressure, and expansion ratio for the
-same model ID. It is the output of that package's generator and has not been regenerated.
-
 ### The compliance audits need evidence this repository does not ship
 
 The quality, security, and readiness subsystems used to assert their own inputs — every boolean
@@ -73,11 +65,7 @@ fired, or flown.
 
 Ordered by priority rather than by date, because dates for unfunded work are guesses.
 
-**Correctness first.** Regenerate the design package under `Docs/Designs/` so it declares the same
-thrust, specific impulse, chamber pressure, and expansion ratio as the engine in code. The engine
-declaration itself now agrees with ideal-rocket theory.
-
-**Then input-dependence.** Replace the schematic CFD, structural, and thermal fields with solvers
+**Input-dependence.** Replace the schematic CFD, structural, and thermal fields with solvers
 that consume a real operating point, or retire them in favour of interfaces to established external
 solvers. The CFD and structural solvers already refuse a model with no chamber pressure; they are
 still not flow or structural analysis, and the thermal solver still ignores its input.

@@ -209,9 +209,10 @@ The specific impulse and ceiling checks assume a chamber temperature of 3600 K, 
 declares none; the geometry and thrust checks do not depend on it, because a thrust coefficient is
 set by the specific heat ratio and the area ratio alone.
 
-The design package under `Docs/Designs/HB-NLP-REV-001/` still declares a different thrust, specific
-impulse, and expansion ratio for the same model ID. That package is the output of its generator
-and has not been regenerated to match the engine in code.
+The design package under `Docs/Designs/HB-NLP-REV-001/` declares the same thrust, specific impulse,
+chamber pressure, expansion ratio, and geometry. `EngineDesignConsistencyTests` reads `design.json`
+and fails if those fields diverge from the engine. The package claims no technology readiness level
+and no efficiency or solver-convergence figure.
 
 ### Claims outside physics that are also unsupported
 

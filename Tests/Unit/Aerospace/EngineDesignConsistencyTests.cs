@@ -1,5 +1,7 @@
 using System;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
 using HB_NLP_Research_Lab.Physics;
@@ -133,6 +135,55 @@ public class EngineDesignConsistencyTests
             ceiling,
             "no expansion can exceed the thermodynamic limit for this propellant "
             + $"({ceiling:F1} s at {AssumedChamberTemperature:F0} K)");
+    }
+
+    /// <summary>
+    /// The design package is generated separately from the engine class. This fails if
+    /// <c>Docs/Designs/HB-NLP-REV-001/design.json</c> again declares a different thrust, specific
+    /// impulse, chamber pressure, expansion ratio, or geometry for the same model.
+    /// </summary>
+    [Fact]
+    public async Task DesignPackage_DeclaresTheSameParametersAsTheEngine()
+    {
+        var design = await DeclaredDesignAsync();
+        using var document = JsonDocument.Parse(File.ReadAllText(DesignPackagePath()));
+        var root = document.RootElement;
+
+        root.GetProperty("model_id").GetString().Should().Be("HB-NLP-REV-001");
+
+        var specifications = root.GetProperty("specifications");
+        specifications.GetProperty("thrust").GetDouble().Should().Be(design.Thrust);
+        specifications.GetProperty("specific_impulse").GetDouble().Should().Be(design.SpecificImpulse);
+        specifications.GetProperty("chamber_pressure").GetDouble().Should().Be(design.ChamberPressure);
+        specifications.GetProperty("expansion_ratio").GetDouble().Should().Be(design.ExpansionRatio);
+        specifications.TryGetProperty("technology_readiness_level", out _).Should().BeFalse();
+        specifications.TryGetProperty("efficiency", out _).Should().BeFalse();
+
+        var geometry = root.GetProperty("geometry");
+        geometry.GetProperty("chamber_diameter").GetDouble().Should().Be(design.ChamberDiameter);
+        geometry.GetProperty("chamber_length").GetDouble().Should().Be(design.ChamberLength);
+        geometry.GetProperty("throat_diameter").GetDouble().Should().Be(design.ThroatDiameter);
+        geometry.GetProperty("exit_diameter").GetDouble().Should().Be(design.ExitDiameter);
+        geometry.GetProperty("nozzle_length").GetDouble().Should().Be(design.NozzleLength);
+
+        root.TryGetProperty("performance_metrics", out _).Should().BeFalse(
+            "solver convergence, power, and hardware figures in the old package were constants, not measurements");
+    }
+
+    private static string DesignPackagePath()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory != null)
+        {
+            var candidate = Path.Combine(
+                directory.FullName, "Docs", "Designs", "HB-NLP-REV-001", "design.json");
+            if (File.Exists(candidate))
+                return candidate;
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException(
+            "Could not find Docs/Designs/HB-NLP-REV-001/design.json by walking up from the test output directory.");
     }
 
     /// <summary>
