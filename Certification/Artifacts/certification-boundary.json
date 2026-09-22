@@ -31,17 +31,15 @@
         "contribution to a hazardous condition."
       ],
       "limitations": [
-        "RunSimulation does not read its model parameter. The parameter appears in the",
-        "signature and is never referenced, so the solver returns the same fields for",
-        "every input: pressure and velocity are functions of grid index, and turbulence",
-        "and heat transfer are functions of hardcoded constants.",
-        "The evidence recorded here therefore covers the code as written. It does not",
-        "establish that the solver analyses the engine it is given. Until the model is",
-        "consumed, the unit should be read as a fixed reference computation that is fully",
-        "covered and fully traced, not as a validated CFD analysis.",
-        "The two requirements below are scoped to properties the code genuinely has —",
-        "field allocation and convergence termination — rather than to physical accuracy,",
-        "which cannot be claimed while the input is ignored."
+        "RunSimulation reads chamber pressure from an EngineOperatingPoint or from an",
+        "EngineModel parameter of that name, and refuses any other model. Static pressure",
+        "on the fixed grid is that stagnation pressure divided by an isentropic ratio",
+        "computed from the grid index, using the specific-heat ratio of air. Velocity,",
+        "turbulence, and heat transfer do not depend on the operating point.",
+        "The evidence recorded here covers that control flow. It does not establish a",
+        "Navier-Stokes solution, a turbulence model, or agreement with a measured engine.",
+        "The requirements below are scoped to field allocation and convergence termination,",
+        "which the code genuinely has, rather than to physical accuracy."
       ],
       "testEvidence": [
         {
@@ -64,7 +62,7 @@
         "pairs": [
           {
             "id": "MCDC-CFD-001",
-            "line": 48,
+            "line": 50,
             "decision": "if (!isInitialized)",
             "condition": "isInitialized",
             "status": "demonstrated",
@@ -73,7 +71,7 @@
           },
           {
             "id": "MCDC-CFD-002",
-            "line": 78,
+            "line": 83,
             "decision": "for (int j = 0; j < 1000; j++) in CalculatePressureDistribution",
             "condition": "j < 1000",
             "status": "demonstrated",
@@ -81,7 +79,7 @@
           },
           {
             "id": "MCDC-CFD-003",
-            "line": 98,
+            "line": 101,
             "decision": "for (int j = 0; j < 1000; j++) in CalculateVelocityField",
             "condition": "j < 1000",
             "status": "demonstrated",
@@ -89,7 +87,7 @@
           },
           {
             "id": "MCDC-CFD-004",
-            "line": 116,
+            "line": 119,
             "decision": "for (int i = 0; i < 1000; i++) in CalculateTurbulenceIntensity",
             "condition": "i < 1000",
             "status": "demonstrated",
@@ -97,7 +95,7 @@
           },
           {
             "id": "MCDC-CFD-005",
-            "line": 118,
+            "line": 121,
             "decision": "for (int j = 0; j < 1000; j++) in CalculateTurbulenceIntensity",
             "condition": "j < 1000",
             "status": "demonstrated",
@@ -105,7 +103,7 @@
           },
           {
             "id": "MCDC-CFD-006",
-            "line": 151,
+            "line": 154,
             "decision": "if (residual < 1e-6) in RunConvergenceAnalysis",
             "condition": "residual < 1e-6",
             "status": "demonstrated",
@@ -114,7 +112,7 @@
           },
           {
             "id": "MCDC-CFD-007",
-            "line": 146,
+            "line": 149,
             "decision": "for (int iteration = 0; iteration < 1000; iteration++) in RunConvergenceAnalysis",
             "condition": "iteration < 1000",
             "status": "infeasible",

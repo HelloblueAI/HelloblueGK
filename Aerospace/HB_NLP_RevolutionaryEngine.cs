@@ -67,7 +67,7 @@ namespace HB_NLP_Research_Lab.Aerospace
                 
                 // Core Specifications
                 Thrust = 3500000, // 3.5 MN
-                SpecificImpulse = 420, // seconds
+                SpecificImpulse = 351.5, // seconds, ideal methane/LOX at the declared expansion ratio
                 ChamberPressure = 280, // bar
                 ExpansionRatio = 28.5,
                 ThrustToWeightRatio = 180,
@@ -76,8 +76,12 @@ namespace HB_NLP_Research_Lab.Aerospace
                 // Advanced Geometry
                 ChamberDiameter = 0.65, // meters
                 ChamberLength = 1.4,
-                ThroatDiameter = 0.12,
-                ExitDiameter = 3.4,
+                // Throat sized so 280 bar at an area ratio of 28.5 produces the declared
+                // 3.5 MN in vacuum under ideal-rocket theory. Exit diameter is that throat
+                // times sqrt(28.5), so the expansion ratio is an area ratio rather than a
+                // diameter ratio stored in the wrong field.
+                ThroatDiameter = 0.293,
+                ExitDiameter = 1.564192,
                 NozzleLength = 2.8,
                 ComplexGeometry = true,
                 AdaptiveGeometry = true,
@@ -175,7 +179,7 @@ namespace HB_NLP_Research_Lab.Aerospace
                 PerformanceMetrics = new EnginePerformanceMetrics
                 {
                     Thrust = 3500000,
-                    SpecificImpulse = 420,
+                    SpecificImpulse = 351.5,
                     ChamberPressure = 280,
                     ExpansionRatio = 28.5,
                     Efficiency = 0.96,

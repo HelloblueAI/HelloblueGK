@@ -305,7 +305,11 @@ namespace HB_NLP_Research_Lab.Aerospace
 
             var qaCheck = await _qualityAssurance.PerformQualityAuditAsync(evidence);
 
-            if (qaCheck.OverallQuality >= 0.99) // 99% quality threshold
+            // A fully passing audit scores about 0.977, because the effectiveness constants
+            // assigned on the pass path average below 0.99. Gating on 0.99 meant quality
+            // evidence could never be accepted. The gate is that every standard was assessed
+            // and none of them failed.
+            if (qaCheck.Defects.Count == 0 && qaCheck.Controls.Count > 0)
             {
                 report.Certifications.Add(new CertificationDocument
                 {
@@ -335,7 +339,10 @@ namespace HB_NLP_Research_Lab.Aerospace
 
             var securityCheck = await _securityAudit.PerformSecurityAuditAsync(evidence);
 
-            if (securityCheck.OverallSecurity >= 0.99) // 99% security threshold
+            // Same shape as the quality gate: the pass-path effectiveness constants average
+            // 0.97, so a 0.99 threshold could never be met. No recorded vulnerability and at
+            // least one accepted control means every security standard that was assessed passed.
+            if (securityCheck.Vulnerabilities.Count == 0 && securityCheck.Controls.Count > 0)
             {
                 report.Certifications.Add(new CertificationDocument
                 {

@@ -5,12 +5,11 @@ namespace HB_NLP_Research_Lab.Physics
     /// <summary>
     /// An <see cref="IPhysicsSolver"/> whose output is determined entirely by its input.
     ///
-    /// The distinction from the other solvers in this directory is deliberate and is the reason
-    /// this type exists: <see cref="AdvancedCFDSolver"/> and <see cref="AdvancedStructuralSolver"/>
-    /// accept a model parameter and never read it, so they produce identical results for every
-    /// engine. This solver requires an <see cref="EngineOperatingPoint"/> and rejects anything
-    /// else rather than quietly falling back to defaults, because a solver that silently ignores
-    /// its input is indistinguishable from one that works.
+    /// This solver requires an <see cref="EngineOperatingPoint"/> and rejects anything else rather
+    /// than quietly falling back to defaults, because a solver that silently ignores its input is
+    /// indistinguishable from one that works. The schematic CFD and structural solvers now refuse
+    /// a model with no chamber pressure for the same reason; their fields are still not a solved
+    /// flow or a finite-element analysis.
     /// </summary>
     public sealed class NozzleFlowSolver : IPhysicsSolver
     {

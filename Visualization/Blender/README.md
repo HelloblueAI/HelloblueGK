@@ -35,13 +35,12 @@ Every figure in the telemetry panel traces to `HB_NLP_RevolutionaryEngine.cs`:
 Note that **3,800 K and 3,500 K are material limits, not gas temperatures.** The engine design
 defines no chamber temperature, so the panel does not report one.
 
-**The 3.5 MN thrust figure is what the code declares, not a figure the design supports.** It is
-inconsistent with the same engine's declared geometry and chamber conditions by roughly a factor of
-six: 280 bar through the declared 0.12 m throat gives about 587 kN in vacuum, and reaching 3.5 MN at
-the declared expansion ratio would need a throat of 0.293 m. The panel shows the declared value
-because that is what the model represents, but it should not be read as a performance claim. The
-discrepancy is measured and gated by `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs` and
-recorded in [`Docs/VERIFICATION_SCOPE.md`](../../Docs/VERIFICATION_SCOPE.md).
+**The 3.5 MN thrust agrees with ideal theory for the declared throat, not with a test.** The throat
+is 0.293 m, which is the area that produces 3.5 MN at 280 bar and an expansion ratio of 28.5 in
+vacuum under the ideal-rocket relations. Ideal theory neglects every real loss, so the panel is
+showing a concept operating point, not a measured one. The agreement is gated by
+`Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs` and recorded in
+[`Docs/VERIFICATION_SCOPE.md`](../../Docs/VERIFICATION_SCOPE.md).
 
 CH4 is likewise taken from the code rather than assumed: `PrimaryFuel = "Methane"` sits directly
 above the oxidizer in the same propulsion block.

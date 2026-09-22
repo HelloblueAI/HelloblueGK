@@ -10,12 +10,14 @@ accreditation, or qualification has been obtained. See
 
 ## Current limitations
 
-### Solvers that do not read their input
+### The schematic solvers are not flow or structural analysis
 
-`AdvancedCFDSolver` and `AdvancedStructuralSolver` accept a model parameter and never read it.
-Their output is identical for every engine analysed, so no result either produces describes a
-physical system. Several generative and orchestration methods likewise return constants after an
-artificial delay. Each instance is named in `VERIFICATION_SCOPE.md`.
+`AdvancedCFDSolver` and `AdvancedStructuralSolver` now refuse a model that does not carry a
+chamber pressure, and they scale their fields by the value they are given. The fields are still a
+closed-form estimate on a fixed grid and a thin-wall stress estimate, not a Navier-Stokes solution
+and not a finite-element analysis. `AdvancedThermalSolver` still does not read its input. Several
+generative and orchestration methods likewise return constants after an artificial delay. Each
+instance is named in `VERIFICATION_SCOPE.md`.
 
 ### The nozzle solver is one-dimensional
 
@@ -25,13 +27,13 @@ isentropic equilibrium model. It says nothing about combustion stability, bounda
 separation, nozzle heat transfer, or off-design transients, and it cannot be substituted for a
 flow solver.
 
-### The concept engine's parameters are internally inconsistent
+### The design package does not match the engine in code
 
-The declared thrust of the concept engine is not consistent with its declared geometry and
-chamber conditions — the discrepancy is roughly a factor of six. The deviations are measured and
-gated by `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`, which fails if their magnitude
-changes, so they cannot drift unnoticed. The design package under `Docs/Designs/` declares a
-different thrust and specific impulse again, for the same model ID.
+The engine declared in `Aerospace/HB_NLP_RevolutionaryEngine.cs` is internally consistent: throat,
+exit, expansion ratio, thrust, and specific impulse agree with ideal-rocket theory, and
+`EngineDesignConsistencyTests` fails if they diverge. The design package under `Docs/Designs/`
+still declares a different thrust, specific impulse, chamber pressure, and expansion ratio for the
+same model ID. It is the output of that package's generator and has not been regenerated.
 
 ### The compliance audits need evidence this repository does not ship
 
@@ -71,13 +73,14 @@ fired, or flown.
 
 Ordered by priority rather than by date, because dates for unfunded work are guesses.
 
-**Correctness first.** Resolve the concept engine's parameter inconsistency so that geometry,
-thrust, and specific impulse agree, and reconcile the design package with the engine defined in
-code. These are the last known internal contradictions in the declared design.
+**Correctness first.** Regenerate the design package under `Docs/Designs/` so it declares the same
+thrust, specific impulse, chamber pressure, and expansion ratio as the engine in code. The engine
+declaration itself now agrees with ideal-rocket theory.
 
-**Then input-dependence.** Make the CFD and structural solvers read the model they are given, or
-retire them in favour of interfaces to established external solvers. Either outcome is an
-improvement on returning constants.
+**Then input-dependence.** Replace the schematic CFD, structural, and thermal fields with solvers
+that consume a real operating point, or retire them in favour of interfaces to established external
+solvers. The CFD and structural solvers already refuse a model with no chamber pressure; they are
+still not flow or structural analysis, and the thermal solver still ignores its input.
 
 **Then coverage and scope.** Continue raising the per-directory floors, concentrating on the
 directories currently lowest. Extend the certification boundary only as fast as real traceability

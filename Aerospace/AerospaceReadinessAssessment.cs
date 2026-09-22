@@ -518,7 +518,13 @@ namespace HB_NLP_Research_Lab.Aerospace
                     MissionLevel.Prototype => 5,
                     MissionLevel.Qualification => 7,
                     MissionLevel.Operational => 9,
-                    MissionLevel.Critical => 12,
+                    // Critical plateaus at nine, the same count operational flight requires.
+                    // AerospaceComplianceSystem evaluates nine standards and can issue at most
+                    // nine certifications. Requiring twelve made a fully evidenced critical
+                    // mission score 0.75 on regulatory readiness, which held overall readiness
+                    // under the READY threshold no matter what was proved. Critical flight stays
+                    // stricter on safety factor, redundancy, and the 0.98 go/no-go gate.
+                    MissionLevel.Critical => 9,
                     _ => 5
                 };
 

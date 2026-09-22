@@ -14,12 +14,20 @@ public class AdvancedMultiPhysicsCouplerTests
         var engineA = new EngineModel
         {
             Name = "CouplerEngineA",
-            Parameters = new Dictionary<string, object> { ["Thrust"] = 1_000_000d }
+            Parameters = new Dictionary<string, object>
+            {
+                ["Thrust"] = 1_000_000d,
+                ["ChamberPressure"] = 28_000_000d
+            }
         };
         var engineB = new EngineModel
         {
             Name = "CouplerEngineB",
-            Parameters = new Dictionary<string, object> { ["Thrust"] = 1_200_000d }
+            Parameters = new Dictionary<string, object>
+            {
+                ["Thrust"] = 1_200_000d,
+                ["ChamberPressure"] = 30_000_000d
+            }
         };
 
         var results = await Task.WhenAll(

@@ -26,14 +26,14 @@ namespace HB_NLP_Research_Lab.Physics
             isInitialized = false;
         }
 
-        public string Name => "Advanced CFD Solver - High-Fidelity Turbulence Modeling";
+        public string Name => "Advanced CFD Solver - Schematic Isentropic Field";
 
         public void Initialize()
         {
-            Console.WriteLine("[Advanced CFD] Initializing high-fidelity CFD solver...");
-            Console.WriteLine("[Advanced CFD] Grid resolution: 1,000,000 elements");
-            Console.WriteLine("[Advanced CFD] Turbulence models: k-ε, k-ω, LES");
-            Console.WriteLine("[Advanced CFD] Parallel processing: 32 cores");
+            Console.WriteLine("[Advanced CFD] Initializing schematic isentropic field...");
+            Console.WriteLine("[Advanced CFD] Grid: 1000 x 1000 samples, not a solved mesh");
+            Console.WriteLine("[Advanced CFD] Pressure scales with the supplied chamber pressure");
+            Console.WriteLine("[Advanced CFD] This is not a Navier-Stokes, k-ε, k-ω, or LES solution");
             
             pressureField = new double[1000, 1000];
             velocityField = new double[1000, 1000];
@@ -45,17 +45,20 @@ namespace HB_NLP_Research_Lab.Physics
 
         public PhysicsResult RunSimulation(object model)
         {
+            var chamberPressure = SolverOperatingPoint.RequireChamberPressure(model);
+
             if (!isInitialized)
                 Initialize();
 
-            Console.WriteLine("[Advanced CFD] Running high-fidelity CFD simulation...");
+            Console.WriteLine("[Advanced CFD] Evaluating a schematic isentropic field...");
             
-            // Real CFD calculations with turbulence modeling
+            // A closed-form field on a fixed grid. Stagnation pressure is the caller's
+            // chamber pressure, so two engines do not produce the same distribution.
             var result = new AdvancedCFDResult
             {
                 Status = "Success",
-                Data = new double[] { 1.0, 2.0, 3.0 },
-                PressureDistribution = CalculatePressureDistribution(),
+                Data = new double[] { chamberPressure },
+                PressureDistribution = CalculatePressureDistribution(chamberPressure),
                 VelocityField = CalculateVelocityField(),
                 TurbulenceIntensity = CalculateTurbulenceIntensity(),
                 HeatTransferCoefficient = CalculateHeatTransfer(),
@@ -68,20 +71,20 @@ namespace HB_NLP_Research_Lab.Physics
             return result;
         }
 
-        private double[,] CalculatePressureDistribution()
+        private double[,] CalculatePressureDistribution(double chamberPressure)
         {
-            // Real pressure calculation using Navier-Stokes equations
+            // Static pressure from a calorically perfect isentropic relation, using the
+            // specific-heat ratio of air. Mach number here is the grid index, not a solved
+            // flow field. The stagnation pressure is the chamber pressure the caller supplied.
             var pressure = new double[1000, 1000];
             
             Parallel.For(0, 1000, i =>
             {
                 for (int j = 0; j < 1000; j++)
                 {
-                    // Isentropic flow relations
-                    // Cast operands to double before multiplication to avoid precision loss
                     double mach = Math.Sqrt((double)i * (double)i + (double)j * (double)j) / 1000.0;
                     double pressureRatio = Math.Pow(1 + 0.5 * (GAMMA - 1) * mach * mach, GAMMA / (GAMMA - 1));
-                    pressure[i, j] = 101325.0 * pressureRatio; // Pa
+                    pressure[i, j] = chamberPressure / pressureRatio;
                 }
             });
 
