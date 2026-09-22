@@ -1,18 +1,18 @@
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
-[![Line Coverage](https://img.shields.io/badge/line%20coverage-52.9%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-52.3%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-1214%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![Line Coverage](https://img.shields.io/badge/line%20coverage-58.0%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-56.4%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Tests](https://img.shields.io/badge/tests-1288%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
 <div align="center">
 
-# HelloblueGK — Aerospace Engine Simulation Platform
+### HelloblueGK — Aerospace Engine Simulation Platform
 
 <img src="Assets/Images/HB-NLP-Digital-Twin-Visualization.png" alt="HB-NLP Revolutionary Engine digital twin — a 3D visualization of the engine with a telemetry overlay reading 3.5 MN thrust, 280 bar chamber pressure, 2.8 m nozzle length, LOX oxidizer, and an active morphing nozzle" width="900"/>
 
-**HB-NLP Revolutionary Engine — digital twin visualization**
+**HB-NLP-Engine — digital twin visualization**
 
 *Concept visualization, not flight certified.* Two notes on what the overlay shows, because the
 numbers in it should not be read as a specification.

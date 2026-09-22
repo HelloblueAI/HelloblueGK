@@ -48,6 +48,11 @@ Utility scripts for visualization, integration, and automation.
 - `Visualization/` - Scripts for generating visualizations and images
 - `Integration/` - Integration scripts for external tools (e.g., Plasticity)
 
+### ../Visualization/
+- [`Blender/`](../Visualization/Blender/README.md) - Conceptual Blender digital twin of
+  `HB_NLP_RevolutionaryEngine`. A visualization of the engine's layout and operating point, not CAD,
+  CFD, or certified analysis.
+
 ### ../Assets/
 Project assets including images and media files.
 - `Images/` - General project images and graphics
