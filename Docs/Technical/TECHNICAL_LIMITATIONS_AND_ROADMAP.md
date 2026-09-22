@@ -48,7 +48,7 @@ measured evidence, and supplying it is outside the scope of the Community Editio
 
 ### Coverage is uneven
 
-Overall coverage is 58.4% line and 56.4% branch, enforced per directory by
+Overall coverage is 58.0% line and 56.4% branch, enforced per directory by
 [`coverage-floors.json`](../../Certification/Artifacts/coverage-floors.json), which is the
 authoritative source. It ranges from above 90% in `Certification/` to below 30% in `AI/`. The
 floors ratchet upward rather than describing a finished state.
