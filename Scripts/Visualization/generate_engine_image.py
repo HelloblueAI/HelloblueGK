@@ -249,7 +249,7 @@ def create_advanced_engine_diagram():
     # Add performance metrics with stunning styling
     metrics_text = """DECLARED DESIGN PARAMETERS:
 • Thrust: 3.5 MN
-• Specific impulse: 420 s
+• Specific impulse: 351.5 s
 • Chamber pressure: 280 bar
 • Expansion ratio: 28.5:1
 • Propellant: methane / LOX

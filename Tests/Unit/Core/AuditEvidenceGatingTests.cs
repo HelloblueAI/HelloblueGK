@@ -192,6 +192,121 @@ public class AuditEvidenceGatingTests
     }
 
     /// <summary>
+    /// A critical mission used to be unreachable: it required twelve certifications from a system
+    /// that issues nine, and the quality and security gates demanded 0.99 from pass-path scores
+    /// that average below that. With those two ceilings removed, evidence that actually meets
+    /// every recorded threshold must be able to clear the mission-critical predicate.
+    /// </summary>
+    [Fact]
+    public async Task MissionCriticalReadiness_CanBeClearedWhenEveryThresholdIsMet()
+    {
+        var evidence = EvidenceThatMeetsEveryRecordedThreshold();
+        var subject = new AerospaceReadinessAssessment();
+
+        var report = await subject.PerformComprehensiveAssessmentAsync(MissionLevel.Critical, evidence);
+
+        report.ReadinessStatus.Should().Be("READY");
+        report.OverallReadiness.Should().BeGreaterThanOrEqualTo(0.98);
+        (await subject.IsReadyForMissionCriticalOperationsAsync(evidence)).Should().BeTrue();
+        (await subject.IsReadyForAdvancedAerospaceAsync(MissionLevel.Critical, evidence)).Should().BeTrue();
+    }
+
+    private static AuditEvidence EvidenceThatMeetsEveryRecordedThreshold()
+    {
+        var evidence = new AuditEvidence();
+
+        Fill<AS9100QualityAudit>(evidence, "AS9100");
+        Fill<ISO9001QualityAudit>(evidence, "ISO9001");
+        Fill<SixSigmaQualityAudit>(evidence, "SixSigma");
+        Fill<MissionCriticalQualityAudit>(evidence, "MissionCritical");
+        Fill<SoftwareQualityAudit>(evidence, "Software");
+        Fill<HardwareQualityAudit>(evidence, "Hardware");
+        Fill<ProcessQualityAudit>(evidence, "Process");
+        Fill<SupplierQualityAudit>(evidence, "Supplier");
+
+        Fill<CryptographicSecurityAudit>(evidence, "Cryptographic");
+        Fill<NetworkSecurityAudit>(evidence, "Network");
+        Fill<ApplicationSecurityAudit>(evidence, "Application");
+        Fill<PhysicalSecurityAudit>(evidence, "Physical");
+        Fill<AccessControlAudit>(evidence, "AccessControl");
+        Fill<DataProtectionAudit>(evidence, "DataProtection");
+        Fill<IncidentResponseAudit>(evidence, "IncidentResponse");
+        Fill<SecurityComplianceAudit>(evidence, "SecurityCompliance");
+        evidence.Record("Cryptographic.AlgorithmStrength", "AES-256");
+
+        Fill<DO178CComplianceCheck>(evidence, "DO178C");
+        Fill<NASANPR7150ComplianceCheck>(evidence, "NASANPR7150");
+        Fill<ITARComplianceCheck>(evidence, "ITAR");
+        Fill<FIPS140ComplianceCheck>(evidence, "FIPS140");
+        Fill<MissionCriticalComplianceCheck>(evidence, "MissionCritical");
+        Fill<EnvironmentalComplianceCheck>(evidence, "Environmental");
+        Fill<ExportControlComplianceCheck>(evidence, "ExportControl");
+
+        evidence
+            .Measure("Technical.TechnologyReadinessLevel", 9)
+            .Attest("Technical.PerformanceValidation")
+            .Attest("Technical.ReliabilityAnalysis")
+            .Measure("Safety.SafetyFactor", 4)
+            .Measure("Safety.RedundancyLevel", 4)
+            .Measure("Safety.FaultTolerance", 1)
+            .Measure("Operational.Availability", 1)
+            .Measure("Operational.Maintainability", 1)
+            .Measure("Operational.Supportability", 1)
+            .Attest("Environmental.EnvironmentalCertification")
+            .Attest("Environmental.EnergyEfficiency")
+            .Attest("Environmental.SustainableMaterials")
+            .Attest("Financial.FinancialStability")
+            .Measure("Financial.ReturnOnInvestment", 0.25)
+            .Measure("Financial.CostEfficiency", 1);
+
+        return evidence;
+    }
+
+    private static void Fill<T>(AuditEvidence evidence, string standard)
+    {
+        foreach (var property in typeof(T).GetProperties())
+        {
+            var key = $"{standard}.{property.Name}";
+            if (property.PropertyType == typeof(bool))
+            {
+                evidence.Attest(key);
+            }
+            else if (property.PropertyType == typeof(string))
+            {
+                evidence.Record(key, "attested");
+            }
+            else if (property.PropertyType == typeof(double) || property.PropertyType == typeof(int))
+            {
+                evidence.Measure(key, PassingMeasure(property.Name));
+            }
+        }
+    }
+
+    private static double PassingMeasure(string name) => name switch
+    {
+        "DefectRate" => 3.4,
+        "ProcessVariation" => 0.001,
+        "CustomerSatisfaction" => 0.99,
+        "CostOfPoorQuality" => 0.01,
+        "Reliability" => 0.9999,
+        "Availability" => 0.9995,
+        "Maintainability" => 0.99,
+        "Safety" => 0.99999,
+        "FaultTolerance" => 0.9999,
+        "MeanTimeBetweenFailures" => 10_000,
+        "MeanTimeToRepair" => 1,
+        "CodeCoverage" => 0.95,
+        "CyclomaticComplexity" => 10,
+        "MaintainabilityIndex" => 85,
+        "TechnicalDebt" => 0.05,
+        "BugDensity" => 0.1,
+        "Redundancy" or "RedundancyLevel" => 4,
+        "SafetyFactor" => 4,
+        "Level" => 2,
+        _ => 1
+    };
+
+    /// <summary>
     /// Measurements are fractions of a requirement, not unbounded magnitudes. Fault tolerance,
     /// TRL, availability, and cost efficiency used to be added raw, so a single value of
     /// one million carried a category — and the mission-critical predicate — through READY

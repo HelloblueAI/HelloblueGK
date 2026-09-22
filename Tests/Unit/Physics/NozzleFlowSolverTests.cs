@@ -8,10 +8,11 @@ namespace HelloblueGK.Tests.Unit.Physics;
 /// <summary>
 /// Contract tests for the one solver in this project whose result depends on its argument.
 ///
-/// These exist as a counterweight to <c>PhysicsSolverContractTests</c>, which documents that
-/// <see cref="AdvancedCFDSolver"/> ignores its model parameter. The point of the pairing is that
-/// the difference between the two is visible in the test suite rather than something a reader has
-/// to discover by reading the implementations.
+/// These exist as a counterweight to <c>PhysicsSolverContractTests</c>. The schematic CFD and
+/// structural solvers scale a closed-form field by chamber pressure and refuse a model that has
+/// none; this solver derives thrust and specific impulse from the whole operating point. The
+/// difference is visible in the test suite rather than something a reader has to discover by
+/// reading the implementations.
 /// </summary>
 public class NozzleFlowSolverTests
 {

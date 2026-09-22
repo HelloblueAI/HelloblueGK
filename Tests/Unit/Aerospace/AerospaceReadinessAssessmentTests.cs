@@ -321,25 +321,19 @@ public class AerospaceReadinessAssessmentTests
         };
         var assessment = Subject();
 
-        // Research needs 3 and is oversupplied; critical needs 12 and is half short.
+        // Research needs 3 and is oversupplied; critical needs 9 and is one third short.
         assessment.CalculateComplianceReadinessScore(sixCertificates, MissionLevel.Research).Should().Be(1.0);
-        assessment.CalculateComplianceReadinessScore(sixCertificates, MissionLevel.Critical).Should().Be(0.5);
+        assessment.CalculateComplianceReadinessScore(sixCertificates, MissionLevel.Critical)
+            .Should().BeApproximately(6.0 / 9.0, 1e-9);
     }
 
     /// <summary>
-    /// A critical mission requires 12 certifications, but <c>AerospaceComplianceSystem</c> only
-    /// evaluates nine standards and so can issue at most nine. Regulatory readiness therefore
-    /// caps at 0.75 for a critical mission even when every standard is fully evidenced.
-    ///
-    /// Regulatory is one of the three categories weighted as critical, which puts the ceiling on
-    /// overall critical readiness at roughly 0.948 — below the 0.95 this mission level needs to
-    /// report READY. Both public readiness predicates gate on that status, so neither can return
-    /// true at critical no matter what evidence a caller proves. This test records the arithmetic
-    /// so the ceiling is visible and cannot move unnoticed; it is not an endorsement of it.
-    /// Closing the gap is a decision about the requirement table, not a test change.
+    /// A critical mission requires nine certifications, which is exactly the number
+    /// <c>AerospaceComplianceSystem</c> can issue. Requiring twelve made regulatory readiness
+    /// cap at 0.75 and kept both public readiness predicates false no matter what was proved.
     /// </summary>
     [Fact]
-    public void CriticalMissions_DemandMoreCertificationsThanTheComplianceSystemCanIssue()
+    public void CriticalMissions_CanBeFullyReadyWhenEveryEvaluatedStandardIsCertified()
     {
         const int standardsTheComplianceSystemEvaluates = 9;
         var everyStandardCertified = new ComplianceReport
@@ -351,10 +345,9 @@ public class AerospaceReadinessAssessmentTests
         var assessment = Subject();
 
         assessment.CalculateComplianceReadinessScore(everyStandardCertified, MissionLevel.Operational)
-            .Should().Be(1.0, "an operational mission needs nine, which is exactly what exists");
+            .Should().Be(1.0);
         assessment.CalculateComplianceReadinessScore(everyStandardCertified, MissionLevel.Critical)
-            .Should().BeApproximately(0.75, 1e-9,
-                "a critical mission needs twelve, so three of them cannot be produced at all");
+            .Should().Be(1.0);
     }
 
     /// <summary>

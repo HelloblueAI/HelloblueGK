@@ -44,20 +44,23 @@ These are recorded rather than removed, because the package is the output of
 `design_script.py` and the inconsistencies say something about the generator.
 
 - **The parameters disagree with the engine defined in code.**
-  `Aerospace/HB_NLP_RevolutionaryEngine.cs` declares 3.5 MN thrust, 420 s specific impulse,
-  280 bar chamber pressure, and a 28.5:1 expansion ratio. This package declares 2.0 MN, 450 s,
-  300 bar, and 25.0:1 for the same model ID. At least one of the two is stale.
+  `Aerospace/HB_NLP_RevolutionaryEngine.cs` declares 3.5 MN thrust, 351.5 s specific impulse,
+  280 bar chamber pressure, a 0.293 m throat, and a 28.5:1 area ratio, and those figures agree
+  with ideal-rocket theory. This package declares 2.0 MN, 450 s, 300 bar, and 25.0:1 for the
+  same model ID. The package has not been regenerated.
 - **No technology readiness level is claimed here.** Nothing in this repository supports a TRL
   assignment: TRL denotes demonstrated hardware maturity, and nothing here has been built, fired,
   or flown. The level declared in code is a self-assessment and is listed as unsupported in
   `VERIFICATION_SCOPE.md`.
 - **Efficiency and convergence figures are not measurements.** The 95% efficiency and the
   solver-convergence and hardware-utilization numbers in `design.json` are constants produced by
-  simulation scaffolding, not computed from a model of this engine. The legacy CFD and structural
-  solvers do not read their input, so they return the same output for any engine.
-- **The declared thrust is not consistent with the declared geometry.** For the engine in code,
-  the deviation is measured and gated by
-  `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`.
+  simulation scaffolding, not computed from a model of this engine. The schematic CFD and
+  structural solvers scale a closed-form field by chamber pressure; they are not a flow solution
+  or a finite-element analysis.
+- **The engine in code is internally consistent.** Throat, exit, expansion ratio, thrust, and
+  specific impulse agree with ideal-rocket theory, gated by
+  `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`. This package's own geometry is a
+  separate declaration and is not checked by that test.
 
 ## Files
 

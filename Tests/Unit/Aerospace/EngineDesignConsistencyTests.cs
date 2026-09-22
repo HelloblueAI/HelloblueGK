@@ -16,9 +16,12 @@ namespace HelloblueGK.Tests.Unit.Aerospace;
 /// impulse the propellant cannot reach. Those numbers are read by the API, the design exports, and
 /// the Blender visualization, so an error in them propagates into everything downstream.
 ///
-/// Three inconsistencies exist today. They are recorded in <see cref="KnownDeviations"/> rather than
-/// tolerated silently, which makes this a waiver register under configuration control instead of a
-/// suppression. The register cuts three ways:
+/// The declaration used to disagree with itself in three places: the expansion ratio was a diameter
+/// ratio stored in an area-ratio field, the 3.5 MN thrust needed a larger throat than the one
+/// declared, and 420 s of specific impulse sat above what methane/LOX can deliver at that expansion.
+/// Those were reconciled by sizing the throat and exit to the declared thrust, chamber pressure, and
+/// area ratio, and by setting specific impulse to the ideal value. <see cref="KnownDeviations"/> is
+/// now empty. It stays as a waiver register under configuration control, and it still cuts three ways:
 ///
 ///   - a new inconsistency, or one in another quantity, fails the build;
 ///   - a registered deviation whose magnitude drifts fails the build;
@@ -44,35 +47,7 @@ public class EngineDesignConsistencyTests
 
     private sealed record Deviation(string Quantity, double Declared, double FirstPrinciples, double Tolerance, string Note);
 
-    private static readonly Deviation[] KnownDeviations =
-    {
-        new(
-            "ExpansionRatio",
-            Declared: 28.5,
-            FirstPrinciples: 802.8,
-            Tolerance: 1.0,
-            Note: "The declared 0.12 m throat and 3.4 m exit give an area ratio of 802.8. Their "
-                + "diameter ratio is 28.33, so 28.5 appears to be a diameter ratio stored in an "
-                + "area-ratio field. At most one of the geometry and the expansion ratio can be "
-                + "describing the intended engine."),
-        new(
-            "Thrust_kN",
-            Declared: 3500.0,
-            FirstPrinciples: 587.3,
-            Tolerance: 10.0,
-            Note: "At 280 bar through the declared 0.12 m throat, ideal theory gives 587 kN. "
-                + "Reaching 3.5 MN at the declared expansion ratio needs a 0.293 m throat. Ideal "
-                + "theory neglects every loss, so it bounds a real engine from above: a declared "
-                + "thrust six times higher cannot be a matter of efficiency."),
-        new(
-            "SpecificImpulse_s",
-            Declared: 420.0,
-            FirstPrinciples: 351.5,
-            Tolerance: 5.0,
-            Note: "An expansion ratio of 28.5 on methane/LOX gives 351.5 s ideally. Even the "
-                + "geometry's 802.8 gives only 390 s. 420 s is 98.6% of the propellant's "
-                + "thermodynamic ceiling, which no real engine reaches."),
-    };
+    private static readonly Deviation[] KnownDeviations = [];
 
     private static async Task<HB_NLP_Research_Lab.Aerospace.HB_NLP_EngineDesign> DeclaredDesignAsync()
     {

@@ -128,18 +128,16 @@ The following code runs, produces well-formed output, and is useful for demonstr
 exercising interfaces. It is **not** verified engineering, and no result it produces should be
 cited as an analysis of a physical system.
 
-**The legacy physics solvers ignore their inputs.** `AdvancedCFDSolver.RunSimulation` and
-`AdvancedStructuralSolver` accept a model parameter and do not read it. Their outputs are
-determined by hardcoded constants, so they are identical for every engine analysed. The CFD
-solver is inside the certification boundary because its *control flow* is fully verified; the
-boundary artifact records explicitly that this is not a claim about physical correctness. Its
-console output also advertises k-ε, k-ω, and LES turbulence models across 1,000,000 elements on
-32 cores; what it actually evaluates is a closed-form expression over a 1000x1000 array using the
-specific-heat ratio and gas constant of *air*, not of combustion products. Migrating its field
-generation onto the validated nozzle solution is the obvious next step and is tracked separately,
-because changing that file means re-deriving the MC-DC analysis recorded for it. In
-`AdvancedStructuralSolver.PredictFailure`, `maxStress > yieldStrength` compares two constants
-(350 MPa against 250 MPa), so it always reports "Yield" and the "Safe" branch is unreachable.
+**The legacy physics solvers are schematic, and they now read chamber pressure.**
+`AdvancedCFDSolver` and `AdvancedStructuralSolver` used to ignore their model argument, so every
+engine produced the same fields. They now require a positive chamber pressure — from an
+`EngineOperatingPoint` or from an `EngineModel` parameter of that name — and refuse anything else.
+The CFD field is still a closed-form isentropic expression on a fixed 1000×1000 grid, using the
+specific-heat ratio of air, not a Navier-Stokes solution. The structural field is a thin-wall
+estimate whose reported stress is half the supplied pressure, compared with the yield strength of
+steel, not a finite-element analysis. The CFD solver remains inside the certification boundary
+because its control flow is fully verified; that is not a claim of physical correctness.
+`AdvancedThermalSolver` still does not read its input.
 
 **Most `Create*` and `Analyze*` orchestration discards its arguments.** Across
 `RevolutionaryEngineArchitectures` and `HB_NLP_RevolutionaryEngine`, methods taking a
@@ -188,35 +186,32 @@ verifying, not a gap to be closed by writing tests against stubs. The way to rai
 numbers honestly is to replace the scaffolding with implementations that consume their inputs,
 at which point the new logic earns real tests.
 
-## The concept engine's declared parameters are internally inconsistent
+## The concept engine's declared parameters
 
-`HB_NLP_RevolutionaryEngine` is a concept design, and its declared numbers do not agree with each
-other. This was found by pointing the validated `IdealRocketNozzle` relations at the declaration —
-a check the repository could have run at any time and never had.
+`HB_NLP_RevolutionaryEngine` is a concept design. Pointing the validated `IdealRocketNozzle`
+relations at an earlier declaration found three internal contradictions: the expansion ratio was a
+diameter ratio stored in an area-ratio field (0.12 m throat, 3.4 m exit, ratio written as 28.5),
+the 3.5 MN thrust was about six times what that throat could pass at 280 bar, and 420 s of specific
+impulse sat above what methane/LOX delivers at an expansion of 28.5.
 
-| Declared | First principles | Gap |
-|----------|------------------|-----|
-| `ExpansionRatio = 28.5` | The declared 0.12 m throat and 3.4 m exit give an area ratio of 802.8 | The diameter ratio is 28.33, so 28.5 appears to be a diameter ratio stored in an area-ratio field |
-| `Thrust = 3.5 MN` | 280 bar through a 0.12 m throat gives 587 kN in vacuum | 6× overstated; 3.5 MN at the declared expansion ratio needs a 0.293 m throat |
-| `SpecificImpulse = 420 s` | 351.5 s at the declared expansion ratio, 390.4 s even at the geometric 802.8 | 420 s is 98.6% of the propellant's thermodynamic ceiling of 425.8 s |
+The declaration was reconciled rather than waived. The throat is now 0.293 m, which is the area
+that produces 3.5 MN at 280 bar and an area ratio of 28.5 under ideal theory in vacuum. The exit
+diameter is that throat times √28.5, so the expansion ratio is an area ratio. Specific impulse is
+351.5 s, the ideal value at that expansion. Ideal theory still neglects combustion inefficiency,
+friction, heat loss, and divergence, so these figures bound a real engine from above. They are not
+a test result.
 
-Ideal theory neglects combustion inefficiency, friction, heat loss, and divergence, so it bounds a
-real engine from above. A declared value that exceeds it cannot be recovered by better engineering,
-which is what makes these gaps errors in the declaration rather than optimism about the design.
-
-At most one of the geometry and the expansion ratio can describe the intended engine, so these
-figures should not be cited as the specification of anything. They are read by the API, the design
-exports, and the Blender visualization, so the error propagates wherever they are displayed.
-
-`Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs` now gates this. The three discrepancies are
-recorded there as a waiver register under configuration control rather than suppressed: a new
-inconsistency fails the build, a registered one whose magnitude drifts fails the build, and
-reconciling one also fails the build until its entry is deleted. The numbers cannot quietly get
-worse, and they cannot quietly get better without the record being updated.
+`Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs` gates this. Its waiver register is empty.
+A new inconsistency fails the build, a registered one whose magnitude drifts fails the build, and
+reconciling one also fails the build until its entry is deleted.
 
 The specific impulse and ceiling checks assume a chamber temperature of 3600 K, since the engine
 declares none; the geometry and thrust checks do not depend on it, because a thrust coefficient is
 set by the specific heat ratio and the area ratio alone.
+
+The design package under `Docs/Designs/HB-NLP-REV-001/` still declares a different thrust, specific
+impulse, and expansion ratio for the same model ID. That package is the output of its generator
+and has not been regenerated to match the engine in code.
 
 ### Claims outside physics that are also unsupported
 

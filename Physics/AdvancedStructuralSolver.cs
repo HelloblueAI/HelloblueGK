@@ -27,7 +27,7 @@ namespace HB_NLP_Research_Lab.Physics
             isInitialized = false;
         }
 
-        public string Name => "Advanced Structural Solver - Finite Element Stress Analysis";
+        public string Name => "Advanced Structural Solver - Schematic Stress Estimate";
 
         public void Initialize()
         {
@@ -46,35 +46,40 @@ namespace HB_NLP_Research_Lab.Physics
 
         public PhysicsResult RunSimulation(object model)
         {
+            var chamberPressure = SolverOperatingPoint.RequireChamberPressure(model);
+
             if (!isInitialized)
                 Initialize();
 
-            Console.WriteLine("[Advanced Structural] Running finite element structural analysis...");
+            Console.WriteLine("[Advanced Structural] Evaluating a schematic stress field...");
+
+            // Thin-wall estimate at the chamber wall: von Mises is half the supplied
+            // chamber pressure for this particular stress state. It is not an FEA result.
+            var representativeStress = 0.5 * chamberPressure;
             
             var result = new AdvancedStructuralResult
             {
                 Status = "Success",
-                Data = new double[] { 1.0, 2.0, 3.0 },
-                StressField = CalculateStressField(),
-                StrainField = CalculateStrainField(),
+                Data = new double[] { chamberPressure, representativeStress },
+                StressField = CalculateStressField(chamberPressure),
+                StrainField = CalculateStrainField(representativeStress),
                 DisplacementField = CalculateDisplacementField(),
                 FatigueAnalysis = PerformFatigueAnalysis(),
                 BucklingAnalysis = PerformBucklingAnalysis(),
                 MaterialProperties = GetMaterialProperties(),
-                SafetyFactors = CalculateSafetyFactors(),
-                FailurePrediction = PredictFailure(),
+                SafetyFactors = CalculateSafetyFactors(representativeStress),
+                FailurePrediction = PredictFailure(representativeStress),
                 ConvergenceHistory = RunStructuralConvergence(),
-                MaxVonMisesStress = 350e6, // Pa
-                MaxDisplacement = 0.005,   // m
+                MaxVonMisesStress = representativeStress,
+                MaxDisplacement = representativeStress / YOUNGS_MODULUS_STEEL,
                 NaturalFrequencies = CalculateNaturalFrequencies()
             };
 
             return result;
         }
 
-        private double[,] CalculateStressField()
+        private double[,] CalculateStressField(double chamberPressure)
         {
-            // Real stress calculation using finite element method
             var stress = new double[1000, 1000];
             
             Parallel.For(0, 1000, i =>
@@ -85,8 +90,6 @@ namespace HB_NLP_Research_Lab.Physics
                     double y = j / 1000.0;
                     double distance = Math.Sqrt(x * x + y * y);
                     
-                    // Engine chamber pressure stress
-                    double chamberPressure = 300e6; // Pa (300 bar)
                     double radialStress = chamberPressure * (1.0 - distance);
                     double hoopStress = chamberPressure * (1.0 + distance);
                     double axialStress = chamberPressure * 0.5;
@@ -103,9 +106,8 @@ namespace HB_NLP_Research_Lab.Physics
             return stress;
         }
 
-        private double[,] CalculateStrainField()
+        private double[,] CalculateStrainField(double representativeStress)
         {
-            // Real strain calculation
             var strain = new double[1000, 1000];
             
             Parallel.For(0, 1000, i =>
@@ -114,7 +116,7 @@ namespace HB_NLP_Research_Lab.Physics
                 {
                     double x = i / 1000.0;
                     double y = j / 1000.0;
-                    double stress = 350e6 * (1.0 - Math.Sqrt(x * x + y * y)); // Pa
+                    double stress = representativeStress * (1.0 - Math.Sqrt(x * x + y * y));
                     
                     // Hooke's law for plane stress
                     double youngsModulus = YOUNGS_MODULUS_STEEL;
@@ -234,12 +236,10 @@ namespace HB_NLP_Research_Lab.Physics
             return materials;
         }
 
-        private Dictionary<string, object> CalculateSafetyFactors()
+        private Dictionary<string, object> CalculateSafetyFactors(double maxStress)
         {
-            // Real safety factor calculations
             var safetyFactors = new Dictionary<string, object>();
             
-            double maxStress = 350e6; // Pa
             double yieldStrength = YIELD_STRENGTH_STEEL;
             double ultimateStrength = ULTIMATE_STRENGTH_STEEL;
             
@@ -251,12 +251,10 @@ namespace HB_NLP_Research_Lab.Physics
             return safetyFactors;
         }
 
-        private Dictionary<string, object> PredictFailure()
+        private Dictionary<string, object> PredictFailure(double maxStress)
         {
-            // Real failure prediction
             var failurePrediction = new Dictionary<string, object>();
             
-            double maxStress = 350e6; // Pa
             double yieldStrength = YIELD_STRENGTH_STEEL;
             double ultimateStrength = ULTIMATE_STRENGTH_STEEL;
             
