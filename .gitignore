@@ -242,3 +242,15 @@ CEO_UPDATE_EMAIL.md
 ## Local git recovery / history rewrite backups ##
 *.bundle
 *.bundle.zstd
+
+## Blender ##
+# Blender temporary and backup files
+*.blend1
+*.blend2
+*.blend@
+*.blend~
+*.autosave
+
+# Blender generated output
+Visualization/Blender/renders/
+Visualization/Blender/cache/
