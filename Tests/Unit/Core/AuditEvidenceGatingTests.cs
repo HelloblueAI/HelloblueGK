@@ -74,6 +74,41 @@ public class AuditEvidenceGatingTests
         (await subject.IsReadyForSpaceXAsync()).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Environmental compliance was the only standard whose failure added no violation.
+    /// Overall compliance is <c>Violations.Count == 0</c>, and NASA / SpaceX readiness
+    /// require that flag. While quality and security could never pass, the omission was
+    /// hidden. Evidence that meets every other standard must still be able to pass, and
+    /// withdrawing one environmental requirement must fail the audit closed.
+    /// </summary>
+    [Fact]
+    public async Task ComplianceAudit_UnmetEnvironmentalRequirement_FailsClosed()
+    {
+        var subject = new AerospaceComplianceSystem();
+        var complete = EvidenceThatMeetsEveryRecordedThreshold();
+
+        var passed = await subject.PerformFullComplianceAuditAsync(complete);
+
+        passed.OverallCompliance.Should().BeTrue(
+            "evidence that meets every recorded threshold must be able to pass");
+        passed.Violations.Should().BeEmpty();
+        passed.Certifications.Should().Contain(c => c.Type == "Environmental" && c.Status == "Evidence accepted");
+        (await subject.IsReadyForNASAAsync(complete)).Should().BeTrue();
+        (await subject.IsReadyForSpaceXAsync(complete)).Should().BeTrue();
+
+        var missingEmissionsControl = EvidenceThatMeetsEveryRecordedThreshold()
+            .Attest("Environmental.EmissionsControl", false);
+
+        var failed = await subject.PerformFullComplianceAuditAsync(missingEmissionsControl);
+
+        failed.OverallCompliance.Should().BeFalse(
+            "an unmet environmental requirement is a compliance failure, not a silent omission");
+        failed.Violations.Should().ContainSingle(v => v.Standard == "Environmental" && v.RemediationRequired);
+        failed.Certifications.Should().NotContain(c => c.Type == "Environmental");
+        (await subject.IsReadyForNASAAsync(missingEmissionsControl)).Should().BeFalse();
+        (await subject.IsReadyForSpaceXAsync(missingEmissionsControl)).Should().BeFalse();
+    }
+
     [Fact]
     public void Build_LeavesUnevidencedPropertiesAtTheirFailingDefaults()
     {
