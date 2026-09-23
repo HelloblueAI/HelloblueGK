@@ -141,8 +141,7 @@ because its control flow is fully verified; that is not a claim of physical corr
 
 **Most `Create*` and `Analyze*` orchestration discards its arguments.** Across
 `RevolutionaryEngineArchitectures` and `HB_NLP_RevolutionaryEngine`, methods taking a
-specification object build a hardcoded result and ignore the specification. `AnalyzeRevolutionaryEngineAsync` awaits real physics calls and
-then discards the results in favour of constants. `Task.Delay` stands in for computation.
+specification object build a hardcoded result and ignore the specification. `AnalyzeRevolutionaryEngineAsync` refuses to run: the architecture record has no chamber pressure, and the method used to discard the solver result and return fixed figures. `Task.Delay` stands in for computation.
 
 **The genetic optimiser is unreachable.** `AIOptimizationEngine` contains a real
 population/crossover/mutation implementation, but `OptimizeEngineDesignAsync` returns a fixed

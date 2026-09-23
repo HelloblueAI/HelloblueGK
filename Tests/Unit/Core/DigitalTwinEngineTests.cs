@@ -727,6 +727,35 @@ public class DigitalTwinEngineTests : IDisposable
         report.TotalModelImprovements.Should().Be(0);
     }
 
+    [Fact]
+    public async Task RunPredictiveMultiPhysicsAsync_ForwardsChamberPressure()
+    {
+        var prediction = await _digitalTwinEngine.RunPredictiveMultiPhysicsAsync(
+            "PressurizedTwin",
+            new EngineModel
+            {
+                Name = "Pressurized",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["ChamberPressure"] = 28_000_000d,
+                    ["Thrust"] = 3_500_000d
+                }
+            });
+
+        prediction.MultiPhysicsResult.Should().NotBeNull();
+        prediction.PredictedPerformance.Thrust.Should().Be(3_500_000d);
+    }
+
+    [Fact]
+    public async Task RunPredictiveMultiPhysicsAsync_RejectsAModelWithNoChamberPressure()
+    {
+        var act = () => _digitalTwinEngine.RunPredictiveMultiPhysicsAsync(
+            "UnpressurizedTwin",
+            new EngineModel { Name = "Unpressurized", Parameters = new Dictionary<string, double>() });
+
+        await act.Should().ThrowAsync<ArgumentException>();
+    }
+
     public void Dispose()
     {
         _digitalTwinEngine?.Dispose();

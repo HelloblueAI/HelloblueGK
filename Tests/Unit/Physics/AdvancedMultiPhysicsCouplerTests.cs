@@ -39,4 +39,15 @@ public class AdvancedMultiPhysicsCouplerTests
         results[0].CouplingHistory.Should().NotBeSameAs(results[1].CouplingHistory);
         results.Should().OnlyContain(result => result.TotalIterations > 0);
     }
+
+    [Fact]
+    public async Task RunMultiPhysicsAnalysisAsync_RejectsAnEngineIdWithNoOperatingPoint()
+    {
+        var coupler = new AdvancedMultiPhysicsCoupler();
+
+        var act = () => coupler.RunMultiPhysicsAnalysisAsync("HB-NLP-REV-001");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("engineId");
+    }
 }

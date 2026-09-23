@@ -6,6 +6,21 @@ using Xunit;
 
 namespace HelloblueGK.Tests.Unit.Aerospace;
 
+public class RevolutionaryEngineAnalysisTests
+{
+    [Fact]
+    public async Task AnalyzeRevolutionaryEngineAsync_RejectsAnArchitectureWithNoChamberPressure()
+    {
+        var architectures = new RevolutionaryEngineArchitectures();
+        await architectures.CreateVariableGeometryEngineAsync("vg-1", new VariableGeometrySpecs());
+
+        var act = () => architectures.AnalyzeRevolutionaryEngineAsync("vg-1");
+
+        await act.Should().ThrowAsync<ArgumentException>()
+            .WithParameterName("engineId");
+    }
+}
+
 public class EngineModelTests
 {
     /// <summary>

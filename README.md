@@ -3,7 +3,7 @@
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
 [![Line Coverage](https://img.shields.io/badge/line%20coverage-58.0%25-yellow)](Certification/Artifacts/coverage-floors.json)
 [![Branch Coverage](https://img.shields.io/badge/branch%20coverage-56.4%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-1303%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1307%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
 <div align="center">
