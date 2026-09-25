@@ -411,6 +411,27 @@ namespace HB_NLP_Research_Lab.Core
     // High-performance structural solver
     public class HighPerformanceStructuralSolver
     {
+        /// <summary>
+        /// Allowable stress paired with the schematic baseline of 800 MPa at a safety factor of 1.5.
+        /// Kept here so a later stress update cannot leave that 1.5 in place.
+        /// </summary>
+        public const double AllowableStressPascals = 1.2e9;
+
+        /// <summary>
+        /// Margin against <see cref="AllowableStressPascals"/>. Non-positive or non-finite stress
+        /// reports no margin rather than the baseline 1.5.
+        /// </summary>
+        public static double SafetyFactorForStress(double maxStressPascals)
+        {
+            if (!double.IsFinite(maxStressPascals) || maxStressPascals <= 0)
+            {
+                return 0;
+            }
+
+            var factor = AllowableStressPascals / maxStressPascals;
+            return double.IsFinite(factor) ? factor : 0;
+        }
+
         public Task InitializeAsync() => InitializeAsync(CancellationToken.None);
 
         public async Task InitializeAsync(CancellationToken cancellationToken)
@@ -424,11 +445,12 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<StructuralAnalysisResult> RunHighPerformanceAnalysisAsync(CancellationToken cancellationToken)
         {
             await Task.Delay(30, cancellationToken);
+            const double baselineStress = 800e6;
             return new StructuralAnalysisResult
             {
-                MaxStress = 800e6,
-                StressDistribution = new Dictionary<string, double> { { "chamber", 800e6 }, { "nozzle", 600e6 } },
-                SafetyFactor = 1.5,
+                MaxStress = baselineStress,
+                StressDistribution = new Dictionary<string, double> { { "chamber", baselineStress }, { "nozzle", 600e6 } },
+                SafetyFactor = SafetyFactorForStress(baselineStress),
                 CalculationCount = 600000,
                 Accuracy = HighPerformanceCFDSolver.UnprovenSolverAccuracy,
                 ConvergenceIterations = 100

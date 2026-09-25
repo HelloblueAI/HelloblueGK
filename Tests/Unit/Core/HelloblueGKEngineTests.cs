@@ -281,7 +281,85 @@ public class HelloblueGKEngineTests : IDisposable
             honest.StructuralAnalysis.SafetyFactor,
             0.0001);
         forged.StructuralAnalysis.SafetyFactor.Should().BeLessThan(10.0);
+        forged.StructuralAnalysis.SafetyFactor.Should().BeApproximately(
+            HighPerformanceStructuralSolver.AllowableStressPascals / 650e6,
+            1e-9);
         forged.PerformanceMetrics["MaxStress"].Should().Be(650e6);
+    }
+
+    /// <summary>
+    /// The structural solver used to return safety factor 1.5 for every engine. Baseline
+    /// application replaced MaxStress from chamber pressure and left that 1.5 in place, so a
+    /// 300 bar engine and a 97 bar engine published the same margin. Simulations persist that
+    /// factor next to maxStress.
+    /// </summary>
+    [Fact]
+    public async Task AnalyzeEngineAsync_SafetyFactorFallsAsChamberPressureRises()
+    {
+        var merlin = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 845_000,
+            specificImpulse: 282,
+            chamberPressure: 97,
+            efficiency: 0.9);
+        var raptor = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 2_200_000,
+            specificImpulse: 330,
+            chamberPressure: 300,
+            efficiency: 0.9);
+
+        var merlinResult = await _engine.AnalyzeEngineAsync("Merlin", "Structural", null, merlin);
+        var raptorResult = await _engine.AnalyzeEngineAsync("Raptor", "Structural", null, raptor);
+
+        raptorResult.StructuralAnalysis.MaxStress.Should().BeGreaterThan(
+            merlinResult.StructuralAnalysis.MaxStress);
+        raptorResult.StructuralAnalysis.MaxStress.Should().BeApproximately(300 * 2.67e6, 1);
+        raptorResult.StructuralAnalysis.SafetyFactor.Should().BeLessThan(
+            merlinResult.StructuralAnalysis.SafetyFactor);
+        raptorResult.StructuralAnalysis.SafetyFactor.Should().BeApproximately(
+            HighPerformanceStructuralSolver.SafetyFactorForStress(raptorResult.StructuralAnalysis.MaxStress),
+            1e-9);
+        merlinResult.StructuralAnalysis.SafetyFactor.Should().BeGreaterThan(1);
+    }
+
+    [Fact]
+    public async Task AnalyzeEngineAsync_StressAboveAllowable_ReportsSafetyFactorBelowOne()
+    {
+        var baseline = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 1_500_000,
+            specificImpulse: 350,
+            chamberPressure: 250,
+            efficiency: 0.9);
+
+        var result = await _engine.AnalyzeEngineAsync(
+            "Overstressed",
+            "Structural",
+            new Dictionary<string, object>
+            {
+                ["maxStress"] = HighPerformanceStructuralSolver.AllowableStressPascals * 2
+            },
+            baseline);
+
+        result.StructuralAnalysis.SafetyFactor.Should().BeApproximately(0.5, 1e-9);
+        result.StructuralAnalysis.SafetyFactor.Should().BeLessThan(1);
+    }
+
+    [Fact]
+    public async Task AnalyzeEngineAsync_NonPositiveStress_ReportsNoSafetyMargin()
+    {
+        var baseline = HelloblueGKEngine.CreateDesignParametersFromEngine(
+            thrust: 1_500_000,
+            specificImpulse: 350,
+            chamberPressure: 250,
+            efficiency: 0.9);
+
+        var result = await _engine.AnalyzeEngineAsync(
+            "Unstressed",
+            "Structural",
+            new Dictionary<string, object> { ["maxStress"] = 0.0 },
+            baseline);
+
+        result.StructuralAnalysis.MaxStress.Should().Be(0);
+        result.StructuralAnalysis.SafetyFactor.Should().Be(0);
     }
 
     [Fact]

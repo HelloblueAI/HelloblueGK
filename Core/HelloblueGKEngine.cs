@@ -157,6 +157,11 @@ namespace HB_NLP_Research_Lab.Core
                 thermalResult,
                 structuralResult);
 
+            // Safety factor is the margin on the stress actually reported. The structural
+            // solver seeds 1.5 against its 800 MPa baseline; baseline chamber pressure and a
+            // maxStress override both replace that stress and must not leave 1.5 behind.
+            RefreshStructuralSafetyFactor(structuralResult);
+
             // Keep ValidationReport.OverallAccuracy as the validation engine's fail-closed
             // evidence score (unproven=50 without trusted flight/test binding). Do NOT overwrite
             // it with hardcoded solver Accuracy (~99%) — that made MissionSuccess's validation
@@ -207,9 +212,12 @@ namespace HB_NLP_Research_Lab.Core
                 : new StructuralAnalysis
                 {
                     MaxStress = structuralResult.MaxStress,
-                    SafetyFactor = structuralResult.SafetyFactor > 0
+                    // A missing or non-positive margin is not a factor of 1. Publishing 1.0
+                    // here reported a safe structure when the stress check had no margin.
+                    SafetyFactor = double.IsFinite(structuralResult.SafetyFactor)
+                        && structuralResult.SafetyFactor > 0
                         ? structuralResult.SafetyFactor
-                        : 1.0
+                        : 0
                 };
 
             var performanceMetrics = new Dictionary<string, double>
@@ -577,8 +585,8 @@ namespace HB_NLP_Research_Lab.Core
                     structuralResult.StressDistribution["chamber"] = maxStress;
                 }
 
-                // Do not let clients overwrite SafetyFactor — it is a solver-owned trust signal
-                // (same policy as Accuracy / ConvergenceRate).
+                // Do not let clients write SafetyFactor directly. It is recomputed from the
+                // stress left on the result, so safetyFactor: 100 cannot outrun maxStress.
 
                 if (TryReadDoubleParameter(parameters, "maxDisplacement", out var maxDisplacement))
                 {
@@ -639,6 +647,17 @@ namespace HB_NLP_Research_Lab.Core
 
             // MaxPressure is chamber pressure (bar), not thrust — never treat it as Newtons.
             return Math.Max(cfdResult.CalculationCount, 1);
+        }
+
+        private static void RefreshStructuralSafetyFactor(StructuralAnalysisResult? structuralResult)
+        {
+            if (structuralResult == null)
+            {
+                return;
+            }
+
+            structuralResult.SafetyFactor = HighPerformanceStructuralSolver.SafetyFactorForStress(
+                structuralResult.MaxStress);
         }
 
         private static double NormalizeRatio(double value)
