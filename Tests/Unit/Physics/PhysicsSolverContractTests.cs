@@ -91,9 +91,41 @@ public class PhysicsSolverContractTests
         high.MaxVonMisesStress.Should().Be(20e6);
         high.MaxDisplacement.Should().BeGreaterThan(low.MaxDisplacement);
 
+        (high.DisplacementField[0, 0] / low.DisplacementField[0, 0]).Should().BeApproximately(2.0, 1e-9);
+        ((double)high.BucklingAnalysis["AppliedPressure"]).Should().Be(40e6);
+        ((double)high.FatigueAnalysis["AppliedStress"]).Should().Be(20e6);
+
+        // The map is the analysis. It is not the old constants 2.5 and 1.8.
+        low.SafetyFactors["BucklingSafetyFactor"].Should().Be(low.BucklingAnalysis["BucklingSafetyFactor"]);
+        low.SafetyFactors["FatigueSafetyFactor"].Should().Be(low.FatigueAnalysis["SafetyFactor"]);
+        ((double)high.SafetyFactors["BucklingSafetyFactor"])
+            .Should().BeLessThan((double)low.SafetyFactors["BucklingSafetyFactor"]);
+        ((double)high.SafetyFactors["FatigueSafetyFactor"])
+            .Should().BeLessThan((double)low.SafetyFactors["FatigueSafetyFactor"]);
+        ((double)low.SafetyFactors["BucklingSafetyFactor"]).Should().NotBe(2.5);
+        ((double)low.SafetyFactors["FatigueSafetyFactor"]).Should().NotBe(1.8);
+        low.FailurePrediction["CyclesToFailure"].Should().Be(low.FatigueAnalysis["CyclesToFailure"]);
+
         low.FailurePrediction["FailureMode"].Should().Be("Safe");
+
+        // Above the shell's critical pressure, still below steel yield
+        // (reported stress is half the chamber pressure; yield is 250 MPa).
+        var buckled = (AdvancedStructuralResult)solver.RunSimulation(OperatingPoint(200e6));
+        buckled.FailurePrediction["YieldFailure"].Should().Be(false);
+        buckled.FailurePrediction["BucklingFailure"].Should().Be(true);
+        buckled.FailurePrediction["FailureMode"].Should().Be("Buckling");
+        ((double)buckled.SafetyFactors["BucklingSafetyFactor"]).Should().BeLessThan(1);
+        buckled.SafetyFactors["BucklingSafetyFactor"].Should().Be(buckled.BucklingAnalysis["BucklingSafetyFactor"]);
+
         var yielded = (AdvancedStructuralResult)solver.RunSimulation(OperatingPoint(600e6));
         yielded.FailurePrediction["FailureMode"].Should().Be("Yield");
+        yielded.FailurePrediction["FatigueFailure"].Should().Be(false);
+
+        var shortLife = (AdvancedStructuralResult)solver.RunSimulation(OperatingPoint(2e9));
+        shortLife.FailurePrediction["FailureMode"].Should().Be("Yield");
+        shortLife.FailurePrediction["FatigueFailure"].Should().Be(true);
+        ((double)shortLife.FailurePrediction["CyclesToFailure"]).Should().BeLessThan(1e5);
+        shortLife.FailurePrediction["CyclesToFailure"].Should().Be(shortLife.FatigueAnalysis["CyclesToFailure"]);
     }
 
     [Fact]
