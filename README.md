@@ -118,10 +118,11 @@ branch** overall across 23,420 lines, with **1,214 tests** passing and zero buil
 
 ### What is simulation scaffolding
 
-The legacy `AdvancedCFDSolver` and `AdvancedStructuralSolver` accept a model parameter and do not
-read it, so their output is the same for every engine analysed. Several generative and orchestration
-methods return constants after `Task.Delay`. None of it is verified engineering, and no result it
-produces should be cited as an analysis of a physical system. Each case is named in
+The legacy `AdvancedCFDSolver` and `AdvancedStructuralSolver` read chamber pressure and still
+produce schematic fields, not a flow solution or a finite-element analysis. `AdvancedThermalSolver`
+does not read its input. Several generative and orchestration methods return constants after
+`Task.Delay`. None of it is verified engineering, and no result it produces should be cited as an
+analysis of a physical system. Each case is named in
 [VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md).
 
 ---

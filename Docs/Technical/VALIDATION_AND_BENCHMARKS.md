@@ -80,11 +80,13 @@ by testing stubs would be misleading rather than useful.
 
 Listed explicitly, because their absence is easy to mistake for an oversight.
 
-- **The legacy CFD, thermal, and structural solvers do not consume their inputs.** `AdvancedCFDSolver`
-  and `AdvancedStructuralSolver` accept a `model` parameter and ignore it, so their outputs are fixed
-  constants rather than analyses of the system passed in. No comparison against wind tunnel data,
-  engine test data, or analytical solutions has been performed for them. `NozzleFlowSolver` is the
-  only solver that computes from its inputs.
+- **The legacy CFD, thermal, and structural solvers are not validated analyses.** `AdvancedCFDSolver`
+  and `AdvancedStructuralSolver` read chamber pressure and refuse a model that does not carry one.
+  Their fields, including structural displacement, fatigue life, and buckling margin, are closed-form
+  estimates rather than a Navier-Stokes solution or a finite-element analysis. No comparison against
+  wind tunnel data, engine test data, or a reference solver has been performed for them.
+  `AdvancedThermalSolver` still does not read its input. `NozzleFlowSolver` is the only solver
+  validated against published engine data.
 - **No material property model exists.** Material temperature and strength figures in the engine
   definitions are declared constants, not predictions, and nothing validates them against literature
   databases.
