@@ -383,6 +383,19 @@ namespace HB_NLP_Research_Lab.Aerospace
                     CertifyingAuthority = evidence.Recorded("Environmental.CertifyingAuthority")
                 });
             }
+            else
+            {
+                // Quality and security evidence can now pass. OverallCompliance, and the NASA
+                // and SpaceX readiness predicates that require it, count violations only.
+                // A failed environmental check that recorded nothing left those claims true.
+                report.Violations.Add(new ComplianceViolation
+                {
+                    Standard = "Environmental",
+                    Severity = ViolationSeverity.Critical,
+                    Description = "Environmental compliance requirements not met",
+                    RemediationRequired = true
+                });
+            }
         }
 
         private async Task CheckExportControlComplianceAsync(ComplianceReport report, AuditEvidence evidence)
