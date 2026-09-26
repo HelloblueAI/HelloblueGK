@@ -17,7 +17,8 @@ public class AdvancedMultiPhysicsCouplerTests
             Parameters = new Dictionary<string, object>
             {
                 ["Thrust"] = 1_000_000d,
-                ["ChamberPressure"] = 28_000_000d
+                ["ChamberPressure"] = 28_000_000d,
+                ["ChamberTemperature"] = 3500d
             }
         };
         var engineB = new EngineModel
@@ -26,7 +27,8 @@ public class AdvancedMultiPhysicsCouplerTests
             Parameters = new Dictionary<string, object>
             {
                 ["Thrust"] = 1_200_000d,
-                ["ChamberPressure"] = 30_000_000d
+                ["ChamberPressure"] = 30_000_000d,
+                ["ChamberTemperature"] = 3600d
             }
         };
 

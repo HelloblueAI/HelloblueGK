@@ -105,10 +105,12 @@ public class PhysicsSolverContractTests
             .Should().Throw<ArgumentException>();
     }
 
-    private static EngineOperatingPoint OperatingPoint(double chamberPressurePascals) => new()
+    private static EngineOperatingPoint OperatingPoint(
+        double chamberPressurePascals,
+        double chamberTemperatureKelvin = 3600) => new()
     {
         ChamberPressure = chamberPressurePascals,
-        ChamberTemperature = 3600,
+        ChamberTemperature = chamberTemperatureKelvin,
         SpecificHeatRatio = 1.2,
         MolarMass = 0.0206,
         ThroatArea = 0.01,
@@ -123,6 +125,102 @@ public class PhysicsSolverContractTests
 
         solver.Should().BeAssignableTo<IPhysicsSolver>();
         solver.Name.Should().Contain("Thermal");
+    }
+
+    [Fact]
+    public void AdvancedThermalSolver_RunSimulationSelfInitializesWhenInitializeWasSkipped()
+    {
+        var solver = new AdvancedThermalSolver();
+        var point = OperatingPoint(20e6, 2500);
+
+        var result = (AdvancedThermalResult)solver.RunSimulation(point);
+
+        result.Status.Should().Be("Success");
+        result.Data[0].Should().Be(2500);
+        result.TemperatureDistribution.GetLength(0).Should().Be(1000);
+        result.TemperatureDistribution[0, 0].Should().Be(2500);
+        result.HeatFluxField[0, 0].Should().BeGreaterThan(0);
+        result.HeatTransferCoefficients.Should().ContainKey("Convection");
+        result.ConvergenceHistory.Should().NotBeEmpty();
+
+        var second = (AdvancedThermalResult)solver.RunSimulation(point);
+        second.Data[0].Should().Be(result.Data[0]);
+        second.HeatFluxField[0, 0].Should().Be(result.HeatFluxField[0, 0]);
+    }
+
+    [Fact]
+    public void AdvancedThermalSolver_TemperatureFieldTracksTheSuppliedChamberTemperature()
+    {
+        var solver = new AdvancedThermalSolver();
+
+        var low = (AdvancedThermalResult)solver.RunSimulation(OperatingPoint(10e6, 1800));
+        var high = (AdvancedThermalResult)solver.RunSimulation(OperatingPoint(10e6, 3600));
+
+        low.TemperatureDistribution[0, 0].Should().Be(1800);
+        high.TemperatureDistribution[0, 0].Should().Be(3600);
+        high.Data[0].Should().BeGreaterThan(low.Data[0]);
+        (high.HeatFluxField[0, 0] / low.HeatFluxField[0, 0])
+            .Should().BeApproximately((3600 - 300.0) / (1800 - 300.0), 1e-9);
+        high.HeatTransferCoefficients["Radiation"]
+            .Should().BeGreaterThan(low.HeatTransferCoefficients["Radiation"]);
+        high.HeatTransferCoefficients["Convection"]
+            .Should().Be(low.HeatTransferCoefficients["Convection"]);
+        high.HeatTransferEfficiency.Should().BeGreaterThan(low.HeatTransferEfficiency);
+        high.CoolingSystemPerformance["TemperatureDrop"].Should().Be(3300);
+    }
+
+    [Fact]
+    public void AdvancedThermalSolver_ReadsChamberTemperatureFromAnEngineModel()
+    {
+        var solver = new AdvancedThermalSolver();
+        var model = new EngineModel
+        {
+            Name = "HotWall",
+            Parameters = new Dictionary<string, object> { ["ChamberTemperature"] = 2800d }
+        };
+
+        var result = (AdvancedThermalResult)solver.RunSimulation(model);
+
+        result.TemperatureDistribution[0, 0].Should().Be(2800);
+    }
+
+    [Fact]
+    public void AdvancedThermalSolver_ColdChamberReportsNoThermalEfficiency()
+    {
+        var solver = new AdvancedThermalSolver();
+
+        var result = (AdvancedThermalResult)solver.RunSimulation(OperatingPoint(10e6, 200));
+
+        result.TemperatureDistribution[0, 0].Should().Be(200);
+        result.HeatTransferEfficiency.Should().Be(0);
+        result.HeatFluxField[0, 0].Should().BeLessThan(0);
+    }
+
+    [Fact]
+    public void AdvancedThermalSolver_RejectsAModelWithNoChamberTemperature()
+    {
+        var solver = new AdvancedThermalSolver();
+
+        solver.Invoking(s => s.RunSimulation(new object()))
+            .Should().Throw<ArgumentException>();
+        solver.Invoking(s => s.RunSimulation(null!))
+            .Should().Throw<ArgumentNullException>();
+        solver.Invoking(s => s.RunSimulation(new EngineModel()))
+            .Should().Throw<ArgumentException>();
+        solver.Invoking(s => s.RunSimulation(OperatingPoint(10e6, 0)))
+            .Should().Throw<ArgumentOutOfRangeException>();
+        solver.Invoking(s => s.RunSimulation(OperatingPoint(10e6, double.NaN)))
+            .Should().Throw<ArgumentOutOfRangeException>();
+        solver.Invoking(s => s.RunSimulation(new EngineModel
+        {
+            Name = "NotANumber",
+            Parameters = new Dictionary<string, object> { ["ChamberTemperature"] = double.NaN }
+        })).Should().Throw<ArgumentException>();
+        solver.Invoking(s => s.RunSimulation(new EngineModel
+        {
+            Name = "WrongType",
+            Parameters = new Dictionary<string, object> { ["ChamberTemperature"] = "hot" }
+        })).Should().Throw<ArgumentException>();
     }
 
     [Fact]

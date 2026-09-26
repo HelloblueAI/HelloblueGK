@@ -518,14 +518,22 @@ namespace HB_NLP_Research_Lab.Core
             ThrowIfDisposed();
             Console.WriteLine($"[Digital Twin] 🌊🔥🏗️⚡ Running Predictive Multi-Physics Analysis for {engineId}...");
             
-            // The schematic solvers scale by chamber pressure and have no default. Copy the
-            // caller's value through; if it is absent they throw rather than invent one.
+            // The schematic solvers scale by chamber pressure, and the thermal solver scales by
+            // chamber temperature. Neither has a default. Copy the caller's values through; if
+            // one is absent the solver that needs it throws rather than inventing one.
             var physicsEngineModel = new HB_NLP_Research_Lab.Physics.EngineModel { Name = engineModel.Name };
             if (TryReadEngineParameter(engineModel, "ChamberPressure", out var chamberPressure)
                 && double.IsFinite(chamberPressure)
                 && chamberPressure > 0)
             {
                 physicsEngineModel.Parameters["ChamberPressure"] = chamberPressure;
+            }
+
+            if (TryReadEngineParameter(engineModel, "ChamberTemperature", out var chamberTemperature)
+                && double.IsFinite(chamberTemperature)
+                && chamberTemperature > 0)
+            {
+                physicsEngineModel.Parameters["ChamberTemperature"] = chamberTemperature;
             }
 
             var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(physicsEngineModel);

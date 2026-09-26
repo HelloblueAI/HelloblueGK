@@ -13,9 +13,11 @@ accreditation, or qualification has been obtained. See
 ### The schematic solvers are not flow or structural analysis
 
 `AdvancedCFDSolver` and `AdvancedStructuralSolver` now refuse a model that does not carry a
-chamber pressure, and they scale their fields by the value they are given. The fields are still a
-closed-form estimate on a fixed grid and a thin-wall stress estimate, not a Navier-Stokes solution
-and not a finite-element analysis. `AdvancedThermalSolver` still does not read its input. Several
+chamber pressure, and they scale their fields by the value they are given. `AdvancedThermalSolver`
+refuses a model that does not carry a chamber temperature, and its schematic field scales with
+that temperature. The fields are still a closed-form estimate on a fixed grid, a thin-wall stress
+estimate, and a linear conduction estimate, not a Navier-Stokes solution, a finite-element
+analysis, or a heat-transfer solution. Several
 generative and orchestration methods likewise return constants after an artificial delay. Each
 instance is named in `VERIFICATION_SCOPE.md`.
 
@@ -67,8 +69,9 @@ Ordered by priority rather than by date, because dates for unfunded work are gue
 
 **Input-dependence.** Replace the schematic CFD, structural, and thermal fields with solvers
 that consume a real operating point, or retire them in favour of interfaces to established external
-solvers. The CFD and structural solvers already refuse a model with no chamber pressure; they are
-still not flow or structural analysis, and the thermal solver still ignores its input.
+solvers. The CFD and structural solvers already refuse a model with no chamber pressure, and the
+thermal solver refuses a model with no chamber temperature. They are still not flow, structural,
+or heat-transfer analysis.
 
 **Then coverage and scope.** Continue raising the per-directory floors, concentrating on the
 directories currently lowest. Extend the certification boundary only as fast as real traceability
