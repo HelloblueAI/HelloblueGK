@@ -738,12 +738,31 @@ public class DigitalTwinEngineTests : IDisposable
                 Parameters = new Dictionary<string, double>
                 {
                     ["ChamberPressure"] = 28_000_000d,
+                    ["ChamberTemperature"] = 3600d,
                     ["Thrust"] = 3_500_000d
                 }
             });
 
         prediction.MultiPhysicsResult.Should().NotBeNull();
         prediction.PredictedPerformance.Thrust.Should().Be(3_500_000d);
+        prediction.MultiPhysicsResult.ThermalFluidCoupling.TemperatureDistribution[0, 0].Should().Be(3600d);
+    }
+
+    [Fact]
+    public async Task RunPredictiveMultiPhysicsAsync_RejectsAModelWithNoChamberTemperature()
+    {
+        var act = () => _digitalTwinEngine.RunPredictiveMultiPhysicsAsync(
+            "UnheatedTwin",
+            new EngineModel
+            {
+                Name = "Unheated",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["ChamberPressure"] = 28_000_000d
+                }
+            });
+
+        await act.Should().ThrowAsync<ArgumentException>();
     }
 
     [Fact]

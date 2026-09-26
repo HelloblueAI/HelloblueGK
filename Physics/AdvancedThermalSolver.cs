@@ -6,11 +6,15 @@ namespace HB_NLP_Research_Lab.Physics
 {
     public class AdvancedThermalSolver : IPhysicsSolver
     {
-        private const int ELEMENTS = 1000000; // 1M elements for high-fidelity
         private const double STEFAN_BOLTZMANN = 5.670374419e-8; // W/m²K⁴
         private const double THERMAL_CONDUCTIVITY_STEEL = 50.0; // W/m·K
         private const double THERMAL_CONDUCTIVITY_COPPER = 401.0; // W/m·K
-        
+        private const double AMBIENT_TEMPERATURE_KELVIN = 300.0;
+        private const double WALL_THICKNESS_METERS = 0.01;
+        private const double REFERENCE_WALL_AREA_SQUARE_METERS = 0.1;
+        private const double FILM_COOLING_EFFECTIVENESS = 0.7;
+        private const int GRID = 1000;
+
         private double[,] temperatureField;
         private double[,] heatFluxField;
         private double[,] thermalStressField;
@@ -18,232 +22,225 @@ namespace HB_NLP_Research_Lab.Physics
 
         public AdvancedThermalSolver()
         {
-            temperatureField = new double[1000, 1000];
-            heatFluxField = new double[1000, 1000];
-            thermalStressField = new double[1000, 1000];
+            temperatureField = new double[GRID, GRID];
+            heatFluxField = new double[GRID, GRID];
+            thermalStressField = new double[GRID, GRID];
             isInitialized = false;
         }
 
-        public string Name => "Advanced Thermal Solver - Finite Element Heat Transfer Analysis";
+        public string Name => "Advanced Thermal Solver - Schematic Conduction Estimate";
 
         public void Initialize()
         {
-            Console.WriteLine("[Advanced Thermal] Initializing finite element thermal solver...");
-            Console.WriteLine("[Advanced Thermal] Mesh elements: 1,000,000");
-            Console.WriteLine("[Advanced Thermal] Heat transfer modes: Conduction, Convection, Radiation");
-            Console.WriteLine("[Advanced Thermal] Material database: 1000+ aerospace materials");
-            
-            temperatureField = new double[1000, 1000];
-            heatFluxField = new double[1000, 1000];
-            thermalStressField = new double[1000, 1000];
-            
+            Console.WriteLine("[Advanced Thermal] Initializing schematic conduction estimate...");
+            Console.WriteLine("[Advanced Thermal] Grid: 1000 x 1000 samples, not a solved mesh");
+            Console.WriteLine("[Advanced Thermal] Temperature scales with the supplied chamber temperature");
+            Console.WriteLine("[Advanced Thermal] This is not a finite-element heat-transfer solution");
+
+            temperatureField = new double[GRID, GRID];
+            heatFluxField = new double[GRID, GRID];
+            thermalStressField = new double[GRID, GRID];
+
             isInitialized = true;
         }
 
         public PhysicsResult RunSimulation(object model)
         {
+            var chamberTemperature = SolverOperatingPoint.RequireChamberTemperature(model);
+
             if (!isInitialized)
                 Initialize();
 
-            Console.WriteLine("[Advanced Thermal Solver] Running high-fidelity thermal analysis...");
-            
-            // Simulate thermal analysis
+            Console.WriteLine("[Advanced Thermal] Evaluating a schematic temperature field...");
+
+            // Linear drop from the caller's chamber temperature to ambient across the unit grid.
+            // Wall heat flux is Fourier's law through a steel wall. Not a finite-element result.
+            temperatureField = CalculateTemperatureDistribution(chamberTemperature);
+            heatFluxField = CalculateHeatFluxField(chamberTemperature);
+            thermalStressField = CalculateThermalStress(chamberTemperature);
+            var summary = Summarize(temperatureField);
+
             var thermalResult = new AdvancedThermalResult
             {
                 Status = "Success",
-                Data = new double[] { 2200.0, 1800.0, 1600.0 }, // Max, Avg, Min temperatures
+                Data = new double[] { summary.Max, summary.Average, summary.Min },
                 TemperatureDistribution = temperatureField,
                 HeatFluxField = heatFluxField,
                 ThermalStressField = thermalStressField,
-                HeatTransferCoefficients = new Dictionary<string, double>
-                {
-                    ["Convection"] = 150.0, // W/m²K
-                    ["Radiation"] = 50.0,   // W/m²K
-                    ["Conduction"] = 200.0  // W/m²K
-                },
-                HeatTransferEfficiency = 0.92,
-                CoolingSystemPerformance = new Dictionary<string, double>
-                {
-                    ["CoolingCapacity"] = 5000.0, // kW
-                    ["Efficiency"] = 0.85,
-                    ["TemperatureDrop"] = 300.0 // K
-                },
-                MaterialProperties = new Dictionary<string, object>
-                {
-                    ["ThermalConductivity"] = 45.0, // W/mK
-                    ["SpecificHeat"] = 460.0,       // J/kgK
-                    ["Density"] = 7850.0            // kg/m³
-                },
-                ConvergenceHistory = new List<double> { 1e-3, 5e-4, 2e-4, 1e-4 }
+                HeatTransferCoefficients = CalculateHeatTransferCoefficients(chamberTemperature),
+                HeatTransferEfficiency = CalculateThermalEfficiency(chamberTemperature),
+                CoolingSystemPerformance = AnalyzeCoolingSystem(chamberTemperature),
+                MaterialProperties = GetMaterialProperties(),
+                ConvergenceHistory = RunThermalConvergence()
             };
-            
+
             return thermalResult;
         }
 
-        private double[,] CalculateTemperatureDistribution()
+        private static (double Max, double Average, double Min) Summarize(double[,] field)
         {
-            // Real temperature calculation using finite element method
-            var temperature = new double[1000, 1000];
-            
-            Parallel.For(0, 1000, i =>
+            double max = double.NegativeInfinity;
+            double min = double.PositiveInfinity;
+            double sum = 0;
+            int rows = field.GetLength(0);
+            int columns = field.GetLength(1);
+
+            for (int i = 0; i < rows; i++)
             {
-                for (int j = 0; j < 1000; j++)
+                for (int j = 0; j < columns; j++)
                 {
-                    // Heat conduction with boundary conditions
-                    double x = i / 1000.0;
-                    double y = j / 1000.0;
-                    
-                    // Engine chamber temperature profile
-                    double chamberTemp = 2500.0; // K
-                    double ambientTemp = 300.0;  // K
-                    double distance = Math.Sqrt(x * x + y * y);
-                    
-                    temperature[i, j] = chamberTemp - (chamberTemp - ambientTemp) * distance;
+                    double value = field[i, j];
+                    sum += value;
+                    if (value > max)
+                        max = value;
+                    if (value < min)
+                        min = value;
+                }
+            }
+
+            return (max, sum / (rows * columns), min);
+        }
+
+        private double[,] CalculateTemperatureDistribution(double chamberTemperature)
+        {
+            var temperature = new double[GRID, GRID];
+
+            Parallel.For(0, GRID, i =>
+            {
+                for (int j = 0; j < GRID; j++)
+                {
+                    double x = i / (double)GRID;
+                    double y = j / (double)GRID;
+                    double distance = Math.Min(1.0, Math.Sqrt(x * x + y * y));
+
+                    temperature[i, j] = chamberTemperature
+                        - (chamberTemperature - AMBIENT_TEMPERATURE_KELVIN) * distance;
                 }
             });
 
             return temperature;
         }
 
-        private double[,] CalculateHeatFluxField()
+        private double[,] CalculateHeatFluxField(double chamberTemperature)
         {
-            // Real heat flux calculation
-            var heatFlux = new double[1000, 1000];
-            
-            Parallel.For(0, 1000, i =>
+            var heatFlux = new double[GRID, GRID];
+            double wallGradient = (chamberTemperature - AMBIENT_TEMPERATURE_KELVIN) / WALL_THICKNESS_METERS;
+
+            Parallel.For(0, GRID, i =>
             {
-                for (int j = 0; j < 1000; j++)
+                for (int j = 0; j < GRID; j++)
                 {
-                    double x = i / 1000.0;
-                    double y = j / 1000.0;
-                    // Note: Distance calculation removed as it was not used in heat flux computation
-                    // Heat flux calculation uses Fourier's law directly
-                    
-                    // Fourier's law of heat conduction
-                    double thermalGradient = 500.0; // K/m
-                    heatFlux[i, j] = THERMAL_CONDUCTIVITY_STEEL * thermalGradient; // W/m²
+                    double x = i / (double)GRID;
+                    double y = j / (double)GRID;
+                    double distance = Math.Min(1.0, Math.Sqrt(x * x + y * y));
+                    double localGradient = wallGradient * (1.0 - 0.5 * distance);
+
+                    heatFlux[i, j] = THERMAL_CONDUCTIVITY_STEEL * localGradient;
                 }
             });
 
             return heatFlux;
         }
 
-        private double[,] CalculateThermalStress()
+        private double[,] CalculateThermalStress(double chamberTemperature)
         {
-            // Real thermal stress calculation
-            var thermalStress = new double[1000, 1000];
+            var thermalStress = new double[GRID, GRID];
             double thermalExpansionCoeff = 12e-6; // 1/K for steel
             double youngsModulus = 200e9; // Pa
-            
-            Parallel.For(0, 1000, i =>
+
+            Parallel.For(0, GRID, i =>
             {
-                for (int j = 0; j < 1000; j++)
+                for (int j = 0; j < GRID; j++)
                 {
-                    double x = i / 1000.0;
-                    double y = j / 1000.0;
-                    double temperature = 2500.0 - 2200.0 * Math.Sqrt(x * x + y * y);
-                    double deltaT = temperature - 300.0; // Temperature difference
-                    
-                    // Thermal stress = α * E * ΔT
-                    thermalStress[i, j] = thermalExpansionCoeff * youngsModulus * deltaT; // Pa
+                    double x = i / (double)GRID;
+                    double y = j / (double)GRID;
+                    double distance = Math.Min(1.0, Math.Sqrt(x * x + y * y));
+                    double temperature = chamberTemperature
+                        - (chamberTemperature - AMBIENT_TEMPERATURE_KELVIN) * distance;
+                    double deltaT = temperature - AMBIENT_TEMPERATURE_KELVIN;
+
+                    thermalStress[i, j] = thermalExpansionCoeff * youngsModulus * deltaT;
                 }
             });
 
             return thermalStress;
         }
 
-        private Dictionary<string, double> CalculateHeatTransferCoefficients()
+        private Dictionary<string, double> CalculateHeatTransferCoefficients(double chamberTemperature)
         {
-            // Real heat transfer coefficients for different modes
             var coefficients = new Dictionary<string, double>();
-            
-            // Convection coefficient (forced convection in rocket engine)
+
+            // Dittus-Boelter at a fixed Reynolds number. It does not use chamber temperature.
             double reynoldsNumber = 1e6;
             double prandtlNumber = 0.71;
             double nusseltNumber = 0.023 * Math.Pow(reynoldsNumber, 0.8) * Math.Pow(prandtlNumber, 0.4);
-            double convectionCoeff = nusseltNumber * 0.025 / 0.01; // W/m²K
-            
-            // Radiation coefficient (Stefan-Boltzmann)
+            double convectionCoeff = nusseltNumber * 0.025 / WALL_THICKNESS_METERS;
+
             double emissivity = 0.8;
-            double avgTemperature = 1400.0; // K
-            double radiationCoeff = emissivity * STEFAN_BOLTZMANN * Math.Pow(avgTemperature, 3);
-            
+            double radiationCoeff = emissivity * STEFAN_BOLTZMANN * Math.Pow(chamberTemperature, 3);
+
             coefficients["Convection"] = convectionCoeff;
             coefficients["Radiation"] = radiationCoeff;
-            coefficients["Conduction"] = THERMAL_CONDUCTIVITY_STEEL / 0.01; // W/m²K
-            
+            coefficients["Conduction"] = THERMAL_CONDUCTIVITY_STEEL / WALL_THICKNESS_METERS;
+
             return coefficients;
         }
 
-        private double CalculateThermalEfficiency()
+        private double CalculateThermalEfficiency(double chamberTemperature)
         {
-            // Real thermal efficiency calculation
-            double chamberTemperature = 2500.0; // K
-            double ambientTemperature = 300.0;  // K
-            double gamma = 1.4; // Specific heat ratio
-            
-            // Carnot efficiency for rocket engine
-            double carnotEfficiency = 1.0 - (ambientTemperature / chamberTemperature);
-            
-            // Real engine efficiency with gamma correction (lower than Carnot due to losses)
-            return carnotEfficiency * 0.85 * (gamma - 1) / gamma; // 85% of Carnot efficiency with gamma effect
+            if (chamberTemperature <= AMBIENT_TEMPERATURE_KELVIN)
+                return 0;
+
+            double gamma = 1.4;
+            double carnotEfficiency = 1.0 - (AMBIENT_TEMPERATURE_KELVIN / chamberTemperature);
+
+            return carnotEfficiency * 0.85 * (gamma - 1) / gamma;
         }
 
-        private Dictionary<string, object> AnalyzeCoolingSystem()
+        private Dictionary<string, double> AnalyzeCoolingSystem(double chamberTemperature)
         {
-            // Real cooling system analysis
-            var coolingAnalysis = new Dictionary<string, object>();
-            
-            // Regenerative cooling performance
-            double coolantFlowRate = 100.0; // kg/s
-            double coolantHeatCapacity = 4200.0; // J/kg·K
-            double temperatureRise = 200.0; // K
-            double coolingPower = coolantFlowRate * coolantHeatCapacity * temperatureRise; // W
-            
-            // Film cooling effectiveness
-            double filmCoolingEffectiveness = 0.7; // 70% effectiveness
-            
-            coolingAnalysis["CoolingPower"] = coolingPower;
-            coolingAnalysis["FilmCoolingEffectiveness"] = filmCoolingEffectiveness;
-            coolingAnalysis["CoolantFlowRate"] = coolantFlowRate;
-            coolingAnalysis["TemperatureRise"] = temperatureRise;
-            
-            return coolingAnalysis;
+            double wallGradient = (chamberTemperature - AMBIENT_TEMPERATURE_KELVIN) / WALL_THICKNESS_METERS;
+            double heatLoadWatts = THERMAL_CONDUCTIVITY_STEEL * wallGradient * REFERENCE_WALL_AREA_SQUARE_METERS;
+
+            return new Dictionary<string, double>
+            {
+                ["CoolingCapacity"] = heatLoadWatts / 1000.0,
+                ["Efficiency"] = FILM_COOLING_EFFECTIVENESS,
+                ["TemperatureDrop"] = chamberTemperature - AMBIENT_TEMPERATURE_KELVIN
+            };
         }
 
-        private Dictionary<string, double> GetMaterialProperties()
+        private Dictionary<string, object> GetMaterialProperties()
         {
-            // Real aerospace material properties database
-            var materials = new Dictionary<string, double>();
-            
-            materials["Inconel_718_ThermalConductivity"] = 11.4; // W/m·K
-            materials["Titanium_ThermalConductivity"] = 21.9; // W/m·K
-            materials["Copper_ThermalConductivity"] = 401.0; // W/m·K
-            materials["Steel_ThermalConductivity"] = 50.0; // W/m·K
-            
-            materials["Inconel_718_MaxTemp"] = 1200.0; // K
-            materials["Titanium_MaxTemp"] = 1100.0; // K
-            materials["Copper_MaxTemp"] = 1356.0; // K
-            materials["Steel_MaxTemp"] = 1800.0; // K
-            
+            var materials = new Dictionary<string, object>
+            {
+                ["Inconel_718_ThermalConductivity"] = 11.4,
+                ["Titanium_ThermalConductivity"] = 21.9,
+                ["Copper_ThermalConductivity"] = THERMAL_CONDUCTIVITY_COPPER,
+                ["Steel_ThermalConductivity"] = THERMAL_CONDUCTIVITY_STEEL,
+                ["Inconel_718_MaxTemp"] = 1200.0,
+                ["Titanium_MaxTemp"] = 1100.0,
+                ["Copper_MaxTemp"] = 1356.0,
+                ["Steel_MaxTemp"] = 1800.0
+            };
+
             return materials;
         }
 
         private List<double> RunThermalConvergence()
         {
-            // Real thermal convergence analysis
             var residuals = new List<double>();
             double initialResidual = 1.0;
-            
+
             for (int iteration = 0; iteration < 500; iteration++)
             {
                 double residual = initialResidual * Math.Exp(-0.15 * iteration);
                 residuals.Add(residual);
-                
+
                 if (residual < 1e-6)
                     break;
             }
-            
+
             return residuals;
         }
     }
@@ -270,4 +267,4 @@ namespace HB_NLP_Research_Lab.Physics
         public Dictionary<string, object> MaterialProperties { get; set; }
         public List<double> ConvergenceHistory { get; set; }
     }
-} 
+}
