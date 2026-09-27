@@ -46,7 +46,9 @@ public class PhysicsSolverContractTests
         cfd.PressureDistribution.GetLength(0).Should().Be(1000);
         cfd.PressureDistribution[0, 0].Should().Be(20e6);
         cfd.VelocityField.GetLength(0).Should().Be(1000);
-        cfd.TurbulenceIntensity.Should().BeGreaterThan(0);
+        // Mean kinetic energy over the grid, not the running sum. The sum is larger by
+        // the sample count and used to report an intensity of about 471.
+        cfd.TurbulenceIntensity.Should().BeApproximately(0.47105095265799735, 1e-12);
         cfd.ConvergenceHistory.Should().NotBeEmpty();
 
         // A second run must not re-initialize or change the outcome.
@@ -66,6 +68,7 @@ public class PhysicsSolverContractTests
         high.PressureDistribution[0, 0].Should().BeGreaterThan(low.PressureDistribution[0, 0]);
         (high.PressureDistribution[500, 500] / low.PressureDistribution[500, 500])
             .Should().BeApproximately(3.0, 1e-9);
+        high.TurbulenceIntensity.Should().Be(low.TurbulenceIntensity);
     }
 
     [Fact]
