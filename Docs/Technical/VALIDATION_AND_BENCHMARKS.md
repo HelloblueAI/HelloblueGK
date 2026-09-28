@@ -85,15 +85,16 @@ Listed explicitly, because their absence is easy to mistake for an oversight.
   Their fields, including structural displacement, fatigue life, and buckling margin, are closed-form
   estimates rather than a Navier-Stokes solution or a finite-element analysis. No comparison against
   wind tunnel data, engine test data, or a reference solver has been performed for them.
-  `AdvancedThermalSolver` still does not read its input. `NozzleFlowSolver` is the only solver
-  validated against published engine data.
+  `AdvancedThermalSolver` reads chamber temperature and refuses a model that does not carry one.
+  Its field is a linear conduction estimate, not a heat-transfer solution. `NozzleFlowSolver` is
+  the only solver validated against published engine data.
 - **No material property model exists.** Material temperature and strength figures in the engine
   definitions are declared constants, not predictions, and nothing validates them against literature
   databases.
-- **The concept engine's declared parameters are internally inconsistent.** Its expansion ratio,
-  thrust, and specific impulse disagree with each other and with first-principles theory; see
-  `Docs/VERIFICATION_SCOPE.md` and `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`. These figures
-  should not be cited as the specification of anything.
+- **The concept engine's declared parameters agree with ideal-rocket theory.** Thrust, throat, exit,
+  and specific impulse are that ceiling at the declared chamber pressure and area ratio. They are
+  not a measurement, and they should not be cited as the tested performance of a built engine. See
+  `Docs/VERIFICATION_SCOPE.md` and `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`.
 - **No performance or throughput benchmarking has been conducted.** There are no measured figures for
   mesh sizes, calculations per second, memory footprint, or parallel scaling.
 

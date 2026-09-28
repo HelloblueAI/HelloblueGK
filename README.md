@@ -120,7 +120,8 @@ branch** overall across 23,420 lines, with **1,214 tests** passing and zero buil
 
 The legacy `AdvancedCFDSolver` and `AdvancedStructuralSolver` read chamber pressure and still
 produce schematic fields, not a flow solution or a finite-element analysis. `AdvancedThermalSolver`
-does not read its input. Several generative and orchestration methods return constants after
+reads chamber temperature and still produces a schematic conduction estimate, not a heat-transfer
+solution. Several generative and orchestration methods return constants after
 `Task.Delay`. None of it is verified engineering, and no result it produces should be cited as an
 analysis of a physical system. Each case is named in
 [VERIFICATION_SCOPE.md](Docs/VERIFICATION_SCOPE.md).
