@@ -13,11 +13,13 @@ accreditation, or qualification has been obtained. See
 ### The schematic solvers are not flow or structural analysis
 
 `AdvancedCFDSolver` and `AdvancedStructuralSolver` now refuse a model that does not carry a
-chamber pressure, and they scale their fields by the value they are given. `AdvancedThermalSolver`
-refuses a model that does not carry a chamber temperature, and its schematic field scales with
-that temperature. The fields are still a closed-form estimate on a fixed grid, a thin-wall stress
-estimate, and a linear conduction estimate, not a Navier-Stokes solution, a finite-element
-analysis, or a heat-transfer solution. Several
+chamber pressure, and they scale their fields by the value they are given. Structural displacement,
+fatigue life, and buckling margin follow that pressure, and the safety-factor map reports the
+computed margins. `AdvancedThermalSolver` refuses a model that does not carry a chamber
+temperature, and its schematic field scales with that temperature. The fields are still a
+closed-form estimate on a fixed grid, a thin-wall stress estimate, and a linear conduction
+estimate, not a Navier-Stokes solution, a finite-element analysis, or a heat-transfer solution.
+Several
 generative and orchestration methods likewise return constants after an artificial delay. Each
 instance is named in `VERIFICATION_SCOPE.md`.
 
