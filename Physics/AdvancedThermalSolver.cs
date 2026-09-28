@@ -98,7 +98,7 @@ namespace HB_NLP_Research_Lab.Physics
                 }
             }
 
-            return (max, sum / (rows * columns), min);
+            return (max, sum / ((double)rows * columns), min);
         }
 
         private double[,] CalculateTemperatureDistribution(double chamberTemperature)
