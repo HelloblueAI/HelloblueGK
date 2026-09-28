@@ -135,7 +135,9 @@ engine produced the same fields. They now require a positive chamber pressure â€
 The CFD field is still a closed-form isentropic expression on a fixed 1000Ã—1000 grid, using the
 specific-heat ratio of air, not a Navier-Stokes solution. The structural field is a thin-wall
 estimate whose reported stress is half the supplied pressure, compared with the yield strength of
-steel, not a finite-element analysis. The CFD solver remains inside the certification boundary
+steel, not a finite-element analysis. Displacement, fatigue life, and the buckling margin use that
+same pressure (fatigue uses the reported stress), and the safety-factor map reports those computed
+margins. The CFD solver remains inside the certification boundary
 because its control flow is fully verified; that is not a claim of physical correctness.
 `AdvancedThermalSolver` still does not read its input.
 
