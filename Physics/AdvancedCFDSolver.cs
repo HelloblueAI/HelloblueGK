@@ -112,7 +112,9 @@ namespace HB_NLP_Research_Lab.Physics
 
         private double CalculateTurbulenceIntensity()
         {
-            // Real turbulence intensity calculation using k-ε model
+            // Kinetic energy of the fixed velocity field. The reported intensity uses the
+            // mean over the grid: the running sum is larger by the sample count, and
+            // treating that sum as k multiplies the intensity by sqrt(N).
             double turbulentKineticEnergy = 0.0;
             double dissipationRate = 0.0;
             
@@ -126,8 +128,12 @@ namespace HB_NLP_Research_Lab.Physics
                     dissipationRate += velocity * velocity * velocity / 1000.0;
                 }
             }
-            
-            return Math.Sqrt(2.0 * turbulentKineticEnergy / 3.0) / 340.0; // Normalized
+
+            // Dissipation is accumulated for the same field and does not enter the intensity.
+            _ = dissipationRate;
+            const double samples = 1000.0 * 1000.0;
+            var meanKineticEnergy = turbulentKineticEnergy / samples;
+            return Math.Sqrt(2.0 * meanKineticEnergy / 3.0) / 340.0;
         }
 
         private double CalculateHeatTransfer()

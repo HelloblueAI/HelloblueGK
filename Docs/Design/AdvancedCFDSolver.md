@@ -9,19 +9,25 @@ Scope is limited to `Physics/AdvancedCFDSolver.cs`. It describes what the code d
 today, not what it might do later — a design document that outruns the implementation
 cannot serve as trace evidence.
 
-## Known limitation — the model parameter is ignored
+## Known limitation — only chamber pressure is read
 
-`RunSimulation(object model)` never reads `model`. The parameter is present in the
-signature and unreferenced in the body, so the solver returns identical results for
-every input: pressure and velocity are functions of grid index alone, and turbulence
-intensity and heat transfer derive from hardcoded constants.
+`RunSimulation` reads a positive chamber pressure from an `EngineOperatingPoint` or from
+an `EngineModel` parameter of that name, and refuses any other model. Static pressure on
+the fixed grid is that stagnation pressure divided by an isentropic ratio of the grid
+index, using the specific-heat ratio of air. Velocity, turbulence intensity, and heat
+transfer do not depend on the operating point. The velocity field is a potential-flow
+shape scaled by 340 m/s. Turbulence intensity is the root-mean-square of that field's
+mean kinetic energy, divided by 340 m/s. The grid sum is not used as kinetic energy:
+doing so multiplies the intensity by the square root of the sample count. Heat transfer
+is a Dittus-Boelter evaluation at a fixed Reynolds number. None of this is a
+Navier-Stokes solution or a turbulence model.
 
 This is recorded here and in the boundary artifact because it bounds what the
 certification evidence means. Coverage and traceability are complete for the code as
 written; that is a statement about the code, not about whether the solver analyses the
 engine it is handed. The requirements traced to this document are deliberately scoped to
 initialization and convergence behaviour, which the implementation genuinely exhibits,
-rather than to physical accuracy, which cannot be claimed while the input is unused.
+rather than to physical accuracy.
 
 ## DE-CFD-INIT — Initialization guard
 
@@ -38,11 +44,13 @@ reading.
 
 Four independent field computations, each over the full 1000x1000 grid:
 
-- `CalculatePressureDistribution` applies isentropic flow relations with γ = 1.4,
-  referenced to standard sea-level pressure of 101325 Pa.
+- `CalculatePressureDistribution` applies isentropic flow relations with γ = 1.4.
+  The stagnation pressure is the chamber pressure the caller supplied, not a fixed
+  sea-level pressure.
 - `CalculateVelocityField` applies potential flow scaled by the speed of sound, 340 m/s.
-- `CalculateTurbulenceIntensity` accumulates turbulent kinetic energy and dissipation
-  rate under a k-ε formulation, returning a value normalized by the speed of sound.
+- `CalculateTurbulenceIntensity` averages kinetic energy over the 1000×1000 velocity
+  samples and returns `sqrt(2/3 · k_mean) / 340`. Dissipation is accumulated for the
+  same samples and does not enter the reported intensity.
 - `CalculateHeatTransfer` evaluates the Dittus-Boelter correlation at Re = 1e6 and
   Pr = 0.71.
 

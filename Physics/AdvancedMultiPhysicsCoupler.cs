@@ -151,7 +151,10 @@ namespace HB_NLP_Research_Lab.Physics
                     couplingIteration.ConvergenceStatus = convergenceStatus;
                     couplingHistory.Add(couplingIteration);
                     
-                    if (convergenceStatus.ResidualNorm < convergenceThreshold)
+                    // The monitor reports the tolerance itself. A strict < never
+                    // accepts that residual, so the loop used to run all 50 passes
+                    // and compound every per-iteration coupling factor.
+                    if (ResidualHasConverged(convergenceStatus.ResidualNorm, convergenceThreshold))
                     {
                         Console.WriteLine($"[Multi-Physics Coupler] Convergence achieved at iteration {iteration}");
                         break;
@@ -320,7 +323,7 @@ namespace HB_NLP_Research_Lab.Physics
             
             var updatedResult = thermalResult as AdvancedThermalResult ?? new AdvancedThermalResult();
             updatedResult.TemperatureDistribution = ApplyFluidFlowToTemperature(updatedResult.TemperatureDistribution, feedbackData.FluidFlow);
-            updatedResult.HeatTransferCoefficients["Convection"] = ApplyStructuralDeformationToHeatTransfer(updatedResult.HeatTransferCoefficients["Convection"], feedbackData.StructuralDeformation);
+            ApplyConvectionCoupling(updatedResult.HeatTransferCoefficients, feedbackData.StructuralDeformation);
             
             return updatedResult;
         }
@@ -418,13 +421,69 @@ namespace HB_NLP_Research_Lab.Physics
             return temperature; // Simplified for now
         }
 
-        private double ApplyStructuralDeformationToHeatTransfer(double heatTransferCoefficient, double[,] deformation)
+        /// <summary>
+        /// A residual at the tolerance has met it. Negative and non-finite values have not:
+        /// a residual norm is not negative, and NaN must not count as converged.
+        /// </summary>
+        internal static bool ResidualHasConverged(double residualNorm, double threshold)
         {
-            // If deformation is null or empty, return the original coefficient
-            if (deformation == null || deformation.Length == 0)
+            return residualNorm >= 0 && residualNorm <= threshold;
+        }
+
+        /// <summary>
+        /// Scale wall convection by the peak absolute displacement. A zero field, including
+        /// the empty feedback grid, is no deformation. The grid's row count is not a displacement.
+        /// </summary>
+        internal static double ScaleHeatTransferByDeformation(
+            double heatTransferCoefficient,
+            double[,]? deformation)
+        {
+            if (!double.IsFinite(heatTransferCoefficient))
+            {
+                return 0;
+            }
+
+            var peak = 0.0;
+            if (deformation != null)
+            {
+                foreach (var value in deformation)
+                {
+                    if (!double.IsFinite(value))
+                    {
+                        continue;
+                    }
+
+                    var magnitude = Math.Abs(value);
+                    if (magnitude > peak)
+                    {
+                        peak = magnitude;
+                    }
+                }
+            }
+
+            if (peak <= 0)
+            {
                 return heatTransferCoefficient;
-            // Otherwise, apply the deformation effect
-            return heatTransferCoefficient * (1.0 + deformation.GetLength(0) * 0.01);
+            }
+
+            var scaled = heatTransferCoefficient * (1.0 + (peak * 0.01));
+            return double.IsFinite(scaled) ? scaled : heatTransferCoefficient;
+        }
+
+        /// <summary>
+        /// Leaves the coefficient map unchanged when convection was not reported.
+        /// Indexing a missing key used to throw and abort the coupled run.
+        /// </summary>
+        internal static void ApplyConvectionCoupling(
+            IDictionary<string, double> coefficients,
+            double[,]? deformation)
+        {
+            if (!coefficients.TryGetValue("Convection", out var convection))
+            {
+                return;
+            }
+
+            coefficients["Convection"] = ScaleHeatTransferByDeformation(convection, deformation);
         }
 
         private double[,] ApplyFluidPressureToStress(double[,] stress, double[,] fluidPressure)
