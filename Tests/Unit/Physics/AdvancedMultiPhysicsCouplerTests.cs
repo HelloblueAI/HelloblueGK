@@ -50,9 +50,12 @@ public class AdvancedMultiPhysicsCouplerTests
                 ["ChamberTemperature"] = 3500d
             }
         });
+        const double convectionTolerance = 1e-9;
         results.Should().OnlyContain(result =>
-            result.ThermalAnalysis.HeatTransferCoefficients["Convection"]
-            == baseline.HeatTransferCoefficients["Convection"]);
+            Math.Abs(
+                result.ThermalAnalysis.HeatTransferCoefficients["Convection"]
+                - baseline.HeatTransferCoefficients["Convection"])
+            <= convectionTolerance);
     }
 
     [Fact]
