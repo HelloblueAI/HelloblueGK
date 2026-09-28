@@ -94,6 +94,15 @@ public class PhysicsSolverContractTests
         high.MaxVonMisesStress.Should().Be(20e6);
         high.MaxDisplacement.Should().BeGreaterThan(low.MaxDisplacement);
 
+        // Peak displacement is the chamber-wall value of the field, in metres.
+        // stress/E (5e-5 m at 20 MPa) is the axial strain and is not that peak.
+        low.MaxDisplacement.Should().Be(low.DisplacementField[0, 0]);
+        low.MaxDisplacement.Should().BeApproximately(1.3e-4, 1e-12);
+        low.MaxDisplacement.Should().BeGreaterThan(10e6 / 200e9);
+        low.DisplacementField[999, 999].Should().BeLessThan(low.MaxDisplacement);
+        high.MaxDisplacement.Should().Be(high.DisplacementField[0, 0]);
+        (high.MaxDisplacement / low.MaxDisplacement).Should().BeApproximately(2.0, 1e-9);
+
         (high.DisplacementField[0, 0] / low.DisplacementField[0, 0]).Should().BeApproximately(2.0, 1e-9);
         ((double)high.BucklingAnalysis["AppliedPressure"]).Should().Be(40e6);
         ((double)high.FatigueAnalysis["AppliedStress"]).Should().Be(20e6);
