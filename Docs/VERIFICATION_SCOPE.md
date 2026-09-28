@@ -128,16 +128,21 @@ The following code runs, produces well-formed output, and is useful for demonstr
 exercising interfaces. It is **not** verified engineering, and no result it produces should be
 cited as an analysis of a physical system.
 
-**The legacy physics solvers are schematic, and they now read chamber pressure.**
+**The legacy physics solvers are schematic, and they now read an operating point.**
 `AdvancedCFDSolver` and `AdvancedStructuralSolver` used to ignore their model argument, so every
 engine produced the same fields. They now require a positive chamber pressure — from an
 `EngineOperatingPoint` or from an `EngineModel` parameter of that name — and refuse anything else.
 The CFD field is still a closed-form isentropic expression on a fixed 1000×1000 grid, using the
 specific-heat ratio of air, not a Navier-Stokes solution. The structural field is a thin-wall
 estimate whose reported stress is half the supplied pressure, compared with the yield strength of
-steel, not a finite-element analysis. The CFD solver remains inside the certification boundary
+steel, not a finite-element analysis. Displacement, fatigue life, and the buckling margin use that
+same pressure (fatigue uses the reported stress), and the safety-factor map reports those computed
+margins. The CFD solver remains inside the certification boundary
 because its control flow is fully verified; that is not a claim of physical correctness.
-`AdvancedThermalSolver` still does not read its input.
+`AdvancedThermalSolver` requires a positive chamber temperature the same way, and its gas
+temperature drops linearly from that value to 300 K. Wall heat flux is Fourier's law through a
+10 mm steel wall. Convection stays a fixed Dittus-Boelter estimate and does not use the
+temperature. It is not a finite-element heat-transfer solution.
 
 **Most `Create*` and `Analyze*` orchestration discards its arguments.** Across
 `RevolutionaryEngineArchitectures` and `HB_NLP_RevolutionaryEngine`, methods taking a
