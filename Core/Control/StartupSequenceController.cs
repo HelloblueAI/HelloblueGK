@@ -27,6 +27,59 @@ namespace HB_NLP_Research_Lab.Core.Control
         public StartupState CurrentState => _currentState;
         public bool IsStartupComplete => _currentState == StartupState.Running;
         public bool HasError => _currentState == StartupState.Error;
+
+        /// <summary>
+        /// Absolute ambient band. Standard sea-level pressure is 101325 Pa, so a ceiling of
+        /// 100 kPa rejected a correct ambient reading before the sequence could start.
+        /// </summary>
+        internal const double MaxAmbientPressurePascals = 105_000;
+
+        internal const double MinAmbientTemperatureKelvin = 200;
+        internal const double MaxAmbientTemperatureKelvin = 400;
+
+        /// <summary>
+        /// Combustion has to be a rise out of the ambient band. 50 kPa is below that band,
+        /// so the old check accepted a chamber that pre-start still called "not running".
+        /// </summary>
+        internal const double MinCombustionTemperatureKelvin = 1_000;
+
+        /// <summary>
+        /// Operating pressure is above combustion detection. 100 kPa absolute is still
+        /// inside the ambient band.
+        /// </summary>
+        internal const double MinOperatingPressurePascals = 150_000;
+
+        internal const double MinimumPropellantFlow = 0.01;
+
+        /// <summary>
+        /// A finite pressure inside the ambient band. NaN used to pass: every comparison
+        /// with NaN is false, so the old range check did not reject it.
+        /// </summary>
+        internal static bool IsAmbientPressure(double pressure) =>
+            double.IsFinite(pressure) && pressure >= 0 && pressure <= MaxAmbientPressurePascals;
+
+        internal static bool IsAmbientTemperature(double temperature) =>
+            double.IsFinite(temperature)
+            && temperature >= MinAmbientTemperatureKelvin
+            && temperature <= MaxAmbientTemperatureKelvin;
+
+        internal static bool IsCombustionEstablished(double pressure, double temperature) =>
+            double.IsFinite(pressure)
+            && pressure > MaxAmbientPressurePascals
+            && double.IsFinite(temperature)
+            && temperature >= MinCombustionTemperatureKelvin;
+
+        internal static bool IsOperatingPressure(double pressure) =>
+            double.IsFinite(pressure) && pressure >= MinOperatingPressurePascals;
+
+        internal static bool HasMinimumPropellantFlow(double flow) =>
+            double.IsFinite(flow) && flow >= MinimumPropellantFlow;
+
+        internal void MoveToState(StartupState state)
+        {
+            _currentState = state;
+            _stateStartTime = DateTime.UtcNow;
+        }
         
         public StartupSequenceController(
             IActuator fuelValve,
@@ -78,7 +131,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public void AbortStartup()
         {
-            if (_currentState == StartupState.Idle || _currentState == StartupState.Running)
+            // Idle has not opened a valve. Running used to take this same early return,
+            // so abort left the propellant valves at their last commanded position.
+            if (_currentState == StartupState.Idle)
                 return;
             
             Console.WriteLine("[Startup Sequence] ⛔ Aborting startup sequence");
@@ -139,15 +194,15 @@ namespace HB_NLP_Research_Lab.Core.Control
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
             var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
             
-            // Verify sensors are reading valid values
-            if (pressure < 0 || pressure > 100000) // 0 to 100 kPa (atmospheric)
+            // Verify sensors are reading valid values. Non-finite readings are not ambient.
+            if (!IsAmbientPressure(pressure))
             {
                 Console.WriteLine($"[Startup Sequence] ❌ Invalid pressure reading: {pressure}");
                 _currentState = StartupState.Error;
                 return;
             }
             
-            if (temperature < 200 || temperature > 400) // 200-400 K (reasonable ambient)
+            if (!IsAmbientTemperature(temperature))
             {
                 Console.WriteLine($"[Startup Sequence] ❌ Invalid temperature reading: {temperature}");
                 _currentState = StartupState.Error;
@@ -187,7 +242,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             // Verify fuel flow
             var fuelFlow = await _fuelFlowSensor.ReadAsync(cancellationToken);
-            if (fuelFlow < 0.01) // Minimum flow threshold
+            if (!HasMinimumPropellantFlow(fuelFlow))
             {
                 Console.WriteLine($"[Startup Sequence] ❌ Fuel flow too low: {fuelFlow}");
                 _currentState = StartupState.Error;
@@ -207,7 +262,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             // Verify oxidizer flow
             var oxidizerFlow = await _oxidizerFlowSensor.ReadAsync(cancellationToken);
-            if (oxidizerFlow < 0.01) // Minimum flow threshold
+            if (!HasMinimumPropellantFlow(oxidizerFlow))
             {
                 Console.WriteLine($"[Startup Sequence] ❌ Oxidizer flow too low: {oxidizerFlow}");
                 _currentState = StartupState.Error;
@@ -242,8 +297,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
             var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
             
-            // Verify combustion (pressure and temperature should increase)
-            if (pressure < 50000 || temperature < 1000) // 50 kPa, 1000 K minimum
+            // Pressure has to leave the ambient band. A non-finite reading is not combustion.
+            if (!IsCombustionEstablished(pressure, temperature))
             {
                 Console.WriteLine($"[Startup Sequence] ❌ Combustion not detected: P={pressure}, T={temperature}");
                 _currentState = StartupState.Error;
@@ -263,7 +318,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
-            if (pressure > 100000) // 100 kPa - reasonable operating pressure
+            if (IsOperatingPressure(pressure))
             {
                 Console.WriteLine("[Startup Sequence] ✅ Engine running!");
                 TransitionToState(StartupState.Running);
