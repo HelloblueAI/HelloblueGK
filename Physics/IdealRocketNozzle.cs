@@ -40,8 +40,7 @@ namespace HB_NLP_Research_Lab.Physics
         /// </summary>
         public static double SpecificGasConstant(double molarMass)
         {
-            if (molarMass <= 0)
-                throw new ArgumentOutOfRangeException(nameof(molarMass), "Molar mass must be positive.");
+            RequirePositiveFinite(molarMass, nameof(molarMass), "Molar mass must be a positive finite value.");
 
             return UniversalGasConstant / molarMass;
         }
@@ -65,9 +64,10 @@ namespace HB_NLP_Research_Lab.Physics
         /// </summary>
         public static double CharacteristicVelocity(double gamma, double molarMass, double chamberTemperature)
         {
-            if (chamberTemperature <= 0)
-                throw new ArgumentOutOfRangeException(
-                    nameof(chamberTemperature), "Chamber temperature must be positive.");
+            RequirePositiveFinite(
+                chamberTemperature,
+                nameof(chamberTemperature),
+                "Chamber temperature must be a positive finite value.");
 
             var r = SpecificGasConstant(molarMass);
 
@@ -85,10 +85,9 @@ namespace HB_NLP_Research_Lab.Physics
             double molarMass,
             double chamberTemperature)
         {
-            if (chamberPressure <= 0)
-                throw new ArgumentOutOfRangeException(nameof(chamberPressure), "Chamber pressure must be positive.");
-            if (throatArea <= 0)
-                throw new ArgumentOutOfRangeException(nameof(throatArea), "Throat area must be positive.");
+            RequirePositiveFinite(
+                chamberPressure, nameof(chamberPressure), "Chamber pressure must be a positive finite value.");
+            RequirePositiveFinite(throatArea, nameof(throatArea), "Throat area must be a positive finite value.");
 
             return chamberPressure * throatArea / CharacteristicVelocity(gamma, molarMass, chamberTemperature);
         }
@@ -105,10 +104,7 @@ namespace HB_NLP_Research_Lab.Physics
         public static double ExitMachNumber(double gamma, double areaRatio)
         {
             ValidateGamma(gamma);
-
-            if (areaRatio < 1.0)
-                throw new ArgumentOutOfRangeException(
-                    nameof(areaRatio), "Exit area cannot be smaller than the throat area.");
+            RequireExpansionRatio(areaRatio);
 
             if (Math.Abs(areaRatio - 1.0) < 1e-12)
                 return 1.0;
@@ -142,9 +138,7 @@ namespace HB_NLP_Research_Lab.Physics
         public static double AreaRatioForMach(double gamma, double mach)
         {
             ValidateGamma(gamma);
-
-            if (mach <= 0)
-                throw new ArgumentOutOfRangeException(nameof(mach), "Mach number must be positive.");
+            RequirePositiveFinite(mach, nameof(mach), "Mach number must be a positive finite value.");
 
             var exponent = (gamma + 1.0) / (2.0 * (gamma - 1.0));
             var bracket = (2.0 / (gamma + 1.0)) * (1.0 + 0.5 * (gamma - 1.0) * mach * mach);
@@ -156,6 +150,10 @@ namespace HB_NLP_Research_Lab.Physics
         public static double ExitPressure(double chamberPressure, double gamma, double exitMach)
         {
             ValidateGamma(gamma);
+            RequirePositiveFinite(
+                chamberPressure, nameof(chamberPressure), "Chamber pressure must be a positive finite value.");
+            RequireNonNegativeFinite(
+                exitMach, nameof(exitMach), "Exit Mach number must be a non-negative finite value.");
 
             var stagnationRatio = 1.0 + 0.5 * (gamma - 1.0) * exitMach * exitMach;
 
@@ -166,6 +164,12 @@ namespace HB_NLP_Research_Lab.Physics
         public static double ExitTemperature(double chamberTemperature, double gamma, double exitMach)
         {
             ValidateGamma(gamma);
+            RequirePositiveFinite(
+                chamberTemperature,
+                nameof(chamberTemperature),
+                "Chamber temperature must be a positive finite value.");
+            RequireNonNegativeFinite(
+                exitMach, nameof(exitMach), "Exit Mach number must be a non-negative finite value.");
 
             return chamberTemperature / (1.0 + 0.5 * (gamma - 1.0) * exitMach * exitMach);
         }
@@ -174,6 +178,11 @@ namespace HB_NLP_Research_Lab.Physics
         public static double ExitVelocity(double gamma, double molarMass, double exitTemperature, double exitMach)
         {
             ValidateGamma(gamma);
+            RequirePositiveFinite(molarMass, nameof(molarMass), "Molar mass must be a positive finite value.");
+            RequirePositiveFinite(
+                exitTemperature, nameof(exitTemperature), "Exit temperature must be a positive finite value.");
+            RequireNonNegativeFinite(
+                exitMach, nameof(exitMach), "Exit Mach number must be a non-negative finite value.");
 
             var r = SpecificGasConstant(molarMass);
 
@@ -231,10 +240,30 @@ namespace HB_NLP_Research_Lab.Physics
 
         private static void ValidateGamma(double gamma)
         {
-            if (gamma <= 1.0)
+            if (!double.IsFinite(gamma) || gamma <= 1.0)
                 throw new ArgumentOutOfRangeException(
                     nameof(gamma),
-                    "Specific heat ratio must exceed 1; the isentropic relations are singular at 1.");
+                    "Specific heat ratio must be a finite value greater than 1; the isentropic relations are singular at 1.");
+        }
+
+        private static void RequirePositiveFinite(double value, string paramName, string message)
+        {
+            if (!double.IsFinite(value) || value <= 0)
+                throw new ArgumentOutOfRangeException(paramName, message);
+        }
+
+        private static void RequireNonNegativeFinite(double value, string paramName, string message)
+        {
+            if (!double.IsFinite(value) || value < 0)
+                throw new ArgumentOutOfRangeException(paramName, message);
+        }
+
+        private static void RequireExpansionRatio(double areaRatio)
+        {
+            if (!double.IsFinite(areaRatio) || areaRatio < 1.0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(areaRatio),
+                    "Expansion ratio must be a finite value of at least 1.");
         }
     }
 }

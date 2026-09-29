@@ -458,6 +458,49 @@ public class IdealRocketNozzleTests
         Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.Solve(point));
     }
 
+    /// <summary>
+    /// NaN and positive infinity fail every upper-unbounded comparison, so they used to pass
+    /// validation and come back as a performance figure. Vacuum ambient pressure and an
+    /// expansion ratio of 1 remain valid.
+    /// </summary>
+    [Theory]
+    [InlineData(double.NaN, 3500, 1.24, 0.0223, 0.05, 16, 101325)]
+    [InlineData(double.PositiveInfinity, 3500, 1.24, 0.0223, 0.05, 16, 101325)]
+    [InlineData(9.7e6, double.NaN, 1.24, 0.0223, 0.05, 16, 101325)]
+    [InlineData(9.7e6, double.PositiveInfinity, 1.24, 0.0223, 0.05, 16, 101325)]
+    [InlineData(9.7e6, 3500, double.NaN, 0.0223, 0.05, 16, 101325)]
+    [InlineData(9.7e6, 3500, double.PositiveInfinity, 0.0223, 0.05, 16, 101325)]
+    [InlineData(9.7e6, 3500, 1.24, double.NaN, 0.05, 16, 101325)]
+    [InlineData(9.7e6, 3500, 1.24, double.PositiveInfinity, 0.05, 16, 101325)]
+    [InlineData(9.7e6, 3500, 1.24, 0.0223, double.NaN, 16, 101325)]
+    [InlineData(9.7e6, 3500, 1.24, 0.0223, double.PositiveInfinity, 16, 101325)]
+    [InlineData(9.7e6, 3500, 1.24, 0.0223, 0.05, double.NaN, 101325)]
+    [InlineData(9.7e6, 3500, 1.24, 0.0223, 0.05, double.PositiveInfinity, 101325)]
+    [InlineData(9.7e6, 3500, 1.24, 0.0223, 0.05, 16, double.NaN)]
+    [InlineData(9.7e6, 3500, 1.24, 0.0223, 0.05, 16, double.PositiveInfinity)]
+    public void Solve_RejectsNonFiniteInputs(
+        double chamberPressure,
+        double chamberTemperature,
+        double gamma,
+        double molarMass,
+        double throatArea,
+        double expansionRatio,
+        double ambientPressure)
+    {
+        var point = new EngineOperatingPoint
+        {
+            ChamberPressure = chamberPressure,
+            ChamberTemperature = chamberTemperature,
+            SpecificHeatRatio = gamma,
+            MolarMass = molarMass,
+            ThroatArea = throatArea,
+            ExpansionRatio = expansionRatio,
+            AmbientPressure = ambientPressure
+        };
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.Solve(point));
+    }
+
     [Fact]
     public void ExitMachNumber_RejectsAreaRatioBelowTheThroat()
     {
@@ -495,6 +538,81 @@ public class IdealRocketNozzleTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.AreaRatioForMach(1.24, 0));
         Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.AreaRatioForMach(1.24, -2));
+    }
+
+    /// <summary>
+    /// The same domain guards have to reject a missing or infinite argument. NaN used to fall
+    /// through and either come back as NaN or, for exit Mach, converge to a plausible Mach 1.
+    /// </summary>
+    [Fact]
+    public void PublicRelations_RejectNonFiniteInputs()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.SpecificGasConstant(double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.SpecificGasConstant(double.PositiveInfinity));
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.VandenkerckhoveFunction(double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.VandenkerckhoveFunction(double.PositiveInfinity));
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.CharacteristicVelocity(double.NaN, 0.0223, 3500));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.CharacteristicVelocity(1.24, double.NaN, 3500));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.CharacteristicVelocity(1.24, 0.0223, double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.CharacteristicVelocity(1.24, 0.0223, double.PositiveInfinity));
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.MassFlowRate(double.NaN, 0.05, 1.24, 0.0223, 3500));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.MassFlowRate(double.PositiveInfinity, 0.05, 1.24, 0.0223, 3500));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.MassFlowRate(9.7e6, double.NaN, 1.24, 0.0223, 3500));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitMachNumber(double.NaN, 16));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitMachNumber(1.24, double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.ExitMachNumber(1.24, double.PositiveInfinity));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.AreaRatioForMach(1.24, double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.AreaRatioForMach(1.24, double.PositiveInfinity));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitPressure(double.NaN, 1.24, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.ExitPressure(double.PositiveInfinity, 1.24, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitPressure(9.7e6, 1.24, double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitPressure(9.7e6, 1.24, -1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitTemperature(double.NaN, 1.24, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitTemperature(0, 1.24, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitTemperature(-100, 1.24, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.ExitTemperature(3500, 1.24, double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitTemperature(3500, 1.24, -1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.ExitVelocity(1.24, double.NaN, 1500, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.ExitVelocity(1.24, 0.0223, double.NaN, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitVelocity(1.24, 0.0223, -10, 3));
+        Assert.Throws<ArgumentOutOfRangeException>(
+            () => IdealRocketNozzle.ExitVelocity(1.24, 0.0223, 1500, double.NaN));
+        Assert.Throws<ArgumentOutOfRangeException>(() => IdealRocketNozzle.ExitVelocity(1.24, 0.0223, 1500, -1));
+    }
+
+    /// <summary>
+    /// Mach 0 is stagnation, not an invalid nozzle state. Exit static conditions match the chamber.
+    /// </summary>
+    [Fact]
+    public void ExitState_AtMachZero_IsTheChamberState()
+    {
+        IdealRocketNozzle.ExitPressure(9.7e6, 1.24, 0).Should().Be(9.7e6);
+        IdealRocketNozzle.ExitTemperature(3500, 1.24, 0).Should().Be(3500);
+        IdealRocketNozzle.ExitVelocity(1.24, 0.0223, 1500, 0).Should().Be(0);
     }
 
     /// <summary>
