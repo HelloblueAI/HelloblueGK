@@ -224,7 +224,7 @@ def build_engine():
         "MORPHING NOZZLE    ACTIVE\n\n"
         "CONCEPT VISUALIZATION — NOT FLIGHT CERTIFIED"
     )
-    text_object("Telemetry_HUD", panel, (2.4, 0.9, 2.8), 0.20, white)
+    text_object("Telemetry_HUD", panel, (1.9, 0.15, 3.05), 0.135, white)
 
     # Ground, lighting and camera.
     bpy.ops.mesh.primitive_plane_add(size=30, location=(0, 0, -6.1))
@@ -246,7 +246,7 @@ def build_engine():
     camera.name = "Digital_Twin_Camera"
     direction = Vector((0, 0, 0.1)) - camera.location
     camera.rotation_euler = direction.to_track_quat("-Z", "Y").to_euler()
-    camera.data.lens = 58
+    camera.data.lens = 50
     bpy.context.scene.camera = camera
 
     world = bpy.context.scene.world
