@@ -1,27 +1,24 @@
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
-[![Line Coverage](https://img.shields.io/badge/line%20coverage-58.0%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-56.4%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-1322%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![Line Coverage](https://img.shields.io/badge/line%20coverage-61.1%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-62.0%25-yellow)](Certification/Artifacts/coverage-floors.json)
+[![Tests](https://img.shields.io/badge/tests-1336%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
 <div align="center">
 
 ### HelloblueGK — Aerospace Engine Simulation Platform
 
-<img src="Assets/Images/HB-NLP-Digital-Twin-Visualization.png" alt="HB-NLP Revolutionary Engine digital twin — a 3D visualization of the engine with a telemetry overlay reading 3.5 MN thrust, 280 bar chamber pressure, 2.8 m nozzle length, LOX oxidizer, and an active morphing nozzle" width="900"/>
+<img src="Assets/Images/HB-NLP-Digital-Twin-Visualization.png" alt="HB-NLP concept visualization, not flight certified. The overlay shows declared values only: 3.5 MN thrust, 280 bar chamber pressure, 2.8 m nozzle length, LOX, CH4, alloy temperature limit 3800 K, nozzle temperature limit 3500 K, and a morphing nozzle." width="900"/>
 
 **HB-NLP-Engine — digital twin visualization**
 
-*Concept visualization, not flight certified.* Two notes on what the overlay shows, because the
-numbers in it should not be read as a specification.
-
-The render labels 3500 K as a chamber temperature. That label is wrong: the engine design declares
-no chamber temperature at all. 3800 K and 3500 K are material limits — the chamber alloy and the
-nozzle composite respectively. The declared thrust, throat, and specific impulse now agree with
-ideal-rocket theory; that agreement is gated in [verification scope](Docs/VERIFICATION_SCOPE.md).
-The figure is still a concept operating point, not a measurement.
+*Concept visualization, not flight certified.* The overlay shows values the engine declaration
+contains: 3.5 MN thrust, 280 bar chamber pressure, 2.8 m nozzle length, LOX and CH4, and material
+temperature limits of 3800 K for the chamber alloy and 3500 K for the nozzle composite. It does
+not show a chamber temperature. Thrust here is a theoretical ceiling from ideal-rocket theory, not
+a fired-engine result. That agreement is gated in [verification scope](Docs/VERIFICATION_SCOPE.md).
 
 For a number this repository does stand behind, the
 [nozzle solver](Physics/IdealRocketNozzle.cs) reproduces published specific impulse for Merlin 1D,
@@ -32,7 +29,8 @@ points land within about 1%.
 </div>
 
 A .NET 9 platform for rocket engine performance analysis, with a nozzle solver validated against
-published flight-engine data and a DO-178C Level A verification gate enforced on every build.
+published flight-engine data and a CI verification gate checking selected DO-178C Level A
+objectives within a narrowly declared verification boundary.
 
 > **Community Edition** (Apache 2.0) — reference platform for integration, research, and contribution.
 > **Not certified flight software.** [OPEN_SOURCE_SCOPE.md](OPEN_SOURCE_SCOPE.md) is authoritative for
@@ -110,10 +108,11 @@ and NASA SP-8120. Each engine number cites its own source in `PublishedNozzleRef
 about combustion stability, boundary layers, flow separation, nozzle heat transfer, or off-design
 transients.
 
-### A DO-178C Level A gate that can fail the build
+### A narrow DO-178C objective gate that can fail the build
 
-[`Tools/CertificationGate`](Tools/CertificationGate) runs on every build against a declared
+[`Tools/CertificationGate`](Tools/CertificationGate) runs in CI against a declared
 boundary in [`certification-boundary.json`](Certification/Artifacts/certification-boundary.json).
+Passing it does not mean this repository is DO-178C Level A verified.
 It verifies statement and decision coverage, MC-DC with recorded independence pairs, and
 requirements traceability from requirement through design and code to a passing test — then fails
 the build if any objective regresses.
@@ -126,7 +125,7 @@ the artifact itself.
 
 [`coverage-floors.json`](Certification/Artifacts/coverage-floors.json) sets minimum line and branch
 coverage per directory, checked in CI from the measured report. The latest local run passed
-**1,322 tests**.
+**1,336 tests**.
 
 ### What is simulation scaffolding
 
@@ -374,7 +373,7 @@ ITAR, EAR, and other applicable regulations.
 
 - **SpaceX** for published Raptor and Merlin engine specifications
 - **NASA** for published RS-25 performance data and the NPR 7150.2 software engineering requirements
-- **RTCA** for DO-178C, the basis of the verification objectives enforced here
+- **RTCA** for DO-178C, the basis of the objectives checked inside the declared verification boundary
 - **Sutton & Biblarz** for *Rocket Propulsion Elements*, the source of the nozzle relations
 - **The .NET and open-source communities** for the tooling this platform is built on
 
