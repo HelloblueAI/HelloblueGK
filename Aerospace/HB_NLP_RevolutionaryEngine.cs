@@ -9,9 +9,9 @@ using HB_NLP_Research_Lab.Models;
 namespace HB_NLP_Research_Lab.Aerospace
 {
     /// <summary>
-    /// HB-NLP Advanced Aerospace Engine
-    /// Next-generation engine design for Plasticity integration
-    /// Features advanced multi-physics, AI optimization, and novel architecture
+    /// HB-NLP-REV-001 idealized simulation concept.
+    /// Declared thrust and specific impulse are theoretical ceilings from ideal-rocket
+    /// theory, not fired-engine performance and not a hardware design.
     /// </summary>
     public class HB_NLP_RevolutionaryEngine
     {

@@ -20,6 +20,9 @@ public static class PublishedNozzleReference
 
     public const double SeaLevelPressurePascals = 101325.0;
 
+    /// <summary>Exact pound-force per square inch to pascal, so a published psi figure is not pre-rounded.</summary>
+    private const double PascalsPerPsi = 6894.757293168361;
+
     public static readonly SpecificImpulsePoint[] SpecificImpulse =
     [
         new(
@@ -82,7 +85,42 @@ public static class PublishedNozzleReference
                 + "https://www.l3harris.com/all-capabilities/rs-25-engine : sea-level specific impulse 366 s. "
                 + "The July 2024 specification sheet does not list a sea-level specific impulse. It does list "
                 + "the same area ratio 69 and chamber pressure 2,994 psia, which this point uses. "
-                + "Sea level ambient pressure is the standard atmosphere, 101325 Pa, not a figure on either page.")
+                + "Sea level ambient pressure is the standard atmosphere, 101325 Pa, not a figure on either page."),
+        new(
+            Id: "rl10a-4-2-vacuum",
+            Label: "RL10A-4-2, vacuum",
+            ChamberPressurePascals: 610.0 * PascalsPerPsi,
+            ChamberTemperatureKelvin: 3588,
+            SpecificHeatRatio: 1.19,
+            MolarMassKgPerMol: 0.0136,
+            ExpansionRatio: 84,
+            AmbientPressurePascals: 0,
+            PublishedSpecificImpulseSeconds: 451.0,
+            PerformanceSource: "National Academies of Sciences, Engineering, and Medicine, "
+                + "A Review of United States Air Force and Department of Defense Aerospace Propulsion Needs (2006), "
+                + "Appendix D, https://www.nationalacademies.org/read/11780/chapter/13 . "
+                + "Table D-4 lists nozzle area ratio 84:1, vacuum specific impulse 451 s, and vacuum thrust "
+                + "22,300 lb for the RL10A-4-2. The paragraph introducing that table states a chamber pressure "
+                + "of 610 psi. No throat area is on the table, so thrust is not checked. Hydrogen gamma, molar "
+                + "mass, and chamber temperature are the same literature assumptions as the RS-25 points, not "
+                + "measurements from this table."),
+        new(
+            Id: "rl10b-2-vacuum",
+            Label: "RL10B-2, vacuum",
+            ChamberPressurePascals: 644.0 * PascalsPerPsi,
+            ChamberTemperatureKelvin: 3588,
+            SpecificHeatRatio: 1.19,
+            MolarMassKgPerMol: 0.0136,
+            ExpansionRatio: 285,
+            AmbientPressurePascals: 0,
+            PublishedSpecificImpulseSeconds: 466.5,
+            PerformanceSource: "Same National Academies appendix, "
+                + "https://www.nationalacademies.org/read/11780/chapter/13 . "
+                + "Table D-2's RL-10 B-2 column lists vacuum thrust 24,750 lb, chamber pressure 644 psia, "
+                + "expansion ratio 285:1, and specific impulse 466.5 s together. The prose on that page states "
+                + "633 psi and 465.5 s; those figures are not this column and are not mixed in. No throat area "
+                + "is in the column, so thrust is not checked. Hydrogen gamma, molar mass, and chamber "
+                + "temperature are the same literature assumptions as the RS-25 points.")
     ];
 
     public static readonly ThrustRatioPoint Rs25ThrustRatio = new(

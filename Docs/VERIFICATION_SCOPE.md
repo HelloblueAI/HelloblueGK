@@ -134,8 +134,9 @@ cited as an analysis of a physical system.
 `AdvancedCFDSolver` and `AdvancedStructuralSolver` used to ignore their model argument, so every
 engine produced the same fields. They now require a positive chamber pressure — from an
 `EngineOperatingPoint` or from an `EngineModel` parameter of that name — and refuse anything else.
-The CFD field is still a closed-form isentropic expression on a fixed 1000×1000 grid, using the
-specific-heat ratio of air, not a Navier-Stokes solution. The structural field is a thin-wall
+The CFD field is still a closed-form isentropic expression on a fixed 1000×1000 grid. Its
+specific-heat ratio is the operating point's value when the model carries one, and cold air
+otherwise. It is not a Navier-Stokes solution. The structural field is a thin-wall
 estimate whose reported stress is half the supplied pressure, compared with the yield strength of
 steel, not a finite-element analysis. Displacement, fatigue life, and the buckling margin use that
 same pressure (fatigue uses the reported stress), and the safety-factor map reports those computed

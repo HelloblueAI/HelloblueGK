@@ -8,7 +8,7 @@ namespace HB_NLP_Research_Lab.Physics
     public class AdvancedCFDSolver : IPhysicsSolver
     {
         private const int GRID_SIZE = 1000000; // 1M elements for high-fidelity
-        private const double GAMMA = 1.4; // Specific heat ratio for air
+        private const double GAMMA = 1.4; // Cold air. Used only when the model carries no specific-heat ratio.
         private const double R = 287.1; // Gas constant for air (J/kg·K)
         
         private double[,] pressureField;
@@ -58,7 +58,7 @@ namespace HB_NLP_Research_Lab.Physics
             {
                 Status = "Success",
                 Data = new double[] { chamberPressure },
-                PressureDistribution = CalculatePressureDistribution(chamberPressure),
+                PressureDistribution = CalculatePressureDistribution(chamberPressure, SolverOperatingPoint.SpecificHeatRatioOrAir(model, GAMMA)),
                 VelocityField = CalculateVelocityField(),
                 TurbulenceIntensity = CalculateTurbulenceIntensity(),
                 HeatTransferCoefficient = CalculateHeatTransfer(),
@@ -71,11 +71,11 @@ namespace HB_NLP_Research_Lab.Physics
             return result;
         }
 
-        private double[,] CalculatePressureDistribution(double chamberPressure)
+        private double[,] CalculatePressureDistribution(double chamberPressure, double gamma)
         {
-            // Static pressure from a calorically perfect isentropic relation, using the
-            // specific-heat ratio of air. Mach number here is the grid index, not a solved
-            // flow field. The stagnation pressure is the chamber pressure the caller supplied.
+            // Calorically perfect isentropic relation. Gamma is the caller's specific-heat
+            // ratio when the model carries one, and cold air otherwise. Mach number here is
+            // the grid index, not a solved flow field. Stagnation pressure is chamber pressure.
             var pressure = new double[1000, 1000];
             
             Parallel.For(0, 1000, i =>
@@ -83,7 +83,7 @@ namespace HB_NLP_Research_Lab.Physics
                 for (int j = 0; j < 1000; j++)
                 {
                     double mach = Math.Sqrt((double)i * (double)i + (double)j * (double)j) / 1000.0;
-                    double pressureRatio = Math.Pow(1 + 0.5 * (GAMMA - 1) * mach * mach, GAMMA / (GAMMA - 1));
+                    double pressureRatio = Math.Pow(1 + 0.5 * (gamma - 1) * mach * mach, gamma / (gamma - 1));
                     pressure[i, j] = chamberPressure / pressureRatio;
                 }
             });

@@ -3,7 +3,7 @@
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
 [![Line Coverage](https://img.shields.io/badge/line%20coverage-58.0%25-yellow)](Certification/Artifacts/coverage-floors.json)
 [![Branch Coverage](https://img.shields.io/badge/branch%20coverage-56.4%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-1319%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1322%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
 <div align="center">
@@ -25,9 +25,9 @@ The figure is still a concept operating point, not a measurement.
 
 For a number this repository does stand behind, the
 [nozzle solver](Physics/IdealRocketNozzle.cs) reproduces published specific impulse for Merlin 1D,
-Raptor, and RS-25, including sea level and vacuum where a single public source pairs them. Ideal
-theory stays above the published specific impulse and inside a 3% band. The original three points
-land within about 1%.
+Raptor, RS-25, and RL10, including sea level and vacuum where a single public source pairs them.
+Ideal theory stays above the published specific impulse and inside a 3% band. The original three
+points land within about 1%.
 
 </div>
 
@@ -89,6 +89,8 @@ conditions and area ratios, it reproduces published specific impulse:
 | Raptor, sea level, 300 bar, area ratio 34 | 332.7 s | 330 s | +0.8% |
 | RS-25, vacuum, 109% | 453.0 s | 452.3 s | +0.1% |
 | RS-25, sea level, 109% | 373.8 s | 366 s | +2.1% |
+| RL10A-4-2, vacuum | 456.4 s | 451 s | +1.2% |
+| RL10B-2, vacuum, area ratio 285 | 474.1 s | 466.5 s | +1.6% |
 
 The RS-25 vacuum-to-sea-level thrust ratio on the L3Harris specification sheet is 512,300 / 418,000
 = 1.226. The ideal ratio at the same chamber pressure and area ratio is 1.212, 1.1% lower. Throat
@@ -124,12 +126,13 @@ the artifact itself.
 
 [`coverage-floors.json`](Certification/Artifacts/coverage-floors.json) sets minimum line and branch
 coverage per directory, checked in CI from the measured report. The latest local run passed
-**1,319 tests**.
+**1,322 tests**.
 
 ### What is simulation scaffolding
 
 The legacy `AdvancedCFDSolver` and `AdvancedStructuralSolver` read chamber pressure and still
-produce schematic fields, not a flow solution or a finite-element analysis. `AdvancedThermalSolver`
+produce schematic fields, not a flow solution or a finite-element analysis. The CFD pressure
+field uses the operating point's specific-heat ratio when the model carries one. `AdvancedThermalSolver`
 reads chamber temperature and still produces a schematic conduction estimate, not a heat-transfer
 solution. Several generative and orchestration methods return constants after
 `Task.Delay`. None of it is verified engineering, and no result it produces should be cited as an
@@ -147,6 +150,8 @@ Published parameters for engines used as validation references and design compar
 | **Raptor** | 2,200 kN | 330 s | 300 bar | Methane/LOX | Reference model. Isp is a validation point; thrust is not, because no throat area is published with it |
 | **Merlin 1D** | 845 kN | 282 s | 97 bar | RP-1/LOX | Sea-level reference. Thrust is the published sea-level figure; the nozzle check uses Isp, not thrust |
 | **RS-25** | 1,860 kN sea level | 452 s vacuum | 206 bar | Hydrogen/LOX | Two operating points. Do not read this row as one condition |
+| **RL10A-4-2** | 22,300 lbf vacuum | 451 s vacuum | 610 psi | Hydrogen/LOX | Vacuum reference. The nozzle check uses Isp, not thrust |
+| **RL10B-2** | 24,750 lbf vacuum | 466.5 s vacuum | 644 psia | Hydrogen/LOX | Vacuum reference, area ratio 285. The nozzle check uses Isp, not thrust |
 | **HB-NLP-REV-001** | 3,500 kN | 351.5 s | 280 bar | Methane/LOX | Idealized concept. These are theoretical ceilings, not fired-engine performance |
 
 The flight-engine specific impulses above are the validation points. HB-NLP-REV-001 has not been
