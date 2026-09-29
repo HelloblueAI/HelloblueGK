@@ -77,7 +77,10 @@ namespace HB_NLP_Research_Lab.Physics
                 FailurePrediction = PredictFailure(representativeStress, chamberPressure),
                 ConvergenceHistory = RunStructuralConvergence(),
                 MaxVonMisesStress = representativeStress,
-                MaxDisplacement = representativeStress / YOUNGS_MODULUS_STEEL,
+                // The displacement field is radial wall movement in metres. Its peak is the
+                // chamber wall (normalized distance 0). stress/E is the axial strain and is
+                // smaller than that movement, so publishing it understated the wall deflection.
+                MaxDisplacement = RadialDisplacement(chamberPressure, 0),
                 NaturalFrequencies = CalculateNaturalFrequencies()
             };
 

@@ -138,8 +138,11 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (dt <= 0 || dt > 1.0) // Sanity check
                 dt = 1.0 / LoopFrequencyHz;
             
-            // Calculate error
-            var error = targetThrust - currentThrust;
+            // Error is a fraction of the commanded thrust. Subtracting Newtons and adding
+            // the result to a 0�1 throttle saturates the rate limit for any real miss:
+            // a 100 N error on a 1 MN engine is 0.01%, but 0.5 * 100 is already fifty
+            // full-scale throttle commands.
+            var error = NormalizedThrustError(currentThrust, targetThrust);
             
             // Proportional term
             var pTerm = _kp * error;
@@ -162,6 +165,21 @@ namespace HB_NLP_Research_Lab.Core.Control
             var newThrottle = baseThrottle + throttleAdjustment;
             
             return newThrottle;
+        }
+
+        /// <summary>
+        /// Dimensionless thrust error, (target - current) / target. Non-finite readings and a
+        /// non-positive target contribute no error, so a NaN sensor cannot command NaN throttle.
+        /// </summary>
+        internal static double NormalizedThrustError(double currentThrust, double targetThrust)
+        {
+            if (!double.IsFinite(currentThrust) || !double.IsFinite(targetThrust) || targetThrust <= 0)
+            {
+                return 0;
+            }
+
+            var error = (targetThrust - currentThrust) / targetThrust;
+            return double.IsFinite(error) ? error : 0;
         }
         
         private double ApplyRateLimit(double targetThrottle)
@@ -198,13 +216,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             catch (Exception ex)
             {
                 // Log but don't throw - shutdown should be resilient
-                Console.WriteLine($"[Throttle Controller] ⚠️ Error setting safe position: {ex.Message}");
+                Console.WriteLine($"[Throttle Controller] ⚠︝ Error setting safe position: {ex.Message}");
             }
         }
         
         protected virtual void OnActuatorError()
         {
-            Console.WriteLine("[Throttle Controller] ⚠️ Actuator error detected");
+            Console.WriteLine("[Throttle Controller] ⚠︝ Actuator error detected");
         }
         
         protected virtual void OnControlError(Exception ex)
