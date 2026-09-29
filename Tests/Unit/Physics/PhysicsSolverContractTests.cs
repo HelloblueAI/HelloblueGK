@@ -72,6 +72,29 @@ public class PhysicsSolverContractTests
     }
 
     [Fact]
+    public void AdvancedCFDSolver_PressureFieldUsesTheOperatingPointSpecificHeatRatio()
+    {
+        var solver = new AdvancedCFDSolver();
+        var products = (AdvancedCFDResult)solver.RunSimulation(OperatingPoint(20e6, specificHeatRatio: 1.2));
+        var air = (AdvancedCFDResult)solver.RunSimulation(OperatingPoint(20e6, specificHeatRatio: 1.4));
+
+        products.PressureDistribution[0, 0].Should().Be(air.PressureDistribution[0, 0]);
+        products.PressureDistribution[500, 500].Should().BeGreaterThan(air.PressureDistribution[500, 500]);
+        products.TurbulenceIntensity.Should().Be(air.TurbulenceIntensity);
+
+        var model = new EngineModel { Name = "no-gamma" };
+        model.Parameters["ChamberPressure"] = 20e6;
+        var schematicAir = (AdvancedCFDResult)solver.RunSimulation(model);
+
+        schematicAir.PressureDistribution[500, 500].Should().Be(air.PressureDistribution[500, 500]);
+
+        var missingRatio = (AdvancedCFDResult)solver.RunSimulation(OperatingPoint(20e6, specificHeatRatio: double.NaN));
+        var unityRatio = (AdvancedCFDResult)solver.RunSimulation(OperatingPoint(20e6, specificHeatRatio: 1.0));
+        missingRatio.PressureDistribution[500, 500].Should().Be(air.PressureDistribution[500, 500]);
+        unityRatio.PressureDistribution[500, 500].Should().Be(air.PressureDistribution[500, 500]);
+    }
+
+    [Fact]
     public void AdvancedCFDSolver_RejectsAModelWithNoChamberPressure()
     {
         var solver = new AdvancedCFDSolver();
@@ -151,11 +174,12 @@ public class PhysicsSolverContractTests
 
     private static EngineOperatingPoint OperatingPoint(
         double chamberPressurePascals,
-        double chamberTemperatureKelvin = 3600) => new()
+        double chamberTemperatureKelvin = 3600,
+        double specificHeatRatio = 1.2) => new()
     {
         ChamberPressure = chamberPressurePascals,
         ChamberTemperature = chamberTemperatureKelvin,
-        SpecificHeatRatio = 1.2,
+        SpecificHeatRatio = specificHeatRatio,
         MolarMass = 0.0206,
         ThroatArea = 0.01,
         ExpansionRatio = 28.5,

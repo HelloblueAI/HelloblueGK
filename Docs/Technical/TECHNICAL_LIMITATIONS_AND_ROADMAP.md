@@ -16,9 +16,11 @@ accreditation, or qualification has been obtained. See
 chamber pressure, and they scale their fields by the value they are given. Structural displacement,
 fatigue life, and buckling margin follow that pressure, and the safety-factor map reports the
 computed margins. `AdvancedThermalSolver` refuses a model that does not carry a chamber
-temperature, and its schematic field scales with that temperature. The fields are still a
-closed-form estimate on a fixed grid, a thin-wall stress estimate, and a linear conduction
-estimate, not a Navier-Stokes solution, a finite-element analysis, or a heat-transfer solution.
+temperature, and its schematic field scales with that temperature. The CFD pressure field
+uses the operating point's specific-heat ratio when the model carries one, and the ratio for
+cold air otherwise. The fields are still a closed-form estimate on a fixed grid, a thin-wall
+stress estimate, and a linear conduction estimate, not a Navier-Stokes solution, a
+finite-element analysis, or a heat-transfer solution.
 Several
 generative and orchestration methods likewise return constants after an artificial delay. Each
 instance is named in `VERIFICATION_SCOPE.md`.
@@ -27,8 +29,9 @@ instance is named in `VERIFICATION_SCOPE.md`.
 
 `IdealRocketNozzle` is the one component validated against published flight-engine data. The
 catalog in `Tests/Unit/Physics/PublishedNozzleReference.cs` pairs each specific impulse, and the
-RS-25 thrust ratio, with the public source it came from. Ideal specific impulse stays above the
-published figure and inside 3%. The original three points land within about 1%. It is a quasi-1D
+RS-25 thrust ratio, with the public source it came from. The catalog also includes the RL10A-4-2
+and RL10B-2 vacuum points from one National Academies appendix. Ideal specific impulse stays
+above the published figure and inside 3%. The original three points land within about 1%. It is a quasi-1D
 isentropic equilibrium model. It says nothing about combustion stability, boundary layers, flow
 separation, nozzle heat transfer, or off-design transients, and it cannot be substituted for a
 flow solver.

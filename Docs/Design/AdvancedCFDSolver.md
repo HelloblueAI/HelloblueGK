@@ -44,9 +44,10 @@ reading.
 
 Four independent field computations, each over the full 1000x1000 grid:
 
-- `CalculatePressureDistribution` applies isentropic flow relations with γ = 1.4.
-  The stagnation pressure is the chamber pressure the caller supplied, not a fixed
-  sea-level pressure.
+- `CalculatePressureDistribution` applies isentropic flow relations. The specific-heat
+  ratio is the operating point's value when the model carries one, and 1.4 (cold air)
+  otherwise. The stagnation pressure is the chamber pressure the caller supplied, not a
+  fixed sea-level pressure. The Mach number is the grid index, not a solved flow field.
 - `CalculateVelocityField` applies potential flow scaled by the speed of sound, 340 m/s.
 - `CalculateTurbulenceIntensity` averages kinetic energy over the 1000×1000 velocity
   samples and returns `sqrt(2/3 · k_mean) / 340`. Dissipation is accumulated for the

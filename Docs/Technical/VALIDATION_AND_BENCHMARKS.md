@@ -24,6 +24,8 @@ solver leaves the band.
 | Raptor, sea level, 300 bar, area ratio 34 | 330.0 s | 332.7 s | +0.83% |
 | RS-25, vacuum, 109% | 452.3 s | 453.0 s | +0.15% |
 | RS-25, sea level, 109% | 366.0 s | 373.8 s | +2.14% |
+| RL10A-4-2, vacuum | 451.0 s | 456.4 s | +1.19% |
+| RL10B-2, vacuum, area ratio 285 | 466.5 s | 474.1 s | +1.64% |
 
 The RS-25 specification sheet also publishes vacuum thrust 512,300 lb and sea-level thrust
 418,000 lb. The ideal vacuum-to-sea-level thrust ratio is 1.212 against the published 1.226
@@ -57,10 +59,22 @@ mass, or gluing numbers from different engines into one operating point.
   statement gives about 350 s for a sea-level Raptor in vacuum and about 380 s with a larger
   vacuum nozzle, without an expansion ratio in that sentence. At 300 bar and an expansion ratio
   of 80 the ideal result is about 367 s, below 380 s. None of those combinations is in the gate.
-- **Absolute thrust for Merlin, Raptor, or RS-25.** The RS-25 sheet publishes thrust and area
-  ratio, not a throat diameter. A commonly repeated 10.3 inch throat makes ideal thrust fall
+- **Absolute thrust for Merlin, Raptor, RS-25, or RL10.** The RS-25 sheet publishes thrust and
+  area ratio, not a throat diameter. A commonly repeated 10.3 inch throat makes ideal thrust fall
   short of the published thrust, so it is not used. Merlin and Raptor likewise have no throat
-  area on the same source as the specific impulse.
+  area on the same source as the specific impulse. The RL10 tables publish vacuum thrust beside
+  the area ratio and specific impulse, and still no throat area, so those thrusts are not checked.
+- **RL10B-2 at 465.5 s with an expansion ratio from another page.** The L3Harris RL10 page lists
+  specific impulse 465.5 s, thrust 24,750 lbf, and a nozzle diameter, and does not list an
+  expansion ratio or a chamber pressure. Other summaries cite 280:1. Those were not combined.
+  The National Academies appendix prose states 633 psi and 465.5 s without an expansion ratio in
+  that sentence. Its Table D-2 column, which pairs 644 psia, 285:1, and 466.5 s, is the point in
+  the gate.
+- **RS-68 vacuum, expansion ratio 21.5, specific impulse 410 s.** Table D-1 of the same National
+  Academies appendix lists that pair. With the shared hydrogen assumptions the ideal result is
+  about 429 s, 4.6% above the published value, outside the 3% band. The chapter's "650,000 lb of
+  sea level thrust" sentence also does not line up with the thrust rows in that table, so the
+  sea-level point was not added either. The band was not widened to admit it.
 
 ### Invariants pinned by test
 
@@ -109,9 +123,10 @@ Listed explicitly, because their absence is easy to mistake for an oversight.
 
 - **The legacy CFD, thermal, and structural solvers are not validated analyses, and they are not
   a hardware-performance claim.** `AdvancedCFDSolver` and `AdvancedStructuralSolver` read chamber
-  pressure and refuse a model that does not carry one. Their fields, including structural
-  displacement, fatigue life, and buckling margin, are closed-form estimates rather than a
-  Navier-Stokes solution or a finite-element analysis. No comparison against wind tunnel data,
+  pressure and refuse a model that does not carry one. The CFD pressure field uses the operating
+  point's specific-heat ratio when the model carries one, and cold air otherwise. Their fields,
+  including structural displacement, fatigue life, and buckling margin, are closed-form estimates
+  rather than a Navier-Stokes solution or a finite-element analysis. No comparison against wind tunnel data,
   engine test data, or a reference solver has been performed for them. `AdvancedThermalSolver`
   reads chamber temperature and refuses a model that does not carry one. Its field is a linear
   conduction estimate, not a heat-transfer solution. Until those solvers are real analyses, their

@@ -90,5 +90,22 @@ namespace HB_NLP_Research_Lab.Physics
                         nameof(model));
             }
         }
+
+        /// <summary>
+        /// Specific-heat ratio for the schematic isentropic pressure field. An operating point
+        /// carries one. An engine model does not, and this returns the ratio for cold air rather
+        /// than inventing a propellant. The field is still not a Navier-Stokes solution.
+        /// </summary>
+        public static double SpecificHeatRatioOrAir(object model, double airGamma)
+        {
+            if (model is EngineOperatingPoint point
+                && double.IsFinite(point.SpecificHeatRatio)
+                && point.SpecificHeatRatio > 1.0)
+            {
+                return point.SpecificHeatRatio;
+            }
+
+            return airGamma;
+        }
     }
 }
