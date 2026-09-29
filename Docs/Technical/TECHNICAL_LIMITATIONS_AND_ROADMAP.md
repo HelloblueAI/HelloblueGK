@@ -25,8 +25,10 @@ instance is named in `VERIFICATION_SCOPE.md`.
 
 ### The nozzle solver is one-dimensional
 
-`IdealRocketNozzle` is the one component validated against published flight-engine data,
-reproducing the specific impulse of Merlin 1D, Raptor, and RS-25 to within 1%. It is a quasi-1D
+`IdealRocketNozzle` is the one component validated against published flight-engine data. The
+catalog in `Tests/Unit/Physics/PublishedNozzleReference.cs` pairs each specific impulse, and the
+RS-25 thrust ratio, with the public source it came from. Ideal specific impulse stays above the
+published figure and inside 3%. The original three points land within about 1%. It is a quasi-1D
 isentropic equilibrium model. It says nothing about combustion stability, boundary layers, flow
 separation, nozzle heat transfer, or off-design transients, and it cannot be substituted for a
 flow solver.
@@ -79,8 +81,12 @@ or heat-transfer analysis.
 directories currently lowest. Extend the certification boundary only as fast as real traceability
 and MC/DC evidence can be produced for each added file.
 
-**Then validation breadth.** Extend comparison against published engine data beyond the three
-engines currently used, and document each new comparison with its source.
+**Then validation breadth.** Add another published operating point only when one public source
+pairs chamber pressure, expansion ratio, and specific impulse, and thrust only when that same
+source also supplies a throat area the ideal model can meet from above. Do not retune gamma,
+molar mass, or chamber temperature to admit a point. The current catalog, the points that were
+left out, and the reason for each omission are in
+`Docs/Technical/VALIDATION_AND_BENCHMARKS.md`.
 
 Contributions in any of these areas are welcome; see
 [`CONTRIBUTING.md`](../../CONTRIBUTING.md).

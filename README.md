@@ -3,7 +3,7 @@
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
 [![Line Coverage](https://img.shields.io/badge/line%20coverage-58.0%25-yellow)](Certification/Artifacts/coverage-floors.json)
 [![Branch Coverage](https://img.shields.io/badge/branch%20coverage-56.4%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-1307%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![Tests](https://img.shields.io/badge/tests-1319%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
 <div align="center">
@@ -24,8 +24,10 @@ ideal-rocket theory; that agreement is gated in [verification scope](Docs/VERIFI
 The figure is still a concept operating point, not a measurement.
 
 For a number this repository does stand behind, the
-[nozzle solver](Physics/IdealRocketNozzle.cs) reproduces the published specific impulse of
-Merlin 1D, Raptor, and RS-25 to within 1%, always erring high as ideal theory must.
+[nozzle solver](Physics/IdealRocketNozzle.cs) reproduces published specific impulse for Merlin 1D,
+Raptor, and RS-25, including sea level and vacuum where a single public source pairs them. Ideal
+theory stays above the published specific impulse and inside a 3% band. The original three points
+land within about 1%.
 
 </div>
 
@@ -84,15 +86,23 @@ conditions and area ratios, it reproduces published specific impulse:
 | Engine | Computed Isp | Published | Agreement |
 |--------|-------------:|----------:|----------:|
 | Merlin 1D, sea level | 284.2 s | 282 s | +0.8% |
-| Raptor, sea level | 332.7 s | 330 s | +0.8% |
-| RS-25, vacuum | 453.0 s | 452.3 s | +0.1% |
+| Raptor, sea level, 300 bar, area ratio 34 | 332.7 s | 330 s | +0.8% |
+| RS-25, vacuum, 109% | 453.0 s | 452.3 s | +0.1% |
+| RS-25, sea level, 109% | 373.8 s | 366 s | +2.1% |
 
-The tests additionally assert that ideal theory never *under*predicts a real engine: every loss the
-ideal model neglects reduces real performance, so underprediction would indicate an error in the
-algebra rather than a conservative result. `IdealRocketNozzle.cs`, `EngineOperatingPoint.cs`, and
-`NozzleFlowSolver.cs` are at 100% line and 100% branch coverage.
+The RS-25 vacuum-to-sea-level thrust ratio on the L3Harris specification sheet is 512,300 / 418,000
+= 1.226. The ideal ratio at the same chamber pressure and area ratio is 1.212, 1.1% lower. Throat
+area cancels, so this check does not invent a diameter. Each published number is stored with its
+source in `Tests/Unit/Physics/PublishedNozzleReference.cs`. The build fails if the solver leaves
+the 3% band or underpredicts a published specific impulse.
 
-Sources: Sutton & Biblarz, *Rocket Propulsion Elements*, 9th ed., ch. 3 and 5; NASA SP-8120.
+The tests additionally assert that ideal theory never *under*predicts a published specific impulse:
+every loss the ideal model neglects reduces real performance, so underprediction would indicate an
+error in the algebra rather than a conservative result. `IdealRocketNozzle.cs`,
+`EngineOperatingPoint.cs`, and `NozzleFlowSolver.cs` are at 100% line and 100% branch coverage.
+
+The nozzle relations come from Sutton & Biblarz, *Rocket Propulsion Elements*, 9th ed., ch. 3 and 5,
+and NASA SP-8120. Each engine number cites its own source in `PublishedNozzleReference.cs`.
 
 **Not claimed:** this is a one-dimensional equilibrium model, not a flow solver. It says nothing
 about combustion stability, boundary layers, flow separation, nozzle heat transfer, or off-design
@@ -113,8 +123,8 @@ the artifact itself.
 ### Coverage floors enforced per directory
 
 [`coverage-floors.json`](Certification/Artifacts/coverage-floors.json) sets minimum line and branch
-coverage per directory, checked in CI from the measured report. Current: **52.9% line, 52.3%
-branch** overall across 23,420 lines, with **1,214 tests** passing and zero build warnings.
+coverage per directory, checked in CI from the measured report. The latest local run passed
+**1,319 tests**.
 
 ### What is simulation scaffolding
 
@@ -132,15 +142,18 @@ analysis of a physical system. Each case is named in
 
 Published parameters for engines used as validation references and design comparisons.
 
-| Engine | Thrust | Isp | Chamber pressure | Propellant | Status |
-|--------|-------:|----:|-----------------:|------------|--------|
-| **Raptor** | 2,200 kN | 330 s | 300 bar | Methane/LOX | Flight proven |
-| **Merlin 1D** | 845 kN | 282 s | 98 bar | RP-1/LOX | Flight proven |
-| **RS-25** | 1,860 kN | 452 s | 207 bar | Hydrogen/LOX | Flight proven |
-| **HB-NLP-REV-001** | 3,500 kN | 351.5 s | 280 bar | Methane/LOX | Concept design |
+| Engine | Thrust | Isp | Chamber pressure | Propellant | What the row is |
+|--------|-------:|----:|-----------------:|------------|-----------------|
+| **Raptor** | 2,200 kN | 330 s | 300 bar | Methane/LOX | Reference model. Isp is a validation point; thrust is not, because no throat area is published with it |
+| **Merlin 1D** | 845 kN | 282 s | 97 bar | RP-1/LOX | Sea-level reference. Thrust is the published sea-level figure; the nozzle check uses Isp, not thrust |
+| **RS-25** | 1,860 kN sea level | 452 s vacuum | 206 bar | Hydrogen/LOX | Two operating points. Do not read this row as one condition |
+| **HB-NLP-REV-001** | 3,500 kN | 351.5 s | 280 bar | Methane/LOX | Idealized concept. These are theoretical ceilings, not fired-engine performance |
 
-The first three are the references the nozzle solver is validated against. HB-NLP-REV-001 is a
-concept design generated by this repository, not a built or tested engine.
+The flight-engine specific impulses above are the validation points. HB-NLP-REV-001 has not been
+built or fired. Its thrust and specific impulse are the ideal-rocket ceiling at the declared
+chamber pressure and area ratio, and they are not a prediction of a real engine. The schematic
+CFD, thermal, and structural solvers are not part of this table and are not a hardware-performance
+claim.
 
 ---
 
@@ -148,12 +161,12 @@ concept design generated by this repository, not a built or tested engine.
 
 | Area | What exists | Verification status |
 |------|-------------|---------------------|
-| **Nozzle performance** | Ideal rocket theory solver, input-driven | Validated against three flight engines |
+| **Nozzle performance** | Ideal rocket theory solver, input-driven | Validated against the published points in `PublishedNozzleReference`; the build fails outside the band |
 | **Certification workflows** | Requirements traceability, problem reporting, configuration management, test coverage, formal code review — with REST APIs and persistence | 91.5% line coverage; gates fail closed on placeholder or unverified evidence |
 | **Reinforcement learning** | Q-learning controller for engine parameter tuning | Bellman backup, reward shaping, and action dynamics pinned by tests |
 | **Aerospace readiness** | Mission-level classification and compliance scoring | Decision logic tested; scores derive from fixed inputs, not measurements |
 | **Web API** | ASP.NET Core 9, JWT auth, API versioning, rate limiting, Swagger, PostgreSQL | 61.4% line coverage |
-| **Multi-physics solvers** | CFD, structural, thermal interfaces and couplers | Control flow verified; **results are not input-dependent** |
+| **Multi-physics solvers** | Schematic CFD, structural, and thermal fields | They read an operating point and still are not a flow solution, a finite-element analysis, or a heat-transfer solution. Not a hardware-performance claim |
 | **Digital twin / generative design** | Interfaces and orchestration | Simulation scaffolding |
 
 ---

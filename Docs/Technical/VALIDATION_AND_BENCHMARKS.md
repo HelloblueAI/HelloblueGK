@@ -12,28 +12,55 @@ contain verified logic and which are simulation scaffolding.
 
 `Physics/IdealRocketNozzle.cs` implements quasi-one-dimensional isentropic nozzle flow after Sutton
 and Biblarz, *Rocket Propulsion Elements*, 9th ed., chapters 3 and 5, and NASA SP-8120. Given
-published chamber conditions and expansion ratios, it reproduces the published specific impulse of
-three flight engines.
+published chamber conditions and expansion ratios, it reproduces published specific impulse. The
+numbers and the URL or document each one came from are in
+`Tests/Unit/Physics/PublishedNozzleReference.cs`. CI runs
+`Solve_ReproducesPublishedSpecificImpulseAndDoesNotUnderpredictIt` and fails the build if the
+solver leaves the band.
 
 | Engine | Published Isp | Computed | Delta |
 |--------|---------------|----------|-------|
 | Merlin 1D, sea level | 282.0 s | 284.2 s | +0.79% |
-| Raptor, sea level | 330.0 s | 332.7 s | +0.83% |
-| RS-25, vacuum | 452.3 s | 453.0 s | +0.15% |
+| Raptor, sea level, 300 bar, area ratio 34 | 330.0 s | 332.7 s | +0.83% |
+| RS-25, vacuum, 109% | 452.3 s | 453.0 s | +0.15% |
+| RS-25, sea level, 109% | 366.0 s | 373.8 s | +2.14% |
 
-Source: `Tests/Unit/Physics/IdealRocketNozzleTests.cs`,
-`Solve_ReproducesPublishedSpecificImpulseOfFlightEngines`.
+The RS-25 specification sheet also publishes vacuum thrust 512,300 lb and sea-level thrust
+418,000 lb. The ideal vacuum-to-sea-level thrust ratio is 1.212 against the published 1.226
+(1.1% low). `Solve_Rs25VacuumToSeaLevelThrustRatio_StaysInsideThePublishedBand` keeps that inside
+3%. Absolute thrust is not checked: these sheets do not give a throat area, and a commonly
+repeated 10.3 inch throat makes the ideal thrust fall short of the published thrust, so that
+diameter is not used.
 
-The direction of the error matters more than its size. Ideal theory assumes complete combustion, no
-friction, no heat loss, and fully axial exit flow, so it must *overpredict* a real engine. All three
-deltas are positive, and a separate test
-(`Solve_DoesNotUnderpredictRealEnginePerformance`) asserts this one-sided bound directly. A model
-that matched published values exactly, or came in below them, would indicate an error in the
-relations or in the propellant properties rather than a better model.
+The direction of the specific-impulse error matters more than its size. Ideal theory assumes
+complete combustion, no friction, no heat loss, and fully axial exit flow, so it must not fall
+below a published specific impulse. A model that came in below the published value would indicate
+an error in the relations or in the propellant properties rather than a better model.
 
-The assertion band in the test is 3% rather than 1%, deliberately wider than the agreement observed,
-because a tolerance tight enough to exclude the physical loss margin would be pinning coincidence
-rather than testing the model.
+The assertion band is 3% rather than 1%, deliberately wider than the agreement on the original
+three points, because a tolerance tight enough to exclude the physical loss margin would be
+pinning coincidence rather than testing the model.
+
+### Points that were not added
+
+These were looked up and left out. Adding them would mean retuning gamma, temperature, or molar
+mass, or gluing numbers from different engines into one operating point.
+
+- **Merlin 1D Vacuum, 348 s at an expansion ratio of 165.** The Merlin article states that pair
+  together. With the Merlin 1D chamber pressure of 9.7 MPa and the shared RP-1/LOX assumptions,
+  the ideal specific impulse is about 342 s, below the published 348 s. The same article's infobox
+  lists a vacuum specific impulse of 311 s and marks it as needing an update; the 2011 Merlin 1D
+  paragraph calls 310 s a design goal. Neither vacuum figure is in the gate.
+- **Current Raptor infobox rows.** The page lists sea-level specific impulse 327 s, chamber
+  pressure 330 bar, and a sea-level nozzle ratio of 34.34, but the 34.34 citation is a 2019 plume
+  study at about 253 bar, and the thrust cells are split across Raptor 1, 2, and 3. A 2019 public
+  statement gives about 350 s for a sea-level Raptor in vacuum and about 380 s with a larger
+  vacuum nozzle, without an expansion ratio in that sentence. At 300 bar and an expansion ratio
+  of 80 the ideal result is about 367 s, below 380 s. None of those combinations is in the gate.
+- **Absolute thrust for Merlin, Raptor, or RS-25.** The RS-25 sheet publishes thrust and area
+  ratio, not a throat diameter. A commonly repeated 10.3 inch throat makes ideal thrust fall
+  short of the published thrust, so it is not used. Merlin and Raptor likewise have no throat
+  area on the same source as the specific impulse.
 
 ### Invariants pinned by test
 
@@ -80,21 +107,24 @@ by testing stubs would be misleading rather than useful.
 
 Listed explicitly, because their absence is easy to mistake for an oversight.
 
-- **The legacy CFD, thermal, and structural solvers are not validated analyses.** `AdvancedCFDSolver`
-  and `AdvancedStructuralSolver` read chamber pressure and refuse a model that does not carry one.
-  Their fields, including structural displacement, fatigue life, and buckling margin, are closed-form
-  estimates rather than a Navier-Stokes solution or a finite-element analysis. No comparison against
-  wind tunnel data, engine test data, or a reference solver has been performed for them.
-  `AdvancedThermalSolver` reads chamber temperature and refuses a model that does not carry one.
-  Its field is a linear conduction estimate, not a heat-transfer solution. `NozzleFlowSolver` is
-  the only solver validated against published engine data.
+- **The legacy CFD, thermal, and structural solvers are not validated analyses, and they are not
+  a hardware-performance claim.** `AdvancedCFDSolver` and `AdvancedStructuralSolver` read chamber
+  pressure and refuse a model that does not carry one. Their fields, including structural
+  displacement, fatigue life, and buckling margin, are closed-form estimates rather than a
+  Navier-Stokes solution or a finite-element analysis. No comparison against wind tunnel data,
+  engine test data, or a reference solver has been performed for them. `AdvancedThermalSolver`
+  reads chamber temperature and refuses a model that does not carry one. Its field is a linear
+  conduction estimate, not a heat-transfer solution. Until those solvers are real analyses, their
+  numbers stay out of any claim about how an engine performs. `NozzleFlowSolver` and
+  `IdealRocketNozzle` are the nozzle path that is compared with published engine data.
 - **No material property model exists.** Material temperature and strength figures in the engine
   definitions are declared constants, not predictions, and nothing validates them against literature
   databases.
-- **The concept engine's declared parameters agree with ideal-rocket theory.** Thrust, throat, exit,
-  and specific impulse are that ceiling at the declared chamber pressure and area ratio. They are
-  not a measurement, and they should not be cited as the tested performance of a built engine. See
-  `Docs/VERIFICATION_SCOPE.md` and `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`.
+- **HB-NLP-REV-001 is an idealized simulation concept.** Its declared thrust, throat, exit, and
+  specific impulse are the ideal-rocket ceiling at the declared chamber pressure and area ratio.
+  Those numbers are theoretical ceilings, not fired-engine performance, and they are not part of
+  the validation table above. See `Docs/VERIFICATION_SCOPE.md` and
+  `Tests/Unit/Aerospace/EngineDesignConsistencyTests.cs`.
 - **No performance or throughput benchmarking has been conducted.** There are no measured figures for
   mesh sizes, calculations per second, memory footprint, or parallel scaling.
 

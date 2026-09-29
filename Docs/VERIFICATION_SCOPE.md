@@ -26,7 +26,7 @@ code it purports to verify is evidence of nothing.
 | Readiness decision logic | Mission-level requirement tables never relax as missions get stricter, go/no-go thresholds are inclusive at the boundary, critical categories are genuinely weighted | `Tests/Unit/Aerospace/AerospaceReadinessAssessmentTests.cs` |
 | Engine model polymorphism | Every engine reports its performance envelope through `RocketEngineBase` | `Tests/Unit/Aerospace/EngineModelTests.cs` |
 | CFD solver contract | Full decision coverage of `AdvancedCFDSolver`, including the self-initialising path | `Tests/Unit/Physics/PhysicsSolverContractTests.cs` |
-| Ideal rocket nozzle | Quasi-1D isentropic nozzle solution validated against the published specific impulse of Merlin 1D, Raptor, and RS-25; scale invariance, expansion monotonicity, and the sign of the pressure term pinned | `Tests/Unit/Physics/IdealRocketNozzleTests.cs`, `Tests/Unit/Physics/NozzleFlowSolverTests.cs` |
+| Ideal rocket nozzle | Quasi-1D isentropic nozzle solution validated against published specific impulse for Merlin 1D at sea level, Raptor at sea level, and RS-25 at sea level and in vacuum, plus the RS-25 vacuum-to-sea-level thrust ratio. Each number cites its source in `PublishedNozzleReference`. Scale invariance, expansion monotonicity, and the sign of the pressure term are pinned | `Tests/Unit/Physics/IdealRocketNozzleTests.cs`, `Tests/Unit/Physics/NozzleFlowSolverTests.cs` |
 
 ### Defects this verification found
 
@@ -108,11 +108,13 @@ ambient pressure, they solve the quasi-one-dimensional isentropic nozzle and ret
 specific impulse, mass flow, characteristic velocity, and exit conditions.
 
 The relations are validated rather than merely self-consistent: using published chamber
-conditions and area ratios, computed specific impulse lands within about 1% of the published
-figures for Merlin 1D at sea level, Raptor at sea level, and RS-25 in vacuum, and the tests
-additionally assert that ideal theory never *under*predicts a real engine — every loss the ideal
-model neglects reduces real performance, so underprediction would indicate an error in the
-algebra or the propellant properties.
+conditions and area ratios, computed specific impulse stays inside 3% of the published figures
+and never under them. The points are Merlin 1D at sea level, Raptor at sea level, and RS-25 at 109 percent both in
+vacuum and at sea level. The RS-25 vacuum-to-sea-level thrust ratio is checked as well.
+Underprediction would indicate an error in the algebra or the propellant properties, because
+every loss the ideal model neglects reduces real performance. The build fails when a point
+leaves that band. HB-NLP-REV-001 is not one of these points: its 3.5 MN and 351.5 s are the
+ideal ceiling for that concept, not a fired engine.
 
 What this does not claim: it is a one-dimensional equilibrium model, not a flow solver. It says
 nothing about combustion stability, boundary layers, flow separation, nozzle heat transfer, or

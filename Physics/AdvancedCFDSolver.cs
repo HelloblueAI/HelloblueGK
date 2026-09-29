@@ -138,7 +138,8 @@ namespace HB_NLP_Research_Lab.Physics
 
         private double CalculateHeatTransfer()
         {
-            // Real heat transfer coefficient calculation
+            // Schematic heat-transfer coefficient. Fixed Reynolds and Prandtl numbers, not a
+            // boundary-layer solution, and not a hardware heat-flux measurement.
             double reynoldsNumber = 1e6; // High Reynolds number flow
             double prandtlNumber = 0.71; // Air
             double nusseltNumber = 0.023 * Math.Pow(reynoldsNumber, 0.8) * Math.Pow(prandtlNumber, 0.4);

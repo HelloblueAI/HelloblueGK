@@ -1,8 +1,9 @@
 # HB-NLP-REV-001 Design Summary
 
-**This is a concept design. No engine has been built, fired, or tested, and nothing here is an
-analysis result.** The figures below are the same declared inputs as
-[`Aerospace/HB_NLP_RevolutionaryEngine.cs`](../../../Aerospace/HB_NLP_RevolutionaryEngine.cs).
+**This is an idealized simulation concept. No engine has been built, fired, or tested, and nothing
+here is an analysis result or a real-engine performance figure.** The thrust and specific impulse
+are theoretical ceilings from ideal-rocket theory. The figures below are the same declared inputs
+as [`Aerospace/HB_NLP_RevolutionaryEngine.cs`](../../../Aerospace/HB_NLP_RevolutionaryEngine.cs).
 See [VERIFICATION_SCOPE.md](../../VERIFICATION_SCOPE.md) for what this project verifies and what
 it does not.
 
