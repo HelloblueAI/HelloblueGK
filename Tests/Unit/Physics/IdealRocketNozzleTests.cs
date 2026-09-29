@@ -9,10 +9,11 @@ namespace HelloblueGK.Tests.Unit.Physics;
 /// Verification of the ideal-rocket nozzle relations.
 ///
 /// Two kinds of test here, and the distinction matters. The first compares computed specific
-/// impulse against published figures for three flight engines, which is the only evidence that
-/// the formulas describe reality rather than merely being self-consistent. The second pins
-/// physical invariants — scale invariance, monotonicity, the sign of the pressure term — which
-/// catch algebra errors that a single-point comparison would let through.
+/// impulse, and where the data allow it thrust, against published figures for flight engines.
+/// That catalog is <see cref="PublishedNozzleReference"/>. It is the only evidence that the
+/// formulas describe reality rather than merely being self-consistent. The second pins physical
+/// invariants — scale invariance, monotonicity, the sign of the pressure term — which catch
+/// algebra errors that a single-point comparison would let through.
 ///
 /// Propellant properties are literature values for each propellant combination, not figures
 /// tuned per engine. Chamber pressure and expansion ratio are the published values for the
@@ -28,92 +29,80 @@ public class IdealRocketNozzleTests
     /// </summary>
     private const double ReferenceThroatArea = 0.05;
 
-    private static EngineOperatingPoint Merlin1DSeaLevel() => new()
-    {
-        ChamberPressure = 9.7e6,
-        ChamberTemperature = 3500,
-        SpecificHeatRatio = 1.24,
-        MolarMass = 0.0223,
-        ExpansionRatio = 16,
-        ThroatArea = ReferenceThroatArea,
-        AmbientPressure = SeaLevelPressure
-    };
+    private static EngineOperatingPoint Merlin1DSeaLevel() =>
+        PublishedNozzleReference.OperatingPoint(
+            PublishedNozzleReference.SpecificImpulseById("merlin-1d-sea-level"),
+            ReferenceThroatArea);
 
-    private static EngineOperatingPoint RaptorSeaLevel() => new()
-    {
-        ChamberPressure = 30e6,
-        ChamberTemperature = 3600,
-        SpecificHeatRatio = 1.20,
-        MolarMass = 0.0206,
-        ExpansionRatio = 34,
-        ThroatArea = ReferenceThroatArea,
-        AmbientPressure = SeaLevelPressure
-    };
+    private static EngineOperatingPoint RaptorSeaLevel() =>
+        PublishedNozzleReference.OperatingPoint(
+            PublishedNozzleReference.SpecificImpulseById("raptor-sea-level"),
+            ReferenceThroatArea);
 
-    private static EngineOperatingPoint RS25Vacuum() => new()
-    {
-        ChamberPressure = 20.64e6,
-        ChamberTemperature = 3588,
-        SpecificHeatRatio = 1.19,
-        MolarMass = 0.0136,
-        ExpansionRatio = 69,
-        ThroatArea = ReferenceThroatArea,
-        AmbientPressure = 0
-    };
+    private static EngineOperatingPoint RS25Vacuum() =>
+        PublishedNozzleReference.OperatingPoint(
+            PublishedNozzleReference.SpecificImpulseById("rs-25-vacuum"),
+            ReferenceThroatArea);
 
     // ---------------------------------------------------------------------------------
     // Validation against published engine performance
     // ---------------------------------------------------------------------------------
 
+    public static IEnumerable<object[]> PublishedSpecificImpulseIds() =>
+        PublishedNozzleReference.SpecificImpulse.Select(point => new object[] { point.Id });
+
     /// <summary>
     /// The central claim: given published chamber conditions and nozzle geometry, these relations
-    /// reproduce the published specific impulse of real engines.
+    /// reproduce the published specific impulse of real engines, and they do not underpredict it.
     ///
-    /// The 3% band is deliberately wider than the roughly 1% agreement actually observed. Ideal
-    /// theory should slightly overpredict a real engine, since it assumes no combustion
-    /// inefficiency, no friction, no heat loss, and fully axial exit flow. A tolerance tight
-    /// enough to exclude that physical margin would be pinning coincidence rather than testing
-    /// the model.
+    /// The 3% band is deliberately wider than the agreement on the original three points. Ideal
+    /// theory should sit above a real engine, since it assumes no combustion inefficiency, no
+    /// friction, no heat loss, and fully axial exit flow. A tolerance tight enough to exclude
+    /// that physical margin would be pinning coincidence rather than testing the model.
+    /// The published number and its source live in <see cref="PublishedNozzleReference"/>.
+    /// Changing either is a visible edit. CI fails when the solver leaves the band.
     /// </summary>
     [Theory]
-    [InlineData("Merlin 1D, sea level", 282.0)]
-    [InlineData("Raptor, sea level", 330.0)]
-    [InlineData("RS-25, vacuum", 452.3)]
-    public void Solve_ReproducesPublishedSpecificImpulseOfFlightEngines(string engine, double publishedIsp)
+    [MemberData(nameof(PublishedSpecificImpulseIds))]
+    public void Solve_ReproducesPublishedSpecificImpulseAndDoesNotUnderpredictIt(string id)
     {
-        var point = engine switch
-        {
-            "Merlin 1D, sea level" => Merlin1DSeaLevel(),
-            "Raptor, sea level" => RaptorSeaLevel(),
-            "RS-25, vacuum" => RS25Vacuum(),
-            _ => throw new ArgumentOutOfRangeException(nameof(engine))
-        };
+        var published = PublishedNozzleReference.SpecificImpulseById(id);
+        published.PerformanceSource.Should().Contain("http", "every reference value has to name its source");
 
-        var solution = IdealRocketNozzle.Solve(point);
+        var solution = IdealRocketNozzle.Solve(
+            PublishedNozzleReference.OperatingPoint(published, ReferenceThroatArea));
 
-        solution.SpecificImpulse.Should().BeApproximately(publishedIsp, publishedIsp * 0.03);
+        solution.SpecificImpulse.Should().BeGreaterThanOrEqualTo(
+            published.PublishedSpecificImpulseSeconds,
+            $"{published.Label} would be an underprediction, which ideal theory must not produce");
+        solution.SpecificImpulse.Should().BeApproximately(
+            published.PublishedSpecificImpulseSeconds,
+            published.PublishedSpecificImpulseSeconds * PublishedNozzleReference.RelativeBand,
+            published.Label);
     }
 
     /// <summary>
-    /// Ideal theory must not *under*predict a real engine. If it did, either the relations or the
-    /// propellant properties would be wrong, since every neglected loss reduces real performance
-    /// relative to ideal.
+    /// Vacuum and sea-level thrust are both on the RS-25 specification sheet. Their ratio does
+    /// not depend on throat area, so it can be checked without inventing a diameter. The band is
+    /// two-sided: sea-level and vacuum losses do not push the ratio in one direction the way they
+    /// push specific impulse down.
     /// </summary>
-    [Theory]
-    [InlineData("Merlin 1D, sea level", 282.0)]
-    [InlineData("Raptor, sea level", 330.0)]
-    [InlineData("RS-25, vacuum", 452.3)]
-    public void Solve_DoesNotUnderpredictRealEnginePerformance(string engine, double publishedIsp)
+    [Fact]
+    public void Solve_Rs25VacuumToSeaLevelThrustRatio_StaysInsideThePublishedBand()
     {
-        var point = engine switch
-        {
-            "Merlin 1D, sea level" => Merlin1DSeaLevel(),
-            "Raptor, sea level" => RaptorSeaLevel(),
-            "RS-25, vacuum" => RS25Vacuum(),
-            _ => throw new ArgumentOutOfRangeException(nameof(engine))
-        };
+        var ratio = PublishedNozzleReference.Rs25ThrustRatio;
+        ratio.Source.Should().Contain("http");
+        ratio.Vacuum.ExpansionRatio.Should().Be(ratio.SeaLevel.ExpansionRatio);
+        ratio.Vacuum.ChamberPressurePascals.Should().Be(ratio.SeaLevel.ChamberPressurePascals);
 
-        IdealRocketNozzle.Solve(point).SpecificImpulse.Should().BeGreaterThanOrEqualTo(publishedIsp);
+        const double throatArea = 1.0;
+        var vacuum = IdealRocketNozzle.Solve(PublishedNozzleReference.OperatingPoint(ratio.Vacuum, throatArea));
+        var seaLevel = IdealRocketNozzle.Solve(PublishedNozzleReference.OperatingPoint(ratio.SeaLevel, throatArea));
+        var idealRatio = vacuum.Thrust / seaLevel.Thrust;
+
+        idealRatio.Should().BeApproximately(
+            ratio.PublishedRatio,
+            ratio.PublishedRatio * PublishedNozzleReference.RelativeBand);
     }
 
     /// <summary>

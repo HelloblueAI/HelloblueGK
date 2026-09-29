@@ -311,7 +311,7 @@ namespace HB_NLP_Research_Lab.Physics
 
         private List<double> RunStructuralConvergence()
         {
-            // Real structural convergence analysis
+            // Schematic residual history. It is not a finite-element convergence check.
             var residuals = new List<double>();
             double initialResidual = 1.0;
             
