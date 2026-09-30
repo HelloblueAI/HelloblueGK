@@ -53,8 +53,12 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public void SetThrottle(double throttle)
         {
-            if (throttle < MinThrottle || throttle > MaxThrottle)
-                throw new ArgumentOutOfRangeException(nameof(throttle), $"Throttle must be between {MinThrottle} and {MaxThrottle}");
+            // NaN is neither below the minimum nor above the maximum, so the range check
+            // alone used to store it and the open-loop path commanded that NaN.
+            if (!double.IsFinite(throttle) || throttle < MinThrottle || throttle > MaxThrottle)
+                throw new ArgumentOutOfRangeException(
+                    nameof(throttle),
+                    $"Throttle must be a finite value between {MinThrottle} and {MaxThrottle}");
             
             _commandedThrottle = throttle;
         }
@@ -64,8 +68,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public void SetTargetThrust(double targetThrust)
         {
-            if (targetThrust < 0)
-                throw new ArgumentOutOfRangeException(nameof(targetThrust), "Target thrust must be >= 0");
+            if (!double.IsFinite(targetThrust) || targetThrust < 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(targetThrust), "Target thrust must be a finite value >= 0");
             
             _targetThrust = targetThrust;
         }
@@ -87,11 +92,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                     ? CalculateThrottleFromThrust(currentThrust, _targetThrust)  // Closed-loop control
                     : _commandedThrottle;  // Open-loop control
                 
-                // Apply rate limiting for safety
-                throttleCommand = ApplyRateLimit(throttleCommand);
-                
-                // Apply safety limits
-                throttleCommand = Math.Clamp(throttleCommand, MinThrottle, MaxThrottle);
+                // Rate limit, then clamp. A non-finite command holds the last finite position
+                // instead of passing NaN through Math.Clamp, which returns NaN.
+                throttleCommand = ConstrainThrottleCommand(throttleCommand);
                 
                 // Send command to actuator
                 var success = await _throttleActuator.SetPositionAsync(throttleCommand, cancellationToken);
@@ -181,18 +184,34 @@ namespace HB_NLP_Research_Lab.Core.Control
             var error = (targetThrust - currentThrust) / targetThrust;
             return double.IsFinite(error) ? error : 0;
         }
-        
-        private double ApplyRateLimit(double targetThrottle)
+
+        /// <summary>
+        /// Steps <paramref name="targetThrottle"/> toward a finite position no faster than
+        /// <paramref name="maxChange"/>. A non-finite target holds the last finite position.
+        /// A non-finite current position is treated as closed, so it cannot skip the rate limit.
+        /// </summary>
+        internal static double HoldOrStep(double currentThrottle, double targetThrottle, double maxChange)
         {
-            var maxChange = MaxThrottleRate / LoopFrequencyHz;
-            var change = targetThrottle - _currentThrottle;
-            
+            var current = double.IsFinite(currentThrottle) ? currentThrottle : MinThrottle;
+            if (!double.IsFinite(targetThrottle))
+            {
+                return current;
+            }
+
+            var change = targetThrottle - current;
             if (Math.Abs(change) > maxChange)
             {
-                return _currentThrottle + Math.Sign(change) * maxChange;
+                return current + (Math.Sign(change) * maxChange);
             }
-            
+
             return targetThrottle;
+        }
+
+        internal double ConstrainThrottleCommand(double targetThrottle)
+        {
+            var maxChange = MaxThrottleRate / LoopFrequencyHz;
+            var stepped = HoldOrStep(_currentThrottle, targetThrottle, maxChange);
+            return Math.Clamp(stepped, MinThrottle, MaxThrottle);
         }
         
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)

@@ -52,33 +52,40 @@ namespace HB_NLP_Research_Lab.Physics
         /// Throws if any value is outside the range the isentropic relations are defined on.
         /// Failing here is much better than returning a NaN that propagates into a result object
         /// and gets reported as an engine performance figure.
+        ///
+        /// Every comparison with NaN is false, and the same is true of positive infinity against
+        /// these upper-unbounded checks, so a missing or infinite reading used to pass and leave
+        /// the solution as NaN or infinity.
         /// </summary>
         public void Validate()
         {
-            if (ChamberPressure <= 0)
-                throw new ArgumentOutOfRangeException(nameof(ChamberPressure), "Chamber pressure must be positive.");
-
-            if (ChamberTemperature <= 0)
+            if (!double.IsFinite(ChamberPressure) || ChamberPressure <= 0)
                 throw new ArgumentOutOfRangeException(
-                    nameof(ChamberTemperature), "Chamber temperature must be positive.");
+                    nameof(ChamberPressure), "Chamber pressure must be a positive finite value.");
 
-            if (SpecificHeatRatio <= 1.0)
+            if (!double.IsFinite(ChamberTemperature) || ChamberTemperature <= 0)
                 throw new ArgumentOutOfRangeException(
-                    nameof(SpecificHeatRatio), "Specific heat ratio must exceed 1.");
+                    nameof(ChamberTemperature), "Chamber temperature must be a positive finite value.");
 
-            if (MolarMass <= 0)
-                throw new ArgumentOutOfRangeException(nameof(MolarMass), "Molar mass must be positive.");
-
-            if (ThroatArea <= 0)
-                throw new ArgumentOutOfRangeException(nameof(ThroatArea), "Throat area must be positive.");
-
-            if (ExpansionRatio < 1.0)
+            if (!double.IsFinite(SpecificHeatRatio) || SpecificHeatRatio <= 1.0)
                 throw new ArgumentOutOfRangeException(
-                    nameof(ExpansionRatio), "Expansion ratio cannot be below 1.");
+                    nameof(SpecificHeatRatio), "Specific heat ratio must be a finite value greater than 1.");
 
-            if (AmbientPressure < 0)
+            if (!double.IsFinite(MolarMass) || MolarMass <= 0)
                 throw new ArgumentOutOfRangeException(
-                    nameof(AmbientPressure), "Ambient pressure cannot be negative.");
+                    nameof(MolarMass), "Molar mass must be a positive finite value.");
+
+            if (!double.IsFinite(ThroatArea) || ThroatArea <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(ThroatArea), "Throat area must be a positive finite value.");
+
+            if (!double.IsFinite(ExpansionRatio) || ExpansionRatio < 1.0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(ExpansionRatio), "Expansion ratio must be a finite value of at least 1.");
+
+            if (!double.IsFinite(AmbientPressure) || AmbientPressure < 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(AmbientPressure), "Ambient pressure must be a non-negative finite value.");
         }
     }
 
