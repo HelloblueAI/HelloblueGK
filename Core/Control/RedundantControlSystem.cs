@@ -184,118 +184,192 @@ namespace HB_NLP_Research_Lab.Core.Control
         
         private double? VoteOnOutputs(List<double> outputs)
         {
-            if (outputs.Count == 0)
-                return null;
-            
-            switch (_votingStrategy)
-            {
-                case VotingStrategy.MajorityVote:
-                    return MajorityVote(outputs);
-                
-                case VotingStrategy.MedianVote:
-                    return MedianVote(outputs);
-                
-                case VotingStrategy.AverageVote:
-                    return AverageVote(outputs);
-                
-                case VotingStrategy.MidValueSelect:
-                    return MidValueSelect(outputs);
-                
-                case VotingStrategy.Consensus:
-                    return ConsensusVote(outputs);
-                
-                default:
-                    return MedianVote(outputs);
-            }
+            return SelectVote(_votingStrategy, outputs);
         }
-        
-        private double MajorityVote(List<double> outputs)
+
+        /// <summary>
+        /// Selects one finite actuator command, or null to hold.
+        /// LINQ Min and Max skip a NaN channel, then Average folds that NaN back in,
+        /// so consensus of two healthy channels plus a failed channel commanded NaN.
+        /// </summary>
+        internal static double? SelectVote(VotingStrategy strategy, IReadOnlyList<double> outputs)
         {
             if (outputs == null || outputs.Count == 0)
-            {
-                throw new InvalidOperationException("MajorityVote requires at least one output value.");
-            }
+                return null;
 
-            // Group by value (within tolerance)
+            return strategy switch
+            {
+                VotingStrategy.MajorityVote => MajorityVote(outputs),
+                VotingStrategy.MedianVote => MedianVote(outputs),
+                VotingStrategy.AverageVote => AverageVote(outputs),
+                VotingStrategy.MidValueSelect => MidValueSelect(outputs),
+                VotingStrategy.Consensus => ConsensusVote(outputs),
+                _ => MedianVote(outputs)
+            };
+        }
+
+        internal static double? MajorityVote(IReadOnlyList<double> outputs)
+        {
+            if (outputs == null || outputs.Count == 0)
+                return null;
+
+            // Group finite values within tolerance. A NaN group used to win
+            // because Double.Equals treats NaN as equal to NaN, and the winner
+            // was commanded even when it was not a majority of the channels.
             const double tolerance = 0.01;
             var groups = outputs
-                .GroupBy(v => Math.Round(v / tolerance) * tolerance)
-                .OrderByDescending(g => g.Count())
+                .Where(static value => double.IsFinite(value))
+                .GroupBy(value => Math.Round(value / tolerance) * tolerance)
+                .OrderByDescending(group => group.Count())
                 .ToList();
-            
-            if (groups.Count == 0)
-            {
-                throw new InvalidOperationException("MajorityVote could not form any voting groups.");
-            }
 
-            // Return value from largest group
-            return groups[0].Key;
+            if (groups.Count == 0)
+                return null;
+
+            var winnerCount = groups[0].Count();
+            if (winnerCount * 2 <= outputs.Count)
+                return null;
+
+            var key = groups[0].Key;
+            return double.IsFinite(key) ? key : null;
         }
-        
-        private double MedianVote(List<double> outputs)
+
+        internal static double? MedianVote(IReadOnlyList<double> outputs)
         {
-            var sorted = outputs.OrderBy(v => v).ToList();
+            if (outputs == null || outputs.Count == 0)
+                return null;
+
+            var sorted = outputs.OrderBy(value => value).ToList();
             int mid = sorted.Count / 2;
-            
-            return sorted.Count % 2 == 0
+            var selected = sorted.Count % 2 == 0
                 ? (sorted[mid - 1] + sorted[mid]) / 2.0
                 : sorted[mid];
+
+            return double.IsFinite(selected) ? selected : null;
         }
-        
-        private double AverageVote(List<double> outputs)
+
+        internal static double? AverageVote(IReadOnlyList<double> outputs)
         {
-            return outputs.Average();
+            if (outputs == null || outputs.Count == 0)
+                return null;
+
+            double sum = 0;
+            foreach (var value in outputs)
+            {
+                if (!double.IsFinite(value))
+                    return null;
+
+                sum += value;
+            }
+
+            var average = sum / outputs.Count;
+            return double.IsFinite(average) ? average : null;
         }
-        
-        private double MidValueSelect(List<double> outputs)
+
+        internal static double? MidValueSelect(IReadOnlyList<double> outputs)
         {
-            // Select middle value (used in TMR)
-            var sorted = outputs.OrderBy(v => v).ToList();
-            return sorted[sorted.Count / 2];
+            if (outputs == null || outputs.Count == 0)
+                return null;
+
+            // Middle value of the sorted channels (TMR). A non-finite middle holds.
+            var sorted = outputs.OrderBy(value => value).ToList();
+            var selected = sorted[sorted.Count / 2];
+            return double.IsFinite(selected) ? selected : null;
         }
-        
-        private double? ConsensusVote(List<double> outputs)
+
+        internal static double? ConsensusVote(IReadOnlyList<double> outputs)
         {
-            // All outputs must agree within tolerance
+            if (outputs == null || outputs.Count == 0)
+                return null;
+
             const double tolerance = 0.01;
-            var min = outputs.Min();
-            var max = outputs.Max();
-            
-            return max - min <= tolerance
-                ? outputs.Average()
-                : (double?)null; // No consensus
+            double min = double.PositiveInfinity;
+            double max = double.NegativeInfinity;
+            double sum = 0;
+            foreach (var value in outputs)
+            {
+                if (!double.IsFinite(value))
+                    return null;
+
+                if (value < min)
+                    min = value;
+                if (value > max)
+                    max = value;
+                sum += value;
+            }
+
+            var span = max - min;
+            if (!double.IsFinite(span) || span > tolerance)
+                return null;
+
+            var average = sum / outputs.Count;
+            return double.IsFinite(average) ? average : null;
         }
-        
+
         private List<Fault> DetectFaults(List<double> outputs)
         {
+            return DetectChannelFaults(outputs);
+        }
+
+        /// <summary>
+        /// A non-finite channel is a fault. Comparisons with NaN are false, so the
+        /// old deviation check never reported a failed channel, and one NaN made
+        /// the mean NaN so healthy outliers were missed too.
+        /// </summary>
+        internal static List<Fault> DetectChannelFaults(IReadOnlyList<double> outputs)
+        {
             var faults = new List<Fault>();
-            
-            if (outputs.Count < 2)
+            if (outputs == null || outputs.Count < 2)
                 return faults;
-            
-            // Calculate statistics
-            var mean = outputs.Average();
-            var stdDev = Math.Sqrt(outputs.Select(v => Math.Pow(v - mean, 2)).Average());
-            
-            // Detect outliers (faulty controllers)
+
+            var finite = new List<double>();
+            foreach (var value in outputs)
+            {
+                if (double.IsFinite(value))
+                    finite.Add(value);
+            }
+
+            double? mean = finite.Count > 0 ? finite.Average() : null;
+            var stdDev = 0.0;
+            if (finite.Count >= 2 && mean.HasValue)
+            {
+                var variance = finite.Select(value => Math.Pow(value - mean.Value, 2)).Average();
+                stdDev = Math.Sqrt(variance);
+            }
+
             for (int i = 0; i < outputs.Count; i++)
             {
-                var deviation = Math.Abs(outputs[i] - mean);
-                
-                // If deviation is more than 3 standard deviations, consider it a fault
-                if (deviation > 3 * stdDev && stdDev > 0.001)
+                var value = outputs[i];
+                if (!double.IsFinite(value))
                 {
                     faults.Add(new Fault
                     {
                         ControllerIndex = i,
-                        OutputValue = outputs[i],
-                        ExpectedValue = mean,
+                        OutputValue = value,
+                        ExpectedValue = mean ?? double.NaN,
+                        Deviation = double.PositiveInfinity,
+                        Timestamp = DateTime.UtcNow
+                    });
+                    continue;
+                }
+
+                if (!mean.HasValue || !double.IsFinite(stdDev) || stdDev <= 0.001)
+                    continue;
+
+                var deviation = Math.Abs(value - mean.Value);
+                if (deviation > 3 * stdDev)
+                {
+                    faults.Add(new Fault
+                    {
+                        ControllerIndex = i,
+                        OutputValue = value,
+                        ExpectedValue = mean.Value,
                         Deviation = deviation,
                         Timestamp = DateTime.UtcNow
                     });
                 }
             }
-            
+
             return faults;
         }
         
@@ -331,7 +405,7 @@ namespace HB_NLP_Research_Lab.Core.Control
     
     public enum VotingStrategy
     {
-        MajorityVote,    // Most common value
+        MajorityVote,    // Strict majority of channels; otherwise hold
         MedianVote,      // Median value
         AverageVote,      // Average of all values
         MidValueSelect,  // Middle value (TMR)
