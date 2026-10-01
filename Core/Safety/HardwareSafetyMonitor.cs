@@ -22,6 +22,13 @@ namespace HB_NLP_Research_Lab.Core.Safety
         private readonly object _lock = new object();
         
         public bool IsEmergencyShutdownActive => _emergencyShutdownActive;
+
+        /// <summary>
+        /// One monitor pass, the same check the control loop runs. Tests call this so a
+        /// non-finite reading can be asserted without waiting on the scheduler.
+        /// </summary>
+        internal Task CheckSensorsOnceAsync(CancellationToken cancellationToken = default) =>
+            ExecuteControlLoopAsync(cancellationToken);
         public event EventHandler<SafetyViolationEventArgs>? SafetyViolationDetected;
         public event EventHandler<EmergencyShutdownEventArgs>? EmergencyShutdownTriggered;
         
@@ -45,10 +52,23 @@ namespace HB_NLP_Research_Lab.Core.Safety
         }
         
         /// <summary>
-        /// Add or update a safety limit
+        /// Add or update a safety limit. A non-finite or inverted bound cannot be installed:
+        /// comparisons with NaN are false, so a NaN ceiling would disable the interlock.
         /// </summary>
         public void SetSafetyLimit(string parameterName, double min, double max, bool critical = true)
         {
+            if (string.IsNullOrWhiteSpace(parameterName))
+            {
+                throw new ArgumentException("Parameter name is required.", nameof(parameterName));
+            }
+
+            if (!IsUsableLimit(min, max))
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(max),
+                    "Safety limits must be finite, and the minimum must not exceed the maximum.");
+            }
+
             _safetyLimits[parameterName] = new SafetyLimit
             {
                 Min = min,
@@ -56,6 +76,24 @@ namespace HB_NLP_Research_Lab.Core.Safety
                 Critical = critical
             };
         }
+
+        /// <summary>
+        /// A reading is outside its limit when it is non-finite or beyond the inclusive band.
+        /// NaN is neither below the minimum nor above the maximum, so the range check alone
+        /// used to leave a failed sensor running.
+        /// </summary>
+        internal static bool ReadingViolatesLimit(double value, double min, double max)
+        {
+            if (!IsUsableLimit(min, max) || !double.IsFinite(value))
+            {
+                return true;
+            }
+
+            return value < min || value > max;
+        }
+
+        private static bool IsUsableLimit(double min, double max) =>
+            double.IsFinite(min) && double.IsFinite(max) && min <= max;
         
         /// <summary>
         /// Reset emergency shutdown (requires manual intervention)
@@ -88,9 +126,10 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     var value = await sensor.ReadAsync(cancellationToken);
                     var sensorName = sensor.Name;
                     
-                    // Check against safety limits
-                    if (_safetyLimits.TryGetValue(sensorName, out var limit) && 
-                        (value < limit.Min || value > limit.Max))
+                    // Check against safety limits. A missing or non-finite reading is a
+                    // violation: the range comparison does not reject NaN.
+                    if (_safetyLimits.TryGetValue(sensorName, out var limit) &&
+                        ReadingViolatesLimit(value, limit.Min, limit.Max))
                     {
                         await HandleSafetyViolationAsync(sensorName, value, limit, cancellationToken);
                     }
