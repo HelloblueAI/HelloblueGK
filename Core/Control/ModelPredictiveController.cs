@@ -45,6 +45,15 @@ namespace HB_NLP_Research_Lab.Core.Control
             _sensors = sensors ?? throw new ArgumentNullException(nameof(sensors));
             _engineModel = engineModel ?? throw new ArgumentNullException(nameof(engineModel));
             
+            if (predictionHorizon < 1)
+                throw new ArgumentOutOfRangeException(nameof(predictionHorizon), "Prediction horizon must be at least 1.");
+            if (controlHorizon < 1)
+                throw new ArgumentOutOfRangeException(nameof(controlHorizon), "Control horizon must be at least 1.");
+            // A non-finite or non-positive sample time makes the rate window NaN or inverted,
+            // and both rate comparisons then fail open.
+            if (!double.IsFinite(samplingTime) || samplingTime <= 0)
+                throw new ArgumentOutOfRangeException(nameof(samplingTime), "Sampling time must be finite and positive.");
+
             _predictionHorizon = predictionHorizon;
             _controlHorizon = controlHorizon;
             _samplingTime = samplingTime;
@@ -61,8 +70,12 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public void SetReferenceTrajectory(double[] trajectory)
         {
+            if (trajectory == null)
+                throw new ArgumentNullException(nameof(trajectory));
             if (trajectory.Length != _predictionHorizon)
                 throw new ArgumentException($"Trajectory length must be {_predictionHorizon}");
+            if (Array.Exists(trajectory, value => !double.IsFinite(value)))
+                throw new ArgumentOutOfRangeException(nameof(trajectory), "Reference trajectory values must be finite.");
             
             Array.Copy(trajectory, _referenceTrajectory, _predictionHorizon);
         }
@@ -72,6 +85,13 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public void SetConstraints(ControlConstraints constraints)
         {
+            if (constraints == null)
+                throw new ArgumentNullException(nameof(constraints));
+            if (!HasUsableRange(constraints.MinValue, constraints.MaxValue))
+                throw new ArgumentOutOfRangeException(nameof(constraints), "Value limits must be finite and ordered.");
+            if (!HasUsableRange(constraints.MinRate, constraints.MaxRate))
+                throw new ArgumentOutOfRangeException(nameof(constraints), "Rate limits must be finite and ordered.");
+
             _constraints.MinValue = constraints.MinValue;
             _constraints.MaxValue = constraints.MaxValue;
             _constraints.MaxRate = constraints.MaxRate;
@@ -99,8 +119,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // 4. Apply first control action (receding horizon)
                 var controlAction = optimalControl[0];
                 
-                // Apply constraints
+                // Apply constraints. The value written back is what the actuator received,
+                // so the next cycle rate-limits against that command rather than a NaN estimate.
                 controlAction = ApplyConstraints(controlAction);
+                optimalControl[0] = controlAction;
                 
                 // 5. Send to actuator
                 await _actuator.SetPositionAsync(controlAction, cancellationToken);
@@ -151,12 +173,27 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (_stateHistory.Count == 0)
                 return measuredState;
             
-            // Simple moving average filter
+            // Moving average of finite samples. Average() folds a single NaN into the
+            // estimate, and the optimizer then commands that NaN.
             var filteredState = new double[measuredState.Length];
             for (int i = 0; i < measuredState.Length; i++)
             {
-                var history = _stateHistory.Select(s => s[i]).ToArray();
-                filteredState[i] = history.Average();
+                double sum = 0.0;
+                var count = 0;
+                foreach (var sample in _stateHistory)
+                {
+                    if (i >= sample.Length)
+                        continue;
+
+                    var value = sample[i];
+                    if (!double.IsFinite(value))
+                        continue;
+
+                    sum += value;
+                    count++;
+                }
+
+                filteredState[i] = count > 0 ? sum / count : measuredState[i];
             }
             
             return filteredState;
@@ -178,9 +215,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             // Simplified gradient descent solution for demonstration
             var controlSequence = new double[_controlHorizon];
-            var currentControl = _controlHistory.Count > 0 
-                ? _controlHistory.Last()[0] 
-                : 0.0;
+            var seededControl = _controlHistory.Count > 0
+                ? _controlHistory.Last()[0]
+                : _constraints.MinValue;
+            var currentControl = double.IsFinite(seededControl)
+                ? seededControl
+                : (double.IsFinite(_constraints.MinValue) ? _constraints.MinValue : 0.0);
             
             // Initialize with current control
             for (int i = 0; i < _controlHorizon; i++)
@@ -197,12 +237,19 @@ namespace HB_NLP_Research_Lab.Core.Control
                 var cost = EvaluateCost(controlSequence);
                 var gradient = ComputeGradient(controlSequence);
                 
-                // Update control sequence
+                // Update control sequence. A non-finite gradient step holds the last finite
+                // iterate; Math.Clamp returns NaN when the step is NaN.
                 for (int i = 0; i < _controlHorizon; i++)
                 {
-                    controlSequence[i] -= learningRate * gradient[i];
-                    controlSequence[i] = Math.Clamp(controlSequence[i], 
-                        _constraints.MinValue, _constraints.MaxValue);
+                    var updated = controlSequence[i] - learningRate * gradient[i];
+                    controlSequence[i] = ConstrainCommand(
+                        updated,
+                        controlSequence[i],
+                        hasPrevious: true,
+                        _constraints.MinValue,
+                        _constraints.MaxValue,
+                        double.NegativeInfinity,
+                        double.PositiveInfinity);
                 }
                 
                 // Check convergence
@@ -290,24 +337,61 @@ namespace HB_NLP_Research_Lab.Core.Control
         
         private double ApplyConstraints(double control)
         {
-            // Apply value constraints
-            control = Math.Clamp(control, _constraints.MinValue, _constraints.MaxValue);
-            
-            // Apply rate constraints
-            if (_controlHistory.Count > 0)
-            {
-                var lastControl = _controlHistory.Last()[0];
-                var maxChange = _constraints.MaxRate * _samplingTime;
-                var minChange = _constraints.MinRate * _samplingTime;
-                
-                var change = control - lastControl;
-                if (change > maxChange)
-                    control = lastControl + maxChange;
-                else if (change < minChange)
-                    control = lastControl + minChange;
-            }
-            
-            return control;
+            var hasPrevious = _controlHistory.Count > 0;
+            var previous = hasPrevious ? _controlHistory.Last()[0] : 0.0;
+            return ConstrainCommand(
+                control,
+                previous,
+                hasPrevious,
+                _constraints.MinValue,
+                _constraints.MaxValue,
+                _constraints.MinRate * _samplingTime,
+                _constraints.MaxRate * _samplingTime);
+        }
+
+        /// <summary>
+        /// Clamps <paramref name="command"/> into a finite range and limits the step from
+        /// <paramref name="previous"/>. A non-finite command holds the last finite position.
+        /// A non-finite previous position is treated as <paramref name="minValue"/>, so the
+        /// next finite command cannot skip the rate limit. Non-finite or inverted value
+        /// bounds hold the last finite position, or 0 when there is none. A non-finite or
+        /// inverted rate window skips the rate limit after the value clamp.
+        /// </summary>
+        internal static double ConstrainCommand(
+            double command,
+            double previous,
+            bool hasPrevious,
+            double minValue,
+            double maxValue,
+            double minChange,
+            double maxChange)
+        {
+            var boundsAreUsable = HasUsableRange(minValue, maxValue);
+            var held = hasPrevious && double.IsFinite(previous)
+                ? previous
+                : boundsAreUsable ? minValue : 0.0;
+
+            if (!double.IsFinite(command) || !boundsAreUsable)
+                return held;
+
+            command = Math.Clamp(command, minValue, maxValue);
+
+            if (!hasPrevious || !HasUsableRange(minChange, maxChange))
+                return command;
+
+            var origin = double.IsFinite(previous) ? previous : minValue;
+            var change = command - origin;
+            if (change > maxChange)
+                command = origin + maxChange;
+            else if (change < minChange)
+                command = origin + minChange;
+
+            return command;
+        }
+
+        private static bool HasUsableRange(double lower, double upper)
+        {
+            return double.IsFinite(lower) && double.IsFinite(upper) && lower <= upper;
         }
         
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)
