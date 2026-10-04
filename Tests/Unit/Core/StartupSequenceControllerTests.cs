@@ -60,6 +60,113 @@ public class StartupSequenceControllerTests
         StartupSequenceController.HasMinimumPropellantFlow(0.009).Should().BeFalse();
         StartupSequenceController.HasMinimumPropellantFlow(double.NaN).Should().BeFalse();
         StartupSequenceController.HasMinimumPropellantFlow(double.NegativeInfinity).Should().BeFalse();
+        StartupSequenceController.HasMinimumPropellantFlow(double.PositiveInfinity).Should().BeFalse();
+    }
+
+    [Fact]
+    public void PropellantFlow_RejectsAPeggedSensor()
+    {
+        StartupSequenceController.IsPropellantFlowInBand(0.01, StartupSequenceController.MaximumFuelFlowKgPerSecond)
+            .Should().BeTrue();
+        StartupSequenceController.IsPropellantFlowInBand(
+            StartupSequenceController.MaximumFuelFlowKgPerSecond,
+            StartupSequenceController.MaximumFuelFlowKgPerSecond).Should().BeTrue();
+        StartupSequenceController.IsPropellantFlowInBand(
+            StartupSequenceController.MaximumOxidizerFlowKgPerSecond,
+            StartupSequenceController.MaximumOxidizerFlowKgPerSecond).Should().BeTrue();
+
+        StartupSequenceController.IsPropellantFlowInBand(
+            StartupSequenceController.MaximumFuelFlowKgPerSecond + 1,
+            StartupSequenceController.MaximumFuelFlowKgPerSecond).Should().BeFalse();
+        StartupSequenceController.IsPropellantFlowInBand(
+            double.MaxValue,
+            StartupSequenceController.MaximumFuelFlowKgPerSecond).Should().BeFalse();
+        StartupSequenceController.IsPropellantFlowInBand(double.NaN, StartupSequenceController.MaximumFuelFlowKgPerSecond)
+            .Should().BeFalse();
+        StartupSequenceController.IsPropellantFlowInBand(1, double.NaN).Should().BeFalse();
+        StartupSequenceController.IsPropellantFlowInBand(1, double.PositiveInfinity).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task PreStartup_NonFinitePressure_ClosesValvesOnThisPass()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            new StubSensor { Value = double.NaN });
+
+        controller.MoveToState(StartupState.PreStartupChecks);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.HasError.Should().BeTrue();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FuelFlow_PeggedSensor_DoesNotContinueAndClosesTheValve()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = double.MaxValue });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Stop_FromRunning_ClosesThePropellantValves()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Running);
+        await controller.StartAsync();
+        await controller.StopAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        controller.Dispose();
+    }
+
+    [Fact]
+    public async Task Stop_FromIdle_DoesNotCommandTheValves()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        await controller.StartAsync();
+        await controller.StopAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Idle);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+        controller.Dispose();
     }
 
     [Fact]
@@ -99,20 +206,20 @@ public class StartupSequenceControllerTests
     private static StartupSequenceController CreateController(
         IActuator fuel,
         IActuator oxidizer,
-        IActuator igniter)
+        IActuator igniter,
+        ISensor<double>? pressure = null,
+        ISensor<double>? temperature = null,
+        ISensor<double>? fuelFlow = null,
+        ISensor<double>? oxidizerFlow = null)
     {
-        var pressure = new StubSensor();
-        var temperature = new StubSensor();
-        var fuelFlow = new StubSensor();
-        var oxidizerFlow = new StubSensor();
         return new StartupSequenceController(
             fuel,
             oxidizer,
             igniter,
-            pressure,
-            temperature,
-            fuelFlow,
-            oxidizerFlow);
+            pressure ?? new StubSensor(),
+            temperature ?? new StubSensor(),
+            fuelFlow ?? new StubSensor(),
+            oxidizerFlow ?? new StubSensor());
     }
 
     private sealed class RecordingActuator : IActuator
@@ -159,10 +266,12 @@ public class StartupSequenceControllerTests
 
         public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
 
+        public double Value { get; set; }
+
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
-            return Task.FromResult(0d);
+            return Task.FromResult(Value);
         }
 
         public Task<bool> ValidateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);

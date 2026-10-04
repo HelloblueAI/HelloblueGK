@@ -52,6 +52,15 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal const double MinimumPropellantFlow = 0.01;
 
         /// <summary>
+        /// Same ceilings as the hardware safety monitor. A pegged sensor is finite and
+        /// far above the minimum, so a floor-only check used to treat it as proof of
+        /// flow and continue into ignition.
+        /// </summary>
+        internal const double MaximumFuelFlowKgPerSecond = 1000;
+
+        internal const double MaximumOxidizerFlowKgPerSecond = 2000;
+
+        /// <summary>
         /// A finite pressure inside the ambient band. NaN used to pass: every comparison
         /// with NaN is false, so the old range check did not reject it.
         /// </summary>
@@ -74,6 +83,19 @@ namespace HB_NLP_Research_Lab.Core.Control
 
         internal static bool HasMinimumPropellantFlow(double flow) =>
             double.IsFinite(flow) && flow >= MinimumPropellantFlow;
+
+        /// <summary>
+        /// Flow is established only inside the inclusive band. A non-finite reading or a
+        /// non-finite ceiling is not established flow.
+        /// </summary>
+        internal static bool IsPropellantFlowInBand(double flow, double maximum) =>
+            HasMinimumPropellantFlow(flow) && double.IsFinite(maximum) && flow <= maximum;
+
+        /// <summary>
+        /// One startup pass, the same step the control loop runs.
+        /// </summary>
+        internal Task ExecuteOnceAsync(CancellationToken cancellationToken = default) =>
+            ExecuteControlLoopAsync(cancellationToken);
 
         internal void MoveToState(StartupState state)
         {
@@ -127,6 +149,17 @@ namespace HB_NLP_Research_Lab.Core.Control
         }
         
         /// <summary>
+        /// Stop the control loop and close any valve this sequence may have opened.
+        /// The base stop cancels the loop token; if that cancellation wins before the
+        /// loop body starts, <see cref="OnLoopStopAsync"/> never runs.
+        /// </summary>
+        public override async Task StopAsync()
+        {
+            await base.StopAsync().ConfigureAwait(false);
+            await SafeValvesOnStopAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
         /// Abort startup sequence
         /// </summary>
         public void AbortStartup()
@@ -149,9 +182,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Check for timeout
             if (CheckStateTimeout())
             {
-                Console.WriteLine($"[Startup Sequence] ⚠️ State {_currentState} timed out");
-                _currentState = StartupState.Error;
-                await PerformShutdownAsync();
+                await FailClosedAsync($"[Startup Sequence] ⚠️ State {_currentState} timed out");
                 return;
             }
             
@@ -197,23 +228,20 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Verify sensors are reading valid values. Non-finite readings are not ambient.
             if (!IsAmbientPressure(pressure))
             {
-                Console.WriteLine($"[Startup Sequence] ❌ Invalid pressure reading: {pressure}");
-                _currentState = StartupState.Error;
+                await FailClosedAsync($"[Startup Sequence] ❌ Invalid pressure reading: {pressure}");
                 return;
             }
             
             if (!IsAmbientTemperature(temperature))
             {
-                Console.WriteLine($"[Startup Sequence] ❌ Invalid temperature reading: {temperature}");
-                _currentState = StartupState.Error;
+                await FailClosedAsync($"[Startup Sequence] ❌ Invalid temperature reading: {temperature}");
                 return;
             }
             
             // Check actuators
             if (_fuelValve.Status != ActuatorStatus.Ready)
             {
-                Console.WriteLine($"[Startup Sequence] ❌ Fuel valve not ready: {_fuelValve.Status}");
-                _currentState = StartupState.Error;
+                await FailClosedAsync($"[Startup Sequence] ❌ Fuel valve not ready: {_fuelValve.Status}");
                 return;
             }
             
@@ -240,12 +268,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             await _fuelValve.SetPositionAsync(0.1, cancellationToken); // 10% open
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             
-            // Verify fuel flow
+            // Verify fuel flow is inside the safety band. A pegged sensor used to pass
+            // the minimum check and the sequence continued into ignition.
             var fuelFlow = await _fuelFlowSensor.ReadAsync(cancellationToken);
-            if (!HasMinimumPropellantFlow(fuelFlow))
+            if (!IsPropellantFlowInBand(fuelFlow, MaximumFuelFlowKgPerSecond))
             {
-                Console.WriteLine($"[Startup Sequence] ❌ Fuel flow too low: {fuelFlow}");
-                _currentState = StartupState.Error;
+                await FailClosedAsync($"[Startup Sequence] ❌ Fuel flow outside the allowed band: {fuelFlow}");
                 return;
             }
             
@@ -260,12 +288,11 @@ namespace HB_NLP_Research_Lab.Core.Control
             await _oxidizerValve.SetPositionAsync(0.1, cancellationToken); // 10% open
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             
-            // Verify oxidizer flow
+            // Verify oxidizer flow is inside the safety band.
             var oxidizerFlow = await _oxidizerFlowSensor.ReadAsync(cancellationToken);
-            if (!HasMinimumPropellantFlow(oxidizerFlow))
+            if (!IsPropellantFlowInBand(oxidizerFlow, MaximumOxidizerFlowKgPerSecond))
             {
-                Console.WriteLine($"[Startup Sequence] ❌ Oxidizer flow too low: {oxidizerFlow}");
-                _currentState = StartupState.Error;
+                await FailClosedAsync($"[Startup Sequence] ❌ Oxidizer flow outside the allowed band: {oxidizerFlow}");
                 return;
             }
             
@@ -300,8 +327,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Pressure has to leave the ambient band. A non-finite reading is not combustion.
             if (!IsCombustionEstablished(pressure, temperature))
             {
-                Console.WriteLine($"[Startup Sequence] ❌ Combustion not detected: P={pressure}, T={temperature}");
-                _currentState = StartupState.Error;
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ Combustion not detected: P={pressure}, T={temperature}");
                 return;
             }
             
@@ -341,6 +368,15 @@ namespace HB_NLP_Research_Lab.Core.Control
             return elapsed > timeout;
         }
         
+        private async Task FailClosedAsync(string message)
+        {
+            Console.WriteLine(message);
+            _currentState = StartupState.Error;
+            // Close on this pass. Waiting for the next loop tick left the fuel valve
+            // at the last commanded position if the loop stopped in between.
+            await PerformShutdownAsync();
+        }
+
         private async Task PerformShutdownAsync()
         {
             Console.WriteLine("[Startup Sequence] 🔄 Performing shutdown...");
@@ -370,6 +406,26 @@ namespace HB_NLP_Research_Lab.Core.Control
             Console.WriteLine($"[Startup Sequence] Starting startup sequence controller at {LoopFrequencyHz} Hz");
             _stateStartTime = DateTime.UtcNow;
             return Task.CompletedTask;
+        }
+
+        protected override Task OnLoopStopAsync() => SafeValvesOnStopAsync();
+
+        private async Task SafeValvesOnStopAsync()
+        {
+            Console.WriteLine("[Startup Sequence] Stopping startup sequence controller");
+            // Idle has not opened a valve. Every other state may have, including Running,
+            // which the control loop otherwise leaves untouched.
+            if (_currentState == StartupState.Idle)
+            {
+                return;
+            }
+
+            var failed = _currentState == StartupState.Error;
+            await PerformShutdownAsync().ConfigureAwait(false);
+            if (!failed && _currentState != StartupState.Aborted)
+            {
+                _currentState = StartupState.Aborted;
+            }
         }
     }
     
