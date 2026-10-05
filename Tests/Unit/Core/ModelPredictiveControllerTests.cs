@@ -167,6 +167,35 @@ public class ModelPredictiveControllerTests
     }
 
     [Fact]
+    public async Task Stop_CommandsTheMinimumAndRateLimitsFromThatPosition()
+    {
+        var actuator = new RecordingActuator();
+        using var controller = CreateController(actuator, new ScriptedSensor(0));
+        // A large reference drives the optimizer to the top of the actuator range.
+        // Stopping must leave the floor, not that open command, as both the
+        // actuator position and the next rate-limit origin.
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0.25,
+            MaxValue = 1,
+            MinRate = -10,
+            MaxRate = 10
+        });
+
+        await controller.StartAsync();
+        var opened = await WaitUntilAsync(
+            () => actuator.Positions.Any(position => position > 0.5),
+            TimeSpan.FromSeconds(5));
+        opened.Should().BeTrue();
+        await controller.StopAsync();
+
+        actuator.LastPosition.Should().Be(0.25);
+        // 10 per second at a 0.01 s sample is a 0.1 step up from the safe command.
+        controller.ApplyConstraints(1).Should().BeApproximately(0.35, 1e-12);
+    }
+
+    [Fact]
     public async Task FiniteSensor_CommandsAFinitePositionInsideTheActuatorRange()
     {
         var actuator = new RecordingActuator();
@@ -179,6 +208,20 @@ public class ModelPredictiveControllerTests
 
         actuator.Positions.Should().NotBeEmpty();
         actuator.Positions.Should().OnlyContain(position => double.IsFinite(position) && position >= 0 && position <= 1);
+    }
+
+    private static async Task<bool> WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate())
+                return true;
+
+            await Task.Delay(10);
+        }
+
+        return predicate();
     }
 
     private static ModelPredictiveController CreateController(
@@ -213,6 +256,17 @@ public class ModelPredictiveControllerTests
                 lock (_gate)
                 {
                     return _positions.ToArray();
+                }
+            }
+        }
+
+        public double LastPosition
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _positions[^1];
                 }
             }
         }

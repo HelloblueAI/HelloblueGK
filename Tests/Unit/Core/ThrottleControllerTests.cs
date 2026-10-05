@@ -129,6 +129,46 @@ public class ThrottleControllerTests
         double.IsFinite(controller.ConstrainThrottleCommand(0.5)).Should().BeTrue();
     }
 
+    [Fact]
+    public async Task Stop_ClosesTheThrottleAndRateLimitsFromClosed()
+    {
+        var actuator = new RecordingActuator();
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.StartAsync();
+        var opened = await WaitUntilAsync(
+            () => controller.CurrentThrottle >= 0.02,
+            TimeSpan.FromSeconds(5));
+        opened.Should().BeTrue();
+        var openPosition = controller.CurrentThrottle;
+
+        await controller.StopAsync();
+
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.LastPosition.Should().Be(0);
+        // 0.1 per second at 100 Hz is a 0.001 step. The next command must start
+        // from closed, not from the position held before the stop.
+        var next = controller.ConstrainThrottleCommand(1);
+        next.Should().BeApproximately(0.001, 1e-12);
+        next.Should().BeLessThan(openPosition);
+        controller.Dispose();
+    }
+
+    private static async Task<bool> WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate())
+                return true;
+
+            await Task.Delay(10);
+        }
+
+        return predicate();
+    }
+
     private static ThrottleController CreateController()
     {
         return new ThrottleController(new StubActuator(), new StubSensor(), new StubSensor());
@@ -150,6 +190,52 @@ public class ThrottleControllerTests
 
         public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
+            PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            return Task.FromResult(true);
+        }
+
+        public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(0d);
+
+        public Task<bool> EnableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> DisableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    private sealed class RecordingActuator : IActuator
+    {
+        private readonly object _gate = new();
+        private readonly List<double> _positions = new();
+
+        public double LastPosition
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _positions[^1];
+                }
+            }
+        }
+
+        public string ActuatorId => "throttle";
+        public string Name => "throttle";
+        public ActuatorType Type => ActuatorType.Throttle;
+        public ActuatorStatus Status => ActuatorStatus.Ready;
+        public double MinPosition => 0;
+        public double MaxPosition => 1;
+        public double ResponseTimeSeconds => 0.01;
+        public double MaxRateOfChange => 1;
+        public bool IsEnabled => true;
+
+        public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
+
+        public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        {
+            lock (_gate)
+            {
+                _positions.Add(position);
+            }
+
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
             return Task.FromResult(true);
         }
