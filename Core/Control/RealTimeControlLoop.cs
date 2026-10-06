@@ -12,9 +12,11 @@ namespace HB_NLP_Research_Lab.Core.Control
     {
         protected readonly int LoopFrequencyHz;
         protected readonly TimeSpan LoopPeriod;
-        // codeql[cs/missing-disposable-call]: CancellationTokenSource is a field that must live for object lifetime, properly disposed in finally block
-        protected readonly CancellationTokenSource _cancellationTokenSource;
+        // codeql[cs/missing-disposable-call]: The live source is disposed in Dispose. StopAsync disposes a cancelled source after replacing it.
+        protected CancellationTokenSource _cancellationTokenSource;
         protected readonly Stopwatch _stopwatch;
+        // codeql[cs/missing-disposable-call]: Disposed in Dispose after the loop has stopped.
+        private readonly SemaphoreSlim _lifecycle = new(1, 1);
         
         private Task? _controlLoopTask;
         private bool _isRunning = false;
@@ -41,15 +43,25 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// <summary>
         /// Start the control loop
         /// </summary>
-        public virtual Task StartAsync()
+        public virtual async Task StartAsync()
         {
-            if (_isRunning)
-                throw new InvalidOperationException("Control loop is already running");
-            
-            _isRunning = true;
-            _controlLoopTask = Task.Run(RunLoopAsync, _cancellationTokenSource.Token);
-            
-            return Task.CompletedTask;
+            await _lifecycle.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                if (_isRunning)
+                    throw new InvalidOperationException("Control loop is already running");
+
+                // Stop cancels the previous source. Task.Run will not invoke the
+                // delegate when that token is already cancelled, so IsRunning would
+                // stay true and the actuator would never be commanded again.
+                EnsureLiveCancellationSource();
+                _isRunning = true;
+                _controlLoopTask = Task.Run(RunLoopAsync, _cancellationTokenSource.Token);
+            }
+            finally
+            {
+                _lifecycle.Release();
+            }
         }
         
         /// <summary>
@@ -57,23 +69,48 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public virtual async Task StopAsync()
         {
-            if (!_isRunning)
-                return;
-            
-            _isRunning = false;
-            _cancellationTokenSource.Cancel();
-            
-            if (_controlLoopTask != null)
+            await _lifecycle.WaitAsync().ConfigureAwait(false);
+            try
             {
+                if (!_isRunning)
+                    return;
+
+                _isRunning = false;
+                var retired = _cancellationTokenSource;
+                retired.Cancel();
+
                 try
                 {
-                    await _controlLoopTask;
+                    if (_controlLoopTask != null)
+                    {
+                        await _controlLoopTask.ConfigureAwait(false);
+                    }
                 }
                 catch (OperationCanceledException)
                 {
                     // Expected when cancelling
                 }
+                finally
+                {
+                    // CancellationTokenSource cannot be reused after Cancel.
+                    _cancellationTokenSource = new CancellationTokenSource();
+                    retired.Dispose();
+                }
             }
+            finally
+            {
+                _lifecycle.Release();
+            }
+        }
+
+        private void EnsureLiveCancellationSource()
+        {
+            if (!_cancellationTokenSource.IsCancellationRequested)
+                return;
+
+            var retired = _cancellationTokenSource;
+            _cancellationTokenSource = new CancellationTokenSource();
+            retired.Dispose();
         }
         
         /// <summary>
@@ -81,19 +118,22 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         private async Task RunLoopAsync()
         {
+            // Bind this generation to the source it started with. StopAsync replaces
+            // the field only after this method returns.
+            var cancellationToken = _cancellationTokenSource.Token;
             _stopwatch.Restart();
             var nextLoopTime = _stopwatch.Elapsed;
             
             try
             {
-                await OnLoopStartAsync(_cancellationTokenSource.Token);
+                await OnLoopStartAsync(cancellationToken);
                 
-                while (!_cancellationTokenSource.Token.IsCancellationRequested)
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     var loopStart = _stopwatch.Elapsed;
                     
                     // Execute the control logic
-                    await ExecuteControlLoopAsync(_cancellationTokenSource.Token);
+                    await ExecuteControlLoopAsync(cancellationToken);
                     
                     _totalIterations++;
                     
@@ -118,7 +158,7 @@ namespace HB_NLP_Research_Lab.Core.Control
                     // Sleep until next iteration
                     if (sleepTime > TimeSpan.Zero)
                     {
-                        await Task.Delay(sleepTime, _cancellationTokenSource.Token);
+                        await Task.Delay(sleepTime, cancellationToken);
                     }
                     else
                     {
@@ -197,11 +237,12 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             // Use ConfigureAwait(false) to avoid deadlocks when called from sync context
             // Add timeout to prevent indefinite blocking
+            Task? stopTask = null;
             try
             {
                 // Run StopAsync on a thread pool thread and wait with a timeout to
                 // reduce deadlock risk when Dispose is called from a sync context.
-                var stopTask = Task.Run(() => StopAsync());
+                stopTask = Task.Run(() => StopAsync());
                 if (!stopTask.Wait(TimeSpan.FromSeconds(5)))
                 {
                     System.Diagnostics.Debug.WriteLine("Timeout while waiting for RealTimeControlLoop.StopAsync to complete during disposal.");
@@ -230,6 +271,10 @@ namespace HB_NLP_Research_Lab.Core.Control
             finally
             {
                 _cancellationTokenSource?.Dispose();
+                // A timed-out stop still holds the gate. Disposing it here would throw
+                // from that stop's release.
+                if (stopTask == null || stopTask.IsCompleted)
+                    _lifecycle.Dispose();
             }
         }
     }

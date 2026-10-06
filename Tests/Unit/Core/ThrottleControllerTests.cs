@@ -155,6 +155,38 @@ public class ThrottleControllerTests
         controller.Dispose();
     }
 
+    [Fact]
+    public async Task Restart_AfterStop_CommandsTheThrottleAgain()
+    {
+        var actuator = new RecordingActuator();
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.StartAsync();
+        var opened = await WaitUntilAsync(
+            () => controller.CurrentThrottle > 0,
+            TimeSpan.FromSeconds(5));
+        opened.Should().BeTrue();
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.LastPosition.Should().Be(0);
+
+        await controller.StartAsync();
+        var reopened = await WaitUntilAsync(
+            () => controller.CurrentThrottle > 0,
+            TimeSpan.FromSeconds(5));
+        reopened.Should().BeTrue();
+        controller.IsRunning.Should().BeTrue();
+        actuator.LastPosition.Should().Be(controller.CurrentThrottle);
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.CurrentThrottle.Should().Be(0);
+        controller.Dispose();
+    }
+
     private static async Task<bool> WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
