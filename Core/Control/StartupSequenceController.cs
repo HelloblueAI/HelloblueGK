@@ -49,6 +49,15 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         internal const double MinOperatingPressurePascals = 150_000;
 
+        /// <summary>
+        /// Same chamber ceilings as the hardware safety monitor. A pegged transducer is
+        /// finite and above the operating floor, so a floor-only check used to treat it
+        /// as proof of combustion or of a running engine.
+        /// </summary>
+        internal const double MaximumChamberPressurePascals = 35_000_000;
+
+        internal const double MaximumChamberTemperatureKelvin = 4_000;
+
         internal const double MinimumPropellantFlow = 0.01;
 
         /// <summary>
@@ -75,11 +84,20 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal static bool IsCombustionEstablished(double pressure, double temperature) =>
             double.IsFinite(pressure)
             && pressure > MaxAmbientPressurePascals
+            && pressure <= MaximumChamberPressurePascals
             && double.IsFinite(temperature)
-            && temperature >= MinCombustionTemperatureKelvin;
+            && temperature >= MinCombustionTemperatureKelvin
+            && temperature <= MaximumChamberTemperatureKelvin;
+
+        /// <summary>
+        /// A chamber reading the startup sequence can keep acting on. Negative, non-finite,
+        /// and above-ceiling values are a failed transducer, not "not yet at power".
+        /// </summary>
+        internal static bool IsPlausibleChamberPressure(double pressure) =>
+            double.IsFinite(pressure) && pressure >= 0 && pressure <= MaximumChamberPressurePascals;
 
         internal static bool IsOperatingPressure(double pressure) =>
-            double.IsFinite(pressure) && pressure >= MinOperatingPressurePascals;
+            IsPlausibleChamberPressure(pressure) && pressure >= MinOperatingPressurePascals;
 
         internal static bool HasMinimumPropellantFlow(double flow) =>
             double.IsFinite(flow) && flow >= MinimumPropellantFlow;
@@ -324,7 +342,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
             var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
             
-            // Pressure has to leave the ambient band. A non-finite reading is not combustion.
+            // Pressure has to leave the ambient band and stay under the chamber ceiling.
+            // A non-finite or pegged reading is not combustion.
             if (!IsCombustionEstablished(pressure, temperature))
             {
                 await FailClosedAsync(
@@ -339,17 +358,26 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task ExecuteThrottleUpAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine("[Startup Sequence] 🚀 Throttling up to operating level...");
-            
-            // Gradually increase throttle (would interface with throttle controller)
-            // For now, just verify we're running
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            
+
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
+            // A pegged or missing reading is not "still throttling up". Waiting out the
+            // ramp left the propellant valves open on a failed transducer.
+            if (!IsPlausibleChamberPressure(pressure))
+            {
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ Chamber pressure outside the allowed band: {pressure}");
+                return;
+            }
+
             if (IsOperatingPressure(pressure))
             {
                 Console.WriteLine("[Startup Sequence] ✅ Engine running!");
                 TransitionToState(StartupState.Running);
+                return;
             }
+
+            // Still below the operating floor. The delay stands in for the throttle ramp.
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
         }
         
         private void TransitionToState(StartupState newState)
