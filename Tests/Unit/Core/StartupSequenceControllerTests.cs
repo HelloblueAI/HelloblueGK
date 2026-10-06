@@ -41,6 +41,23 @@ public class StartupSequenceControllerTests
         StartupSequenceController.IsCombustionEstablished(double.NaN, 1500).Should().BeFalse();
 
         StartupSequenceController.IsCombustionEstablished(120_000, 1000).Should().BeTrue();
+        StartupSequenceController.IsCombustionEstablished(
+            StartupSequenceController.MaximumChamberPressurePascals,
+            StartupSequenceController.MaximumChamberTemperatureKelvin).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Combustion_RejectsAPeggedChamberSensor()
+    {
+        StartupSequenceController.IsCombustionEstablished(
+            StartupSequenceController.MaximumChamberPressurePascals + 1,
+            1_500).Should().BeFalse();
+        StartupSequenceController.IsCombustionEstablished(double.MaxValue, 1_500).Should().BeFalse();
+        StartupSequenceController.IsCombustionEstablished(
+            200_000,
+            StartupSequenceController.MaximumChamberTemperatureKelvin + 1).Should().BeFalse();
+        StartupSequenceController.IsCombustionEstablished(200_000, double.MaxValue).Should().BeFalse();
+        StartupSequenceController.IsCombustionEstablished(200_000, double.PositiveInfinity).Should().BeFalse();
     }
 
     [Fact]
@@ -49,8 +66,14 @@ public class StartupSequenceControllerTests
         StartupSequenceController.IsOperatingPressure(100_000).Should().BeFalse();
         StartupSequenceController.IsOperatingPressure(StartupSequenceController.MinOperatingPressurePascals - 1).Should().BeFalse();
         StartupSequenceController.IsOperatingPressure(StartupSequenceController.MinOperatingPressurePascals).Should().BeTrue();
+        StartupSequenceController.IsOperatingPressure(StartupSequenceController.MaximumChamberPressurePascals)
+            .Should().BeTrue();
+        StartupSequenceController.IsOperatingPressure(StartupSequenceController.MaximumChamberPressurePascals + 1)
+            .Should().BeFalse();
+        StartupSequenceController.IsOperatingPressure(double.MaxValue).Should().BeFalse();
         StartupSequenceController.IsOperatingPressure(double.NaN).Should().BeFalse();
         StartupSequenceController.IsOperatingPressure(double.PositiveInfinity).Should().BeFalse();
+        StartupSequenceController.IsOperatingPressure(-1).Should().BeFalse();
     }
 
     [Fact]
@@ -129,6 +152,73 @@ public class StartupSequenceControllerTests
         fuel.LastPosition.Should().Be(0);
         oxidizer.LastPosition.Should().Be(0);
         igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Combustion_PeggedTemperature_DoesNotContinueAndClosesTheValves()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor { Value = 200_000 },
+            temperature: new StubSensor { Value = double.MaxValue });
+
+        controller.MoveToState(StartupState.CombustionVerification);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_PeggedPressure_DoesNotDeclareRunningAndClosesTheValves()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor { Value = double.MaxValue });
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_PressureStillBelowOperating_KeepsTheValvesAsTheyWere()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor { Value = 120_000 });
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
     }
 
     [Fact]
