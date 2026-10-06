@@ -335,7 +335,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             return gradient;
         }
         
-        private double ApplyConstraints(double control)
+        internal double ApplyConstraints(double control)
         {
             var hasPrevious = _controlHistory.Count > 0;
             var previous = hasPrevious ? _controlHistory.Last()[0] : 0.0;
@@ -394,12 +394,55 @@ namespace HB_NLP_Research_Lab.Core.Control
             return double.IsFinite(lower) && double.IsFinite(upper) && lower <= upper;
         }
         
+        /// <summary>
+        /// Stop the control loop and command the lowest allowed actuator position.
+        /// The base stop cancels the loop token; if that cancellation wins before the
+        /// loop body starts, <see cref="OnLoopStopAsync"/> never runs.
+        /// </summary>
+        public override async Task StopAsync()
+        {
+            await base.StopAsync().ConfigureAwait(false);
+            await SafeActuatorOnStopAsync().ConfigureAwait(false);
+        }
+
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine($"[MPC Controller] Starting Model Predictive Controller at {LoopFrequencyHz} Hz");
             Console.WriteLine($"[MPC Controller] Prediction horizon: {_predictionHorizon} steps");
             Console.WriteLine($"[MPC Controller] Control horizon: {_controlHorizon} steps");
             return Task.CompletedTask;
+        }
+
+        protected override Task OnLoopStopAsync() => SafeActuatorOnStopAsync();
+
+        private async Task SafeActuatorOnStopAsync()
+        {
+            // The lowest allowed command is the safe position. Leaving the last
+            // optimized command applied keeps that thrust after the loop has stopped.
+            var safe = double.IsFinite(_constraints.MinValue) ? _constraints.MinValue : 0.0;
+            try
+            {
+                var accepted = await _actuator.SetPositionAsync(safe, CancellationToken.None)
+                    .ConfigureAwait(false);
+                if (accepted)
+                {
+                    RememberCommand(safe);
+                }
+            }
+            // codeql[generic-catch-clause]: Intentional final catch-all for shutdown safety
+            catch (Exception ex)
+            {
+                OnControlError(ex);
+            }
+        }
+
+        private void RememberCommand(double command)
+        {
+            var sequence = new double[_controlHorizon];
+            Array.Fill(sequence, command);
+            _controlHistory.Enqueue(sequence);
+            if (_controlHistory.Count > _controlHorizon)
+                _controlHistory.Dequeue();
         }
         
         protected virtual void OnControlError(Exception ex)

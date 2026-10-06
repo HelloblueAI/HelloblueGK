@@ -214,6 +214,17 @@ namespace HB_NLP_Research_Lab.Core.Control
             return Math.Clamp(stepped, MinThrottle, MaxThrottle);
         }
         
+        /// <summary>
+        /// Stop the control loop and close the throttle.
+        /// The base stop cancels the loop token; if that cancellation wins before the
+        /// loop body starts, <see cref="OnLoopStopAsync"/> never runs.
+        /// </summary>
+        public override async Task StopAsync()
+        {
+            await base.StopAsync().ConfigureAwait(false);
+            await SafeThrottleOnStopAsync().ConfigureAwait(false);
+        }
+
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Throttle Controller] Starting throttle control loop at {LoopFrequencyHz} Hz");
@@ -221,21 +232,28 @@ namespace HB_NLP_Research_Lab.Core.Control
             return Task.CompletedTask;
         }
         
-        protected override async Task OnLoopStopAsync()
+        protected override Task OnLoopStopAsync() => SafeThrottleOnStopAsync();
+
+        private async Task SafeThrottleOnStopAsync()
         {
             Console.WriteLine("[Throttle Controller] Stopping throttle control loop");
-            // Set throttle to safe position (0 or minimum)
+            // Closed is the safe position. Remember it, or the next rate limit steps
+            // from the pre-stop command and the actuator jumps open.
             try
             {
-                await _throttleActuator.SetPositionAsync(0.0, CancellationToken.None)
+                var closed = await _throttleActuator.SetPositionAsync(MinThrottle, CancellationToken.None)
                     .ConfigureAwait(false);
+                if (closed)
+                {
+                    _currentThrottle = MinThrottle;
+                }
             }
             // codeql[generic-catch-clause]: Intentional final catch-all for shutdown safety - all specific exceptions handled above
             // Shutdown must be resilient and not throw exceptions per .NET guidelines
             catch (Exception ex)
             {
                 // Log but don't throw - shutdown should be resilient
-                Console.WriteLine($"[Throttle Controller] ⚠︝ Error setting safe position: {ex.Message}");
+                Console.WriteLine($"[Throttle Controller] Error setting safe position: {ex.Message}");
             }
         }
         
