@@ -20,13 +20,29 @@ namespace HB_NLP_Research_Lab.Core.Control
         private readonly ISensor<double> _fuelFlowSensor;
         private readonly ISensor<double> _oxidizerFlowSensor;
         
+        private readonly object _stateGate = new();
         private StartupState _currentState = StartupState.Idle;
         private DateTime _stateStartTime;
         private readonly Dictionary<StartupState, TimeSpan> _stateTimeouts;
+
+        /// <summary>
+        /// Set by abort, fail-closed, and stop before the valves are commanded shut.
+        /// An in-flight step can otherwise finish its open command after that close
+        /// and then transition out of <see cref="StartupState.Aborted"/>.
+        /// </summary>
+        private volatile bool _sequenceClosed;
         
-        public StartupState CurrentState => _currentState;
-        public bool IsStartupComplete => _currentState == StartupState.Running;
-        public bool HasError => _currentState == StartupState.Error;
+        public StartupState CurrentState
+        {
+            get
+            {
+                lock (_stateGate)
+                    return _currentState;
+            }
+        }
+
+        public bool IsStartupComplete => CurrentState == StartupState.Running;
+        public bool HasError => CurrentState == StartupState.Error;
 
         /// <summary>
         /// Absolute ambient band. Standard sea-level pressure is 101325 Pa, so a ceiling of
@@ -117,8 +133,12 @@ namespace HB_NLP_Research_Lab.Core.Control
 
         internal void MoveToState(StartupState state)
         {
-            _currentState = state;
-            _stateStartTime = DateTime.UtcNow;
+            lock (_stateGate)
+            {
+                _currentState = state;
+                _stateStartTime = DateTime.UtcNow;
+                _sequenceClosed = state is StartupState.Aborted or StartupState.Error;
+            }
         }
         
         public StartupSequenceController(
@@ -158,11 +178,16 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public void BeginStartup()
         {
-            if (_currentState != StartupState.Idle)
-                throw new InvalidOperationException($"Cannot start engine: current state is {_currentState}");
-            
-            _currentState = StartupState.PreStartupChecks;
-            _stateStartTime = DateTime.UtcNow;
+            lock (_stateGate)
+            {
+                if (_currentState != StartupState.Idle || _sequenceClosed)
+                    throw new InvalidOperationException($"Cannot start engine: current state is {_currentState}");
+
+                _sequenceClosed = false;
+                _currentState = StartupState.PreStartupChecks;
+                _stateStartTime = DateTime.UtcNow;
+            }
+
             Console.WriteLine("[Startup Sequence] 🚀 Beginning engine startup sequence");
         }
         
@@ -184,28 +209,55 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             // Idle has not opened a valve. Running used to take this same early return,
             // so abort left the propellant valves at their last commanded position.
-            if (_currentState == StartupState.Idle)
-                return;
-            
+            // Latch closed before commanding the valves. The step already in flight
+            // does not see a later state write, and its next open would land after this close.
+            lock (_stateGate)
+            {
+                if (_currentState == StartupState.Idle)
+                    return;
+
+                _sequenceClosed = true;
+                _currentState = StartupState.Aborted;
+                _stateStartTime = DateTime.UtcNow;
+            }
+
             Console.WriteLine("[Startup Sequence] ⛔ Aborting startup sequence");
-            _currentState = StartupState.Aborted;
             PerformShutdown();
         }
         
         protected override async Task ExecuteControlLoopAsync(CancellationToken cancellationToken)
         {
-            if (_currentState == StartupState.Idle || _currentState == StartupState.Running)
+            // A closed sequence must not run another open. Abort does not cancel the
+            // loop token, so the next tick would otherwise resume the state that was
+            // current when this pass started.
+            if (_sequenceClosed)
+            {
+                if (CurrentState != StartupState.Idle)
+                    await PerformShutdownAsync().ConfigureAwait(false);
+                return;
+            }
+
+            if (CurrentState == StartupState.Idle || CurrentState == StartupState.Running)
                 return;
             
+            var state = CurrentState;
+
             // Check for timeout
             if (CheckStateTimeout())
             {
-                await FailClosedAsync($"[Startup Sequence] ⚠️ State {_currentState} timed out");
+                await FailClosedAsync($"[Startup Sequence] ⚠️ State {state} timed out").ConfigureAwait(false);
                 return;
             }
             
-            // Execute state machine
-            switch (_currentState)
+            // Execute state machine. Re-read after the timeout check so an abort that
+            // landed while we were reading the clock is not overwritten by this pass.
+            if (_sequenceClosed)
+            {
+                await PerformShutdownAsync().ConfigureAwait(false);
+                return;
+            }
+
+            switch (state)
             {
                 case StartupState.PreStartupChecks:
                     await ExecutePreStartupChecksAsync(cancellationToken);
@@ -255,6 +307,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 await FailClosedAsync($"[Startup Sequence] ❌ Invalid temperature reading: {temperature}");
                 return;
             }
+
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
             
             // Check actuators
             if (_fuelValve.Status != ActuatorStatus.Ready)
@@ -274,6 +329,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Open purge valves (simplified - would need purge valve actuator)
             // For now, just wait for purge duration
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
             
             TransitionToState(StartupState.FuelFlowInitiation);
         }
@@ -282,13 +339,21 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             Console.WriteLine("[Startup Sequence] ⛽ Initiating fuel flow...");
             
-            // Open fuel valve gradually
-            await _fuelValve.SetPositionAsync(0.1, cancellationToken); // 10% open
+            // Open fuel valve gradually. If abort closed the valve while this command
+            // was in flight, do not leave the late open applied or advance the sequence.
+            if (!await CommandIfSequenceActiveAsync(_fuelValve, 0.1, cancellationToken).ConfigureAwait(false))
+                return;
+
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
             
             // Verify fuel flow is inside the safety band. A pegged sensor used to pass
             // the minimum check and the sequence continued into ignition.
             var fuelFlow = await _fuelFlowSensor.ReadAsync(cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
+
             if (!IsPropellantFlowInBand(fuelFlow, MaximumFuelFlowKgPerSecond))
             {
                 await FailClosedAsync($"[Startup Sequence] ❌ Fuel flow outside the allowed band: {fuelFlow}");
@@ -303,11 +368,18 @@ namespace HB_NLP_Research_Lab.Core.Control
             Console.WriteLine("[Startup Sequence] 💧 Initiating oxidizer flow...");
             
             // Open oxidizer valve gradually
-            await _oxidizerValve.SetPositionAsync(0.1, cancellationToken); // 10% open
+            if (!await CommandIfSequenceActiveAsync(_oxidizerValve, 0.1, cancellationToken).ConfigureAwait(false))
+                return;
+
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
             
             // Verify oxidizer flow is inside the safety band.
             var oxidizerFlow = await _oxidizerFlowSensor.ReadAsync(cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
+
             if (!IsPropellantFlowInBand(oxidizerFlow, MaximumOxidizerFlowKgPerSecond))
             {
                 await FailClosedAsync($"[Startup Sequence] ❌ Oxidizer flow outside the allowed band: {oxidizerFlow}");
@@ -321,12 +393,17 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             Console.WriteLine("[Startup Sequence] 🔥 Igniting...");
             
-            // Activate igniter
-            await _igniter.SetPositionAsync(1.0, cancellationToken); // Full on
+            // Activate igniter. A late spark command must not stay on after abort.
+            if (!await CommandIfSequenceActiveAsync(_igniter, 1.0, cancellationToken).ConfigureAwait(false))
+                return;
+
             await Task.Delay(TimeSpan.FromSeconds(0.5), cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
             
             // Deactivate igniter (spark plug style - short pulse)
-            await _igniter.SetPositionAsync(0.0, cancellationToken);
+            if (!await CommandIfSequenceActiveAsync(_igniter, 0.0, cancellationToken).ConfigureAwait(false))
+                return;
             
             TransitionToState(StartupState.CombustionVerification);
         }
@@ -337,10 +414,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             // Wait for combustion to establish
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
             
             // Check for combustion indicators
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
             var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
             
             // Pressure has to leave the ambient band and stay under the chamber ceiling.
             // A non-finite or pegged reading is not combustion.
@@ -360,6 +441,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             Console.WriteLine("[Startup Sequence] 🚀 Throttling up to operating level...");
 
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return;
+
             // A pegged or missing reading is not "still throttling up". Waiting out the
             // ramp left the propellant valves open on a failed transducer.
             if (!IsPlausibleChamberPressure(pressure))
@@ -378,31 +462,90 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             // Still below the operating floor. The delay stands in for the throttle ramp.
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await ContinueSequenceAsync().ConfigureAwait(false);
         }
         
         private void TransitionToState(StartupState newState)
         {
-            Console.WriteLine($"[Startup Sequence] Transitioning: {_currentState} → {newState}");
-            _currentState = newState;
-            _stateStartTime = DateTime.UtcNow;
+            lock (_stateGate)
+            {
+                if (_sequenceClosed
+                    || _currentState is StartupState.Aborted or StartupState.Error or StartupState.Idle)
+                {
+                    return;
+                }
+
+                Console.WriteLine($"[Startup Sequence] Transitioning: {_currentState} → {newState}");
+                _currentState = newState;
+                _stateStartTime = DateTime.UtcNow;
+            }
         }
         
         private bool CheckStateTimeout()
         {
-            if (!_stateTimeouts.TryGetValue(_currentState, out var timeout))
+            StartupState state;
+            DateTime started;
+            lock (_stateGate)
+            {
+                state = _currentState;
+                started = _stateStartTime;
+            }
+
+            if (!_stateTimeouts.TryGetValue(state, out var timeout))
                 return false;
             
-            var elapsed = DateTime.UtcNow - _stateStartTime;
+            var elapsed = DateTime.UtcNow - started;
             return elapsed > timeout;
         }
         
         private async Task FailClosedAsync(string message)
         {
             Console.WriteLine(message);
-            _currentState = StartupState.Error;
+            lock (_stateGate)
+            {
+                // Abort already owns the terminal state. Do not reopen it as Error
+                // and do not command another open from this pass.
+                _sequenceClosed = true;
+                if (_currentState != StartupState.Aborted)
+                {
+                    _currentState = StartupState.Error;
+                    _stateStartTime = DateTime.UtcNow;
+                }
+            }
+
             // Close on this pass. Waiting for the next loop tick left the fuel valve
             // at the last commanded position if the loop stopped in between.
-            await PerformShutdownAsync();
+            await PerformShutdownAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Commands <paramref name="position"/> only while the sequence is still active.
+        /// When the command finishes after a close, the valves are shut again and the
+        /// caller must not advance.
+        /// </summary>
+        private async Task<bool> CommandIfSequenceActiveAsync(
+            IActuator actuator,
+            double position,
+            CancellationToken cancellationToken)
+        {
+            if (_sequenceClosed)
+                return false;
+
+            await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
+            return await ContinueSequenceAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Returns true when the sequence may advance. A close that won the race shuts
+        /// the valves again, because the previous command may have landed after it.
+        /// </summary>
+        private async Task<bool> ContinueSequenceAsync()
+        {
+            if (!_sequenceClosed)
+                return true;
+
+            await PerformShutdownAsync().ConfigureAwait(false);
+            return false;
         }
 
         private async Task PerformShutdownAsync()
@@ -432,7 +575,8 @@ namespace HB_NLP_Research_Lab.Core.Control
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Startup Sequence] Starting startup sequence controller at {LoopFrequencyHz} Hz");
-            _stateStartTime = DateTime.UtcNow;
+            lock (_stateGate)
+                _stateStartTime = DateTime.UtcNow;
             return Task.CompletedTask;
         }
 
@@ -443,16 +587,27 @@ namespace HB_NLP_Research_Lab.Core.Control
             Console.WriteLine("[Startup Sequence] Stopping startup sequence controller");
             // Idle has not opened a valve. Every other state may have, including Running,
             // which the control loop otherwise leaves untouched.
-            if (_currentState == StartupState.Idle)
+            // Latch before the close so the pass still inside a valve command cannot
+            // transition back into the sequence when this stop returns.
+            bool idle;
+            lock (_stateGate)
             {
-                return;
+                idle = _currentState == StartupState.Idle;
+                if (!idle)
+                    _sequenceClosed = true;
             }
 
-            var failed = _currentState == StartupState.Error;
+            if (idle)
+                return;
+
             await PerformShutdownAsync().ConfigureAwait(false);
-            if (!failed && _currentState != StartupState.Aborted)
+            lock (_stateGate)
             {
-                _currentState = StartupState.Aborted;
+                if (_currentState != StartupState.Error && _currentState != StartupState.Aborted)
+                {
+                    _currentState = StartupState.Aborted;
+                    _stateStartTime = DateTime.UtcNow;
+                }
             }
         }
     }
