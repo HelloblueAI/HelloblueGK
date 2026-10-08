@@ -157,7 +157,8 @@ namespace HB_NLP_Research_Lab.Certification
             await _context.SaveChangesAsync();
             await UpdateTraceabilityStatusAsync(requirementId);
 
-            _logger.LogInformation("Linked requirement {RequirementId} to design {DesignElementId}", requirementId, designElementId);
+            _logger.LogInformation("Linked requirement {RequirementId} to design {DesignElementId}",
+                requirementId, LogSanitizer.SanitizeIdentifier(designElementId));
             return link;
         }
 

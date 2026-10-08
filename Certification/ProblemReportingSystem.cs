@@ -215,8 +215,8 @@ namespace HB_NLP_Research_Lab.Certification
             _context.ProblemReportRequirementLinks.Add(link);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Linked problem report {ReportNumber} to requirement {RequirementId}", 
-                reportNumber, requirementId);
+            _logger.LogInformation("Linked problem report {ReportNumber} to requirement {RequirementId}",
+                LogSanitizer.SanitizeIdentifier(reportNumber), requirementId);
         }
 
         /// <summary>
