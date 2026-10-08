@@ -19,8 +19,15 @@ namespace HB_NLP_Research_Lab.Core.Safety
         private readonly Dictionary<string, SafetyLimit> _safetyLimits;
         
         private bool _emergencyShutdownActive = false;
+        private bool _shutdownPending = false;
+        private string _pendingShutdownReason = string.Empty;
         private readonly object _lock = new object();
-        
+
+        /// <summary>
+        /// True only after the shutdown command has been accepted, or when no actuator
+        /// is configured. A rejected or thrown command leaves this false so the next
+        /// pass can try again.
+        /// </summary>
         public bool IsEmergencyShutdownActive => _emergencyShutdownActive;
 
         /// <summary>
@@ -102,10 +109,12 @@ namespace HB_NLP_Research_Lab.Core.Safety
         {
             lock (_lock)
             {
-                if (_emergencyShutdownActive)
+                if (_emergencyShutdownActive || _shutdownPending)
                 {
                     Console.WriteLine("[Safety Monitor] 🔄 Resetting emergency shutdown (requires verification)");
                     _emergencyShutdownActive = false;
+                    _shutdownPending = false;
+                    _pendingShutdownReason = string.Empty;
                 }
             }
         }
@@ -114,7 +123,15 @@ namespace HB_NLP_Research_Lab.Core.Safety
         {
             if (_emergencyShutdownActive)
             {
-                // Keep shutdown active, don't check sensors
+                // Hardware shutdown was accepted. Do not resume sensor checks.
+                return;
+            }
+
+            if (_shutdownPending)
+            {
+                // The last command was rejected or threw. A later in-range reading
+                // must not cancel the shutdown that was already required.
+                await CompletePendingShutdownAsync(cancellationToken);
                 return;
             }
             
@@ -200,50 +217,91 @@ namespace HB_NLP_Research_Lab.Core.Safety
         {
             lock (_lock)
             {
-                if (_emergencyShutdownActive)
-                    return; // Already shutdown
-                
-                _emergencyShutdownActive = true;
+                if (_emergencyShutdownActive || _shutdownPending)
+                    return;
+
+                // Remember that shutdown is required before the command. The flag that
+                // skips sensor checks is set only after the actuator accepts, so a
+                // thrown or rejected command is retried on the next pass.
+                _shutdownPending = true;
+                _pendingShutdownReason = reason;
             }
             
             Console.WriteLine($"[Safety Monitor] 🚨 EMERGENCY SHUTDOWN: {reason}");
-            
-            // Activate hardware shutdown if available
-            if (_emergencyShutdownActuator != null)
+            await CompletePendingShutdownAsync(cancellationToken);
+        }
+
+        private async Task CompletePendingShutdownAsync(CancellationToken cancellationToken)
+        {
+            if (!await CommandShutdownActuatorAsync(cancellationToken))
+                return;
+
+            string reason;
+            lock (_lock)
             {
-                try
-                {
-                    await _emergencyShutdownActuator.SetPositionAsync(1.0, cancellationToken); // Activate shutdown
-                }
-                catch (InvalidOperationException ex)
-                {
-                    // Actuator not ready or not initialized
-                    Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown actuator not ready: {ex.Message}");
-                }
-                catch (TaskCanceledException)
-                {
-                    // Actuator command timeout
-                    Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown command timeout");
-                }
-                catch (Exception ex) when (ex is ArgumentException || ex is ArgumentOutOfRangeException)
-                {
-                    // Invalid actuator command
-                    Console.WriteLine($"[Safety Monitor] ⚠️ Invalid shutdown command: {ex.Message}");
-                }
-                // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
-                catch (Exception ex)
-                {
-                    // Catch-all for unexpected actuator errors
-                    Console.WriteLine($"[Safety Monitor] ❌ Failed to activate hardware shutdown: {ex.Message}");
-                }
+                // Reset may have cleared the pending shutdown while the command was in flight.
+                if (!_shutdownPending || _emergencyShutdownActive)
+                    return;
+
+                _emergencyShutdownActive = true;
+                reason = _pendingShutdownReason;
             }
-            
-            // Fire event
+
             EmergencyShutdownTriggered?.Invoke(this, new EmergencyShutdownEventArgs
             {
                 Reason = reason,
                 Timestamp = DateTime.UtcNow
             });
+        }
+
+        /// <summary>
+        /// Returns true when shutdown is achieved. No actuator is a software-only
+        /// shutdown. A false return or a thrown command leaves the pending latch set.
+        /// </summary>
+        private async Task<bool> CommandShutdownActuatorAsync(CancellationToken cancellationToken)
+        {
+            if (_emergencyShutdownActuator == null)
+                return true;
+
+            try
+            {
+                var accepted = await _emergencyShutdownActuator.SetPositionAsync(1.0, cancellationToken);
+                if (!accepted)
+                {
+                    Console.WriteLine("[Safety Monitor] ⚠️ Hardware shutdown command was rejected");
+                }
+
+                return accepted;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return false;
+            }
+            catch (InvalidOperationException ex)
+            {
+                // Actuator not ready or not initialized
+                Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown actuator not ready: {ex.Message}");
+                return false;
+            }
+            catch (TaskCanceledException)
+            {
+                // Actuator command timeout
+                Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown command timeout");
+                return false;
+            }
+            catch (Exception ex) when (ex is ArgumentException || ex is ArgumentOutOfRangeException)
+            {
+                // Invalid actuator command
+                Console.WriteLine($"[Safety Monitor] ⚠️ Invalid shutdown command: {ex.Message}");
+                return false;
+            }
+            // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
+            catch (Exception ex)
+            {
+                // Catch-all for unexpected actuator errors
+                Console.WriteLine($"[Safety Monitor] ❌ Failed to activate hardware shutdown: {ex.Message}");
+                return false;
+            }
         }
         
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)

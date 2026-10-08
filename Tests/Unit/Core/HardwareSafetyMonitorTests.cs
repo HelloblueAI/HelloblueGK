@@ -48,6 +48,82 @@ public class HardwareSafetyMonitorTests
 
         monitor.IsEmergencyShutdownActive.Should().BeTrue();
         actuator.LastPosition.Should().Be(1);
+        actuator.CommandCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AcceptedShutdown_IsNotCommandedAgain()
+    {
+        var actuator = new RecordingActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator);
+
+        await monitor.CheckSensorsOnceAsync();
+        await monitor.CheckSensorsOnceAsync();
+
+        actuator.CommandCount.Should().Be(1);
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedShutdownCommand_RetriesOnTheNextPassEvenIfTheReadingRecovers(bool throwOnFailure)
+    {
+        var actuator = new RecordingActuator(failuresBeforeAccept: 1, throwOnFailure: throwOnFailure);
+        var sensor = new ScriptedSensor("ChamberPressure", double.NaN);
+        var monitor = new HardwareSafetyMonitor(new List<ISensor<double>> { sensor }, actuator);
+        var shutdowns = 0;
+        monitor.EmergencyShutdownTriggered += (_, _) => shutdowns++;
+
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        shutdowns.Should().Be(0);
+        actuator.CommandCount.Should().Be(1);
+
+        sensor.Value = 30_000_000;
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        shutdowns.Should().Be(1);
+        actuator.CommandCount.Should().Be(2);
+        actuator.LastPosition.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ResetAfterAcceptedShutdown_DoesNotCommandAgainForAnInRangeReading()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new ScriptedSensor("ChamberPressure", double.NaN);
+        var monitor = new HardwareSafetyMonitor(new List<ISensor<double>> { sensor }, actuator);
+
+        await monitor.CheckSensorsOnceAsync();
+        monitor.ResetEmergencyShutdown();
+        sensor.Value = 30_000_000;
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        actuator.CommandCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ResetWhileShutdownIsPending_StopsTheRetry()
+    {
+        var actuator = new RecordingActuator(failuresBeforeAccept: 5);
+        var sensor = new ScriptedSensor("ChamberPressure", double.PositiveInfinity);
+        var monitor = new HardwareSafetyMonitor(new List<ISensor<double>> { sensor }, actuator);
+
+        await monitor.CheckSensorsOnceAsync();
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+
+        monitor.ResetEmergencyShutdown();
+        sensor.Value = 1_000_000;
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        actuator.CommandCount.Should().Be(1);
     }
 
     [Fact]
@@ -77,13 +153,13 @@ public class HardwareSafetyMonitorTests
 
     private sealed class ScriptedSensor : ISensor<double>
     {
-        private readonly double _value;
-
         public ScriptedSensor(string name, double value)
         {
             Name = name;
-            _value = value;
+            Value = value;
         }
+
+        public double Value { get; set; }
 
         public string SensorId => Name;
         public string Name { get; }
@@ -99,7 +175,7 @@ public class HardwareSafetyMonitorTests
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
-            return Task.FromResult(_value);
+            return Task.FromResult(Value);
         }
 
         public Task<bool> ValidateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
@@ -107,6 +183,15 @@ public class HardwareSafetyMonitorTests
 
     private sealed class RecordingActuator : IActuator
     {
+        private readonly int _failuresBeforeAccept;
+        private readonly bool _throwOnFailure;
+
+        public RecordingActuator(int failuresBeforeAccept = 0, bool throwOnFailure = false)
+        {
+            _failuresBeforeAccept = failuresBeforeAccept;
+            _throwOnFailure = throwOnFailure;
+        }
+
         public string ActuatorId => "shutdown";
         public string Name => "shutdown";
         public ActuatorType Type => ActuatorType.Valve;
@@ -126,6 +211,14 @@ public class HardwareSafetyMonitorTests
             CommandCount++;
             LastPosition = position;
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            if (CommandCount <= _failuresBeforeAccept)
+            {
+                if (_throwOnFailure)
+                    throw new InvalidOperationException("actuator not ready");
+
+                return Task.FromResult(false);
+            }
+
             return Task.FromResult(true);
         }
 
