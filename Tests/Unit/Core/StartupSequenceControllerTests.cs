@@ -278,6 +278,87 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_AbortDuringOpen_DoesNotResumeOrLeaveTheValveOpen()
+    {
+        var opened = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseOpen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        StartupSequenceController? controller = null;
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = async position =>
+            {
+                if (position <= 0)
+                    return;
+
+                opened.TrySetResult();
+                await releaseOpen.Task;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        var pass = controller.ExecuteOnceAsync();
+        await opened.Task;
+        controller.AbortStartup();
+        releaseOpen.TrySetResult();
+        await pass;
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+
+        var commandsAtAbort = fuel.CommandCount;
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        fuel.Positions.Skip(commandsAtAbort).Should().OnlyContain(position => position == 0);
+        oxidizer.Positions.SkipWhile(position => position == 0).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Ignition_AbortDuringSpark_DoesNotLeaveTheIgniterOnOrContinue()
+    {
+        var sparked = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSpark = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        StartupSequenceController? controller = null;
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator
+        {
+            OnCommanding = async position =>
+            {
+                if (position <= 0)
+                    return;
+
+                sparked.TrySetResult();
+                await releaseSpark.Task;
+            }
+        };
+        controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Ignition);
+        var pass = controller.ExecuteOnceAsync();
+        await sparked.Task;
+        controller.AbortStartup();
+        releaseSpark.TrySetResult();
+        await pass;
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
     public void AbortStartup_FromIdle_DoesNotCommandTheValves()
     {
         var fuel = new RecordingActuator();
@@ -325,15 +406,21 @@ public class StartupSequenceControllerTests
         public bool IsEnabled => true;
         public int CommandCount { get; private set; }
         public double LastPosition { get; private set; } = double.NaN;
+        public List<double> Positions { get; } = new();
+        public Func<double, Task>? OnCommanding { get; init; }
 
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
-        public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        public async Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
+            if (OnCommanding != null)
+                await OnCommanding(position);
+
             CommandCount++;
             LastPosition = position;
+            Positions.Add(position);
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
-            return Task.FromResult(true);
+            return true;
         }
 
         public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>
