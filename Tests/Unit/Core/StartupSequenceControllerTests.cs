@@ -133,6 +133,49 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_RejectedValveCommand_DoesNotContinueWhenFlowLooksEstablished()
+    {
+        var fuel = new RecordingActuator { RejectWhen = static _ => true };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        oxidizer.Positions.Should().OnlyContain(position => position == 0);
+        igniter.Positions.Should().OnlyContain(position => position == 0);
+    }
+
+    [Fact]
+    public async Task Ignition_RejectedIgniterShutdown_DoesNotLeaveTheSequenceRunning()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator { RejectWhen = static position => position == 0 };
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.Positions.Should().Contain(1);
+        igniter.Positions.Should().Contain(0);
+    }
+
+    [Fact]
     public async Task FuelFlow_PeggedSensor_DoesNotContinueAndClosesTheValve()
     {
         var fuel = new RecordingActuator();
@@ -409,6 +452,11 @@ public class StartupSequenceControllerTests
         public List<double> Positions { get; } = new();
         public Func<double, Task>? OnCommanding { get; init; }
 
+        /// <summary>
+        /// When this returns true, the command is recorded and rejected.
+        /// </summary>
+        public Predicate<double>? RejectWhen { get; init; }
+
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
         public async Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
@@ -420,7 +468,7 @@ public class StartupSequenceControllerTests
             LastPosition = position;
             Positions.Add(position);
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
-            return true;
+            return RejectWhen == null || !RejectWhen(position);
         }
 
         public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>

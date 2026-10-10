@@ -531,8 +531,19 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (_sequenceClosed)
                 return false;
 
-            await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
-            return await ContinueSequenceAsync().ConfigureAwait(false);
+            // A false return is a refused move, not a completed one. Fuel and oxidizer
+            // used to continue into the next state anyway, and a refused igniter-off
+            // left the spark commanded on through combustion and throttle-up.
+            var accepted = await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return false;
+
+            if (accepted)
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {actuator.Name} rejected command {position}").ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
