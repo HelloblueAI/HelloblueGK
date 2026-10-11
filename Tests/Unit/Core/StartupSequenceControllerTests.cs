@@ -478,6 +478,51 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task Stop_WhenLoopFaultsAndValveCloseFails_PreservesBothFailures()
+    {
+        var pressureRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loopFailure = new InvalidOperationException("pressure read failed");
+        var fuel = new RecordingActuator { RejectClose = true };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                OnReading = () =>
+                {
+                    pressureRead.TrySetResult();
+                    return Task.FromException<double>(loopFailure);
+                }
+            });
+
+        controller.MoveToState(StartupState.PreStartupChecks);
+
+        try
+        {
+            await controller.StartAsync();
+            await pressureRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var stop = async () => await controller.StopAsync();
+            var exception = await stop.Should().ThrowAsync<AggregateException>();
+
+            exception.Which.InnerExceptions.Should().Contain(loopFailure);
+            exception.Which.InnerExceptions.Should().ContainSingle(inner =>
+                inner is InvalidOperationException
+                && inner.Message == "[Startup Sequence] Shutdown did not close every valve.");
+            fuel.CloseAttempts.Should().BeGreaterThanOrEqualTo(2);
+            oxidizer.LastPosition.Should().Be(0);
+            igniter.LastPosition.Should().Be(0);
+        }
+        finally
+        {
+            controller.Dispose();
+        }
+    }
+
+    [Fact]
     public void AbortStartup_FromIdle_DoesNotCommandTheValves()
     {
         var fuel = new RecordingActuator();
@@ -568,9 +613,13 @@ public class StartupSequenceControllerTests
         public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
 
         public double Value { get; set; }
+        public Func<Task<double>>? OnReading { get; init; }
 
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            if (OnReading != null)
+                return OnReading();
+
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
             return Task.FromResult(Value);
         }

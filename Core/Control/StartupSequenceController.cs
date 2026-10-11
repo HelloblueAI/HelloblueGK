@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using HB_NLP_Research_Lab.Core.Hardware;
 
 namespace HB_NLP_Research_Lab.Core.Control
@@ -84,6 +85,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal const double MaximumFuelFlowKgPerSecond = 1000;
 
         internal const double MaximumOxidizerFlowKgPerSecond = 2000;
+
+        internal const int ShutdownCloseFailureEscalationThreshold = 3;
+        internal const int ShutdownCloseFailureLogInterval = 10;
+
+        private int _consecutiveFailedShutdownCloses;
 
         /// <summary>
         /// A finite pressure inside the ambient band. NaN used to pass: every comparison
@@ -199,20 +205,50 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         public override async Task StopAsync()
         {
+            Exception? stopException = null;
+            Exception? shutdownException = null;
+
             try
             {
                 await base.StopAsync().ConfigureAwait(false);
             }
-            finally
+            catch (Exception ex)
+            {
+                stopException = ex;
+            }
+
+            try
             {
                 // The loop's own stop already tried. This is the attempt that still
                 // runs when that stop did not, and the one that reports a valve that
                 // stayed open after the loop is gone.
                 if (!await SafeValvesOnStopAsync().ConfigureAwait(false))
                 {
-                    throw new InvalidOperationException(
+                    shutdownException = new InvalidOperationException(
                         "[Startup Sequence] Shutdown did not close every valve.");
                 }
+            }
+            catch (Exception ex)
+            {
+                shutdownException = ex;
+            }
+
+            if (stopException != null && shutdownException != null)
+            {
+                throw new AggregateException(
+                    "[Startup Sequence] Stop failed and shutdown did not close every valve.",
+                    stopException,
+                    shutdownException);
+            }
+
+            if (shutdownException != null)
+            {
+                ExceptionDispatchInfo.Capture(shutdownException).Throw();
+            }
+
+            if (stopException != null)
+            {
+                ExceptionDispatchInfo.Capture(stopException).Throw();
             }
         }
 
@@ -534,6 +570,8 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             // Close on this pass. Waiting for the next loop tick left the fuel valve
             // at the last commanded position if the loop stopped in between.
+            // The bool is intentionally ignored here: a rejected close leaves the
+            // sequence latched closed, and the closed-state loop keeps retrying it.
             await PerformShutdownAsync().ConfigureAwait(false);
         }
 
@@ -582,30 +620,84 @@ namespace HB_NLP_Research_Lab.Core.Control
             var fuelClosed = await CloseForShutdownAsync(_fuelValve).ConfigureAwait(false);
             var oxidizerClosed = await CloseForShutdownAsync(_oxidizerValve).ConfigureAwait(false);
             var igniterClosed = await CloseForShutdownAsync(_igniter).ConfigureAwait(false);
-            return fuelClosed && oxidizerClosed && igniterClosed;
+            var closed = fuelClosed.Closed && oxidizerClosed.Closed && igniterClosed.Closed;
+            RecordShutdownCloseResult(closed, fuelClosed, oxidizerClosed, igniterClosed);
+            return closed;
         }
 
-        private static async Task<bool> CloseForShutdownAsync(IActuator actuator)
+        private async Task<ValveCloseResult> CloseForShutdownAsync(IActuator actuator)
         {
             try
             {
                 var accepted = await actuator.SetPositionAsync(0.0, CancellationToken.None)
                     .ConfigureAwait(false);
-                if (!accepted)
-                {
-                    Console.WriteLine(
-                        $"[Startup Sequence] Valve close rejected: {actuator.Name}");
-                }
-
-                return accepted;
+                return accepted
+                    ? ValveCloseResult.Success(actuator.Name)
+                    : ValveCloseResult.Failure(actuator.Name, "rejected close command");
             }
             // codeql[generic-catch-clause]: A throw from one valve must not skip the others.
             catch (Exception ex)
             {
-                Console.WriteLine(
-                    $"[Startup Sequence] Valve close failed ({actuator.Name}): {ex.Message}");
-                return false;
+                return ValveCloseResult.Failure(actuator.Name, ex.Message);
             }
+        }
+
+        private void RecordShutdownCloseResult(bool closed, params ValveCloseResult[] results)
+        {
+            if (closed)
+            {
+                Interlocked.Exchange(ref _consecutiveFailedShutdownCloses, 0);
+                return;
+            }
+
+            var failedAttempts = Interlocked.Increment(ref _consecutiveFailedShutdownCloses);
+            if (!ShouldLogShutdownCloseFailure(failedAttempts))
+                return;
+
+            var failures = new List<string>();
+            foreach (var result in results)
+            {
+                if (!result.Closed)
+                    failures.Add($"{result.ActuatorName}: {result.Reason}");
+            }
+
+            var detail = failures.Count == 0
+                ? string.Empty
+                : $" ({string.Join("; ", failures)})";
+
+            if (failedAttempts >= ShutdownCloseFailureEscalationThreshold)
+            {
+                Console.WriteLine(
+                    $"[Startup Sequence] 🚨 ALARM: Shutdown close has failed {failedAttempts} consecutive attempts; keeping the sequence closed and retrying.{detail}");
+                return;
+            }
+
+            Console.WriteLine(
+                $"[Startup Sequence] Valve close failed on shutdown attempt {failedAttempts}; will retry.{detail}");
+        }
+
+        private static bool ShouldLogShutdownCloseFailure(int failedAttempts) =>
+            failedAttempts <= ShutdownCloseFailureEscalationThreshold
+            || failedAttempts % ShutdownCloseFailureLogInterval == 0;
+
+        private readonly struct ValveCloseResult
+        {
+            private ValveCloseResult(string actuatorName, bool closed, string reason)
+            {
+                ActuatorName = actuatorName;
+                Closed = closed;
+                Reason = reason;
+            }
+
+            public string ActuatorName { get; }
+            public bool Closed { get; }
+            public string Reason { get; }
+
+            public static ValveCloseResult Success(string actuatorName) =>
+                new(actuatorName, true, string.Empty);
+
+            public static ValveCloseResult Failure(string actuatorName, string reason) =>
+                new(actuatorName, false, reason);
         }
         
         private void PerformShutdown()
