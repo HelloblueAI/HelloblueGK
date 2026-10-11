@@ -21,6 +21,10 @@ namespace HB_NLP_Research_Lab.Core.Safety
         private bool _emergencyShutdownActive = false;
         private bool _shutdownPending = false;
         private string _pendingShutdownReason = string.Empty;
+        private readonly int _emergencyShutdownFailureEscalationThreshold;
+        private readonly int _emergencyShutdownFailureLogInterval;
+        private int _consecutiveShutdownCommandFailures = 0;
+        private bool _shutdownFailureEscalated = false;
         private readonly object _lock = new object();
 
         /// <summary>
@@ -28,7 +32,34 @@ namespace HB_NLP_Research_Lab.Core.Safety
         /// is configured. A rejected or thrown command leaves this false so the next
         /// pass can try again.
         /// </summary>
-        public bool IsEmergencyShutdownActive => _emergencyShutdownActive;
+        public bool IsEmergencyShutdownActive
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _emergencyShutdownActive;
+                }
+            }
+        }
+
+        /// <summary>
+        /// True while an emergency shutdown has been required but the safe command has
+        /// not yet been accepted by the shutdown actuator.
+        /// </summary>
+        public bool IsEmergencyShutdownPending
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return _shutdownPending && !_emergencyShutdownActive;
+                }
+            }
+        }
+
+        public int EmergencyShutdownFailureEscalationThreshold => _emergencyShutdownFailureEscalationThreshold;
+        public int EmergencyShutdownFailureLogInterval => _emergencyShutdownFailureLogInterval;
 
         /// <summary>
         /// One monitor pass, the same check the control loop runs. Tests call this so a
@@ -38,14 +69,34 @@ namespace HB_NLP_Research_Lab.Core.Safety
             ExecuteControlLoopAsync(cancellationToken);
         public event EventHandler<SafetyViolationEventArgs>? SafetyViolationDetected;
         public event EventHandler<EmergencyShutdownEventArgs>? EmergencyShutdownTriggered;
+        public event EventHandler<EmergencyShutdownCommandFailedEventArgs>? EmergencyShutdownCommandFailed;
+        public event EventHandler<EmergencyShutdownEscalationEventArgs>? EmergencyShutdownEscalated;
         
         public HardwareSafetyMonitor(
             List<ISensor<double>> criticalSensors,
             IActuator? emergencyShutdownActuator = null,
-            int frequencyHz = 100) : base(frequencyHz)
+            int frequencyHz = 100,
+            int emergencyShutdownFailureEscalationThreshold = 3,
+            int emergencyShutdownFailureLogInterval = 10) : base(frequencyHz)
         {
             _criticalSensors = criticalSensors ?? throw new ArgumentNullException(nameof(criticalSensors));
             _emergencyShutdownActuator = emergencyShutdownActuator;
+            if (emergencyShutdownFailureEscalationThreshold <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(emergencyShutdownFailureEscalationThreshold),
+                    "Emergency shutdown escalation threshold must be positive.");
+            }
+
+            if (emergencyShutdownFailureLogInterval <= 0)
+            {
+                throw new ArgumentOutOfRangeException(
+                    nameof(emergencyShutdownFailureLogInterval),
+                    "Emergency shutdown failure log interval must be positive.");
+            }
+
+            _emergencyShutdownFailureEscalationThreshold = emergencyShutdownFailureEscalationThreshold;
+            _emergencyShutdownFailureLogInterval = emergencyShutdownFailureLogInterval;
             
             // Initialize safety limits
             _safetyLimits = new Dictionary<string, SafetyLimit>
@@ -115,6 +166,8 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     _emergencyShutdownActive = false;
                     _shutdownPending = false;
                     _pendingShutdownReason = string.Empty;
+                    _consecutiveShutdownCommandFailures = 0;
+                    _shutdownFailureEscalated = false;
                 }
             }
         }
@@ -233,8 +286,16 @@ namespace HB_NLP_Research_Lab.Core.Safety
 
         private async Task CompletePendingShutdownAsync(CancellationToken cancellationToken)
         {
-            if (!await CommandShutdownActuatorAsync(cancellationToken))
+            var commandResult = await CommandShutdownActuatorAsync(cancellationToken);
+            if (!commandResult.Accepted)
+            {
+                if (commandResult.NotifyFailure)
+                {
+                    HandleShutdownCommandFailure(commandResult.FailureMessage, commandResult.Exception);
+                }
+
                 return;
+            }
 
             string reason;
             lock (_lock)
@@ -244,7 +305,10 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     return;
 
                 _emergencyShutdownActive = true;
+                _shutdownPending = false;
                 reason = _pendingShutdownReason;
+                _consecutiveShutdownCommandFailures = 0;
+                _shutdownFailureEscalated = false;
             }
 
             EmergencyShutdownTriggered?.Invoke(this, new EmergencyShutdownEventArgs
@@ -258,51 +322,109 @@ namespace HB_NLP_Research_Lab.Core.Safety
         /// Returns true when shutdown is achieved. No actuator is a software-only
         /// shutdown. A false return or a thrown command leaves the pending latch set.
         /// </summary>
-        private async Task<bool> CommandShutdownActuatorAsync(CancellationToken cancellationToken)
+        private async Task<ShutdownCommandResult> CommandShutdownActuatorAsync(CancellationToken cancellationToken)
         {
             if (_emergencyShutdownActuator == null)
-                return true;
+                return ShutdownCommandResult.Success();
 
             try
             {
                 var accepted = await _emergencyShutdownActuator.SetPositionAsync(1.0, cancellationToken);
                 if (!accepted)
                 {
-                    Console.WriteLine("[Safety Monitor] ⚠️ Hardware shutdown command was rejected");
+                    return ShutdownCommandResult.Failed("Hardware shutdown command was rejected");
                 }
 
-                return accepted;
+                return ShutdownCommandResult.Success();
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                return false;
+                return ShutdownCommandResult.Cancelled();
             }
             catch (InvalidOperationException ex)
             {
                 // Actuator not ready or not initialized
-                Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown actuator not ready: {ex.Message}");
-                return false;
+                return ShutdownCommandResult.Failed($"Hardware shutdown actuator not ready: {ex.Message}", ex);
             }
-            catch (TaskCanceledException)
+            catch (TaskCanceledException ex)
             {
                 // Actuator command timeout
-                Console.WriteLine($"[Safety Monitor] ⚠️ Hardware shutdown command timeout");
-                return false;
+                return ShutdownCommandResult.Failed("Hardware shutdown command timeout", ex);
             }
             catch (Exception ex) when (ex is ArgumentException || ex is ArgumentOutOfRangeException)
             {
                 // Invalid actuator command
-                Console.WriteLine($"[Safety Monitor] ⚠️ Invalid shutdown command: {ex.Message}");
-                return false;
+                return ShutdownCommandResult.Failed($"Invalid shutdown command: {ex.Message}", ex);
             }
             // codeql[generic-catch-clause]: Intentional final catch-all for safety - all specific exceptions handled above
             catch (Exception ex)
             {
                 // Catch-all for unexpected actuator errors
-                Console.WriteLine($"[Safety Monitor] ❌ Failed to activate hardware shutdown: {ex.Message}");
-                return false;
+                return ShutdownCommandResult.Failed($"Failed to activate hardware shutdown: {ex.Message}", ex);
             }
         }
+
+        private void HandleShutdownCommandFailure(string failureMessage, Exception? exception)
+        {
+            string reason;
+            int failureCount;
+            bool shouldLog;
+            bool shouldEscalate;
+
+            lock (_lock)
+            {
+                // Reset may have cleared the pending shutdown while the command was in flight.
+                if (!_shutdownPending || _emergencyShutdownActive)
+                    return;
+
+                _consecutiveShutdownCommandFailures++;
+                failureCount = _consecutiveShutdownCommandFailures;
+                reason = _pendingShutdownReason;
+                shouldEscalate =
+                    !_shutdownFailureEscalated &&
+                    failureCount >= _emergencyShutdownFailureEscalationThreshold;
+                shouldLog = ShouldLogShutdownCommandFailure(failureCount) || shouldEscalate;
+
+                if (shouldEscalate)
+                {
+                    _shutdownFailureEscalated = true;
+                }
+            }
+
+            var timestamp = DateTime.UtcNow;
+            EmergencyShutdownCommandFailed?.Invoke(this, new EmergencyShutdownCommandFailedEventArgs
+            {
+                Reason = reason,
+                FailureMessage = failureMessage,
+                ConsecutiveFailureCount = failureCount,
+                Timestamp = timestamp,
+                Exception = exception
+            });
+
+            if (shouldLog)
+            {
+                Console.WriteLine(
+                    $"[Safety Monitor] ⚠️ Emergency shutdown command failure #{failureCount}: {failureMessage}");
+            }
+
+            if (shouldEscalate)
+            {
+                Console.WriteLine(
+                    $"[Safety Monitor] 🚨 CRITICAL: emergency shutdown command failed {failureCount} consecutive times; continuing retries");
+                EmergencyShutdownEscalated?.Invoke(this, new EmergencyShutdownEscalationEventArgs
+                {
+                    Reason = reason,
+                    FailureMessage = failureMessage,
+                    ConsecutiveFailureCount = failureCount,
+                    FailureThreshold = _emergencyShutdownFailureEscalationThreshold,
+                    Timestamp = timestamp,
+                    Exception = exception
+                });
+            }
+        }
+
+        private bool ShouldLogShutdownCommandFailure(int failureCount) =>
+            failureCount == 1 || failureCount % _emergencyShutdownFailureLogInterval == 0;
         
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)
         {
@@ -342,5 +464,53 @@ namespace HB_NLP_Research_Lab.Core.Safety
     {
         public string Reason { get; set; } = string.Empty;
         public DateTime Timestamp { get; set; }
+    }
+
+    public class EmergencyShutdownCommandFailedEventArgs : EventArgs
+    {
+        public string Reason { get; set; } = string.Empty;
+        public string FailureMessage { get; set; } = string.Empty;
+        public int ConsecutiveFailureCount { get; set; }
+        public DateTime Timestamp { get; set; }
+        public Exception? Exception { get; set; }
+    }
+
+    public class EmergencyShutdownEscalationEventArgs : EventArgs
+    {
+        public string Reason { get; set; } = string.Empty;
+        public string FailureMessage { get; set; } = string.Empty;
+        public int ConsecutiveFailureCount { get; set; }
+        public int FailureThreshold { get; set; }
+        public DateTime Timestamp { get; set; }
+        public Exception? Exception { get; set; }
+    }
+
+    internal sealed class ShutdownCommandResult
+    {
+        private ShutdownCommandResult(
+            bool accepted,
+            bool notifyFailure,
+            string failureMessage,
+            Exception? exception)
+        {
+            Accepted = accepted;
+            NotifyFailure = notifyFailure;
+            FailureMessage = failureMessage;
+            Exception = exception;
+        }
+
+        public bool Accepted { get; }
+        public bool NotifyFailure { get; }
+        public string FailureMessage { get; }
+        public Exception? Exception { get; }
+
+        public static ShutdownCommandResult Success() =>
+            new ShutdownCommandResult(true, false, string.Empty, null);
+
+        public static ShutdownCommandResult Cancelled() =>
+            new ShutdownCommandResult(false, false, string.Empty, null);
+
+        public static ShutdownCommandResult Failed(string failureMessage, Exception? exception = null) =>
+            new ShutdownCommandResult(false, true, failureMessage, exception);
     }
 }

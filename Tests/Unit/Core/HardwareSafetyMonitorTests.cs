@@ -47,6 +47,7 @@ public class HardwareSafetyMonitorTests
         await monitor.CheckSensorsOnceAsync();
 
         monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
         actuator.LastPosition.Should().Be(1);
         actuator.CommandCount.Should().Be(1);
     }
@@ -64,6 +65,7 @@ public class HardwareSafetyMonitorTests
 
         actuator.CommandCount.Should().Be(1);
         monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
     }
 
     [Theory]
@@ -75,21 +77,88 @@ public class HardwareSafetyMonitorTests
         var sensor = new ScriptedSensor("ChamberPressure", double.NaN);
         var monitor = new HardwareSafetyMonitor(new List<ISensor<double>> { sensor }, actuator);
         var shutdowns = 0;
+        var commandFailures = 0;
         monitor.EmergencyShutdownTriggered += (_, _) => shutdowns++;
+        monitor.EmergencyShutdownCommandFailed += (_, args) =>
+        {
+            commandFailures++;
+            args.ConsecutiveFailureCount.Should().Be(1);
+        };
 
         await monitor.CheckSensorsOnceAsync();
 
         monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
         shutdowns.Should().Be(0);
+        commandFailures.Should().Be(1);
         actuator.CommandCount.Should().Be(1);
 
         sensor.Value = 30_000_000;
         await monitor.CheckSensorsOnceAsync();
 
         monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
         shutdowns.Should().Be(1);
+        commandFailures.Should().Be(1);
         actuator.CommandCount.Should().Be(2);
         actuator.LastPosition.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RejectedShutdownCommand_IsVisibleAsPendingAndRaisesFailureEvent()
+    {
+        var actuator = new RecordingActuator(failuresBeforeAccept: 1);
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator);
+        EmergencyShutdownCommandFailedEventArgs? commandFailure = null;
+        monitor.EmergencyShutdownCommandFailed += (_, args) => commandFailure = args;
+
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
+        commandFailure.Should().NotBeNull();
+        commandFailure!.Reason.Should().Be("Critical safety violation: ChamberPressure");
+        commandFailure.FailureMessage.Should().Contain("rejected");
+        commandFailure.ConsecutiveFailureCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ContinuouslyRejectedShutdown_EscalatesOnceAndKeepsRetrying()
+    {
+        var actuator = new RecordingActuator(failuresBeforeAccept: int.MaxValue);
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator,
+            emergencyShutdownFailureEscalationThreshold: 3,
+            emergencyShutdownFailureLogInterval: 2);
+        var commandFailures = new List<EmergencyShutdownCommandFailedEventArgs>();
+        var escalations = new List<EmergencyShutdownEscalationEventArgs>();
+        var shutdowns = 0;
+        monitor.EmergencyShutdownCommandFailed += (_, args) => commandFailures.Add(args);
+        monitor.EmergencyShutdownEscalated += (_, args) => escalations.Add(args);
+        monitor.EmergencyShutdownTriggered += (_, _) => shutdowns++;
+
+        for (var i = 0; i < 5; i++)
+        {
+            await monitor.CheckSensorsOnceAsync();
+        }
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
+        actuator.CommandCount.Should().Be(5);
+        shutdowns.Should().Be(0);
+        commandFailures.Select(args => args.ConsecutiveFailureCount).Should().Equal(1, 2, 3, 4, 5);
+        escalations.Should().ContainSingle();
+        escalations[0].ConsecutiveFailureCount.Should().Be(3);
+        escalations[0].FailureThreshold.Should().Be(3);
+
+        await monitor.CheckSensorsOnceAsync();
+
+        actuator.CommandCount.Should().Be(6);
+        commandFailures.Select(args => args.ConsecutiveFailureCount).Should().Equal(1, 2, 3, 4, 5, 6);
+        escalations.Should().ContainSingle();
     }
 
     [Fact]
@@ -117,12 +186,14 @@ public class HardwareSafetyMonitorTests
 
         await monitor.CheckSensorsOnceAsync();
         monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
 
         monitor.ResetEmergencyShutdown();
         sensor.Value = 1_000_000;
         await monitor.CheckSensorsOnceAsync();
 
         monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
         actuator.CommandCount.Should().Be(1);
     }
 
@@ -137,6 +208,7 @@ public class HardwareSafetyMonitorTests
         await monitor.CheckSensorsOnceAsync();
 
         monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
         actuator.CommandCount.Should().Be(0);
     }
 
@@ -149,6 +221,7 @@ public class HardwareSafetyMonitorTests
         await monitor.CheckSensorsOnceAsync();
 
         monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
     }
 
     private sealed class ScriptedSensor : ISensor<double>
