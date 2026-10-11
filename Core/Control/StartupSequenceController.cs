@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Runtime.ExceptionServices;
 using HB_NLP_Research_Lab.Core.Hardware;
 
 namespace HB_NLP_Research_Lab.Core.Control
@@ -84,6 +85,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal const double MaximumFuelFlowKgPerSecond = 1000;
 
         internal const double MaximumOxidizerFlowKgPerSecond = 2000;
+
+        internal const int ShutdownCloseFailureEscalationThreshold = 3;
+        internal const int ShutdownCloseFailureLogInterval = 10;
+
+        private int _consecutiveFailedShutdownCloses;
 
         /// <summary>
         /// A finite pressure inside the ambient band. NaN used to pass: every comparison
@@ -194,12 +200,56 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// <summary>
         /// Stop the control loop and close any valve this sequence may have opened.
         /// The base stop cancels the loop token; if that cancellation wins before the
-        /// loop body starts, <see cref="OnLoopStopAsync"/> never runs.
+        /// loop body starts, <see cref="OnLoopStopAsync"/> never runs. A fault from
+        /// the loop task must not skip this close either.
         /// </summary>
         public override async Task StopAsync()
         {
-            await base.StopAsync().ConfigureAwait(false);
-            await SafeValvesOnStopAsync().ConfigureAwait(false);
+            Exception? stopException = null;
+            Exception? shutdownException = null;
+
+            try
+            {
+                await base.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                stopException = ex;
+            }
+
+            try
+            {
+                // The loop's own stop already tried. This is the attempt that still
+                // runs when that stop did not, and the one that reports a valve that
+                // stayed open after the loop is gone.
+                if (!await SafeValvesOnStopAsync().ConfigureAwait(false))
+                {
+                    shutdownException = new InvalidOperationException(
+                        "[Startup Sequence] Shutdown did not close every valve.");
+                }
+            }
+            catch (Exception ex)
+            {
+                shutdownException = ex;
+            }
+
+            if (stopException != null && shutdownException != null)
+            {
+                throw new AggregateException(
+                    "[Startup Sequence] Stop failed and shutdown did not close every valve.",
+                    stopException,
+                    shutdownException);
+            }
+
+            if (shutdownException != null)
+            {
+                ExceptionDispatchInfo.Capture(shutdownException).Throw();
+            }
+
+            if (stopException != null)
+            {
+                ExceptionDispatchInfo.Capture(stopException).Throw();
+            }
         }
 
         /// <summary>
@@ -233,7 +283,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (_sequenceClosed)
             {
                 if (CurrentState != StartupState.Idle)
+                {
+                    // False means a valve rejected the close or threw. Stay on this
+                    // path and command all three again on the next pass.
                     await PerformShutdownAsync().ConfigureAwait(false);
+                }
+
                 return;
             }
 
@@ -515,6 +570,8 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             // Close on this pass. Waiting for the next loop tick left the fuel valve
             // at the last commanded position if the loop stopped in between.
+            // The bool is intentionally ignored here: a rejected close leaves the
+            // sequence latched closed, and the closed-state loop keeps retrying it.
             await PerformShutdownAsync().ConfigureAwait(false);
         }
 
@@ -531,8 +588,19 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (_sequenceClosed)
                 return false;
 
-            await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
-            return await ContinueSequenceAsync().ConfigureAwait(false);
+            // A false return is a refused move, not a completed one. Fuel and oxidizer
+            // used to continue into the next state anyway, and a refused igniter-off
+            // left the spark commanded on through combustion and throttle-up.
+            var accepted = await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return false;
+
+            if (accepted)
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {actuator.Name} rejected command {position}").ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
@@ -548,14 +616,100 @@ namespace HB_NLP_Research_Lab.Core.Control
             return false;
         }
 
-        private async Task PerformShutdownAsync()
+        /// <summary>
+        /// Commands every valve shut. One failure must not skip the valves that
+        /// have not been commanded yet. Returns false when any close was rejected
+        /// or threw, so the next closed pass can try again.
+        /// </summary>
+        private async Task<bool> PerformShutdownAsync()
         {
-            Console.WriteLine("[Startup Sequence] 🔄 Performing shutdown...");
-            
-            // Close valves
-            await _fuelValve.SetPositionAsync(0.0, CancellationToken.None);
-            await _oxidizerValve.SetPositionAsync(0.0, CancellationToken.None);
-            await _igniter.SetPositionAsync(0.0, CancellationToken.None);
+            if (Volatile.Read(ref _consecutiveFailedShutdownCloses) == 0)
+                Console.WriteLine("[Startup Sequence] 🔄 Performing shutdown...");
+
+            // Fuel used to be awaited first. A throw from that command left the
+            // oxidizer and igniter at their last positions, and the same throw on
+            // the loop-stop path faulted the task before those valves were commanded.
+            var fuelClosed = await CloseForShutdownAsync(_fuelValve).ConfigureAwait(false);
+            var oxidizerClosed = await CloseForShutdownAsync(_oxidizerValve).ConfigureAwait(false);
+            var igniterClosed = await CloseForShutdownAsync(_igniter).ConfigureAwait(false);
+            var closed = fuelClosed.Closed && oxidizerClosed.Closed && igniterClosed.Closed;
+            RecordShutdownCloseResult(closed, fuelClosed, oxidizerClosed, igniterClosed);
+            return closed;
+        }
+
+        private async Task<ValveCloseResult> CloseForShutdownAsync(IActuator actuator)
+        {
+            try
+            {
+                var accepted = await actuator.SetPositionAsync(0.0, CancellationToken.None)
+                    .ConfigureAwait(false);
+                return accepted
+                    ? ValveCloseResult.Success(actuator.Name)
+                    : ValveCloseResult.Failure(actuator.Name, "rejected close command");
+            }
+            // codeql[generic-catch-clause]: A throw from one valve must not skip the others.
+            catch (Exception ex)
+            {
+                return ValveCloseResult.Failure(actuator.Name, ex.Message);
+            }
+        }
+
+        private void RecordShutdownCloseResult(bool closed, params ValveCloseResult[] results)
+        {
+            if (closed)
+            {
+                Interlocked.Exchange(ref _consecutiveFailedShutdownCloses, 0);
+                return;
+            }
+
+            var failedAttempts = Interlocked.Increment(ref _consecutiveFailedShutdownCloses);
+            if (!ShouldLogShutdownCloseFailure(failedAttempts))
+                return;
+
+            var failures = new List<string>();
+            foreach (var result in results)
+            {
+                if (!result.Closed)
+                    failures.Add($"{result.ActuatorName}: {result.Reason}");
+            }
+
+            var detail = failures.Count == 0
+                ? string.Empty
+                : $" ({string.Join("; ", failures)})";
+
+            if (failedAttempts >= ShutdownCloseFailureEscalationThreshold)
+            {
+                Console.WriteLine(
+                    $"[Startup Sequence] 🚨 ALARM: Shutdown close has failed {failedAttempts} consecutive attempts; keeping the sequence closed and retrying.{detail}");
+                return;
+            }
+
+            Console.WriteLine(
+                $"[Startup Sequence] Valve close failed on shutdown attempt {failedAttempts}; will retry.{detail}");
+        }
+
+        private static bool ShouldLogShutdownCloseFailure(int failedAttempts) =>
+            failedAttempts <= ShutdownCloseFailureEscalationThreshold
+            || failedAttempts % ShutdownCloseFailureLogInterval == 0;
+
+        private readonly struct ValveCloseResult
+        {
+            private ValveCloseResult(string actuatorName, bool closed, string reason)
+            {
+                ActuatorName = actuatorName;
+                Closed = closed;
+                Reason = reason;
+            }
+
+            public string ActuatorName { get; }
+            public bool Closed { get; }
+            public string Reason { get; }
+
+            public static ValveCloseResult Success(string actuatorName) =>
+                new(actuatorName, true, string.Empty);
+
+            public static ValveCloseResult Failure(string actuatorName, string reason) =>
+                new(actuatorName, false, reason);
         }
         
         private void PerformShutdown()
@@ -563,12 +717,22 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Use Task.Run to avoid deadlocks when calling async from sync context
             try
             {
-                Task.Run(async () => await PerformShutdownAsync().ConfigureAwait(false))
-                    .Wait(TimeSpan.FromSeconds(5));
+                var shutdown = Task.Run(async () => await PerformShutdownAsync().ConfigureAwait(false));
+                if (!shutdown.Wait(TimeSpan.FromSeconds(5)))
+                {
+                    Console.WriteLine("[Startup Sequence] Shutdown timed out before every valve reported.");
+                    return;
+                }
+
+                if (!shutdown.Result)
+                {
+                    Console.WriteLine(
+                        "[Startup Sequence] Shutdown did not close every valve. A later closed pass will retry.");
+                }
             }
             catch (AggregateException)
             {
-                // Task may have already completed or been cancelled - this is expected during shutdown
+                // The wait itself failed. CloseForShutdownAsync already isolates valve exceptions.
             }
         }
         
@@ -582,7 +746,12 @@ namespace HB_NLP_Research_Lab.Core.Control
 
         protected override Task OnLoopStopAsync() => SafeValvesOnStopAsync();
 
-        private async Task SafeValvesOnStopAsync()
+        /// <summary>
+        /// Closes the valves and latches the sequence. Returns false when a valve
+        /// stayed open. The loop stop ignores that result so a failed close does
+        /// not fault the task; <see cref="StopAsync"/> reports it after its own try.
+        /// </summary>
+        private async Task<bool> SafeValvesOnStopAsync()
         {
             Console.WriteLine("[Startup Sequence] Stopping startup sequence controller");
             // Idle has not opened a valve. Every other state may have, including Running,
@@ -598,9 +767,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             }
 
             if (idle)
-                return;
+                return true;
 
-            await PerformShutdownAsync().ConfigureAwait(false);
+            var closed = await PerformShutdownAsync().ConfigureAwait(false);
             lock (_stateGate)
             {
                 if (_currentState != StartupState.Error && _currentState != StartupState.Aborted)
@@ -609,6 +778,8 @@ namespace HB_NLP_Research_Lab.Core.Control
                     _stateStartTime = DateTime.UtcNow;
                 }
             }
+
+            return closed;
         }
     }
     
