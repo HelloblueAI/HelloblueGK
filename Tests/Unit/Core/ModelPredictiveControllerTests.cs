@@ -196,6 +196,51 @@ public class ModelPredictiveControllerTests
     }
 
     [Fact]
+    public async Task RejectedCommand_DoesNotBecomeTheNextRateLimitOrigin()
+    {
+        var actuator = new SelectiveActuator(rejectIndex: 1);
+        using var controller = CreateController(actuator, new ScriptedSensor(0));
+        // A large reference drives the optimizer to the top of the allowed range.
+        // The first command has no history, so it can reach that ceiling. The next
+        // commands may only step by the rate window from the last accepted command.
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 0.3,
+            MinRate = -1_000,
+            MaxRate = 1_000
+        });
+        actuator.OnAccepted = index =>
+        {
+            if (index != 0)
+                return;
+
+            controller.SetConstraints(new ControlConstraints
+            {
+                MinValue = 0,
+                MaxValue = 1,
+                MinRate = -10,
+                MaxRate = 10
+            });
+        };
+
+        await controller.StartAsync();
+        var sawThird = await WaitUntilAsync(
+            () => actuator.Positions.Count >= 3,
+            TimeSpan.FromSeconds(5));
+        sawThird.Should().BeTrue();
+        await controller.StopAsync();
+
+        var positions = actuator.Positions;
+        // 10 per second at a 0.01 s sample is a 0.1 step. The refused 0.4 command
+        // must not let the following command step on to 0.5.
+        positions[0].Should().BeApproximately(0.3, 1e-9);
+        positions[1].Should().BeApproximately(0.4, 1e-9);
+        positions[2].Should().BeApproximately(0.4, 1e-9);
+    }
+
+    [Fact]
     public async Task FiniteSensor_CommandsAFinitePositionInsideTheActuatorRange()
     {
         var actuator = new RecordingActuator();
@@ -293,6 +338,68 @@ public class ModelPredictiveControllerTests
             _first.TrySetResult(position);
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
             return Task.FromResult(true);
+        }
+
+        public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(0d);
+
+        public Task<bool> EnableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> DisableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    private sealed class SelectiveActuator : IActuator
+    {
+        private readonly object _gate = new();
+        private readonly List<double> _positions = new();
+        private readonly int _rejectIndex;
+        private int _calls;
+
+        public SelectiveActuator(int rejectIndex)
+        {
+            _rejectIndex = rejectIndex;
+        }
+
+        public Action<int>? OnAccepted { get; set; }
+
+        public IReadOnlyList<double> Positions
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _positions.ToArray();
+                }
+            }
+        }
+
+        public string ActuatorId => "mpc-selective";
+        public string Name => "mpc-selective";
+        public ActuatorType Type => ActuatorType.Throttle;
+        public ActuatorStatus Status => ActuatorStatus.Ready;
+        public double MinPosition => 0;
+        public double MaxPosition => 1;
+        public double ResponseTimeSeconds => 0.01;
+        public double MaxRateOfChange => 10;
+        public bool IsEnabled => true;
+
+        public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
+
+        public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        {
+            int index;
+            lock (_gate)
+            {
+                index = _calls;
+                _positions.Add(position);
+                _calls++;
+            }
+
+            var accepted = index != _rejectIndex;
+            if (accepted)
+                OnAccepted?.Invoke(index);
+
+            PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            return Task.FromResult(accepted);
         }
 
         public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>

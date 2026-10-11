@@ -119,15 +119,21 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // 4. Apply first control action (receding horizon)
                 var controlAction = optimalControl[0];
                 
-                // Apply constraints. The value written back is what the actuator received,
-                // so the next cycle rate-limits against that command rather than a NaN estimate.
+                // Apply constraints. History stores this command only after the actuator accepts it.
                 controlAction = ApplyConstraints(controlAction);
                 optimalControl[0] = controlAction;
                 
-                // 5. Send to actuator
-                await _actuator.SetPositionAsync(controlAction, cancellationToken);
-                
-                // 6. Store control history
+                // 5. Send to actuator. A refused command leaves the actuator at the last
+                // accepted position, so it must not become the next rate-limit origin.
+                var accepted = await _actuator.SetPositionAsync(controlAction, cancellationToken)
+                    .ConfigureAwait(false);
+                if (!accepted)
+                {
+                    OnActuatorRejected();
+                    return;
+                }
+
+                // 6. Store the command the actuator accepted.
                 _controlHistory.Enqueue(optimalControl);
                 if (_controlHistory.Count > _controlHorizon)
                     _controlHistory.Dequeue();
@@ -445,6 +451,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 _controlHistory.Dequeue();
         }
         
+        protected virtual void OnActuatorRejected()
+        {
+            Console.WriteLine("[MPC Controller] Actuator rejected the commanded position");
+        }
+
         protected virtual void OnControlError(Exception ex)
         {
             Console.WriteLine($"[MPC Controller] ❌ Control error: {ex.Message}");
