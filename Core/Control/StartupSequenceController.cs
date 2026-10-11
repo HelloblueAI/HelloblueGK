@@ -612,7 +612,8 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         private async Task<bool> PerformShutdownAsync()
         {
-            Console.WriteLine("[Startup Sequence] 🔄 Performing shutdown...");
+            if (Volatile.Read(ref _consecutiveFailedShutdownCloses) == 0)
+                Console.WriteLine("[Startup Sequence] 🔄 Performing shutdown...");
 
             // Fuel used to be awaited first. A throw from that command left the
             // oxidizer and igniter at their last positions, and the same throw on
