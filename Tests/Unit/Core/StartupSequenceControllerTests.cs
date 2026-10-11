@@ -133,6 +133,49 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_RejectedValveCommand_DoesNotContinueWhenFlowLooksEstablished()
+    {
+        var fuel = new RecordingActuator { RejectWhen = static _ => true };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        oxidizer.Positions.Should().OnlyContain(position => position == 0);
+        igniter.Positions.Should().OnlyContain(position => position == 0);
+    }
+
+    [Fact]
+    public async Task Ignition_RejectedIgniterShutdown_DoesNotLeaveTheSequenceRunning()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator { RejectWhen = static position => position == 0 };
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.Positions.Should().Contain(1);
+        igniter.Positions.Should().Contain(0);
+    }
+
+    [Fact]
     public async Task FuelFlow_PeggedSensor_DoesNotContinueAndClosesTheValve()
     {
         var fuel = new RecordingActuator();
@@ -359,6 +402,170 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task ClosedSequence_FuelCloseThrows_StillClosesTheOtherValvesAndRetries()
+    {
+        var fuelCloses = 0;
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position <= 0)
+                {
+                    fuelCloses++;
+                    throw new InvalidOperationException("fuel valve rejected close");
+                }
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Error);
+        await controller.ExecuteOnceAsync();
+
+        fuelCloses.Should().Be(1);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        controller.CurrentState.Should().Be(StartupState.Error);
+
+        await controller.ExecuteOnceAsync();
+
+        fuelCloses.Should().Be(2);
+        oxidizer.CommandCount.Should().Be(2);
+        igniter.CommandCount.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task ClosedSequence_RejectedFuelClose_StillClosesTheOtherValvesAndRetries()
+    {
+        var fuel = new RecordingActuator { RejectClose = true };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Aborted);
+        await controller.ExecuteOnceAsync();
+
+        fuel.CloseAttempts.Should().Be(1);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+
+        await controller.ExecuteOnceAsync();
+
+        fuel.CloseAttempts.Should().Be(2);
+        oxidizer.CommandCount.Should().Be(2);
+        igniter.CommandCount.Should().Be(2);
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+    }
+
+    [Fact]
+    public void AbortStartup_WhenFuelCloseThrows_StillClosesTheOtherValves()
+    {
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position <= 0)
+                    throw new InvalidOperationException("fuel valve rejected close");
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Running);
+        controller.AbortStartup();
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Stop_WhenFuelCloseThrows_StillClosesTheOtherValves()
+    {
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position <= 0)
+                    throw new InvalidOperationException("fuel valve rejected close");
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter);
+        controller.MoveToState(StartupState.Running);
+
+        try
+        {
+            await controller.StartAsync();
+            var stop = async () => await controller.StopAsync();
+            await stop.Should().ThrowAsync<InvalidOperationException>();
+
+            controller.CurrentState.Should().Be(StartupState.Aborted);
+            controller.IsStartupComplete.Should().BeFalse();
+            oxidizer.LastPosition.Should().Be(0);
+            igniter.LastPosition.Should().Be(0);
+        }
+        finally
+        {
+            controller.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task Stop_WhenLoopFaultsAndValveCloseFails_PreservesBothFailures()
+    {
+        var pressureRead = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var loopFailure = new InvalidOperationException("pressure read failed");
+        var fuel = new RecordingActuator { RejectClose = true };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                OnReading = () =>
+                {
+                    pressureRead.TrySetResult();
+                    return Task.FromException<double>(loopFailure);
+                }
+            });
+
+        controller.MoveToState(StartupState.PreStartupChecks);
+
+        try
+        {
+            await controller.StartAsync();
+            await pressureRead.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            var stop = async () => await controller.StopAsync();
+            var exception = await stop.Should().ThrowAsync<AggregateException>();
+
+            exception.Which.InnerExceptions.Should().Contain(loopFailure);
+            exception.Which.InnerExceptions.Should().ContainSingle(inner =>
+                inner is InvalidOperationException
+                && inner.Message == "[Startup Sequence] Shutdown did not close every valve.");
+            fuel.CloseAttempts.Should().BeGreaterThanOrEqualTo(2);
+            oxidizer.LastPosition.Should().Be(0);
+            igniter.LastPosition.Should().Be(0);
+        }
+        finally
+        {
+            controller.Dispose();
+        }
+    }
+
+    [Fact]
     public void AbortStartup_FromIdle_DoesNotCommandTheValves()
     {
         var fuel = new RecordingActuator();
@@ -405,9 +612,16 @@ public class StartupSequenceControllerTests
         public double MaxRateOfChange => 1;
         public bool IsEnabled => true;
         public int CommandCount { get; private set; }
+        public int CloseAttempts { get; private set; }
         public double LastPosition { get; private set; } = double.NaN;
         public List<double> Positions { get; } = new();
         public Func<double, Task>? OnCommanding { get; init; }
+        public bool RejectClose { get; init; }
+
+        /// <summary>
+        /// When this returns true, the command is recorded and rejected.
+        /// </summary>
+        public Predicate<double>? RejectWhen { get; init; }
 
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
@@ -420,7 +634,11 @@ public class StartupSequenceControllerTests
             LastPosition = position;
             Positions.Add(position);
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
-            return true;
+            if (position <= 0)
+                CloseAttempts++;
+
+            return !(RejectClose && position <= 0)
+                && (RejectWhen == null || !RejectWhen(position));
         }
 
         public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>
@@ -444,9 +662,13 @@ public class StartupSequenceControllerTests
         public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
 
         public double Value { get; set; }
+        public Func<Task<double>>? OnReading { get; init; }
 
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            if (OnReading != null)
+                return OnReading();
+
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
             return Task.FromResult(Value);
         }
