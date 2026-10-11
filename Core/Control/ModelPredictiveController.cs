@@ -31,6 +31,16 @@ namespace HB_NLP_Research_Lab.Core.Control
         private readonly double[] _referenceTrajectory;      // Desired trajectory (set once)
         private readonly Queue<double[]> _controlHistory;     // Past control actions
         private readonly Queue<double[]> _stateHistory;       // Past state measurements
+        private readonly object _actuatorRejectionGate = new();
+        private readonly int _actuatorRejectionEscalationThreshold;
+        private readonly int _actuatorRejectionLogInterval;
+        private int _consecutiveActuatorRejections;
+        private bool _actuatorRejectionEscalated;
+
+        public int ActuatorRejectionEscalationThreshold => _actuatorRejectionEscalationThreshold;
+        public int ActuatorRejectionLogInterval => _actuatorRejectionLogInterval;
+
+        public event EventHandler<ActuatorRejectionEscalatedEventArgs>? ActuatorRejectionEscalated;
         
         public ModelPredictiveController(
             IActuator actuator,
@@ -39,7 +49,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             int predictionHorizon = 20,
             int controlHorizon = 5,
             double samplingTime = 0.01,
-            int frequencyHz = 100) : base(frequencyHz)
+            int frequencyHz = 100,
+            int actuatorRejectionEscalationThreshold = 3,
+            int actuatorRejectionLogInterval = 10) : base(frequencyHz)
         {
             _actuator = actuator ?? throw new ArgumentNullException(nameof(actuator));
             _sensors = sensors ?? throw new ArgumentNullException(nameof(sensors));
@@ -53,10 +65,20 @@ namespace HB_NLP_Research_Lab.Core.Control
             // and both rate comparisons then fail open.
             if (!double.IsFinite(samplingTime) || samplingTime <= 0)
                 throw new ArgumentOutOfRangeException(nameof(samplingTime), "Sampling time must be finite and positive.");
+            if (actuatorRejectionEscalationThreshold <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(actuatorRejectionEscalationThreshold),
+                    "Actuator rejection escalation threshold must be positive.");
+            if (actuatorRejectionLogInterval <= 0)
+                throw new ArgumentOutOfRangeException(
+                    nameof(actuatorRejectionLogInterval),
+                    "Actuator rejection log interval must be positive.");
 
             _predictionHorizon = predictionHorizon;
             _controlHorizon = controlHorizon;
             _samplingTime = samplingTime;
+            _actuatorRejectionEscalationThreshold = actuatorRejectionEscalationThreshold;
+            _actuatorRejectionLogInterval = actuatorRejectionLogInterval;
             
             _constraints = new ControlConstraints();
             _stateVector = new double[sensors.Count];
@@ -97,6 +119,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             _constraints.MaxRate = constraints.MaxRate;
             _constraints.MinRate = constraints.MinRate;
         }
+
+        /// <summary>
+        /// One controller pass, the same step the control loop runs. Tests use this to
+        /// verify controller behavior without depending on scheduler timing.
+        /// </summary>
+        internal Task ExecuteOnceAsync(CancellationToken cancellationToken = default) =>
+            ExecuteControlLoopAsync(cancellationToken);
         
         protected override async Task ExecuteControlLoopAsync(CancellationToken cancellationToken)
         {
@@ -129,11 +158,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                     .ConfigureAwait(false);
                 if (!accepted)
                 {
-                    OnActuatorRejected();
+                    HandleActuatorRejected(controlAction);
                     return;
                 }
 
                 // 6. Store the command the actuator accepted.
+                ResetActuatorRejectionEpisode();
                 _controlHistory.Enqueue(optimalControl);
                 if (_controlHistory.Count > _controlHorizon)
                     _controlHistory.Dequeue();
@@ -450,10 +480,82 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (_controlHistory.Count > _controlHorizon)
                 _controlHistory.Dequeue();
         }
-        
-        protected virtual void OnActuatorRejected()
+
+        private void HandleActuatorRejected(double command)
         {
-            Console.WriteLine("[MPC Controller] Actuator rejected the commanded position");
+            int rejectionCount;
+            var shouldLog = false;
+            var shouldEscalate = false;
+
+            lock (_actuatorRejectionGate)
+            {
+                _consecutiveActuatorRejections++;
+                rejectionCount = _consecutiveActuatorRejections;
+                shouldEscalate =
+                    !_actuatorRejectionEscalated &&
+                    rejectionCount >= _actuatorRejectionEscalationThreshold;
+                shouldLog = ShouldLogActuatorRejection(rejectionCount) || shouldEscalate;
+
+                if (shouldEscalate)
+                    _actuatorRejectionEscalated = true;
+            }
+
+            if (shouldLog)
+                OnActuatorRejected(command, rejectionCount, shouldEscalate);
+
+            if (shouldEscalate)
+            {
+                RaiseActuatorRejectionEscalated(new ActuatorRejectionEscalatedEventArgs
+                {
+                    ActuatorId = _actuator.ActuatorId,
+                    CommandedPosition = command,
+                    ConsecutiveRejectionCount = rejectionCount,
+                    RejectionThreshold = _actuatorRejectionEscalationThreshold,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+        }
+
+        private void ResetActuatorRejectionEpisode()
+        {
+            lock (_actuatorRejectionGate)
+            {
+                _consecutiveActuatorRejections = 0;
+                _actuatorRejectionEscalated = false;
+            }
+        }
+
+        private bool ShouldLogActuatorRejection(int rejectionCount) =>
+            rejectionCount == 1 || rejectionCount % _actuatorRejectionLogInterval == 0;
+
+        private void RaiseActuatorRejectionEscalated(ActuatorRejectionEscalatedEventArgs args)
+        {
+            var handlers = ActuatorRejectionEscalated;
+            if (handlers == null)
+                return;
+
+            foreach (EventHandler<ActuatorRejectionEscalatedEventArgs> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(this, args);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[MPC Controller] Actuator rejection escalation handler failed: {ex.Message}");
+                }
+            }
+        }
+        
+        protected virtual void OnActuatorRejected(
+            double command,
+            int consecutiveRejectionCount,
+            bool escalated)
+        {
+            var severity = escalated ? "CRITICAL: " : string.Empty;
+            Console.WriteLine(
+                $"[MPC Controller] {severity}Actuator rejected command {command} " +
+                $"({consecutiveRejectionCount} consecutive rejection(s))");
         }
 
         protected virtual void OnControlError(Exception ex)
@@ -533,5 +635,14 @@ namespace HB_NLP_Research_Lab.Core.Control
         public double MaxValue { get; set; } = 1.0;
         public double MaxRate { get; set; } = 10.0;  // units per second
         public double MinRate { get; set; } = -10.0; // units per second
+    }
+
+    public class ActuatorRejectionEscalatedEventArgs : EventArgs
+    {
+        public string ActuatorId { get; set; } = string.Empty;
+        public double CommandedPosition { get; set; }
+        public int ConsecutiveRejectionCount { get; set; }
+        public int RejectionThreshold { get; set; }
+        public DateTime Timestamp { get; set; }
     }
 }
