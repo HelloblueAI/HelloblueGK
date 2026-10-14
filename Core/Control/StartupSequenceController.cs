@@ -132,6 +132,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             HasMinimumPropellantFlow(flow) && double.IsFinite(maximum) && flow <= maximum;
 
         /// <summary>
+        /// A valve may be commanded open only from Ready. Fault, Error, Disabled,
+        /// Unknown, and a valve that is still moving are not a safe pre-start.
+        /// AtPosition is not Ready: the fuel valve already used that same gate.
+        /// </summary>
+        internal static bool IsActuatorReadyForStartup(ActuatorStatus status) =>
+            status == ActuatorStatus.Ready;
+
+        /// <summary>
         /// One startup pass, the same step the control loop runs.
         /// </summary>
         internal Task ExecuteOnceAsync(CancellationToken cancellationToken = default) =>
@@ -363,15 +371,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
-            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+            // Fuel, oxidizer, and igniter. A faulted oxidizer or igniter used to pass
+            // this gate, so purge ran and the next pass opened fuel before the later
+            // rejected command could fail closed.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return;
-            
-            // Check actuators
-            if (_fuelValve.Status != ActuatorStatus.Ready)
-            {
-                await FailClosedAsync($"[Startup Sequence] ❌ Fuel valve not ready: {_fuelValve.Status}");
-                return;
-            }
             
             // All checks passed - move to next state
             TransitionToState(StartupState.Purge);
@@ -393,6 +397,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task ExecuteFuelFlowInitiationAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine("[Startup Sequence] ⛽ Initiating fuel flow...");
+
+            // Re-check every actuator. One can fault during purge, after pre-start
+            // already passed, and this open is the command that admits propellant.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
             
             // Open fuel valve gradually. If abort closed the valve while this command
             // was in flight, do not leave the late open applied or advance the sequence.
@@ -421,6 +430,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task ExecuteOxidizerFlowInitiationAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine("[Startup Sequence] 💧 Initiating oxidizer flow...");
+
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
             
             // Open oxidizer valve gradually
             if (!await CommandIfSequenceActiveAsync(_oxidizerValve, 0.1, cancellationToken).ConfigureAwait(false))
@@ -447,6 +459,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task ExecuteIgnitionAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine("[Startup Sequence] 🔥 Igniting...");
+
+            // A faulted igniter must not be sparked. The later off command is still
+            // attempted when a spark was already accepted.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
             
             // Activate igniter. A late spark command must not stay on after abort.
             if (!await CommandIfSequenceActiveAsync(_igniter, 1.0, cancellationToken).ConfigureAwait(false))
@@ -573,6 +590,33 @@ namespace HB_NLP_Research_Lab.Core.Control
             // The bool is intentionally ignored here: a rejected close leaves the
             // sequence latched closed, and the closed-state loop keeps retrying it.
             await PerformShutdownAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when any startup actuator is not Ready.
+        /// An abort that already won is left as abort and is not rewritten as an actuator fault.
+        /// </summary>
+        private async Task<bool> RequireStartupActuatorsReadyAsync()
+        {
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return false;
+
+            if (!await RequireActuatorReadyAsync(_fuelValve).ConfigureAwait(false))
+                return false;
+            if (!await RequireActuatorReadyAsync(_oxidizerValve).ConfigureAwait(false))
+                return false;
+
+            return await RequireActuatorReadyAsync(_igniter).ConfigureAwait(false);
+        }
+
+        private async Task<bool> RequireActuatorReadyAsync(IActuator actuator)
+        {
+            if (IsActuatorReadyForStartup(actuator.Status))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {actuator.Name} not ready: {actuator.Status}").ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
