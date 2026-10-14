@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using HB_NLP_Research_Lab.Core.Hardware;
@@ -204,6 +205,14 @@ namespace HB_NLP_Research_Lab.Core.Safety
                         await HandleSafetyViolationAsync(sensorName, value, limit, cancellationToken);
                     }
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    // Stopping the monitor cancels this read. That is not a failed sensor.
+                    // The old handler latched emergency shutdown and then issued the command
+                    // with this same token, so a routine stop either drove the shutdown
+                    // actuator or left the trip pending until the next start.
+                    throw;
+                }
                 catch (InvalidOperationException ex)
                 {
                     // Sensor not available or not initialized
@@ -212,7 +221,8 @@ namespace HB_NLP_Research_Lab.Core.Safety
                 }
                 catch (TaskCanceledException)
                 {
-                    // Sensor read timeout - treat as critical
+                    // Sensor read timeout - treat as critical. Loop-token cancellation is
+                    // handled above; this path is a timeout the sensor raised on its own.
                     Console.WriteLine($"[Safety Monitor] ⚠️ Sensor {sensor.Name} read timeout");
                     await HandleSensorFailureAsync(sensor.Name, cancellationToken);
                 }
@@ -247,15 +257,19 @@ namespace HB_NLP_Research_Lab.Core.Safety
             };
             
             Console.WriteLine($"[Safety Monitor] ⚠️ Safety violation: {parameterName} = {value} (limit: {limit.Min}-{limit.Max})");
-            
-            // Fire event
-            SafetyViolationDetected?.Invoke(this, new SafetyViolationEventArgs { Violation = violation });
-            
-            // If critical, trigger emergency shutdown
+
+            // Command the actuator before notifying subscribers. A handler that throws
+            // used to skip this call, and the same exception then ended the monitor
+            // loop, so the shutdown was never retried.
             if (limit.Critical)
             {
                 await TriggerEmergencyShutdownAsync($"Critical safety violation: {parameterName}", cancellationToken);
             }
+
+            RaiseIsolated(
+                SafetyViolationDetected,
+                new SafetyViolationEventArgs { Violation = violation },
+                "Safety violation");
         }
         
         private async Task HandleSensorFailureAsync(string sensorName, CancellationToken cancellationToken)
@@ -311,11 +325,14 @@ namespace HB_NLP_Research_Lab.Core.Safety
                 _shutdownFailureEscalated = false;
             }
 
-            EmergencyShutdownTriggered?.Invoke(this, new EmergencyShutdownEventArgs
-            {
-                Reason = reason,
-                Timestamp = DateTime.UtcNow
-            });
+            RaiseIsolated(
+                EmergencyShutdownTriggered,
+                new EmergencyShutdownEventArgs
+                {
+                    Reason = reason,
+                    Timestamp = DateTime.UtcNow
+                },
+                "Emergency shutdown");
         }
 
         /// <summary>
@@ -392,14 +409,17 @@ namespace HB_NLP_Research_Lab.Core.Safety
             }
 
             var timestamp = DateTime.UtcNow;
-            EmergencyShutdownCommandFailed?.Invoke(this, new EmergencyShutdownCommandFailedEventArgs
-            {
-                Reason = reason,
-                FailureMessage = failureMessage,
-                ConsecutiveFailureCount = failureCount,
-                Timestamp = timestamp,
-                Exception = exception
-            });
+            RaiseIsolated(
+                EmergencyShutdownCommandFailed,
+                new EmergencyShutdownCommandFailedEventArgs
+                {
+                    Reason = reason,
+                    FailureMessage = failureMessage,
+                    ConsecutiveFailureCount = failureCount,
+                    Timestamp = timestamp,
+                    Exception = exception
+                },
+                "Emergency shutdown command failure");
 
             if (shouldLog)
             {
@@ -411,21 +431,92 @@ namespace HB_NLP_Research_Lab.Core.Safety
             {
                 Console.WriteLine(
                     $"[Safety Monitor] 🚨 CRITICAL: emergency shutdown command failed {failureCount} consecutive times; continuing retries");
-                EmergencyShutdownEscalated?.Invoke(this, new EmergencyShutdownEscalationEventArgs
+                RaiseIsolated(
+                    EmergencyShutdownEscalated,
+                    new EmergencyShutdownEscalationEventArgs
+                    {
+                        Reason = reason,
+                        FailureMessage = failureMessage,
+                        ConsecutiveFailureCount = failureCount,
+                        FailureThreshold = _emergencyShutdownFailureEscalationThreshold,
+                        Timestamp = timestamp,
+                        Exception = exception
+                    },
+                    "Emergency shutdown escalation");
+            }
+        }
+
+        /// <summary>
+        /// Invokes every subscriber. One handler throwing must not skip the remaining
+        /// handlers or the shutdown command that already ran.
+        /// </summary>
+        private void RaiseIsolated<TEventArgs>(
+            EventHandler<TEventArgs>? handlers,
+            TEventArgs args,
+            string eventName)
+            where TEventArgs : EventArgs
+        {
+            if (handlers == null)
+                return;
+
+            foreach (EventHandler<TEventArgs> handler in handlers.GetInvocationList())
+            {
+                try
                 {
-                    Reason = reason,
-                    FailureMessage = failureMessage,
-                    ConsecutiveFailureCount = failureCount,
-                    FailureThreshold = _emergencyShutdownFailureEscalationThreshold,
-                    Timestamp = timestamp,
-                    Exception = exception
-                });
+                    handler(this, args);
+                }
+                // codeql[generic-catch-clause]: A subscriber failure must not skip the shutdown command or the remaining subscribers.
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Safety Monitor] {eventName} handler failed: {ex.Message}");
+                }
             }
         }
 
         private bool ShouldLogShutdownCommandFailure(int failureCount) =>
             failureCount == 1 || failureCount % _emergencyShutdownFailureLogInterval == 0;
         
+        /// <summary>
+        /// Stop the monitor and, if a shutdown was already required, command it with a
+        /// token this stop cannot cancel. The base stop cancels the loop token; an
+        /// in-flight shutdown command uses that token, and if cancellation wins before
+        /// the loop body starts, <see cref="OnLoopStopAsync"/> never runs.
+        /// </summary>
+        public override async Task StopAsync()
+        {
+            Exception? stopException = null;
+            try
+            {
+                await base.StopAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                stopException = ex;
+            }
+
+            await FinishPendingShutdownOnStopAsync().ConfigureAwait(false);
+
+            if (IsEmergencyShutdownPending)
+            {
+                var shutdownException = new InvalidOperationException(
+                    "[Safety Monitor] Emergency shutdown was still pending after stop.");
+                if (stopException != null)
+                {
+                    throw new AggregateException(
+                        "[Safety Monitor] Stop failed and emergency shutdown was still pending.",
+                        stopException,
+                        shutdownException);
+                }
+
+                throw shutdownException;
+            }
+
+            if (stopException != null)
+            {
+                ExceptionDispatchInfo.Capture(stopException).Throw();
+            }
+        }
+
         protected override Task OnLoopStartAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine($"[Safety Monitor] Starting hardware safety monitor at {LoopFrequencyHz} Hz");
@@ -433,10 +524,21 @@ namespace HB_NLP_Research_Lab.Core.Safety
             return Task.CompletedTask;
         }
         
-        protected override Task OnLoopStopAsync()
+        protected override async Task OnLoopStopAsync()
         {
             Console.WriteLine("[Safety Monitor] Stopping safety monitor");
-            return Task.CompletedTask;
+            // The loop token is already cancelled. A required shutdown has to be
+            // finished with a token this stop cannot cancel, or the actuator command
+            // that was in flight is abandoned with the monitor.
+            await FinishPendingShutdownOnStopAsync().ConfigureAwait(false);
+        }
+
+        private async Task FinishPendingShutdownOnStopAsync()
+        {
+            if (!IsEmergencyShutdownPending)
+                return;
+
+            await CompletePendingShutdownAsync(CancellationToken.None).ConfigureAwait(false);
         }
     }
     
