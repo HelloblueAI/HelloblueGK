@@ -198,6 +198,101 @@ public class HardwareSafetyMonitorTests
     }
 
     [Fact]
+    public async Task ThrowingViolationSubscriber_StillCommandsEmergencyShutdown()
+    {
+        var actuator = new RecordingActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator);
+        var notifications = 0;
+        monitor.SafetyViolationDetected += (_, _) =>
+            throw new InvalidOperationException("subscriber failure should be isolated");
+        monitor.SafetyViolationDetected += (_, _) => notifications++;
+
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
+        actuator.LastPosition.Should().Be(1);
+        actuator.CommandCount.Should().Be(1);
+        notifications.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ThrowingShutdownFailureSubscriber_StillRetriesOnTheNextPass()
+    {
+        var actuator = new RecordingActuator(failuresBeforeAccept: 1);
+        var sensor = new ScriptedSensor("ChamberPressure", double.NaN);
+        var monitor = new HardwareSafetyMonitor(new List<ISensor<double>> { sensor }, actuator);
+        var failureNotifications = 0;
+        monitor.EmergencyShutdownCommandFailed += (_, _) =>
+        {
+            failureNotifications++;
+            throw new InvalidOperationException("subscriber failure should be isolated");
+        };
+        monitor.EmergencyShutdownCommandFailed += (_, _) => failureNotifications++;
+
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
+        actuator.CommandCount.Should().Be(1);
+        failureNotifications.Should().Be(2);
+
+        sensor.Value = 1_000_000;
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
+        actuator.CommandCount.Should().Be(2);
+        actuator.LastPosition.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ThrowingShutdownSubscriber_LeavesTheAcceptedShutdownInPlace()
+    {
+        var actuator = new RecordingActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.PositiveInfinity) },
+            actuator);
+        monitor.EmergencyShutdownTriggered += (_, _) =>
+            throw new InvalidOperationException("subscriber failure should be isolated");
+
+        await monitor.CheckSensorsOnceAsync();
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        actuator.CommandCount.Should().Be(1);
+        actuator.LastPosition.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ThrowingEscalationSubscriber_StillKeepsRetryingShutdown()
+    {
+        var actuator = new RecordingActuator(failuresBeforeAccept: int.MaxValue);
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator,
+            emergencyShutdownFailureEscalationThreshold: 3);
+        var escalations = 0;
+        monitor.EmergencyShutdownEscalated += (_, _) =>
+        {
+            escalations++;
+            throw new InvalidOperationException("subscriber failure should be isolated");
+        };
+
+        for (var i = 0; i < 4; i++)
+        {
+            await monitor.CheckSensorsOnceAsync();
+        }
+
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        actuator.CommandCount.Should().Be(4);
+        escalations.Should().Be(1);
+    }
+
+    [Fact]
     public async Task InRangeChamberPressure_DoesNotTrip()
     {
         var actuator = new RecordingActuator();

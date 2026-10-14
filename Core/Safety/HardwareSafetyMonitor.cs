@@ -257,15 +257,19 @@ namespace HB_NLP_Research_Lab.Core.Safety
             };
             
             Console.WriteLine($"[Safety Monitor] ⚠️ Safety violation: {parameterName} = {value} (limit: {limit.Min}-{limit.Max})");
-            
-            // Fire event
-            SafetyViolationDetected?.Invoke(this, new SafetyViolationEventArgs { Violation = violation });
-            
-            // If critical, trigger emergency shutdown
+
+            // Command the actuator before notifying subscribers. A handler that throws
+            // used to skip this call, and the same exception then ended the monitor
+            // loop, so the shutdown was never retried.
             if (limit.Critical)
             {
                 await TriggerEmergencyShutdownAsync($"Critical safety violation: {parameterName}", cancellationToken);
             }
+
+            RaiseIsolated(
+                SafetyViolationDetected,
+                new SafetyViolationEventArgs { Violation = violation },
+                "Safety violation");
         }
         
         private async Task HandleSensorFailureAsync(string sensorName, CancellationToken cancellationToken)
@@ -321,11 +325,14 @@ namespace HB_NLP_Research_Lab.Core.Safety
                 _shutdownFailureEscalated = false;
             }
 
-            EmergencyShutdownTriggered?.Invoke(this, new EmergencyShutdownEventArgs
-            {
-                Reason = reason,
-                Timestamp = DateTime.UtcNow
-            });
+            RaiseIsolated(
+                EmergencyShutdownTriggered,
+                new EmergencyShutdownEventArgs
+                {
+                    Reason = reason,
+                    Timestamp = DateTime.UtcNow
+                },
+                "Emergency shutdown");
         }
 
         /// <summary>
@@ -402,14 +409,17 @@ namespace HB_NLP_Research_Lab.Core.Safety
             }
 
             var timestamp = DateTime.UtcNow;
-            EmergencyShutdownCommandFailed?.Invoke(this, new EmergencyShutdownCommandFailedEventArgs
-            {
-                Reason = reason,
-                FailureMessage = failureMessage,
-                ConsecutiveFailureCount = failureCount,
-                Timestamp = timestamp,
-                Exception = exception
-            });
+            RaiseIsolated(
+                EmergencyShutdownCommandFailed,
+                new EmergencyShutdownCommandFailedEventArgs
+                {
+                    Reason = reason,
+                    FailureMessage = failureMessage,
+                    ConsecutiveFailureCount = failureCount,
+                    Timestamp = timestamp,
+                    Exception = exception
+                },
+                "Emergency shutdown command failure");
 
             if (shouldLog)
             {
@@ -421,15 +431,45 @@ namespace HB_NLP_Research_Lab.Core.Safety
             {
                 Console.WriteLine(
                     $"[Safety Monitor] 🚨 CRITICAL: emergency shutdown command failed {failureCount} consecutive times; continuing retries");
-                EmergencyShutdownEscalated?.Invoke(this, new EmergencyShutdownEscalationEventArgs
+                RaiseIsolated(
+                    EmergencyShutdownEscalated,
+                    new EmergencyShutdownEscalationEventArgs
+                    {
+                        Reason = reason,
+                        FailureMessage = failureMessage,
+                        ConsecutiveFailureCount = failureCount,
+                        FailureThreshold = _emergencyShutdownFailureEscalationThreshold,
+                        Timestamp = timestamp,
+                        Exception = exception
+                    },
+                    "Emergency shutdown escalation");
+            }
+        }
+
+        /// <summary>
+        /// Invokes every subscriber. One handler throwing must not skip the remaining
+        /// handlers or the shutdown command that already ran.
+        /// </summary>
+        private void RaiseIsolated<TEventArgs>(
+            EventHandler<TEventArgs>? handlers,
+            TEventArgs args,
+            string eventName)
+            where TEventArgs : EventArgs
+        {
+            if (handlers == null)
+                return;
+
+            foreach (EventHandler<TEventArgs> handler in handlers.GetInvocationList())
+            {
+                try
                 {
-                    Reason = reason,
-                    FailureMessage = failureMessage,
-                    ConsecutiveFailureCount = failureCount,
-                    FailureThreshold = _emergencyShutdownFailureEscalationThreshold,
-                    Timestamp = timestamp,
-                    Exception = exception
-                });
+                    handler(this, args);
+                }
+                // codeql[generic-catch-clause]: A subscriber failure must not skip the shutdown command or the remaining subscribers.
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[Safety Monitor] {eventName} handler failed: {ex.Message}");
+                }
             }
         }
 
