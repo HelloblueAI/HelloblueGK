@@ -125,6 +125,19 @@ public class StartupSequenceControllerTests
     }
 
     [Theory]
+    [InlineData(SensorStatus.Ready, true)]
+    [InlineData(SensorStatus.Reading, false)]
+    [InlineData(SensorStatus.Unknown, false)]
+    [InlineData(SensorStatus.Initializing, false)]
+    [InlineData(SensorStatus.Error, false)]
+    [InlineData(SensorStatus.Disconnected, false)]
+    [InlineData(SensorStatus.Calibrating, false)]
+    public void SensorReadyForStartup_RequiresReady(SensorStatus status, bool ready)
+    {
+        StartupSequenceController.IsSensorReadyForStartup(status).Should().Be(ready);
+    }
+
+    [Theory]
     [InlineData("fuel", ActuatorStatus.Disabled)]
     [InlineData("oxidizer", ActuatorStatus.Fault)]
     [InlineData("igniter", ActuatorStatus.Error)]
@@ -183,6 +196,213 @@ public class StartupSequenceControllerTests
         igniter.CommandCount.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData("pressure", SensorStatus.Disconnected)]
+    [InlineData("pressure", SensorStatus.Error)]
+    [InlineData("pressure", SensorStatus.Unknown)]
+    [InlineData("pressure", SensorStatus.Initializing)]
+    [InlineData("pressure", SensorStatus.Calibrating)]
+    [InlineData("pressure", SensorStatus.Reading)]
+    [InlineData("temperature", SensorStatus.Disconnected)]
+    [InlineData("temperature", SensorStatus.Error)]
+    [InlineData("temperature", SensorStatus.Reading)]
+    public async Task PreStartup_SensorNotReady_DoesNotTreatCachedAmbientAsAPass(
+        string sensor,
+        SensorStatus status)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var pressure = new StubSensor { Name = "chamber pressure", Value = StandardAtmospherePascals };
+        var temperature = new StubSensor { Name = "chamber temperature", Value = 293.15 };
+        SensorFor(sensor, pressure, temperature).Status = status;
+
+        var controller = CreateController(fuel, oxidizer, igniter, pressure, temperature);
+
+        controller.MoveToState(StartupState.PreStartupChecks);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Purge);
+        fuel.Positions.Should().NotContain(0.1);
+        oxidizer.Positions.Should().NotContain(0.1);
+        igniter.Positions.Should().NotContain(1);
+        fuel.Positions.Should().OnlyContain(position => position == 0);
+        oxidizer.Positions.Should().OnlyContain(position => position == 0);
+        igniter.Positions.Should().OnlyContain(position => position == 0);
+    }
+
+    [Fact]
+    public async Task FuelFlow_DisconnectedSensor_DoesNotOpenFuel()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1, Status = SensorStatus.Disconnected });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        fuel.Positions.Should().NotContain(0.1);
+        fuel.Positions.Should().OnlyContain(position => position == 0);
+        oxidizer.Positions.Should().OnlyContain(position => position == 0);
+        igniter.Positions.Should().OnlyContain(position => position == 0);
+    }
+
+    [Fact]
+    public async Task FuelFlow_SensorDisconnectsAfterOpen_DoesNotTreatCachedFlowAsEstablished()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor
+            {
+                Name = "fuel flow",
+                Value = 1,
+                StatusOnRead = SensorStatus.Disconnected
+            });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        fuel.Positions.Should().Contain(0.1);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task OxidizerFlow_DisconnectedSensor_DoesNotOpenOxidizer()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            oxidizerFlow: new StubSensor
+            {
+                Name = "oxidizer flow",
+                Value = 1,
+                Status = SensorStatus.Disconnected
+            });
+
+        controller.MoveToState(StartupState.OxidizerFlowInitiation);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Ignition);
+        oxidizer.Positions.Should().NotContain(0.1);
+        fuel.Positions.Should().OnlyContain(position => position == 0);
+        oxidizer.Positions.Should().OnlyContain(position => position == 0);
+        igniter.Positions.Should().OnlyContain(position => position == 0);
+    }
+
+    [Fact]
+    public async Task OxidizerFlow_SensorDisconnectsAfterOpen_DoesNotTreatCachedFlowAsEstablished()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            oxidizerFlow: new StubSensor
+            {
+                Name = "oxidizer flow",
+                Value = 1,
+                StatusOnRead = SensorStatus.Error
+            });
+
+        controller.MoveToState(StartupState.OxidizerFlowInitiation);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Ignition);
+        oxidizer.Positions.Should().Contain(0.1);
+        oxidizer.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("pressure", SensorStatus.Disconnected)]
+    [InlineData("temperature", SensorStatus.Disconnected)]
+    [InlineData("pressure", SensorStatus.Reading)]
+    [InlineData("temperature", SensorStatus.Calibrating)]
+    public async Task Combustion_SensorNotReady_DoesNotTreatCachedCombustionAsVerified(
+        string sensor,
+        SensorStatus status)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var pressure = new StubSensor { Name = "chamber pressure", Value = 200_000 };
+        var temperature = new StubSensor { Name = "chamber temperature", Value = 1_500 };
+        SensorFor(sensor, pressure, temperature).Status = status;
+
+        var controller = CreateController(fuel, oxidizer, igniter, pressure, temperature);
+
+        controller.MoveToState(StartupState.CombustionVerification);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(SensorStatus.Disconnected, 200_000)]
+    [InlineData(SensorStatus.Reading, 200_000)]
+    [InlineData(SensorStatus.Disconnected, 120_000)]
+    [InlineData(SensorStatus.Error, 120_000)]
+    public async Task ThrottleUp_SensorNotReady_DoesNotKeepWaitingOrDeclareRunning(
+        SensorStatus status,
+        double pressure)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                Value = pressure,
+                Status = status
+            });
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
     [Fact]
     public async Task PreStartup_AbortDuringSensorRead_StaysAbortedWhenOxidizerIsFaulted()
     {
@@ -212,6 +432,40 @@ public class StartupSequenceControllerTests
         controller.HasError.Should().BeFalse();
         fuel.Positions.Should().NotContain(0.1);
         fuel.Positions.Should().OnlyContain(position => position == 0);
+    }
+
+    [Fact]
+    public async Task PreStartup_AbortDuringDisconnectedSensorRead_StaysAborted()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        StartupSequenceController? controller = null;
+        var pressure = new StubSensor
+        {
+            Name = "chamber pressure",
+            Status = SensorStatus.Disconnected,
+            OnReading = () =>
+            {
+                controller!.AbortStartup();
+                return Task.FromResult(StandardAtmospherePascals);
+            }
+        };
+        controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure,
+            temperature: new StubSensor { Value = 293.15 });
+
+        controller.MoveToState(StartupState.PreStartupChecks);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.HasError.Should().BeFalse();
+        fuel.Positions.Should().OnlyContain(position => position == 0);
+        oxidizer.Positions.Should().OnlyContain(position => position == 0);
+        igniter.Positions.Should().OnlyContain(position => position == 0);
     }
 
     [Fact]
@@ -771,6 +1025,14 @@ public class StartupSequenceControllerTests
         igniter.CommandCount.Should().Be(0);
     }
 
+    private static StubSensor SensorFor(string sensor, StubSensor pressure, StubSensor temperature) =>
+        sensor switch
+        {
+            "pressure" => pressure,
+            "temperature" => temperature,
+            _ => throw new ArgumentOutOfRangeException(nameof(sensor), sensor, "Unknown startup sensor.")
+        };
+
     private static RecordingActuator ActuatorFor(
         string actuator,
         RecordingActuator fuel,
@@ -854,9 +1116,9 @@ public class StartupSequenceControllerTests
     private sealed class StubSensor : ISensor<double>
     {
         public string SensorId => "sensor";
-        public string Name => "sensor";
+        public string Name { get; init; } = "sensor";
         public SensorType Type => SensorType.Pressure;
-        public SensorStatus Status => SensorStatus.Ready;
+        public SensorStatus Status { get; set; } = SensorStatus.Ready;
         public double MinValue => 0;
         public double MaxValue => 1;
         public int MaxFrequencyHz => 10;
@@ -867,8 +1129,17 @@ public class StartupSequenceControllerTests
         public double Value { get; set; }
         public Func<Task<double>>? OnReading { get; init; }
 
+        /// <summary>
+        /// Applied at the start of a read, before <see cref="OnReading"/>.
+        /// A sensor can be Ready when the valve opens and disconnected by the time the sample returns.
+        /// </summary>
+        public SensorStatus? StatusOnRead { get; init; }
+
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            if (StatusOnRead is SensorStatus status)
+                Status = status;
+
             if (OnReading != null)
                 return OnReading();
 
