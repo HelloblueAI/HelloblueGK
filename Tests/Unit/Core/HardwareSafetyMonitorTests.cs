@@ -307,6 +307,83 @@ public class HardwareSafetyMonitorTests
         actuator.CommandCount.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData(SensorStatus.Ready, true)]
+    [InlineData(SensorStatus.Unknown, false)]
+    [InlineData(SensorStatus.Initializing, false)]
+    [InlineData(SensorStatus.Reading, false)]
+    [InlineData(SensorStatus.Error, false)]
+    [InlineData(SensorStatus.Disconnected, false)]
+    [InlineData(SensorStatus.Calibrating, false)]
+    public void IsSensorReadyForMonitoring_IsReadyOnly(SensorStatus status, bool ready)
+    {
+        HardwareSafetyMonitor.IsSensorReadyForMonitoring(status).Should().Be(ready);
+    }
+
+    [Theory]
+    [InlineData(SensorStatus.Unknown)]
+    [InlineData(SensorStatus.Initializing)]
+    [InlineData(SensorStatus.Reading)]
+    [InlineData(SensorStatus.Error)]
+    [InlineData(SensorStatus.Disconnected)]
+    [InlineData(SensorStatus.Calibrating)]
+    public async Task NotReadySensor_TripsOnACachedInRangeReading(SensorStatus status)
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new ScriptedSensor("ChamberPressure", 30_000_000) { Status = status };
+        var monitor = new HardwareSafetyMonitor(new List<ISensor<double>> { sensor }, actuator);
+        string? reason = null;
+        var violations = 0;
+        monitor.EmergencyShutdownTriggered += (_, args) => reason = args.Reason;
+        monitor.SafetyViolationDetected += (_, _) => violations++;
+
+        await monitor.CheckSensorsOnceAsync();
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
+        actuator.CommandCount.Should().Be(1);
+        actuator.LastPosition.Should().Be(1);
+        reason.Should().Be("Sensor failure: ChamberPressure");
+        violations.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task DisconnectedSensorWithoutAConfiguredLimit_StillTrips()
+    {
+        var actuator = new RecordingActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>>
+            {
+                new ScriptedSensor("AuxiliaryVibration", 0.1) { Status = SensorStatus.Disconnected }
+            },
+            actuator);
+
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        actuator.CommandCount.Should().Be(1);
+        actuator.LastPosition.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ReadySensorWithoutAConfiguredLimit_DoesNotTrip()
+    {
+        var actuator = new RecordingActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>>
+            {
+                new ScriptedSensor("AuxiliaryVibration", double.MaxValue)
+            },
+            actuator);
+
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
+        actuator.CommandCount.Should().Be(0);
+    }
+
     [Fact]
     public async Task PositiveInfinityFuelFlow_TripsEmergencyShutdown()
     {
@@ -480,7 +557,7 @@ public class HardwareSafetyMonitorTests
         public string SensorId => Name;
         public string Name { get; }
         public SensorType Type => SensorType.Pressure;
-        public SensorStatus Status => SensorStatus.Ready;
+        public SensorStatus Status { get; set; } = SensorStatus.Ready;
         public double MinValue => 0;
         public double MaxValue => 1;
         public int MaxFrequencyHz => 10;

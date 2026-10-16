@@ -151,6 +151,14 @@ namespace HB_NLP_Research_Lab.Core.Safety
             return value < min || value > max;
         }
 
+        /// <summary>
+        /// Only a Ready sensor authorizes its numeric sample. Reading, Unknown,
+        /// Initializing, Calibrating, Error, and Disconnected can all return the last
+        /// cached in-range value from a sensor that is not producing a live measurement.
+        /// </summary>
+        internal static bool IsSensorReadyForMonitoring(SensorStatus status) =>
+            status == SensorStatus.Ready;
+
         private static bool IsUsableLimit(double min, double max) =>
             double.IsFinite(min) && double.IsFinite(max) && min <= max;
         
@@ -196,6 +204,17 @@ namespace HB_NLP_Research_Lab.Core.Safety
                 {
                     var value = await sensor.ReadAsync(cancellationToken);
                     var sensorName = sensor.Name;
+
+                    // A disconnected sensor can return a cached in-range number. That
+                    // sample is not evidence the process is inside its limits, so the
+                    // numeric band is not consulted. Reading is not Ready.
+                    if (!IsSensorReadyForMonitoring(sensor.Status))
+                    {
+                        Console.WriteLine(
+                            $"[Safety Monitor] ⚠️ Sensor {sensorName} not ready: {sensor.Status}");
+                        await HandleSensorFailureAsync(sensorName, cancellationToken);
+                        continue;
+                    }
                     
                     // Check against safety limits. A missing or non-finite reading is a
                     // violation: the range comparison does not reject NaN.
