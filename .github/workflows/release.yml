@@ -6,15 +6,49 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  release:
+  package:
     runs-on: ubuntu-latest
-    
+
+    outputs:
+      release_tag: ${{ steps.release_vars.outputs.release_tag }}
+      release_zip: ${{ steps.release_vars.outputs.release_zip }}
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+
+    - name: Validate release tag
+      id: release_vars
+      env:
+        RAW_REF_NAME: ${{ github.ref_name }}
+      run: |
+        set -euo pipefail
+
+        if [[ ! "$RAW_REF_NAME" =~ ^v[0-9]+(\.[0-9]+){1,3}(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+          echo "Release tags must look like v1.2.3 or v1.2.3-rc.1." >&2
+          exit 1
+        fi
+
+        release_zip="hellobluegk-release-${RAW_REF_NAME}.zip"
+
+        {
+          printf 'release_tag=%s\n' "$RAW_REF_NAME"
+          printf 'release_zip=%s\n' "$release_zip"
+        } >> "$GITHUB_OUTPUT"
+
+        {
+          printf 'RELEASE_TAG=%s\n' "$RAW_REF_NAME"
+          printf 'RELEASE_ZIP=%s\n' "$release_zip"
+        } >> "$GITHUB_ENV"
     
     - name: Setup .NET 9.0
       uses: actions/setup-dotnet@v6
@@ -28,16 +62,19 @@ jobs:
     
     - name: Build PlasticityDemo
       run: |
+        set -euo pipefail
         cd PlasticityDemo
         dotnet build --configuration Release
         dotnet publish --configuration Release --output ./publish
     
     - name: Generate design files
       run: |
+        set -euo pipefail
         python3 Scripts/Integration/open_in_plasticity.py
     
     - name: Create release package
       run: |
+        set -euo pipefail
         mkdir -p release
         cp -r PlasticityDemo/publish/* release/
         # The generator writes into Docs/Designs/<engine>/; the previous glob looked for
@@ -49,17 +86,60 @@ jobs:
         cp LICENSE release/
         
         # Create zip archive
-        zip -r hellobluegk-release-${{ github.ref_name }}.zip release/
-    
+        zip -r "$RELEASE_ZIP" release/
+
+    - name: Upload release package
+      uses: actions/upload-artifact@v7
+      with:
+        name: hellobluegk-release-package
+        path: ${{ steps.release_vars.outputs.release_zip }}
+        if-no-files-found: error
+
+  release:
+    runs-on: ubuntu-latest
+    needs: package
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download release package
+      uses: actions/download-artifact@v7
+      with:
+        name: hellobluegk-release-package
+        path: dist
+
     # actions/create-release and actions/upload-release-asset were both archived by
     # GitHub and are unmaintained. gh is preinstalled on the runner, so the release and
     # its asset can be created in one step with no third-party action.
     - name: Create release and upload asset
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        RELEASE_TAG: ${{ needs.package.outputs.release_tag }}
+        RELEASE_ZIP: ${{ needs.package.outputs.release_zip }}
       run: |
-        cat > release-notes.md <<'NOTES'
-        ## HelloblueGK Community Edition ${{ github.ref_name }}
+        set -euo pipefail
+
+        cd dist
+
+        if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+(\.[0-9]+){1,3}(-[0-9A-Za-z][0-9A-Za-z.-]*)?$ ]]; then
+          echo "Release tag output failed validation." >&2
+          exit 1
+        fi
+
+        expected_zip="hellobluegk-release-${RELEASE_TAG}.zip"
+        if [[ "$RELEASE_ZIP" != "$expected_zip" ]]; then
+          echo "Release package name did not match validated tag." >&2
+          exit 1
+        fi
+
+        python3 - <<'PY'
+        import os
+        from pathlib import Path
+
+        release_tag = os.environ["RELEASE_TAG"]
+        release_zip = os.environ["RELEASE_ZIP"]
+
+        Path("release-notes.md").write_text(f"""## HelloblueGK Community Edition {release_tag}
 
         Open-source aerospace engine simulation reference stack (.NET 9).
 
@@ -74,16 +154,17 @@ jobs:
 
         ### Quick start
         ```bash
-        unzip hellobluegk-release-${{ github.ref_name }}.zip
+        unzip {release_zip}
         cd release
         dotnet PlasticityDemo.dll
         ```
 
         For production/enterprise needs, contact Helloblue — do not treat this
         repository alone as regulatory or flight evidence.
-        NOTES
+        """, encoding="utf-8")
+        PY
 
-        gh release create "${{ github.ref_name }}" \
-          "hellobluegk-release-${{ github.ref_name }}.zip#hellobluegk-release-${{ github.ref_name }}.zip" \
-          --title "HelloblueGK Community Edition ${{ github.ref_name }}" \
+        gh release create "$RELEASE_TAG" \
+          "$RELEASE_ZIP#$RELEASE_ZIP" \
+          --title "HelloblueGK Community Edition $RELEASE_TAG" \
           --notes-file release-notes.md
