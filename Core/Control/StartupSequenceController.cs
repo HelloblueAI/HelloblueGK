@@ -140,6 +140,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             status == ActuatorStatus.Ready;
 
         /// <summary>
+        /// A sample is evidence only while the sensor is Ready. Disconnected, Error,
+        /// Calibrating, Unknown, and Initializing can still return a cached number.
+        /// Reading is not Ready: a sample that has not finished is not a measurement.
+        /// </summary>
+        internal static bool IsSensorReadyForStartup(SensorStatus status) =>
+            status == SensorStatus.Ready;
+
+        /// <summary>
         /// One startup pass, the same step the control loop runs.
         /// </summary>
         internal Task ExecuteOnceAsync(CancellationToken cancellationToken = default) =>
@@ -354,9 +362,15 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             Console.WriteLine("[Startup Sequence] 🔍 Performing pre-startup checks...");
             
-            // Check sensors
+            // Check sensors. A disconnected chamber sensor can still return a cached
+            // ambient value. That number is not a pre-start measurement.
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
             var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
+
+            if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
+                return;
+            if (!await RequireSensorReadyAsync(_chamberTemperatureSensor).ConfigureAwait(false))
+                return;
             
             // Verify sensors are reading valid values. Non-finite readings are not ambient.
             if (!IsAmbientPressure(pressure))
@@ -402,6 +416,10 @@ namespace HB_NLP_Research_Lab.Core.Control
             // already passed, and this open is the command that admits propellant.
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return;
+
+            // Do not admit fuel to measure a sensor that is already not Ready.
+            if (!await RequireSensorReadyAsync(_fuelFlowSensor).ConfigureAwait(false))
+                return;
             
             // Open fuel valve gradually. If abort closed the valve while this command
             // was in flight, do not leave the late open applied or advance the sequence.
@@ -413,9 +431,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             
             // Verify fuel flow is inside the safety band. A pegged sensor used to pass
-            // the minimum check and the sequence continued into ignition.
+            // the minimum check and the sequence continued into ignition. A sensor
+            // that disconnects during the wait can return that same cached in-band value.
             var fuelFlow = await _fuelFlowSensor.ReadAsync(cancellationToken);
-            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+            if (!await RequireSensorReadyAsync(_fuelFlowSensor).ConfigureAwait(false))
                 return;
 
             if (!IsPropellantFlowInBand(fuelFlow, MaximumFuelFlowKgPerSecond))
@@ -433,6 +452,9 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return;
+
+            if (!await RequireSensorReadyAsync(_oxidizerFlowSensor).ConfigureAwait(false))
+                return;
             
             // Open oxidizer valve gradually
             if (!await CommandIfSequenceActiveAsync(_oxidizerValve, 0.1, cancellationToken).ConfigureAwait(false))
@@ -442,9 +464,10 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return;
             
-            // Verify oxidizer flow is inside the safety band.
+            // Verify oxidizer flow is inside the safety band. Re-check status: the
+            // sensor can disconnect after the valve is open and still return a cached flow.
             var oxidizerFlow = await _oxidizerFlowSensor.ReadAsync(cancellationToken);
-            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+            if (!await RequireSensorReadyAsync(_oxidizerFlowSensor).ConfigureAwait(false))
                 return;
 
             if (!IsPropellantFlowInBand(oxidizerFlow, MaximumOxidizerFlowKgPerSecond))
@@ -489,10 +512,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return;
             
-            // Check for combustion indicators
+            // Check for combustion indicators. A disconnected sensor can return a
+            // cached pressure and temperature that look like combustion.
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
             var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
-            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+            if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
+                return;
+            if (!await RequireSensorReadyAsync(_chamberTemperatureSensor).ConfigureAwait(false))
                 return;
             
             // Pressure has to leave the ambient band and stay under the chamber ceiling.
@@ -513,11 +539,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             Console.WriteLine("[Startup Sequence] 🚀 Throttling up to operating level...");
 
             var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
-            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+            if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
                 return;
 
             // A pegged or missing reading is not "still throttling up". Waiting out the
-            // ramp left the propellant valves open on a failed transducer.
+            // ramp left the propellant valves open on a failed transducer. A disconnected
+            // sensor that returns a cached operating pressure is not a running engine,
+            // and a cached reading below the floor is not a reason to keep waiting.
             if (!IsPlausibleChamberPressure(pressure))
             {
                 await FailClosedAsync(
@@ -616,6 +644,23 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             await FailClosedAsync(
                 $"[Startup Sequence] ❌ {actuator.Name} not ready: {actuator.Status}").ConfigureAwait(false);
+            return false;
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when the sensor is not Ready.
+        /// An abort that already won is left as abort and is not rewritten as a sensor fault.
+        /// </summary>
+        private async Task<bool> RequireSensorReadyAsync(ISensor<double> sensor)
+        {
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return false;
+
+            if (IsSensorReadyForStartup(sensor.Status))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {sensor.Name} not ready: {sensor.Status}").ConfigureAwait(false);
             return false;
         }
 
