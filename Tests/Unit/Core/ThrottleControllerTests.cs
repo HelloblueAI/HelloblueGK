@@ -155,6 +155,120 @@ public class ThrottleControllerTests
         controller.Dispose();
     }
 
+    [Theory]
+    [InlineData(SensorStatus.Ready, true)]
+    [InlineData(SensorStatus.Unknown, false)]
+    [InlineData(SensorStatus.Initializing, false)]
+    [InlineData(SensorStatus.Reading, false)]
+    [InlineData(SensorStatus.Error, false)]
+    [InlineData(SensorStatus.Disconnected, false)]
+    [InlineData(SensorStatus.Calibrating, false)]
+    public void IsSensorReadyForThrottle_IsReadyOnly(SensorStatus status, bool ready)
+    {
+        ThrottleController.IsSensorReadyForThrottle(status).Should().Be(ready);
+    }
+
+    [Theory]
+    [InlineData(SensorStatus.Unknown)]
+    [InlineData(SensorStatus.Initializing)]
+    [InlineData(SensorStatus.Reading)]
+    [InlineData(SensorStatus.Error)]
+    [InlineData(SensorStatus.Disconnected)]
+    [InlineData(SensorStatus.Calibrating)]
+    public async Task NotReadyThrustSensor_DoesNotOpenOnACachedShortfall(SensorStatus status)
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = status };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        await controller.ExecuteOnceAsync();
+
+        // A trusted shortfall from closed steps open by the 0.001 rate limit.
+        // The cached zero must not do that.
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ReadyThrustSensor_ShortfallStillOpensTheThrottle()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.001, 1e-12);
+    }
+
+    [Fact]
+    public async Task DisconnectedThrustSensor_StepsClosedInsteadOfHoldingACachedInBandReading()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+
+        // Settle the PID on the target so a later cached reading would hold or
+        // keep opening, rather than kicking the derivative term closed.
+        thrust.Value = 1_000_000;
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+        var held = controller.CurrentThrottle;
+        held.Should().BeGreaterThan(0);
+
+        thrust.Status = SensorStatus.Disconnected;
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(held - 0.001, 1e-9);
+        actuator.LastPosition.Should().Be(controller.CurrentThrottle);
+    }
+
+    [Fact]
+    public async Task NotReadyThrustSensor_RejectedClose_LeavesTheLastAcceptedPosition()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        actuator.RejectNext = true;
+        thrust.Status = SensorStatus.Reading;
+        thrust.Value = 1_000_000;
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        var next = controller.ConstrainThrottleCommand(0);
+        next.Should().BeApproximately(0.019, 1e-9);
+    }
+
+    [Fact]
+    public async Task OpenLoop_NotReadyThrustSensor_StillFollowsTheCommand()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 1_000_000, Status = SensorStatus.Disconnected };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.001, 1e-12);
+    }
+
     [Fact]
     public async Task Restart_AfterStop_CommandsTheThrottleAgain()
     {
@@ -261,6 +375,8 @@ public class ThrottleControllerTests
 
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
+        public bool RejectNext { get; set; }
+
         public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
             lock (_gate)
@@ -269,6 +385,12 @@ public class ThrottleControllerTests
             }
 
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            if (RejectNext)
+            {
+                RejectNext = false;
+                return Task.FromResult(false);
+            }
+
             return Task.FromResult(true);
         }
 
@@ -277,6 +399,29 @@ public class ThrottleControllerTests
 
         public Task<bool> EnableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<bool> DisableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    private sealed class ScriptedSensor : ISensor<double>
+    {
+        public double Value { get; set; }
+        public SensorStatus Status { get; set; } = SensorStatus.Ready;
+        public string SensorId => "thrust";
+        public string Name => "thrust";
+        public SensorType Type => SensorType.Other;
+        public double MinValue => 0;
+        public double MaxValue => double.MaxValue;
+        public int MaxFrequencyHz => 100;
+        public DateTime LastReadingTime => DateTime.UtcNow;
+
+        public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
+
+        public Task<double> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
+            return Task.FromResult(Value);
+        }
+
+        public Task<bool> ValidateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
     }
 
     private sealed class StubSensor : ISensor<double>
