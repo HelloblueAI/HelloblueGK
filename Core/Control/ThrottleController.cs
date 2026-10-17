@@ -36,6 +36,20 @@ namespace HB_NLP_Research_Lab.Core.Control
         public double CommandedThrottle => _commandedThrottle;
         public double CurrentThrottle => _currentThrottle;
         public double TargetThrust => _targetThrust;
+
+        /// <summary>
+        /// A thrust sample is evidence only while the sensor is Ready. Disconnected,
+        /// Error, Calibrating, Unknown, and Initializing can still return a cached
+        /// number. Reading is not Ready: a sample that has not finished is not a measurement.
+        /// </summary>
+        internal static bool IsSensorReadyForThrottle(SensorStatus status) =>
+            status == SensorStatus.Ready;
+
+        /// <summary>
+        /// One control pass, the same step the control loop runs.
+        /// </summary>
+        internal Task ExecuteOnceAsync(CancellationToken cancellationToken = default) =>
+            ExecuteControlLoopAsync(cancellationToken);
         
         public ThrottleController(
             IActuator throttleActuator,
@@ -79,18 +93,29 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             try
             {
-                // Read current sensor values
+                // Read current sensor values. ReadAsync may update Status, so the Ready
+                // gate is applied to the sample that was just returned.
                 var currentThrust = await _thrustSensor.ReadAsync(cancellationToken);
                 // Note: Chamber pressure available but not used in current control algorithm
                 // await _chamberPressureSensor.ReadAsync(cancellationToken);
                 
-                // Calculate throttle command
+                // Closed-loop control uses the thrust sample. A disconnected sensor can
+                // return a cached in-band number, and that number must not drive the
+                // command. The safe command is closed; the rate limiter steps toward it.
+                // Open-loop does not use the sample, so a direct throttle command stands.
                 double throttleCommand;
-                
-                // Use ternary for cleaner code
-                throttleCommand = _targetThrust > 0
-                    ? CalculateThrottleFromThrust(currentThrust, _targetThrust)  // Closed-loop control
-                    : _commandedThrottle;  // Open-loop control
+                if (_targetThrust > 0 && !IsSensorReadyForThrottle(_thrustSensor.Status))
+                {
+                    Console.WriteLine(
+                        $"[Throttle Controller] Thrust sensor not ready: {_thrustSensor.Status}. Commanding closed.");
+                    throttleCommand = MinThrottle;
+                }
+                else
+                {
+                    throttleCommand = _targetThrust > 0
+                        ? CalculateThrottleFromThrust(currentThrust, _targetThrust)
+                        : _commandedThrottle;
+                }
                 
                 // Rate limit, then clamp. A non-finite command holds the last finite position
                 // instead of passing NaN through Math.Clamp, which returns NaN.
