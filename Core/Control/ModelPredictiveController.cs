@@ -41,6 +41,14 @@ namespace HB_NLP_Research_Lab.Core.Control
         public int ActuatorRejectionLogInterval => _actuatorRejectionLogInterval;
 
         public event EventHandler<ActuatorRejectionEscalatedEventArgs>? ActuatorRejectionEscalated;
+
+        /// <summary>
+        /// A state sample is evidence only while the sensor is Ready. Disconnected,
+        /// Error, Calibrating, Unknown, and Initializing can still return a cached
+        /// number. Reading is not Ready: a sample that has not finished is not a measurement.
+        /// </summary>
+        internal static bool IsSensorReadyForState(SensorStatus status) =>
+            status == SensorStatus.Ready;
         
         public ModelPredictiveController(
             IActuator actuator,
@@ -131,8 +139,21 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             try
             {
-                // 1. Measure current state
-                var currentState = await MeasureCurrentStateAsync(cancellationToken);
+                // 1. Measure current state. ReadAsync may update Status, so the Ready
+                // gate is applied to the sample that was just returned.
+                var measurement = await MeasureCurrentStateAsync(cancellationToken);
+                if (!measurement.Ready)
+                {
+                    // A disconnected sensor can return a cached in-band number. That
+                    // sample must not enter the optimizer or the state history, and a
+                    // previous Ready sample must not be substituted for it. The safe
+                    // command is the lowest allowed position; the rate limiter steps
+                    // toward it from the last accepted command.
+                    await CommandSafePositionAsync(cancellationToken);
+                    return;
+                }
+
+                var currentState = measurement.Values;
                 _stateHistory.Enqueue(currentState);
                 
                 // Keep history bounded
@@ -191,14 +212,56 @@ namespace HB_NLP_Research_Lab.Core.Control
             }
         }
         
-        private async Task<double[]> MeasureCurrentStateAsync(CancellationToken cancellationToken)
+        private async Task<StateMeasurement> MeasureCurrentStateAsync(CancellationToken cancellationToken)
         {
             var state = new double[_sensors.Count];
+            var ready = true;
             for (int i = 0; i < _sensors.Count; i++)
             {
                 state[i] = await _sensors[i].ReadAsync(cancellationToken);
+                if (IsSensorReadyForState(_sensors[i].Status))
+                    continue;
+
+                ready = false;
+                Console.WriteLine(
+                    $"[MPC Controller] State sensor {_sensors[i].Name} not ready: {_sensors[i].Status}. Commanding closed.");
             }
-            return state;
+
+            return new StateMeasurement(state, ready);
+        }
+
+        /// <summary>
+        /// Commands the lowest allowed position through the rate limiter.
+        /// A refused close leaves the last accepted command in history and does
+        /// not store the untrusted sample.
+        /// </summary>
+        private async Task CommandSafePositionAsync(CancellationToken cancellationToken)
+        {
+            var controlAction = ApplyConstraints(SafeClosedCommand());
+            var accepted = await _actuator.SetPositionAsync(controlAction, cancellationToken);
+            if (!accepted)
+            {
+                HandleActuatorRejected(controlAction);
+                return;
+            }
+
+            ResetActuatorRejectionEpisode();
+            RememberCommand(controlAction);
+        }
+
+        private double SafeClosedCommand() =>
+            double.IsFinite(_constraints.MinValue) ? _constraints.MinValue : 0.0;
+
+        private readonly struct StateMeasurement
+        {
+            public StateMeasurement(double[] values, bool ready)
+            {
+                Values = values;
+                Ready = ready;
+            }
+
+            public double[] Values { get; }
+            public bool Ready { get; }
         }
         
         private double[] EstimateState(double[] measuredState)
@@ -455,7 +518,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             // The lowest allowed command is the safe position. Leaving the last
             // optimized command applied keeps that thrust after the loop has stopped.
-            var safe = double.IsFinite(_constraints.MinValue) ? _constraints.MinValue : 0.0;
+            // Stop commands that position directly. A not-Ready sample, by contrast,
+            // steps toward it through the rate limiter.
+            var safe = SafeClosedCommand();
             try
             {
                 var accepted = await _actuator.SetPositionAsync(safe, CancellationToken.None)
