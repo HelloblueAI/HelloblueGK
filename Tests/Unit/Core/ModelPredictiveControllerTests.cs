@@ -277,6 +277,227 @@ public class ModelPredictiveControllerTests
         escalations[1].ConsecutiveRejectionCount.Should().Be(3);
     }
 
+    [Theory]
+    [InlineData(SensorStatus.Ready, true)]
+    [InlineData(SensorStatus.Unknown, false)]
+    [InlineData(SensorStatus.Initializing, false)]
+    [InlineData(SensorStatus.Reading, false)]
+    [InlineData(SensorStatus.Error, false)]
+    [InlineData(SensorStatus.Disconnected, false)]
+    [InlineData(SensorStatus.Calibrating, false)]
+    public void IsSensorReadyForState_IsReadyOnly(SensorStatus status, bool ready)
+    {
+        ModelPredictiveController.IsSensorReadyForState(status).Should().Be(ready);
+    }
+
+    [Theory]
+    [InlineData(SensorStatus.Unknown)]
+    [InlineData(SensorStatus.Initializing)]
+    [InlineData(SensorStatus.Reading)]
+    [InlineData(SensorStatus.Error)]
+    [InlineData(SensorStatus.Disconnected)]
+    [InlineData(SensorStatus.Calibrating)]
+    public async Task NotReadyStateSensor_StepsClosedAndDoesNotTrackACachedInRangeValue(SensorStatus status)
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+
+        sensor.Status = status;
+        sensor.Value = 0.2;
+        await controller.ExecuteOnceAsync();
+
+        // The same in-range number, trusted, would hold the ceiling. Untrusted, it
+        // steps toward the constraint minimum by the 0.1 rate window.
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+        actuator.Positions.Should().HaveCount(2);
+    }
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(0.2)]
+    [InlineData(1_000_000d)]
+    public async Task CachedStateValue_CannotBypassTheReadinessCheck(double cachedValue)
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        sensor.Status = SensorStatus.Disconnected;
+        sensor.Value = cachedValue;
+        await controller.ExecuteOnceAsync();
+
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+    }
+
+    [Fact]
+    public async Task NotReadyStateSensor_StepsTowardTheConstraintMinimum()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.3, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 0.3,
+            MinRate = -10,
+            MaxRate = 10
+        });
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(0.3, 1e-9);
+
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0.25,
+            MaxValue = 1,
+            MinRate = -10,
+            MaxRate = 10
+        });
+        sensor.Status = SensorStatus.Reading;
+        await controller.ExecuteOnceAsync();
+
+        // The floor is inside the rate window, so the command lands on it
+        // instead of stepping toward a hardcoded zero.
+        actuator.LastPosition.Should().BeApproximately(0.25, 1e-9);
+    }
+
+    [Fact]
+    public async Task NotReadyStateSensor_OneUnreadyChannelRejectsTheWholeSample()
+    {
+        var actuator = new RecordingActuator();
+        var ready = new MutableSensor { Name = "chamber", Value = 0.2, Status = SensorStatus.Ready };
+        var stale = new MutableSensor { Name = "flow", Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensors: new[] { ready, stale });
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+
+        stale.Status = SensorStatus.Disconnected;
+        await controller.ExecuteOnceAsync();
+
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+    }
+
+    [Fact]
+    public async Task ReadThatClearsReady_DoesNotEnterTheOptimizer()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor
+        {
+            Value = 0.2,
+            Status = SensorStatus.Ready,
+            StatusOnRead = SensorStatus.Disconnected
+        };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+
+        // No trusted sample has been stored, so the first command is the floor
+        // rather than the optimizer ceiling.
+        actuator.Positions.Should().Equal(0);
+    }
+
+    [Fact]
+    public async Task Recovery_RequiresANewReadySample()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+
+        sensor.Status = SensorStatus.Disconnected;
+        sensor.Value = 1_000_000;
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+
+        // A different cached number is still not a recovery.
+        sensor.Value = 0;
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(0.8, 1e-9);
+
+        sensor.Status = SensorStatus.Ready;
+        sensor.Value = 0.2;
+        await controller.ExecuteOnceAsync();
+
+        // The new Ready sample tracks the reference again, one rate step up
+        // from the last safe command. A stored cached sample would keep closing.
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+    }
+
+    [Fact]
+    public async Task RejectedSafeClose_DoesNotUseTheSampleOrTheRefusedPosition()
+    {
+        var actuator = new SelectiveActuator(rejectWhen: index => index == 1);
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 0.5,
+            MinRate = -1_000,
+            MaxRate = 1_000
+        });
+
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[0].Should().BeApproximately(0.5, 1e-9);
+
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 1,
+            MinRate = -10,
+            MaxRate = 10
+        });
+        sensor.Status = SensorStatus.Error;
+        sensor.Value = 1_000_000;
+
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[1].Should().BeApproximately(0.4, 1e-9);
+
+        // Still not Ready. The refused 0.4 must not be the next origin, and the
+        // cached sample must not send the optimizer back open.
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[2].Should().BeApproximately(0.4, 1e-9);
+
+        sensor.Status = SensorStatus.Ready;
+        sensor.Value = 0.2;
+        await controller.ExecuteOnceAsync();
+
+        // The accepted safe close is the origin. Recovery steps open from 0.4
+        // to 0.5. Continuing closed would be 0.3, and a stored cached sample
+        // would keep closing instead of tracking the reference.
+        actuator.Positions[3].Should().BeApproximately(0.5, 1e-9);
+    }
+
+    [Fact]
+    public async Task ReadyStateSensor_StillTracksTheReference()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+
+        actuator.Positions[0].Should().BeApproximately(1, 1e-9);
+        actuator.Positions[1].Should().BeApproximately(1, 1e-9);
+    }
+
     [Fact]
     public async Task FiniteSensor_CommandsAFinitePositionInsideTheActuatorRange()
     {
@@ -290,6 +511,18 @@ public class ModelPredictiveControllerTests
 
         actuator.Positions.Should().NotBeEmpty();
         actuator.Positions.Should().OnlyContain(position => double.IsFinite(position) && position >= 0 && position <= 1);
+    }
+
+    private static void TrackHighReference(ModelPredictiveController controller)
+    {
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 1,
+            MinRate = -10,
+            MaxRate = 10
+        });
     }
 
     private static async Task<bool> WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
@@ -312,12 +545,14 @@ public class ModelPredictiveControllerTests
         int predictionHorizon = 4,
         double samplingTime = 0.01,
         int actuatorRejectionEscalationThreshold = 3,
-        int actuatorRejectionLogInterval = 10)
+        int actuatorRejectionLogInterval = 10,
+        IReadOnlyList<ISensor<double>>? sensors = null)
     {
+        var sensorList = sensors?.ToList() ?? new List<ISensor<double>> { sensor ?? new ScriptedSensor(0) };
         return new ModelPredictiveController(
             actuator ?? new RecordingActuator(),
-            new List<ISensor<double>> { sensor ?? new ScriptedSensor(0) },
-            new EngineModel(1, 1),
+            sensorList,
+            new EngineModel(sensorList.Count, 1),
             predictionHorizon: predictionHorizon,
             controlHorizon: 2,
             samplingTime: samplingTime,
@@ -448,6 +683,34 @@ public class ModelPredictiveControllerTests
 
         public Task<bool> EnableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
         public Task<bool> DisableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    private sealed class MutableSensor : ISensor<double>
+    {
+        public double Value { get; set; }
+        public SensorStatus Status { get; set; } = SensorStatus.Ready;
+        public SensorStatus? StatusOnRead { get; set; }
+
+        public string SensorId => "state";
+        public string Name { get; set; } = "state";
+        public SensorType Type => SensorType.Pressure;
+        public double MinValue => 0;
+        public double MaxValue => 1;
+        public int MaxFrequencyHz => 100;
+        public DateTime LastReadingTime => DateTime.UtcNow;
+
+        public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
+
+        public Task<double> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            if (StatusOnRead is SensorStatus status)
+                Status = status;
+
+            ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
+            return Task.FromResult(Value);
+        }
+
+        public Task<bool> ValidateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
     }
 
     private sealed class ScriptedSensor : ISensor<double>
