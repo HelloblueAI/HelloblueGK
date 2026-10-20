@@ -121,8 +121,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // instead of passing NaN through Math.Clamp, which returns NaN.
                 throttleCommand = ConstrainThrottleCommand(throttleCommand);
                 
-                // Send command to actuator
-                var success = await _throttleActuator.SetPositionAsync(throttleCommand, cancellationToken);
+                // A false return or an actuator timeout did not land. Leave the last
+                // accepted position in place so the next pass retries the same step.
+                var success = await TrySetThrottlePositionAsync(throttleCommand, cancellationToken);
                 
                 if (success)
                 {
@@ -136,8 +137,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             }
             catch (OperationCanceledException)
             {
-                // Operation was cancelled - expected behavior
-                throw; // Re-throw cancellation
+                // The loop token was cancelled. Stop owns the safe close.
+                throw;
             }
             catch (InvalidOperationException ex)
             {
@@ -237,6 +238,33 @@ namespace HB_NLP_Research_Lab.Core.Control
             var maxChange = MaxThrottleRate / LoopFrequencyHz;
             var stepped = HoldOrStep(_currentThrottle, targetThrottle, maxChange);
             return Math.Clamp(stepped, MinThrottle, MaxThrottle);
+        }
+
+        /// <summary>
+        /// Commands the actuator. A timeout is a <see cref="TaskCanceledException"/>,
+        /// which is an <see cref="OperationCanceledException"/>. The base loop treats
+        /// every exception of that type as a clean stop, leaves <c>IsRunning</c> true,
+        /// and closes only once. An actuator that times out on its own token is not
+        /// the loop stopping, so the miss stays in this pass and the next one retries.
+        /// </summary>
+        private async Task<bool> TrySetThrottlePositionAsync(
+            double throttleCommand,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _throttleActuator.SetPositionAsync(throttleCommand, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException ex)
+            {
+                OnControlError(ex);
+                return false;
+            }
         }
         
         /// <summary>
