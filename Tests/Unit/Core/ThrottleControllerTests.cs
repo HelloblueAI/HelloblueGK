@@ -326,6 +326,156 @@ public class ThrottleControllerTests
     }
 
     [Fact]
+    public async Task ClosedLoop_ThrustReadThrows_DoesNotOpenOnTheFirstPass()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor
+        {
+            Value = 0,
+            Status = SensorStatus.Ready,
+            ReadException = new InvalidOperationException("thrust sensor unavailable")
+        };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        await controller.ExecuteOnceAsync();
+
+        // A trusted shortfall from closed steps open by the 0.001 rate limit.
+        // A thrown read must not do that, and it must not escape the pass.
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.LastPosition.Should().Be(0);
+        actuator.CommandCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ClosedLoop_ThrustReadThrows_StepsClosedInsteadOfHolding()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        thrust.Value = 1_000_000;
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+        var held = controller.CurrentThrottle;
+        held.Should().BeGreaterThan(0);
+
+        thrust.ReadException = new InvalidOperationException("thrust sensor unavailable");
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(held - 0.001, 1e-9);
+        actuator.LastPosition.Should().Be(controller.CurrentThrottle);
+    }
+
+    [Fact]
+    public async Task ClosedLoop_ThrustReadTimeout_StepsClosedAndTheNextPassStillRuns()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        thrust.ReadException = new TaskCanceledException("thrust read timed out");
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+
+        // A sensor timeout is not the loop stopping. Both passes step closed
+        // from the last accepted position instead of leaving 0.02 applied.
+        controller.CurrentThrottle.Should().BeApproximately(0.018, 1e-9);
+        actuator.LastPosition.Should().BeApproximately(0.018, 1e-9);
+    }
+
+    [Fact]
+    public async Task ClosedLoop_ThrustReadThrows_RejectedClose_LeavesTheLastAcceptedPosition()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        actuator.RejectNext = true;
+        thrust.ReadException = new InvalidOperationException("thrust sensor unavailable");
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        var next = controller.ConstrainThrottleCommand(0);
+        next.Should().BeApproximately(0.019, 1e-9);
+    }
+
+    [Fact]
+    public async Task ClosedLoop_ThrustReadThrows_CloseThrows_NextPassRetriesTheSameStep()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        actuator.ThrowNext = new InvalidOperationException("throttle actuator timed out");
+        thrust.ReadException = new InvalidOperationException("thrust sensor unavailable");
+
+        await controller.ExecuteOnceAsync();
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+
+        actuator.ThrowNext = null;
+        await controller.ExecuteOnceAsync();
+
+        // The thrown close is not the next origin. A stored 0.019 would step to 0.018.
+        controller.CurrentThrottle.Should().BeApproximately(0.019, 1e-9);
+        actuator.LastPosition.Should().BeApproximately(0.019, 1e-9);
+    }
+
+    [Fact]
+    public async Task OpenLoop_ThrustReadThrows_StillFollowsTheCommand()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor
+        {
+            Value = 1_000_000,
+            Status = SensorStatus.Ready,
+            ReadException = new InvalidOperationException("thrust sensor unavailable")
+        };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.001, 1e-12);
+    }
+
+    [Fact]
+    public async Task CancelledPass_DoesNotTreatTheStopAsAThrustFailure()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        var act = async () => await controller.ExecuteOnceAsync(cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        actuator.CommandCount.Should().Be(0);
+        controller.CurrentThrottle.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Restart_AfterStop_CommandsTheThrottleAgain()
     {
         var actuator = new RecordingActuator();
@@ -432,6 +582,18 @@ public class ThrottleControllerTests
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
         public bool RejectNext { get; set; }
+        public Exception? ThrowNext { get; set; }
+
+        public int CommandCount
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _positions.Count;
+                }
+            }
+        }
 
         /// <summary>
         /// Zero-based command index that throws <see cref="TaskCanceledException"/>
@@ -467,6 +629,13 @@ public class ThrottleControllerTests
                 throw new TaskCanceledException("actuator timeout");
 
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            if (ThrowNext != null)
+            {
+                var error = ThrowNext;
+                ThrowNext = null;
+                return Task.FromException<bool>(error);
+            }
+
             if (RejectNext)
             {
                 RejectNext = false;
@@ -487,6 +656,7 @@ public class ThrottleControllerTests
     {
         public double Value { get; set; }
         public SensorStatus Status { get; set; } = SensorStatus.Ready;
+        public Exception? ReadException { get; set; }
         public string SensorId => "thrust";
         public string Name => "thrust";
         public SensorType Type => SensorType.Other;
@@ -499,6 +669,12 @@ public class ThrottleControllerTests
 
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+                return Task.FromException<double>(new OperationCanceledException(cancellationToken));
+
+            if (ReadException != null)
+                return Task.FromException<double>(ReadException);
+
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
             return Task.FromResult(Value);
         }

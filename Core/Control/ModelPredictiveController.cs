@@ -140,8 +140,26 @@ namespace HB_NLP_Research_Lab.Core.Control
             try
             {
                 // 1. Measure current state. ReadAsync may update Status, so the Ready
-                // gate is applied to the sample that was just returned.
-                var measurement = await MeasureCurrentStateAsync(cancellationToken);
+                // gate is applied to the sample that was just returned. A thrown read,
+                // including a timeout that is not this loop stopping, is not a sample.
+                // The old catch logged that exception and left the last command applied.
+                StateMeasurement measurement;
+                try
+                {
+                    measurement = await MeasureCurrentStateAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                // codeql[generic-catch-clause]: A failed state read must not escape into the loop-stop path.
+                catch (Exception ex)
+                {
+                    OnControlError(ex);
+                    await CommandSafeAfterMeasurementFaultAsync(cancellationToken).ConfigureAwait(false);
+                    return;
+                }
+
                 if (!measurement.Ready)
                 {
                     // A disconnected sensor can return a cached in-band number. That
@@ -228,6 +246,29 @@ namespace HB_NLP_Research_Lab.Core.Control
             }
 
             return new StateMeasurement(state, ready);
+        }
+
+        /// <summary>
+        /// Commands the safe close after a measurement fault and stays in the loop.
+        /// A timeout or throw from the close itself is retried on the next pass.
+        /// Stopping the loop still propagates cancellation so the stop path can
+        /// command the minimum directly.
+        /// </summary>
+        private async Task CommandSafeAfterMeasurementFaultAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                await CommandSafePositionAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            // codeql[generic-catch-clause]: A thrown safe close is retried on the next pass.
+            catch (Exception ex)
+            {
+                OnControlError(ex);
+            }
         }
 
         /// <summary>
