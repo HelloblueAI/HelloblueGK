@@ -584,17 +584,6 @@ public class ThrottleControllerTests
         public bool RejectNext { get; set; }
         public Exception? ThrowNext { get; set; }
 
-        public int CommandCount
-        {
-            get
-            {
-                lock (_gate)
-                {
-                    return _positions.Count;
-                }
-            }
-        }
-
         /// <summary>
         /// Zero-based command index that throws <see cref="TaskCanceledException"/>
         /// without the caller's token being cancelled.
