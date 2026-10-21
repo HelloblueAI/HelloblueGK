@@ -577,6 +577,119 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_ActuatorCommandTimeout_FailClosesAndDoesNotContinue()
+    {
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    throw new TaskCanceledException("actuator timeout");
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        fuel.LastPosition.Should().Be(0);
+        fuel.Positions.Should().OnlyContain(position => position == 0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FuelFlow_ActuatorCommandTimeout_LeavesTheControlLoopRunning()
+    {
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    throw new TaskCanceledException("actuator timeout");
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter, fuelFlow: new StubSensor { Value = 1 });
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+
+        await controller.StartAsync();
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning
+                && controller.CurrentState == StartupState.Error
+                && fuel.CloseAttempts >= 2,
+            TimeSpan.FromSeconds(5));
+        continued.Should().BeTrue();
+        controller.IsRunning.Should().BeTrue();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.Dispose();
+    }
+
+    [Fact]
+    public async Task FuelFlow_CancelledActuatorCommand_PropagatesAndDoesNotFailClosed()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter);
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        var act = () => controller.ExecuteOnceAsync(cancelled.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        controller.CurrentState.Should().Be(StartupState.FuelFlowInitiation);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task PreStartup_SensorReadTimeout_StillEscapesThePass()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                OnReading = () => Task.FromException<double>(new TaskCanceledException("sensor timeout"))
+            });
+        controller.MoveToState(StartupState.PreStartupChecks);
+
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().ThrowAsync<TaskCanceledException>();
+
+        controller.CurrentState.Should().Be(StartupState.PreStartupChecks);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task FuelFlow_RejectedValveCommand_DoesNotContinueWhenFlowLooksEstablished()
     {
         var fuel = new RecordingActuator { RejectWhen = static _ => true };
@@ -1046,6 +1159,20 @@ public class StartupSequenceControllerTests
             _ => throw new ArgumentOutOfRangeException(nameof(actuator), actuator, "Unknown startup actuator.")
         };
 
+    private static async Task<bool> WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (DateTime.UtcNow < deadline)
+        {
+            if (predicate())
+                return true;
+
+            await Task.Delay(10);
+        }
+
+        return predicate();
+    }
+
     private static StartupSequenceController CreateController(
         IActuator fuel,
         IActuator oxidizer,
@@ -1092,6 +1219,8 @@ public class StartupSequenceControllerTests
 
         public async Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (OnCommanding != null)
                 await OnCommanding(position);
 
