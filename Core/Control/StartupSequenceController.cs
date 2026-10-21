@@ -680,7 +680,26 @@ namespace HB_NLP_Research_Lab.Core.Control
             // A false return is a refused move, not a completed one. Fuel and oxidizer
             // used to continue into the next state anyway, and a refused igniter-off
             // left the spark commanded on through combustion and throttle-up.
-            var accepted = await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
+            // A timeout is a TaskCanceledException, which is an OperationCanceledException.
+            // The base loop treats every one of those as a clean stop, so IsRunning stayed
+            // true and the safe close ran only once. A refused command already fail-closes
+            // and the next pass retries. A timeout that is not the loop token must do the same.
+            bool accepted;
+            try
+            {
+                accepted = await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ {actuator.Name} command {position} timed out").ConfigureAwait(false);
+                return false;
+            }
+
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return false;
 
