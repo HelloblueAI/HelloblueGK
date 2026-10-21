@@ -94,20 +94,41 @@ namespace HB_NLP_Research_Lab.Core.Control
             try
             {
                 // Read current sensor values. ReadAsync may update Status, so the Ready
-                // gate is applied to the sample that was just returned.
-                var currentThrust = await _thrustSensor.ReadAsync(cancellationToken);
+                // gate is applied to the sample that was just returned. A thrown read,
+                // including a timeout that is not this loop stopping, is not a sample.
+                // The old catch logged that exception and left the last command applied.
+                double currentThrust = 0;
+                var thrustReadFailed = false;
+                try
+                {
+                    currentThrust = await _thrustSensor.ReadAsync(cancellationToken).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
+                // codeql[generic-catch-clause]: A failed thrust read must not escape into the loop-stop path.
+                catch (Exception ex)
+                {
+                    OnControlError(ex);
+                    thrustReadFailed = true;
+                }
+
                 // Note: Chamber pressure available but not used in current control algorithm
                 // await _chamberPressureSensor.ReadAsync(cancellationToken);
                 
                 // Closed-loop control uses the thrust sample. A disconnected sensor can
-                // return a cached in-band number, and that number must not drive the
-                // command. The safe command is closed; the rate limiter steps toward it.
-                // Open-loop does not use the sample, so a direct throttle command stands.
+                // return a cached in-band number, and a failed read returns nothing.
+                // Neither may drive the command. The safe command is closed; the rate
+                // limiter steps toward it. Open-loop does not use the sample, so a
+                // direct throttle command stands even when the read throws.
                 double throttleCommand;
-                if (_targetThrust > 0 && !IsSensorReadyForThrottle(_thrustSensor.Status))
+                if (_targetThrust > 0 &&
+                    (thrustReadFailed || !IsSensorReadyForThrottle(_thrustSensor.Status)))
                 {
-                    Console.WriteLine(
-                        $"[Throttle Controller] Thrust sensor not ready: {_thrustSensor.Status}. Commanding closed.");
+                    Console.WriteLine(thrustReadFailed
+                        ? "[Throttle Controller] Thrust read failed. Commanding closed."
+                        : $"[Throttle Controller] Thrust sensor not ready: {_thrustSensor.Status}. Commanding closed.");
                     throttleCommand = MinThrottle;
                 }
                 else

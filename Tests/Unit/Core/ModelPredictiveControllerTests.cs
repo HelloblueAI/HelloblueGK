@@ -484,6 +484,182 @@ public class ModelPredictiveControllerTests
     }
 
     [Fact]
+    public async Task StateReadThrows_StepsClosedAndDoesNotStoreTheSample()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+
+        sensor.ReadException = new InvalidOperationException("state sensor unavailable");
+        sensor.Value = 1_000_000;
+        await controller.ExecuteOnceAsync();
+
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+        actuator.Positions.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task StateReadThrows_BeforeAnySample_CommandsTheFloor()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor
+        {
+            Value = 0.2,
+            Status = SensorStatus.Ready,
+            ReadException = new InvalidOperationException("state sensor unavailable")
+        };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+
+        actuator.Positions.Should().Equal(0);
+    }
+
+    [Fact]
+    public async Task StateReadTimeout_StepsClosedAndTheNextPassStillRuns()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        sensor.ReadException = new TaskCanceledException("state read timed out");
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+
+        actuator.Positions[1].Should().BeApproximately(0.9, 1e-9);
+        actuator.Positions[2].Should().BeApproximately(0.8, 1e-9);
+    }
+
+    [Fact]
+    public async Task StateReadThrows_OneChannelRejectsTheWholeSample()
+    {
+        var actuator = new RecordingActuator();
+        var ready = new MutableSensor { Name = "chamber", Value = 0.2, Status = SensorStatus.Ready };
+        var failed = new MutableSensor
+        {
+            Name = "flow",
+            Value = 0.2,
+            Status = SensorStatus.Ready,
+            ReadException = new InvalidOperationException("flow sensor unavailable")
+        };
+        using var controller = CreateController(actuator, sensors: new[] { ready, failed });
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+
+        // The chamber read completed, but the thrown flow read drops the vector.
+        // With no trusted sample, the first command is the floor.
+        actuator.Positions.Should().Equal(0);
+    }
+
+    [Fact]
+    public async Task StateReadThrows_RejectedClose_LeavesTheLastAcceptedPosition()
+    {
+        var actuator = new SelectiveActuator(rejectWhen: index => index == 1);
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 0.5,
+            MinRate = -1_000,
+            MaxRate = 1_000
+        });
+
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[0].Should().BeApproximately(0.5, 1e-9);
+
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 1,
+            MinRate = -10,
+            MaxRate = 10
+        });
+        sensor.ReadException = new InvalidOperationException("state sensor unavailable");
+        sensor.Value = 1_000_000;
+
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[1].Should().BeApproximately(0.4, 1e-9);
+
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[2].Should().BeApproximately(0.4, 1e-9);
+    }
+
+    [Fact]
+    public async Task StateReadThrows_CloseThrows_NextPassRetriesTheSameStep()
+    {
+        var actuator = new RecordingActuator
+        {
+            ThrowOnCall = index => index == 1
+                ? new InvalidOperationException("actuator timed out")
+                : null
+        };
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[0].Should().BeApproximately(1, 1e-9);
+
+        sensor.ReadException = new InvalidOperationException("state sensor unavailable");
+        await controller.ExecuteOnceAsync();
+        actuator.Positions[1].Should().BeApproximately(0.9, 1e-9);
+
+        await controller.ExecuteOnceAsync();
+
+        // The thrown 0.9 was not accepted, so the retry starts from 1 again.
+        actuator.Positions[2].Should().BeApproximately(0.9, 1e-9);
+    }
+
+    [Fact]
+    public async Task Recovery_AfterThrownRead_UsesTheNextReadySample()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        sensor.ReadException = new InvalidOperationException("state sensor unavailable");
+        sensor.Value = 1_000_000;
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+
+        sensor.ReadException = null;
+        sensor.Status = SensorStatus.Ready;
+        sensor.Value = 0.2;
+        await controller.ExecuteOnceAsync();
+
+        // The thrown sample was not stored, so recovery tracks the reference
+        // one rate step up from the safe command. A stored failure would keep closing.
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+    }
+
+    [Fact]
+    public async Task CancelledPass_DoesNotTreatTheStopAsAStateFailure()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        var act = async () => await controller.ExecuteOnceAsync(cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        actuator.Positions.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task ReadyStateSensor_StillTracksTheReference()
     {
         var actuator = new RecordingActuator();
@@ -604,15 +780,25 @@ public class ModelPredictiveControllerTests
 
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
+        public Func<int, Exception?>? ThrowOnCall { get; set; }
+        private int _calls;
+
         public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
+            int index;
             lock (_gate)
             {
+                index = _calls;
                 _positions.Add(position);
+                _calls++;
             }
 
             _first.TrySetResult(position);
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            var error = ThrowOnCall?.Invoke(index);
+            if (error != null)
+                return Task.FromException<bool>(error);
+
             return Task.FromResult(true);
         }
 
@@ -690,6 +876,7 @@ public class ModelPredictiveControllerTests
         public double Value { get; set; }
         public SensorStatus Status { get; set; } = SensorStatus.Ready;
         public SensorStatus? StatusOnRead { get; set; }
+        public Exception? ReadException { get; set; }
 
         public string SensorId => "state";
         public string Name { get; set; } = "state";
@@ -703,8 +890,14 @@ public class ModelPredictiveControllerTests
 
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            if (cancellationToken.IsCancellationRequested)
+                return Task.FromException<double>(new OperationCanceledException(cancellationToken));
+
             if (StatusOnRead is SensorStatus status)
                 Status = status;
+
+            if (ReadException != null)
+                return Task.FromException<double>(ReadException);
 
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
             return Task.FromResult(Value);
