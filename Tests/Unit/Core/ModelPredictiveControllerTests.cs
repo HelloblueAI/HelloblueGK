@@ -244,6 +244,111 @@ public class ModelPredictiveControllerTests
     }
 
     [Fact]
+    public async Task ActuatorCommandTimeout_DoesNotBecomeTheNextRateLimitOrigin()
+    {
+        var actuator = new SelectiveActuator(rejectWhen: _ => false)
+        {
+            TimeoutWhen = index => index == 1
+        };
+        using var controller = CreateController(actuator, new ScriptedSensor(0));
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 0.3,
+            MinRate = -1_000,
+            MaxRate = 1_000
+        });
+        actuator.OnAccepted = index =>
+        {
+            if (index != 0)
+                return;
+
+            controller.SetConstraints(new ControlConstraints
+            {
+                MinValue = 0,
+                MaxValue = 1,
+                MinRate = -10,
+                MaxRate = 10
+            });
+        };
+
+        await controller.ExecuteOnceAsync();
+        var timedOut = () => controller.ExecuteOnceAsync();
+        await timedOut.Should().NotThrowAsync();
+        await controller.ExecuteOnceAsync();
+
+        var positions = actuator.Positions;
+        // 10 per second at a 0.01 s sample is a 0.1 step. The timed-out 0.4
+        // command must not let the following command step on to 0.5.
+        positions[0].Should().BeApproximately(0.3, 1e-9);
+        positions[1].Should().BeApproximately(0.4, 1e-9);
+        positions[2].Should().BeApproximately(0.4, 1e-9);
+    }
+
+    [Fact]
+    public async Task ActuatorCommandTimeout_CountsTowardRejectionEscalation()
+    {
+        var actuator = new SelectiveActuator(rejectWhen: _ => false)
+        {
+            TimeoutWhen = index => index is < 4 or > 4
+        };
+        using var controller = CreateController(
+            actuator,
+            new ScriptedSensor(0),
+            actuatorRejectionEscalationThreshold: 3);
+        var escalations = new List<ActuatorRejectionEscalatedEventArgs>();
+        controller.ActuatorRejectionEscalated += (_, args) => escalations.Add(args);
+
+        for (var i = 0; i < 4; i++)
+            await controller.ExecuteOnceAsync();
+
+        escalations.Should().ContainSingle();
+        escalations[0].ConsecutiveRejectionCount.Should().Be(3);
+
+        await controller.ExecuteOnceAsync();
+
+        for (var i = 0; i < 3; i++)
+            await controller.ExecuteOnceAsync();
+
+        escalations.Should().HaveCount(2);
+        escalations[1].ConsecutiveRejectionCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task CancelledActuatorCommand_PropagatesAndDoesNotStoreACommand()
+    {
+        var actuator = new SelectiveActuator(rejectWhen: _ => false);
+        using var controller = CreateController(actuator, new ScriptedSensor(0));
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        var act = () => controller.ExecuteOnceAsync(cancelled.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        actuator.Positions.Should().BeEmpty();
+        controller.ApplyConstraints(1).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ActuatorCommandTimeout_LeavesTheControlLoopRunning()
+    {
+        var actuator = new RecordingActuator { TimeoutCall = 0 };
+        using var controller = CreateController(actuator, new MutableSensor { Value = 0.2, Status = SensorStatus.Ready });
+        TrackHighReference(controller);
+
+        await controller.StartAsync();
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning && actuator.Positions.Count >= 2,
+            TimeSpan.FromSeconds(5));
+        continued.Should().BeTrue();
+        controller.IsRunning.Should().BeTrue();
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task ConsecutiveRejections_EscalateOncePerEpisodeAndResetAfterAcceptance()
     {
         var actuator = new SelectiveActuator(rejectWhen: index => index is < 4 or > 4);
@@ -780,18 +885,28 @@ public class ModelPredictiveControllerTests
 
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
+        public int? TimeoutCall { get; set; }
+
         public Func<int, Exception?>? ThrowOnCall { get; set; }
+
         private int _calls;
 
         public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            bool timeout;
             int index;
             lock (_gate)
             {
-                index = _calls;
-                _positions.Add(position);
-                _calls++;
+                index = _calls++;
+                timeout = TimeoutCall == index;
+                if (!timeout)
+                    _positions.Add(position);
             }
+
+            if (timeout)
+                throw new TaskCanceledException("actuator timeout");
 
             _first.TrySetResult(position);
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
@@ -823,6 +938,8 @@ public class ModelPredictiveControllerTests
 
         public Action<int>? OnAccepted { get; set; }
 
+        public Func<int, bool>? TimeoutWhen { get; set; }
+
         public IReadOnlyList<double> Positions
         {
             get
@@ -848,6 +965,8 @@ public class ModelPredictiveControllerTests
 
         public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             int index;
             lock (_gate)
             {
@@ -855,6 +974,9 @@ public class ModelPredictiveControllerTests
                 _positions.Add(position);
                 _calls++;
             }
+
+            if (TimeoutWhen?.Invoke(index) == true)
+                throw new TaskCanceledException("actuator timeout");
 
             var accepted = !_rejectWhen(index);
             if (accepted)

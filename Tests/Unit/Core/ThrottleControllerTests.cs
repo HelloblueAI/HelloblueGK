@@ -256,6 +256,62 @@ public class ThrottleControllerTests
     }
 
     [Fact]
+    public async Task ActuatorCommandTimeout_LeavesTheLastAcceptedPositionAndRetries()
+    {
+        var actuator = new RecordingActuator { TimeoutCall = 1 };
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.ExecuteOnceAsync();
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+
+        var timedOut = () => controller.ExecuteOnceAsync();
+        await timedOut.Should().NotThrowAsync();
+
+        // The timed-out command was a step to 0.002. Storing it would make the
+        // next accepted command 0.003. The retry starts from the last acceptance.
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        await controller.ExecuteOnceAsync();
+        controller.CurrentThrottle.Should().BeApproximately(0.002, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.002, 1e-12);
+    }
+
+    [Fact]
+    public async Task CancelledActuatorCommand_PropagatesAndDoesNotMoveTheThrottle()
+    {
+        var actuator = new RecordingActuator();
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor());
+        controller.SetThrottle(1);
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+
+        var act = () => controller.ExecuteOnceAsync(cancelled.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ActuatorCommandTimeout_LeavesTheControlLoopRunning()
+    {
+        var actuator = new RecordingActuator { TimeoutCall = 0 };
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.StartAsync();
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning && controller.CurrentThrottle > 0 && actuator.CommandCount >= 2,
+            TimeSpan.FromSeconds(5));
+        continued.Should().BeTrue();
+        controller.IsRunning.Should().BeTrue();
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.CurrentThrottle.Should().Be(0);
+        controller.Dispose();
+    }
+
+    [Fact]
     public async Task OpenLoop_NotReadyThrustSensor_StillFollowsTheCommand()
     {
         var actuator = new RecordingActuator();
@@ -528,23 +584,38 @@ public class ThrottleControllerTests
         public bool RejectNext { get; set; }
         public Exception? ThrowNext { get; set; }
 
+        /// <summary>
+        /// Zero-based command index that throws <see cref="TaskCanceledException"/>
+        /// without the caller's token being cancelled.
+        /// </summary>
+        public int? TimeoutCall { get; set; }
+
         public int CommandCount
         {
             get
             {
                 lock (_gate)
-                {
-                    return _positions.Count;
-                }
+                    return _calls;
             }
         }
 
+        private int _calls;
+
         public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            bool timeout;
             lock (_gate)
             {
-                _positions.Add(position);
+                var index = _calls++;
+                timeout = TimeoutCall == index;
+                if (!timeout)
+                    _positions.Add(position);
             }
+
+            if (timeout)
+                throw new TaskCanceledException("actuator timeout");
 
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
             if (ThrowNext != null)

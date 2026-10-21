@@ -191,9 +191,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 controlAction = ApplyConstraints(controlAction);
                 optimalControl[0] = controlAction;
                 
-                // 5. Send to actuator. A refused command leaves the actuator at the last
-                // accepted position, so it must not become the next rate-limit origin.
-                var accepted = await _actuator.SetPositionAsync(controlAction, cancellationToken)
+                // 5. Send to actuator. A refused command or a timeout leaves the actuator
+                // at the last accepted position, so it must not become the next rate-limit origin.
+                var accepted = await TrySetActuatorPositionAsync(controlAction, cancellationToken)
                     .ConfigureAwait(false);
                 if (!accepted)
                 {
@@ -209,8 +209,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             }
             catch (OperationCanceledException)
             {
-                // Operation was cancelled - expected behavior
-                throw; // Re-throw cancellation
+                // The loop token was cancelled. Stop owns the safe close.
+                throw;
             }
             catch (InvalidOperationException ex)
             {
@@ -279,7 +279,8 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task CommandSafePositionAsync(CancellationToken cancellationToken)
         {
             var controlAction = ApplyConstraints(SafeClosedCommand());
-            var accepted = await _actuator.SetPositionAsync(controlAction, cancellationToken);
+            var accepted = await TrySetActuatorPositionAsync(controlAction, cancellationToken)
+                .ConfigureAwait(false);
             if (!accepted)
             {
                 HandleActuatorRejected(controlAction);
@@ -292,6 +293,33 @@ namespace HB_NLP_Research_Lab.Core.Control
 
         private double SafeClosedCommand() =>
             double.IsFinite(_constraints.MinValue) ? _constraints.MinValue : 0.0;
+
+        /// <summary>
+        /// Commands the actuator. A timeout is a <see cref="TaskCanceledException"/>,
+        /// which is an <see cref="OperationCanceledException"/>. The base loop treats
+        /// every exception of that type as a clean stop, leaves <c>IsRunning</c> true,
+        /// and closes only once. An actuator that times out on its own token is not
+        /// the loop stopping. The caller records a rejection and leaves control history
+        /// unchanged so the next pass retries the same step.
+        /// </summary>
+        private async Task<bool> TrySetActuatorPositionAsync(
+            double command,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                return await _actuator.SetPositionAsync(command, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException ex)
+            {
+                OnControlError(ex);
+                return false;
+            }
+        }
 
         private readonly struct StateMeasurement
         {
