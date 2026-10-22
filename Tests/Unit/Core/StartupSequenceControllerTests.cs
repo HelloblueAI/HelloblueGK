@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HB_NLP_Research_Lab.Core.Control;
 using HB_NLP_Research_Lab.Core.Hardware;
 
@@ -662,6 +663,88 @@ public class StartupSequenceControllerTests
         fuel.CommandCount.Should().Be(0);
         oxidizer.CommandCount.Should().Be(0);
         igniter.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task FuelFlow_InFlightCommandPastTheDeadline_FailClosesWithoutWaiting()
+    {
+        // The open command never returns and does not observe cancellation. The fuel
+        // deadline is 5 seconds. The pass starts with a fraction of that left, so a
+        // timeout that is only checked at the top of the next pass never runs.
+        var openStarted = 0;
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position <= 0)
+                    return Task.CompletedTask;
+
+                Interlocked.Increment(ref openStarted);
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        controller.SetStateEnteredAt(DateTime.UtcNow - TimeSpan.FromMilliseconds(4_800));
+
+        var started = Stopwatch.StartNew();
+        await controller.ExecuteOnceAsync();
+        started.Stop();
+
+        started.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(800));
+        openStarted.Should().Be(1);
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        fuel.LastPosition.Should().Be(0);
+        fuel.Positions.Should().Contain(0.0);
+        oxidizer.Positions.Any(position => position > 0).Should().BeFalse();
+        igniter.Positions.Any(position => position > 0).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FuelFlow_InFlightCommandPastTheDeadline_LeavesTheControlLoopRunning()
+    {
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position => position > 0
+                ? new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task
+                : Task.CompletedTask
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter, fuelFlow: new StubSensor { Value = 1 });
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+
+        // Start resets the state clock, so this pass uses the full fuel deadline.
+        // The open command does not return. The loop has to fail closed on that
+        // deadline instead of staying inside the command.
+        await controller.StartAsync();
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning
+                && controller.CurrentState == StartupState.Error
+                && fuel.CloseAttempts >= 2,
+            TimeSpan.FromSeconds(8));
+        continued.Should().BeTrue();
+
+        // A deadline that escaped as cancellation would stop the loop after one
+        // extra close. A live loop keeps commanding the valves shut.
+        var closesAfterDeadline = fuel.CloseAttempts;
+        await Task.Delay(500);
+        fuel.CloseAttempts.Should().BeGreaterThan(closesAfterDeadline);
+        controller.IsRunning.Should().BeTrue();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.Dispose();
     }
 
     [Fact]
