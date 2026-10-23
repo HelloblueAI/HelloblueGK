@@ -489,9 +489,19 @@ namespace HB_NLP_Research_Lab.Core.Control
             Console.WriteLine("[Startup Sequence] 🔍 Performing pre-startup checks...");
             
             // Check sensors. A disconnected chamber sensor can still return a cached
-            // ambient value. That number is not a pre-start measurement.
-            var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
-            var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
+            // ambient value. That number is not a pre-start measurement. A timeout
+            // is not a sample either: it fail-closes instead of stopping the loop.
+            var pressureRead = await TryReadStartupSensorAsync(_chamberPressureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!pressureRead.Completed)
+                return;
+            var temperatureRead = await TryReadStartupSensorAsync(_chamberTemperatureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!temperatureRead.Completed)
+                return;
+
+            var pressure = pressureRead.Value;
+            var temperature = temperatureRead.Value;
 
             if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
                 return;
@@ -559,7 +569,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Verify fuel flow is inside the safety band. A pegged sensor used to pass
             // the minimum check and the sequence continued into ignition. A sensor
             // that disconnects during the wait can return that same cached in-band value.
-            var fuelFlow = await _fuelFlowSensor.ReadAsync(cancellationToken);
+            // A timeout after the valve is open must close it, not stop the loop.
+            var fuelFlowRead = await TryReadStartupSensorAsync(_fuelFlowSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!fuelFlowRead.Completed)
+                return;
+            var fuelFlow = fuelFlowRead.Value;
             if (!await RequireSensorReadyAsync(_fuelFlowSensor).ConfigureAwait(false))
                 return;
 
@@ -592,7 +607,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             // Verify oxidizer flow is inside the safety band. Re-check status: the
             // sensor can disconnect after the valve is open and still return a cached flow.
-            var oxidizerFlow = await _oxidizerFlowSensor.ReadAsync(cancellationToken);
+            // A timeout after the valve is open must close it, not stop the loop.
+            var oxidizerFlowRead = await TryReadStartupSensorAsync(_oxidizerFlowSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!oxidizerFlowRead.Completed)
+                return;
+            var oxidizerFlow = oxidizerFlowRead.Value;
             if (!await RequireSensorReadyAsync(_oxidizerFlowSensor).ConfigureAwait(false))
                 return;
 
@@ -639,9 +659,19 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             
             // Check for combustion indicators. A disconnected sensor can return a
-            // cached pressure and temperature that look like combustion.
-            var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
-            var temperature = await _chamberTemperatureSensor.ReadAsync(cancellationToken);
+            // cached pressure and temperature that look like combustion. A timeout
+            // with the propellant valves open must close them, not stop the loop.
+            var pressureRead = await TryReadStartupSensorAsync(_chamberPressureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!pressureRead.Completed)
+                return;
+            var temperatureRead = await TryReadStartupSensorAsync(_chamberTemperatureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!temperatureRead.Completed)
+                return;
+
+            var pressure = pressureRead.Value;
+            var temperature = temperatureRead.Value;
             if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
                 return;
             if (!await RequireSensorReadyAsync(_chamberTemperatureSensor).ConfigureAwait(false))
@@ -664,7 +694,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             Console.WriteLine("[Startup Sequence] 🚀 Throttling up to operating level...");
 
-            var pressure = await _chamberPressureSensor.ReadAsync(cancellationToken);
+            var pressureRead = await TryReadStartupSensorAsync(_chamberPressureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!pressureRead.Completed)
+                return;
+            var pressure = pressureRead.Value;
             if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
                 return;
 
@@ -771,6 +805,53 @@ namespace HB_NLP_Research_Lab.Core.Control
             await FailClosedAsync(
                 $"[Startup Sequence] ❌ {actuator.Name} not ready: {actuator.Status}").ConfigureAwait(false);
             return false;
+        }
+
+        /// <summary>
+        /// Reads one startup sensor. A timeout is a <see cref="TaskCanceledException"/>,
+        /// which is an <see cref="OperationCanceledException"/>. The base loop treats
+        /// every exception of that type as a clean stop, leaves <c>IsRunning</c> true,
+        /// and closes the valves only once. A timeout that is not the loop token is
+        /// the same loss of measurement as a sensor that is not Ready: fail-close on
+        /// this pass, and let the closed-state loop retry a close that did not land.
+        /// Any other exception still escapes so stop can report that fault together
+        /// with a valve that stayed open.
+        /// </summary>
+        private async Task<StartupSensorSample> TryReadStartupSensorAsync(
+            ISensor<double> sensor,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var value = await sensor.ReadAsync(cancellationToken).ConfigureAwait(false);
+                return StartupSensorSample.Success(value);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ {sensor.Name} read timed out").ConfigureAwait(false);
+                return StartupSensorSample.TimedOut();
+            }
+        }
+
+        private readonly struct StartupSensorSample
+        {
+            private StartupSensorSample(bool completed, double value)
+            {
+                Completed = completed;
+                Value = value;
+            }
+
+            public bool Completed { get; }
+            public double Value { get; }
+
+            public static StartupSensorSample Success(double value) => new(true, value);
+
+            public static StartupSensorSample TimedOut() => new(false, 0);
         }
 
         /// <summary>
