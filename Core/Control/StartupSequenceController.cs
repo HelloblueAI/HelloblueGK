@@ -162,6 +162,16 @@ namespace HB_NLP_Research_Lab.Core.Control
                 _sequenceClosed = state is StartupState.Aborted or StartupState.Error;
             }
         }
+
+        /// <summary>
+        /// Moves the state clock back so a test can enter the last slice of a deadline
+        /// without waiting out the production timeout.
+        /// </summary>
+        internal void SetStateEnteredAt(DateTime enteredAt)
+        {
+            lock (_stateGate)
+                _stateStartTime = enteredAt;
+        }
         
         public StartupSequenceController(
             IActuator fuelValve,
@@ -328,34 +338,150 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
+            // The timeout above only runs when a pass returns. Fuel and oxidizer each
+            // wait inside the pass after the valve is already open. A command or read
+            // that never returns used to leave that valve open: the deadline was not
+            // consulted again, and the loop task never reached the next check.
+            if (!TryGetRemainingStateBudget(state, out var remaining) || remaining <= TimeSpan.Zero)
+            {
+                if (remaining <= TimeSpan.Zero && HasFiniteStateTimeout(state))
+                {
+                    await FailClosedAsync($"[Startup Sequence] ⚠️ State {state} timed out").ConfigureAwait(false);
+                }
+                else
+                {
+                    await ExecuteCurrentStateAsync(state, cancellationToken).ConfigureAwait(false);
+                }
+
+                return;
+            }
+
+            var stateCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            stateCts.CancelAfter(remaining);
+            var stateWork = ExecuteCurrentStateAsync(state, stateCts.Token);
+            var deadline = Task.Delay(remaining, deadlineCts.Token);
+            try
+            {
+                await Task.WhenAny(stateWork, deadline).ConfigureAwait(false);
+                if (stateWork.IsCompleted)
+                {
+                    try
+                    {
+                        await stateWork.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        throw;
+                    }
+                    catch (OperationCanceledException) when (stateCts.IsCancellationRequested)
+                    {
+                        // The deadline cancelled this pass. A sensor or actuator that
+                        // times out on its own token still has this token live, so that
+                        // exception propagates and is not relabeled as a state timeout.
+                        await FailClosedAsync($"[Startup Sequence] ⚠️ State {state} timed out").ConfigureAwait(false);
+                    }
+
+                    return;
+                }
+
+                // Do not wait for the pass. A read that ignores cancellation would
+                // keep the valve open for as long as this method stayed on that await.
+                stateCts.Cancel();
+                if (cancellationToken.IsCancellationRequested)
+                    throw new OperationCanceledException(cancellationToken);
+
+                await FailClosedAsync($"[Startup Sequence] ⚠️ State {state} timed out").ConfigureAwait(false);
+            }
+            finally
+            {
+                deadlineCts.Cancel();
+                ReleaseStatePass(stateWork, stateCts);
+            }
+        }
+
+        private async Task ExecuteCurrentStateAsync(StartupState state, CancellationToken cancellationToken)
+        {
             switch (state)
             {
                 case StartupState.PreStartupChecks:
-                    await ExecutePreStartupChecksAsync(cancellationToken);
+                    await ExecutePreStartupChecksAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case StartupState.Purge:
-                    await ExecutePurgeAsync(cancellationToken);
+                    await ExecutePurgeAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case StartupState.FuelFlowInitiation:
-                    await ExecuteFuelFlowInitiationAsync(cancellationToken);
+                    await ExecuteFuelFlowInitiationAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case StartupState.OxidizerFlowInitiation:
-                    await ExecuteOxidizerFlowInitiationAsync(cancellationToken);
+                    await ExecuteOxidizerFlowInitiationAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case StartupState.Ignition:
-                    await ExecuteIgnitionAsync(cancellationToken);
+                    await ExecuteIgnitionAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case StartupState.CombustionVerification:
-                    await ExecuteCombustionVerificationAsync(cancellationToken);
+                    await ExecuteCombustionVerificationAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case StartupState.ThrottleUp:
-                    await ExecuteThrottleUpAsync(cancellationToken);
+                    await ExecuteThrottleUpAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case StartupState.Error:
                 case StartupState.Aborted:
-                    await PerformShutdownAsync();
+                    await PerformShutdownAsync().ConfigureAwait(false);
                     break;
             }
+        }
+
+        private bool HasFiniteStateTimeout(StartupState state) =>
+            _stateTimeouts.TryGetValue(state, out var timeout)
+            && timeout > TimeSpan.Zero
+            && timeout != TimeSpan.MaxValue;
+
+        /// <summary>
+        /// Time left in <paramref name="state"/> before <see cref="CheckStateTimeout"/>
+        /// would fail closed. False when this state has no finite deadline.
+        /// </summary>
+        private bool TryGetRemainingStateBudget(StartupState state, out TimeSpan remaining)
+        {
+            remaining = default;
+            if (!HasFiniteStateTimeout(state))
+                return false;
+
+            var timeout = _stateTimeouts[state];
+            DateTime started;
+            lock (_stateGate)
+                started = _stateStartTime;
+
+            remaining = timeout - (DateTime.UtcNow - started);
+            if (remaining < TimeSpan.Zero)
+                remaining = TimeSpan.Zero;
+            return true;
+        }
+
+        /// <summary>
+        /// Observes a pass that missed its deadline without waiting for it, and disposes
+        /// the deadline source once that pass is no longer using the token.
+        /// </summary>
+        private static void ReleaseStatePass(Task stateWork, CancellationTokenSource stateCts)
+        {
+            if (stateWork.IsCompleted)
+            {
+                if (stateWork.IsFaulted)
+                    _ = stateWork.Exception;
+                stateCts.Dispose();
+                return;
+            }
+
+            _ = stateWork.ContinueWith(
+                completed =>
+                {
+                    if (completed.IsFaulted)
+                        _ = completed.Exception;
+                    stateCts.Dispose();
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
         
         private async Task ExecutePreStartupChecksAsync(CancellationToken cancellationToken)
