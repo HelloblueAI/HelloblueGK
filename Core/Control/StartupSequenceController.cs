@@ -645,6 +645,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Deactivate igniter (spark plug style - short pulse)
             if (!await CommandIfSequenceActiveAsync(_igniter, 0.0, cancellationToken).ConfigureAwait(false))
                 return;
+
+            // The spark command is the last time this state required the valves to be
+            // Ready. A fuel or oxidizer fault during the pulse must not be carried
+            // into combustion with the propellant valves still open.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
             
             TransitionToState(StartupState.CombustionVerification);
         }
@@ -652,6 +658,13 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task ExecuteCombustionVerificationAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine("[Startup Sequence] ✅ Verifying combustion...");
+
+            // Propellant is already admitted. Combustion verification used to ignore
+            // actuator status, so a faulted valve stayed at its last open command
+            // while a Ready pressure and temperature advanced the sequence.
+            // AtPosition is not proof the valve is still where this sequence left it.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
             
             // Wait for combustion to establish
             await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
@@ -676,6 +689,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             if (!await RequireSensorReadyAsync(_chamberTemperatureSensor).ConfigureAwait(false))
                 return;
+
+            // A valve can fault during the wait and still leave a Ready combustion reading.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
             
             // Pressure has to leave the ambient band and stay under the chamber ceiling.
             // A non-finite or pegged reading is not combustion.
@@ -693,6 +710,13 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task ExecuteThrottleUpAsync(CancellationToken cancellationToken)
         {
             Console.WriteLine("[Startup Sequence] 🚀 Throttling up to operating level...");
+
+            // Running does not command these valves again. A faulted valve with a
+            // Ready operating pressure used to take that path and leave the last
+            // open command applied. The same Ready gate as the open commands applies
+            // before the ramp and again before the sequence is allowed to finish.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
 
             var pressureRead = await TryReadStartupSensorAsync(_chamberPressureSensor, cancellationToken)
                 .ConfigureAwait(false);
@@ -713,6 +737,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
             if (IsOperatingPressure(pressure))
             {
                 Console.WriteLine("[Startup Sequence] ✅ Engine running!");
@@ -721,8 +748,10 @@ namespace HB_NLP_Research_Lab.Core.Control
             }
 
             // Still below the operating floor. The delay stands in for the throttle ramp.
+            // Re-check when it ends so a fault during the ramp is not left until the
+            // next pass.
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
-            await ContinueSequenceAsync().ConfigureAwait(false);
+            await RequireStartupActuatorsReadyAsync().ConfigureAwait(false);
         }
         
         private void TransitionToState(StartupState newState)

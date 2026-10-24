@@ -1134,6 +1134,181 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task Ignition_FuelFaultsDuringSpark_DoesNotEnterCombustion()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator
+        {
+            Name = "igniter",
+            OnCommanding = position =>
+            {
+                if (position >= 1)
+                    fuel.Status = ActuatorStatus.Fault;
+
+                return Task.CompletedTask;
+            }
+        };
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        controller.IsStartupComplete.Should().BeFalse();
+        igniter.Positions.Should().Contain(1.0);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("fuel", ActuatorStatus.Fault)]
+    [InlineData("oxidizer", ActuatorStatus.Error)]
+    [InlineData("igniter", ActuatorStatus.AtPosition)]
+    public async Task Combustion_ActuatorNotReady_DoesNotAdvanceAndClosesTheValves(
+        string actuator,
+        ActuatorStatus status)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        ActuatorFor(actuator, fuel, oxidizer, igniter).Status = status;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor { Value = 200_000 },
+            temperature: new StubSensor { Value = 1_500 });
+
+        controller.MoveToState(StartupState.CombustionVerification);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Combustion_ValveFaultsDuringTheWait_DoesNotTreatTheReadingAsVerified()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Value = 200_000,
+                OnReading = () =>
+                {
+                    fuel.Status = ActuatorStatus.Fault;
+                    return Task.FromResult(200_000d);
+                }
+            },
+            temperature: new StubSensor { Value = 1_500 });
+
+        controller.MoveToState(StartupState.CombustionVerification);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("fuel", ActuatorStatus.Fault)]
+    [InlineData("oxidizer", ActuatorStatus.Disabled)]
+    [InlineData("igniter", ActuatorStatus.Moving)]
+    public async Task ThrottleUp_ActuatorNotReady_DoesNotDeclareRunning(
+        string actuator,
+        ActuatorStatus status)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        ActuatorFor(actuator, fuel, oxidizer, igniter).Status = status;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor { Value = StartupSequenceController.MinOperatingPressurePascals });
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_ValveFaultsBeforeTheRunningTransition_DoesNotDeclareRunning()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Value = StartupSequenceController.MinOperatingPressurePascals,
+                OnReading = () =>
+                {
+                    oxidizer.Status = ActuatorStatus.Fault;
+                    return Task.FromResult(StartupSequenceController.MinOperatingPressurePascals);
+                }
+            });
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        controller.IsStartupComplete.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_ReadyActuatorsAndOperatingPressure_DeclaresRunning()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor { Value = StartupSequenceController.MinOperatingPressurePascals });
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Running);
+        controller.IsStartupComplete.Should().BeTrue();
+        controller.HasError.Should().BeFalse();
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Stop_FromRunning_ClosesThePropellantValves()
     {
         var fuel = new RecordingActuator();
