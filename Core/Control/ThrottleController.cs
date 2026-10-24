@@ -97,11 +97,16 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // gate is applied to the sample that was just returned. A thrown read,
                 // including a timeout that is not this loop stopping, is not a sample.
                 // The old catch logged that exception and left the last command applied.
+                // A Ready sensor can still return NaN or infinity. Every comparison with
+                // NaN is false, so that sample used to become zero thrust error and the
+                // loop held the last open command.
                 double currentThrust = 0;
                 var thrustReadFailed = false;
+                var thrustSampleNonFinite = false;
                 try
                 {
                     currentThrust = await _thrustSensor.ReadAsync(cancellationToken).ConfigureAwait(false);
+                    thrustSampleNonFinite = !double.IsFinite(currentThrust);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -118,17 +123,22 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // await _chamberPressureSensor.ReadAsync(cancellationToken);
                 
                 // Closed-loop control uses the thrust sample. A disconnected sensor can
-                // return a cached in-band number, and a failed read returns nothing.
-                // Neither may drive the command. The safe command is closed; the rate
-                // limiter steps toward it. Open-loop does not use the sample, so a
-                // direct throttle command stands even when the read throws.
+                // return a cached in-band number, a failed read returns nothing, and a
+                // non-finite number is not a thrust. None of those may drive the command.
+                // The safe command is closed; the rate limiter steps toward it. Open-loop
+                // does not use the sample, so a direct throttle command stands even when
+                // the read throws or the sample is non-finite.
                 double throttleCommand;
                 if (_targetThrust > 0 &&
-                    (thrustReadFailed || !IsSensorReadyForThrottle(_thrustSensor.Status)))
+                    (thrustReadFailed ||
+                     thrustSampleNonFinite ||
+                     !IsSensorReadyForThrottle(_thrustSensor.Status)))
                 {
                     Console.WriteLine(thrustReadFailed
                         ? "[Throttle Controller] Thrust read failed. Commanding closed."
-                        : $"[Throttle Controller] Thrust sensor not ready: {_thrustSensor.Status}. Commanding closed.");
+                        : thrustSampleNonFinite
+                            ? "[Throttle Controller] Thrust sample is not finite. Commanding closed."
+                            : $"[Throttle Controller] Thrust sensor not ready: {_thrustSensor.Status}. Commanding closed.");
                     throttleCommand = MinThrottle;
                 }
                 else

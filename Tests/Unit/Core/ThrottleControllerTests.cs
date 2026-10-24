@@ -440,6 +440,70 @@ public class ThrottleControllerTests
         actuator.LastPosition.Should().BeApproximately(0.019, 1e-9);
     }
 
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public async Task ClosedLoop_NonFiniteThrust_DoesNotOpenOnTheFirstPass(double thrustValue)
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = thrustValue, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        await controller.ExecuteOnceAsync();
+
+        // A trusted shortfall from closed steps open by the 0.001 rate limit.
+        // NaN compares as zero error, which used to do the same. A non-finite
+        // sample is not a thrust, so the first command stays closed.
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.LastPosition.Should().Be(0);
+        actuator.CommandCount.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    public async Task ClosedLoop_NonFiniteThrust_StepsClosedInsteadOfHolding(double thrustValue)
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        thrust.Value = 1_000_000;
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+        var held = controller.CurrentThrottle;
+        held.Should().BeGreaterThan(0);
+
+        thrust.Value = thrustValue;
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+
+        // Zero error would hold the last command. Both passes step closed.
+        controller.CurrentThrottle.Should().BeApproximately(held - 0.002, 1e-9);
+        actuator.LastPosition.Should().Be(controller.CurrentThrottle);
+    }
+
+    [Fact]
+    public async Task OpenLoop_NonFiniteThrust_StillFollowsTheCommand()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = double.NaN, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.001, 1e-12);
+    }
+
     [Fact]
     public async Task OpenLoop_ThrustReadThrows_StillFollowsTheCommand()
     {

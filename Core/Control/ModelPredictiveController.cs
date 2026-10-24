@@ -49,6 +49,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         internal static bool IsSensorReadyForState(SensorStatus status) =>
             status == SensorStatus.Ready;
+
+        /// <summary>
+        /// A Ready sensor can still return NaN or infinity. That number is not a state.
+        /// </summary>
+        internal static bool IsFiniteStateSample(double value) => double.IsFinite(value);
         
         public ModelPredictiveController(
             IActuator actuator,
@@ -237,12 +242,22 @@ namespace HB_NLP_Research_Lab.Core.Control
             for (int i = 0; i < _sensors.Count; i++)
             {
                 state[i] = await _sensors[i].ReadAsync(cancellationToken);
-                if (IsSensorReadyForState(_sensors[i].Status))
+                if (!IsSensorReadyForState(_sensors[i].Status))
+                {
+                    ready = false;
+                    Console.WriteLine(
+                        $"[MPC Controller] State sensor {_sensors[i].Name} not ready: {_sensors[i].Status}. Commanding closed.");
+                    continue;
+                }
+
+                if (IsFiniteStateSample(state[i]))
                     continue;
 
+                // NaN fails every range check, so the optimizer used to hold the last
+                // accepted command instead of stepping closed the way a thrown read does.
                 ready = false;
                 Console.WriteLine(
-                    $"[MPC Controller] State sensor {_sensors[i].Name} not ready: {_sensors[i].Status}. Commanding closed.");
+                    $"[MPC Controller] State sensor {_sensors[i].Name} returned a non-finite sample. Commanding closed.");
             }
 
             return new StateMeasurement(state, ready);

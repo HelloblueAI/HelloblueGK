@@ -492,6 +492,53 @@ public class ModelPredictiveControllerTests
         actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
     }
 
+    [Theory]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public async Task NonFiniteStateSample_StepsClosedAndDoesNotEnterTheOptimizer(double sample)
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensor);
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+
+        sensor.Value = sample;
+        await controller.ExecuteOnceAsync();
+
+        // A non-finite sample used to fail every comparison and hold the open
+        // command. It is not a state, so the rate limiter steps closed.
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+
+        sensor.Value = 0.2;
+        await controller.ExecuteOnceAsync();
+
+        // The bad sample was not stored, so recovery tracks the reference
+        // one rate step up from the safe command. A stored failure would keep closing.
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+    }
+
+    [Fact]
+    public async Task NonFiniteStateSample_OneChannelRejectsTheWholeSample()
+    {
+        var actuator = new RecordingActuator();
+        var ready = new MutableSensor { Name = "chamber", Value = 0.2, Status = SensorStatus.Ready };
+        var failed = new MutableSensor { Name = "flow", Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(actuator, sensors: new[] { ready, failed });
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+
+        failed.Value = double.NaN;
+        await controller.ExecuteOnceAsync();
+
+        actuator.LastPosition.Should().BeApproximately(0.9, 1e-9);
+    }
+
     [Fact]
     public async Task ReadThatClearsReady_DoesNotEnterTheOptimizer()
     {
