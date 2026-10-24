@@ -1309,6 +1309,50 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task Running_ReadyActuators_StaysRunningWithoutAValveCommand()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Running);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Running);
+        controller.IsStartupComplete.Should().BeTrue();
+        controller.HasError.Should().BeFalse();
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("fuel", ActuatorStatus.Fault)]
+    [InlineData("oxidizer", ActuatorStatus.Error)]
+    [InlineData("igniter", ActuatorStatus.AtPosition)]
+    public async Task Running_ActuatorNotReady_ClosesTheValves(
+        string actuator,
+        ActuatorStatus status)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        ActuatorFor(actuator, fuel, oxidizer, igniter).Status = status;
+        var controller = CreateController(fuel, oxidizer, igniter);
+
+        controller.MoveToState(StartupState.Running);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.IsStartupComplete.Should().BeFalse();
+        controller.HasError.Should().BeTrue();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
     public async Task Stop_FromRunning_ClosesThePropellantValves()
     {
         var fuel = new RecordingActuator();

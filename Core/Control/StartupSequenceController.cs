@@ -318,8 +318,18 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
-            if (CurrentState == StartupState.Idle || CurrentState == StartupState.Running)
+            if (CurrentState == StartupState.Idle)
                 return;
+
+            if (CurrentState == StartupState.Running)
+            {
+                // Startup is otherwise finished, and this loop used to leave the
+                // valves at the last open command until stop or abort. A valve that
+                // faults after the running transition is the same loss of a Ready
+                // actuator as a fault during throttle-up. Stop and abort still close.
+                await RequireStartupActuatorsReadyAsync().ConfigureAwait(false);
+                return;
+            }
             
             var state = CurrentState;
 
@@ -1098,8 +1108,8 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task<bool> SafeValvesOnStopAsync()
         {
             Console.WriteLine("[Startup Sequence] Stopping startup sequence controller");
-            // Idle has not opened a valve. Every other state may have, including Running,
-            // which the control loop otherwise leaves untouched.
+            // Idle has not opened a valve. Every other state may have, including Running.
+            // A Ready running pass does not command the valves; stop still closes them.
             // Latch before the close so the pass still inside a valve command cannot
             // transition back into the sequence when this stop returns.
             bool idle;
