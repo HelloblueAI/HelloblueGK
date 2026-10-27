@@ -103,13 +103,22 @@ namespace HB_NLP_Research_Lab.Core.Control
             && temperature >= MinAmbientTemperatureKelvin
             && temperature <= MaxAmbientTemperatureKelvin;
 
+        /// <summary>
+        /// Combustion temperature is a rise out of the ambient band that stays under the
+        /// chamber ceiling. Throttle-up used to ignore this band: a cold or pegged chamber
+        /// kept the propellant valves open while pressure was still climbing, and an
+        /// operating pressure declared the engine running.
+        /// </summary>
+        internal static bool IsCombustionTemperature(double temperature) =>
+            double.IsFinite(temperature)
+            && temperature >= MinCombustionTemperatureKelvin
+            && temperature <= MaximumChamberTemperatureKelvin;
+
         internal static bool IsCombustionEstablished(double pressure, double temperature) =>
             double.IsFinite(pressure)
             && pressure > MaxAmbientPressurePascals
             && pressure <= MaximumChamberPressurePascals
-            && double.IsFinite(temperature)
-            && temperature >= MinCombustionTemperatureKelvin
-            && temperature <= MaximumChamberTemperatureKelvin;
+            && IsCombustionTemperature(temperature);
 
         /// <summary>
         /// A chamber reading the startup sequence can keep acting on. Negative, non-finite,
@@ -772,6 +781,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                     $"[Startup Sequence] ❌ Combustion not detected: P={pressure}, T={temperature}");
                 return;
             }
+
+            // Flow was last checked before the spark. A pegged or lost propellant flow
+            // with a combustion-like chamber used to advance into throttle-up and leave
+            // the valves at the last open command.
+            if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             Console.WriteLine("[Startup Sequence] ✅ Combustion verified!");
             TransitionToState(StartupState.ThrottleUp);
@@ -810,6 +825,17 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return;
 
+            // Pressure below the operating floor may keep waiting. Temperature and
+            // propellant flow may not: those bands were already required to reach
+            // this state, and this pass used to declare Running from pressure alone.
+            if (!await RequireCombustionTemperatureAsync(cancellationToken).ConfigureAwait(false))
+                return;
+            if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
             if (IsOperatingPressure(pressure))
             {
                 Console.WriteLine("[Startup Sequence] ✅ Engine running!");
@@ -819,9 +845,86 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             // Still below the operating floor. The delay stands in for the throttle ramp.
             // Re-check when it ends so a fault during the ramp is not left until the
-            // next pass.
+            // next pass. A pressure that is still below the floor stays in this state
+            // only while temperature and both flows are still in band.
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            if (!await RequireCombustionTemperatureAsync(cancellationToken).ConfigureAwait(false))
+                return;
+            if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
             await RequireStartupActuatorsReadyAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when chamber temperature is missing, not Ready,
+        /// or outside the combustion band. An abort that already won stays aborted.
+        /// A timeout that is not the loop token fail-closes. Any other read failure escapes.
+        /// </summary>
+        private async Task<bool> RequireCombustionTemperatureAsync(CancellationToken cancellationToken)
+        {
+            var temperatureRead = await TryReadStartupSensorAsync(_chamberTemperatureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!temperatureRead.Completed)
+                return false;
+            if (!await RequireSensorReadyAsync(_chamberTemperatureSensor).ConfigureAwait(false))
+                return false;
+
+            // A valve can fault while this sample is in flight and still leave a hot chamber.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return false;
+
+            if (IsCombustionTemperature(temperatureRead.Value))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ Chamber temperature outside the combustion band: {temperatureRead.Value}")
+                .ConfigureAwait(false);
+            return false;
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when either propellant flow is missing, not Ready,
+        /// or outside the band checked before ignition. An abort that already won stays aborted.
+        /// </summary>
+        private async Task<bool> RequirePropellantFlowsInBandAsync(CancellationToken cancellationToken)
+        {
+            if (!await RequireFlowInBandAsync(
+                    _fuelFlowSensor,
+                    MaximumFuelFlowKgPerSecond,
+                    "Fuel flow",
+                    cancellationToken).ConfigureAwait(false))
+            {
+                return false;
+            }
+
+            return await RequireFlowInBandAsync(
+                _oxidizerFlowSensor,
+                MaximumOxidizerFlowKgPerSecond,
+                "Oxidizer flow",
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<bool> RequireFlowInBandAsync(
+            ISensor<double> sensor,
+            double maximum,
+            string label,
+            CancellationToken cancellationToken)
+        {
+            var flowRead = await TryReadStartupSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
+            if (!flowRead.Completed)
+                return false;
+            if (!await RequireSensorReadyAsync(sensor).ConfigureAwait(false))
+                return false;
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return false;
+
+            if (IsPropellantFlowInBand(flowRead.Value, maximum))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {label} outside the allowed band: {flowRead.Value}")
+                .ConfigureAwait(false);
+            return false;
         }
         
         private void TransitionToState(StartupState newState)
