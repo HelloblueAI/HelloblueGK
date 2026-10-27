@@ -121,6 +121,16 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal static bool IsOperatingPressure(double pressure) =>
             IsPlausibleChamberPressure(pressure) && pressure >= MinOperatingPressurePascals;
 
+        /// <summary>
+        /// Temperature that still shows the combustion verification accepted.
+        /// The running state has no throttle ramp and no deadline, so a cold, pegged,
+        /// or non-finite chamber is not left with the propellant valves open.
+        /// </summary>
+        internal static bool IsRunningChamberTemperature(double temperature) =>
+            double.IsFinite(temperature)
+            && temperature >= MinCombustionTemperatureKelvin
+            && temperature <= MaximumChamberTemperatureKelvin;
+
         internal static bool HasMinimumPropellantFlow(double flow) =>
             double.IsFinite(flow) && flow >= MinimumPropellantFlow;
 
@@ -327,6 +337,26 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // valves at the last open command until stop or abort. A valve that
                 // faults after the running transition is the same loss of a Ready
                 // actuator as a fault during throttle-up. Stop and abort still close.
+                // The bands that authorized this state used to stop at the transition.
+                // A later sample outside those bands, a sensor that is no longer Ready,
+                // or a read that times out on its own token left the valves open.
+                // Throttle-up can wait below the operating floor. This state cannot:
+                // it has no ramp and no deadline. A Ready sample inside the bands
+                // still does not command the valves.
+                if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                    return;
+
+                if (!await RequireRunningChamberPressureAsync(cancellationToken).ConfigureAwait(false))
+                    return;
+                if (!await RequireRunningChamberTemperatureAsync(cancellationToken).ConfigureAwait(false))
+                    return;
+                if (!await RequireRunningFuelFlowAsync(cancellationToken).ConfigureAwait(false))
+                    return;
+                if (!await RequireRunningOxidizerFlowAsync(cancellationToken).ConfigureAwait(false))
+                    return;
+
+                // A valve can fault while the samples are in flight. The next open
+                // is not this pass; the close is.
                 await RequireStartupActuatorsReadyAsync().ConfigureAwait(false);
                 return;
             }
@@ -834,6 +864,61 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return false;
 
             return await RequireActuatorReadyAsync(_igniter).ConfigureAwait(false);
+        }
+
+        private Task<bool> RequireRunningChamberPressureAsync(CancellationToken cancellationToken) =>
+            RequireRunningMeasurementAsync(
+                _chamberPressureSensor,
+                IsOperatingPressure,
+                "Chamber pressure outside the allowed band",
+                cancellationToken);
+
+        private Task<bool> RequireRunningChamberTemperatureAsync(CancellationToken cancellationToken) =>
+            RequireRunningMeasurementAsync(
+                _chamberTemperatureSensor,
+                IsRunningChamberTemperature,
+                "Chamber temperature outside the allowed band",
+                cancellationToken);
+
+        private Task<bool> RequireRunningFuelFlowAsync(CancellationToken cancellationToken) =>
+            RequireRunningMeasurementAsync(
+                _fuelFlowSensor,
+                flow => IsPropellantFlowInBand(flow, MaximumFuelFlowKgPerSecond),
+                "Fuel flow outside the allowed band",
+                cancellationToken);
+
+        private Task<bool> RequireRunningOxidizerFlowAsync(CancellationToken cancellationToken) =>
+            RequireRunningMeasurementAsync(
+                _oxidizerFlowSensor,
+                flow => IsPropellantFlowInBand(flow, MaximumOxidizerFlowKgPerSecond),
+                "Oxidizer flow outside the allowed band",
+                cancellationToken);
+
+        /// <summary>
+        /// Returns false after fail-closed when a running sample is missing, not Ready,
+        /// or outside the band that authorized this state. An abort that already won
+        /// stays aborted. A timeout that is not the loop token fail-closes here.
+        /// Any other read exception still escapes so stop can report that fault.
+        /// </summary>
+        private async Task<bool> RequireRunningMeasurementAsync(
+            ISensor<double> sensor,
+            Func<double, bool> inBand,
+            string outsideBandMessage,
+            CancellationToken cancellationToken)
+        {
+            var sample = await TryReadStartupSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
+            if (!sample.Completed)
+                return false;
+
+            if (!await RequireSensorReadyAsync(sensor).ConfigureAwait(false))
+                return false;
+
+            if (inBand(sample.Value))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {outsideBandMessage}: {sample.Value}").ConfigureAwait(false);
+            return false;
         }
 
         private async Task<bool> RequireActuatorReadyAsync(IActuator actuator)
