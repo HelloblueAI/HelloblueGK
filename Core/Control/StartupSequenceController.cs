@@ -566,6 +566,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Do not admit fuel to measure a sensor that is already not Ready.
             if (!await RequireSensorReadyAsync(_fuelFlowSensor).ConfigureAwait(false))
                 return;
+
+            // Pre-start is the last time the chamber was required to be ambient.
+            // Purge does not read it again. A rise, a pegged or non-finite sample,
+            // or a sensor that is no longer Ready must not be the chamber fuel is
+            // admitted into.
+            if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             // Open fuel valve gradually. If abort closed the valve while this command
             // was in flight, do not leave the late open applied or advance the sequence.
@@ -593,6 +600,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                 await FailClosedAsync($"[Startup Sequence] ❌ Fuel flow outside the allowed band: {fuelFlow}");
                 return;
             }
+
+            // The chamber can leave the ambient band during the flow wait. Oxidizer
+            // admission is the next hazardous command, and it must not be reached
+            // on a stale pre-start sample.
+            if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             TransitionToState(StartupState.OxidizerFlowInitiation);
         }
@@ -605,6 +618,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
 
             if (!await RequireSensorReadyAsync(_oxidizerFlowSensor).ConfigureAwait(false))
+                return;
+
+            // Fuel is already open. The chamber sample that allowed that open is
+            // stale. A hot, pressurized, pegged, or unread chamber must not receive
+            // oxidizer.
+            if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
             // Open oxidizer valve gradually
@@ -631,6 +650,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 await FailClosedAsync($"[Startup Sequence] ❌ Oxidizer flow outside the allowed band: {oxidizerFlow}");
                 return;
             }
+
+            // Both propellant valves are open. Recheck the chamber before the
+            // spark state, including a sample that changed during this wait.
+            if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             TransitionToState(StartupState.Ignition);
         }
@@ -642,6 +666,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             // A faulted igniter must not be sparked. The later off command is still
             // attempted when a spark was already accepted.
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
+            // Combustion is a rise out of the ambient band after this pulse. A chamber
+            // that has already left that band, or a sensor that can no longer show it,
+            // must not be sparked.
+            if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
             // Activate igniter. A late spark command must not stay on after abort.
@@ -891,6 +921,41 @@ namespace HB_NLP_Research_Lab.Core.Control
             public static StartupSensorSample Success(double value) => new(true, value);
 
             public static StartupSensorSample TimedOut() => new(false, 0);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when the chamber is no longer a Ready ambient sample.
+        /// Fuel, oxidizer, and the igniter are commanded only while this is still the chamber
+        /// pre-start accepted. An abort that already won is left as abort.
+        /// A timeout that is not the loop token fail-closes. Any other read failure still escapes.
+        /// </summary>
+        private async Task<bool> RequireAmbientChamberAsync(CancellationToken cancellationToken)
+        {
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
+                return false;
+
+            var pressureRead = await TryReadStartupSensorAsync(_chamberPressureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!pressureRead.Completed)
+                return false;
+
+            var temperatureRead = await TryReadStartupSensorAsync(_chamberTemperatureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!temperatureRead.Completed)
+                return false;
+
+            if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
+                return false;
+            if (!await RequireSensorReadyAsync(_chamberTemperatureSensor).ConfigureAwait(false))
+                return false;
+
+            if (IsAmbientPressure(pressureRead.Value) && IsAmbientTemperature(temperatureRead.Value))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ Chamber left the ambient band: P={pressureRead.Value}, T={temperatureRead.Value}")
+                .ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
