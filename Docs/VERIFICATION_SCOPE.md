@@ -26,7 +26,7 @@ code it purports to verify is evidence of nothing.
 | Readiness decision logic | Mission-level requirement tables never relax as missions get stricter, go/no-go thresholds are inclusive at the boundary, critical categories are genuinely weighted | `Tests/Unit/Aerospace/AerospaceReadinessAssessmentTests.cs` |
 | Engine model polymorphism | Every engine reports its performance envelope through `RocketEngineBase` | `Tests/Unit/Aerospace/EngineModelTests.cs` |
 | CFD solver contract | Full decision coverage of `AdvancedCFDSolver`, including the self-initialising path | `Tests/Unit/Physics/PhysicsSolverContractTests.cs` |
-| Ideal rocket nozzle | Quasi-1D isentropic nozzle solution validated against published specific impulse for Merlin 1D at sea level, Raptor at sea level, and RS-25 at sea level and in vacuum, plus the RS-25 vacuum-to-sea-level thrust ratio. Each number cites its source in `PublishedNozzleReference`. Scale invariance, expansion monotonicity, and the sign of the pressure term are pinned | `Tests/Unit/Physics/IdealRocketNozzleTests.cs`, `Tests/Unit/Physics/NozzleFlowSolverTests.cs` |
+| Ideal rocket nozzle | Quasi-1D isentropic nozzle solution validated against published specific impulse for Merlin 1D at sea level, Raptor at sea level, RS-25 at sea level and in vacuum, and RL10A-4-2 and RL10B-2 in vacuum (area ratio 285 for RL10B-2), plus the RS-25 vacuum-to-sea-level thrust ratio. Each number cites its source in `PublishedNozzleReference`. Scale invariance, expansion monotonicity, and the sign of the pressure term are pinned | `Tests/Unit/Physics/IdealRocketNozzleTests.cs`, `Tests/Unit/Physics/NozzleFlowSolverTests.cs` |
 
 ### Defects this verification found
 
@@ -109,8 +109,10 @@ specific impulse, mass flow, characteristic velocity, and exit conditions.
 
 The relations are validated rather than merely self-consistent: using published chamber
 conditions and area ratios, computed specific impulse stays inside 3% of the published figures
-and never under them. The points are Merlin 1D at sea level, Raptor at sea level, and RS-25 at 109 percent both in
-vacuum and at sea level. The RS-25 vacuum-to-sea-level thrust ratio is checked as well.
+and never under them. The points are Merlin 1D at sea level, Raptor at sea level, RS-25 at 109 percent both in
+vacuum and at sea level, and RL10A-4-2 and RL10B-2 in vacuum (area ratio 285 for RL10B-2).
+The RS-25 vacuum-to-sea-level thrust ratio is checked as well. See
+[VALIDATION_AND_BENCHMARKS.md](Technical/VALIDATION_AND_BENCHMARKS.md) for the published numbers and sources.
 Underprediction would indicate an error in the algebra or the propellant properties, because
 every loss the ideal model neglects reduces real performance. The build fails when a point
 leaves that band. HB-NLP-REV-001 is not one of these points: its 3.5 MN and 351.5 s are the
