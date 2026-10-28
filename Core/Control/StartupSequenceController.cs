@@ -664,6 +664,11 @@ namespace HB_NLP_Research_Lab.Core.Control
             // oxidizer.
             if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
                 return;
+
+            // Fuel flow was last checked before this state. A pegged, lost, non-finite,
+            // or not-Ready sample must not be the flow oxidizer is admitted beside.
+            if (!await RequireFuelFlowInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             // Open oxidizer valve gradually
             if (!await CommandIfSequenceActiveAsync(_oxidizerValve, 0.1, cancellationToken).ConfigureAwait(false))
@@ -690,6 +695,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
+            // Fuel can leave the band during this wait. The spark state must not
+            // be reached on the sample that only authorized the fuel valve.
+            if (!await RequireFuelFlowInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
             // Both propellant valves are open. Recheck the chamber before the
             // spark state, including a sample that changed during this wait.
             if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
@@ -711,6 +721,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             // that has already left that band, or a sensor that can no longer show it,
             // must not be sparked.
             if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
+            // Both flows were last checked before this state. A pegged, lost,
+            // non-finite, or not-Ready sample must not be the flow this spark is
+            // fired into. The rise after the pulse is still combustion verification.
+            if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
             // Activate igniter. A late spark command must not stay on after abort.
@@ -884,25 +900,35 @@ namespace HB_NLP_Research_Lab.Core.Control
 
         /// <summary>
         /// Returns false after fail-closed when either propellant flow is missing, not Ready,
-        /// or outside the band checked before ignition. An abort that already won stays aborted.
+        /// or outside the band that authorized ignition. An abort that already won stays aborted.
+        /// A timeout that is not the loop token fail-closes. Any other read failure escapes.
         /// </summary>
         private async Task<bool> RequirePropellantFlowsInBandAsync(CancellationToken cancellationToken)
         {
-            if (!await RequireFlowInBandAsync(
-                    _fuelFlowSensor,
-                    MaximumFuelFlowKgPerSecond,
-                    "Fuel flow",
-                    cancellationToken).ConfigureAwait(false))
-            {
+            if (!await RequireFuelFlowInBandAsync(cancellationToken).ConfigureAwait(false))
                 return false;
-            }
 
-            return await RequireFlowInBandAsync(
+            return await RequireOxidizerFlowInBandAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when fuel flow is missing, not Ready, or outside
+        /// the band that authorized opening the fuel valve. Oxidizer admission and the spark
+        /// both call this. An abort that already won stays aborted.
+        /// </summary>
+        private Task<bool> RequireFuelFlowInBandAsync(CancellationToken cancellationToken) =>
+            RequireFlowInBandAsync(
+                _fuelFlowSensor,
+                MaximumFuelFlowKgPerSecond,
+                "Fuel flow",
+                cancellationToken);
+
+        private Task<bool> RequireOxidizerFlowInBandAsync(CancellationToken cancellationToken) =>
+            RequireFlowInBandAsync(
                 _oxidizerFlowSensor,
                 MaximumOxidizerFlowKgPerSecond,
                 "Oxidizer flow",
-                cancellationToken).ConfigureAwait(false);
-        }
+                cancellationToken);
 
         private async Task<bool> RequireFlowInBandAsync(
             ISensor<double> sensor,
