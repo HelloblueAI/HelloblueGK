@@ -1921,6 +1921,231 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_ActuatorCommandThrows_FailClosesAndDoesNotContinue()
+    {
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    throw new InvalidOperationException("fuel valve command failed");
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        fuel.LastPosition.Should().Be(0);
+        fuel.Positions.Should().OnlyContain(position => position == 0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        oxidizer.Positions.Any(position => position > 0).Should().BeFalse();
+        igniter.Positions.Any(position => position > 0).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FuelFlow_ActuatorCommandThrows_LeavesTheControlLoopRunning()
+    {
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    throw new InvalidOperationException("fuel valve command failed");
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(fuel, oxidizer, igniter, fuelFlow: new StubSensor { Value = 1 });
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+
+        await controller.StartAsync();
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning
+                && controller.CurrentState == StartupState.Error
+                && fuel.CloseAttempts >= 2,
+            TimeSpan.FromSeconds(5));
+        continued.Should().BeTrue();
+        controller.IsRunning.Should().BeTrue();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.Dispose();
+    }
+
+    [Fact]
+    public async Task FuelFlow_ActuatorCommandThrowsAndCloseFails_RetriesTheShutdown()
+    {
+        var closes = 0;
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    throw new InvalidOperationException("fuel valve command failed");
+
+                closes++;
+                if (closes == 1)
+                    throw new InvalidOperationException("fuel valve rejected close");
+
+                return Task.CompletedTask;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        closes.Should().Be(1);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+
+        await controller.ExecuteOnceAsync();
+
+        closes.Should().Be(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(2);
+        igniter.CommandCount.Should().Be(2);
+        controller.CurrentState.Should().Be(StartupState.Error);
+    }
+
+    [Fact]
+    public async Task FuelFlow_ActuatorCommandThrowsAfterAbort_StaysAborted()
+    {
+        StartupSequenceController? controller = null;
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position <= 0)
+                    return Task.CompletedTask;
+
+                controller!.AbortStartup();
+                throw new InvalidOperationException("fuel valve command failed");
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.HasError.Should().BeFalse();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task OxidizerFlow_ActuatorCommandThrows_FailClosesAndDoesNotIgnite()
+    {
+        var oxidizer = new RecordingActuator
+        {
+            Name = "oxidizer",
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    throw new InvalidOperationException("oxidizer valve command failed");
+
+                return Task.CompletedTask;
+            }
+        };
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.OxidizerFlowInitiation);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Ignition);
+        oxidizer.LastPosition.Should().Be(0);
+        oxidizer.Positions.Should().OnlyContain(position => position == 0);
+        fuel.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        igniter.Positions.Any(position => position > 0).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Ignition_IgniterOffThrows_FailClosesAndDoesNotEnterCombustion()
+    {
+        var offAttempts = 0;
+        var igniter = new RecordingActuator
+        {
+            Name = "igniter",
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    return Task.CompletedTask;
+
+                offAttempts++;
+                if (offAttempts == 1)
+                    throw new InvalidOperationException("igniter off failed");
+
+                return Task.CompletedTask;
+            }
+        };
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1.0);
+        igniter.LastPosition.Should().Be(0);
+        offAttempts.Should().BeGreaterThanOrEqualTo(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
     public async Task FuelFlow_CancelledActuatorCommand_PropagatesAndDoesNotFailClosed()
     {
         var fuel = new RecordingActuator();
