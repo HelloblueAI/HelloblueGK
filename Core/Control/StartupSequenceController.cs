@@ -1277,6 +1277,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             // The base loop treats every one of those as a clean stop, so IsRunning stayed
             // true and the safe close ran only once. A refused command already fail-closes
             // and the next pass retries. A timeout that is not the loop token must do the same.
+            // Any other throw used to take that stop path too. The spark could already be
+            // on, or a propellant valve already open, and a close that failed on the way
+            // out was not retried. A sensor read that throws already fail-closes.
             bool accepted;
             try
             {
@@ -1290,6 +1293,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             {
                 await FailClosedAsync(
                     $"[Startup Sequence] ❌ {actuator.Name} command {position} timed out").ConfigureAwait(false);
+                return false;
+            }
+            // codeql[generic-catch-clause]: A thrown valve or igniter command must fail closed and stay in the loop.
+            catch (Exception ex)
+            {
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ {actuator.Name} command {position} failed: {ex.Message}").ConfigureAwait(false);
                 return false;
             }
 
