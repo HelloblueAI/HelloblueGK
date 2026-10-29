@@ -217,6 +217,13 @@ namespace HB_NLP_Research_Lab.Core.Control
                 { StartupState.Purge, TimeSpan.FromSeconds(10) },
                 { StartupState.FuelFlowInitiation, TimeSpan.FromSeconds(5) },
                 { StartupState.OxidizerFlowInitiation, TimeSpan.FromSeconds(5) },
+                // Ignition stays at 3 s. The pass is the existing 0.5 s pulse, two chamber
+                // reads, and four flow reads (both propellants before the spark and again
+                // when the pulse ends). This sequence runs at 10 Hz, so a healthy read fits
+                // in one 100 ms period: about 1.1 s for the whole pass. Oxidizer admission
+                // stays at 5 s. Its 1 s wait plus seven sensor reads, two of them the added
+                // fuel checks, is about 1.7 s at that same period. Lengthening either budget
+                // would loosen the interlock.
                 { StartupState.Ignition, TimeSpan.FromSeconds(3) },
                 { StartupState.CombustionVerification, TimeSpan.FromSeconds(5) },
                 { StartupState.ThrottleUp, TimeSpan.FromSeconds(10) },
@@ -695,8 +702,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
-            // Fuel can leave the band during this wait. The spark state must not
-            // be reached on the sample that only authorized the fuel valve.
+            // Fuel can leave the band during this wait. Fail closed before entering
+            // Ignition. The pre-spark read is not a substitute for this one: it runs
+            // on a later loop tick, after the chamber read below, and a departure in
+            // that gap would otherwise be carried into the spark state.
             if (!await RequireFuelFlowInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
 
@@ -723,9 +732,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
                 return;
 
-            // Both flows were last checked before this state. A pegged, lost,
-            // non-finite, or not-Ready sample must not be the flow this spark is
-            // fired into. The rise after the pulse is still combustion verification.
+            // Oxidizer admission already required fuel to be in band, including at the
+            // end of its wait, so a bad fuel sample never enters this state. This read
+            // is the one that authorizes the spark. The loop gap and the chamber reads
+            // above sit between the two checks, and oxidizer flow was not part of that
+            // earlier fuel check. A pegged, lost, non-finite, or not-Ready sample must
+            // not be the flow this spark is fired into.
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
@@ -745,6 +757,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Ready. A fuel or oxidizer fault during the pulse must not be carried
             // into combustion with the propellant valves still open.
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
+            // The pulse is one 0.5 s wait, so flow is sampled at the end of it rather
+            // than by a second monitor while the igniter is on. Combustion verification
+            // then waits another second before it reads flow. A sample that leaves the
+            // band during the pulse fail-closes here, before that wait.
+            if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
             TransitionToState(StartupState.CombustionVerification);

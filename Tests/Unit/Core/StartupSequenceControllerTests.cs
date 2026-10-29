@@ -1205,6 +1205,98 @@ public class StartupSequenceControllerTests
         oxidizer.CommandCount.Should().Be(0);
     }
 
+    [Fact]
+    public async Task Ignition_SlowHealthySensors_SparkWithinTheExistingBudget()
+    {
+        // The startup sequence is 10 Hz, so a healthy sample fits in one 100 ms period.
+        // This pass reads the chamber twice and both flows twice, then holds the 0.5 s pulse.
+        // 6 * 100 ms + 500 ms is about 1.1 s, inside the 3 s ignition interlock.
+        var samplePeriod = TimeSpan.FromMilliseconds(100);
+        StubSensor Slow(string name, double value) => new()
+        {
+            Name = name,
+            OnReading = async () =>
+            {
+                await Task.Delay(samplePeriod);
+                return value;
+            }
+        };
+
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: Slow("chamber pressure", StandardAtmospherePascals),
+            temperature: Slow("chamber temperature", 293.15),
+            fuelFlow: Slow("fuel flow", 1),
+            oxidizerFlow: Slow("oxidizer flow", 1));
+
+        controller.MoveToState(StartupState.Ignition);
+        var elapsed = Stopwatch.StartNew();
+        await controller.ExecuteOnceAsync();
+        elapsed.Stop();
+
+        elapsed.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(3));
+        controller.CurrentState.Should().Be(StartupState.CombustionVerification);
+        controller.HasError.Should().BeFalse();
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData("fuel")]
+    [InlineData("oxidizer")]
+    public async Task Ignition_FlowLeavesTheBandDuringTheSparkPulse_DoesNotEnterCombustion(string sensor)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var fuelReads = 0;
+        var oxidizerReads = 0;
+        var fuelFlow = new StubSensor
+        {
+            Name = "fuel flow",
+            OnReading = () =>
+            {
+                fuelReads++;
+                var inBand = sensor != "fuel" || fuelReads == 1;
+                return Task.FromResult(inBand ? 1d : double.MaxValue);
+            }
+        };
+        var oxidizerFlow = new StubSensor
+        {
+            Name = "oxidizer flow",
+            OnReading = () =>
+            {
+                oxidizerReads++;
+                var inBand = sensor != "oxidizer" || oxidizerReads == 1;
+                return Task.FromResult(inBand ? 1d : double.MaxValue);
+            }
+        };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: fuelFlow,
+            oxidizerFlow: oxidizerFlow);
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        (sensor == "fuel" ? fuelReads : oxidizerReads).Should().Be(2);
+    }
+
     [Theory]
     [InlineData("fuel", 0d)]
     [InlineData("fuel", -1d)]
