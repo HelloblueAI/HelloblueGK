@@ -7,6 +7,27 @@ using HB_NLP_Research_Lab.Core.Hardware;
 
 namespace HB_NLP_Research_Lab.Core.Control
 {
+    internal interface IStartupSequenceClock
+    {
+        DateTime UtcNow { get; }
+
+        Task Delay(TimeSpan delay, CancellationToken cancellationToken);
+    }
+
+    internal sealed class SystemStartupSequenceClock : IStartupSequenceClock
+    {
+        public static SystemStartupSequenceClock Instance { get; } = new();
+
+        private SystemStartupSequenceClock()
+        {
+        }
+
+        public DateTime UtcNow => DateTime.UtcNow;
+
+        public Task Delay(TimeSpan delay, CancellationToken cancellationToken) =>
+            Task.Delay(delay, cancellationToken);
+    }
+
     /// <summary>
     /// Engine startup sequence controller
     /// Manages the complex startup sequence with safety checks
@@ -20,6 +41,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         private readonly ISensor<double> _chamberTemperatureSensor;
         private readonly ISensor<double> _fuelFlowSensor;
         private readonly ISensor<double> _oxidizerFlowSensor;
+        private readonly IStartupSequenceClock _clock;
         
         private readonly object _stateGate = new();
         private StartupState _currentState = StartupState.Idle;
@@ -177,7 +199,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             lock (_stateGate)
             {
                 _currentState = state;
-                _stateStartTime = DateTime.UtcNow;
+                _stateStartTime = _clock.UtcNow;
                 _sequenceClosed = state is StartupState.Aborted or StartupState.Error;
             }
         }
@@ -200,7 +222,29 @@ namespace HB_NLP_Research_Lab.Core.Control
             ISensor<double> chamberTemperatureSensor,
             ISensor<double> fuelFlowSensor,
             ISensor<double> oxidizerFlowSensor,
-            int frequencyHz = 10) : base(frequencyHz)
+            int frequencyHz = 10) : this(
+                fuelValve,
+                oxidizerValve,
+                igniter,
+                chamberPressureSensor,
+                chamberTemperatureSensor,
+                fuelFlowSensor,
+                oxidizerFlowSensor,
+                frequencyHz,
+                SystemStartupSequenceClock.Instance)
+        {
+        }
+
+        internal StartupSequenceController(
+            IActuator fuelValve,
+            IActuator oxidizerValve,
+            IActuator igniter,
+            ISensor<double> chamberPressureSensor,
+            ISensor<double> chamberTemperatureSensor,
+            ISensor<double> fuelFlowSensor,
+            ISensor<double> oxidizerFlowSensor,
+            int frequencyHz,
+            IStartupSequenceClock clock) : base(frequencyHz)
         {
             _fuelValve = fuelValve ?? throw new ArgumentNullException(nameof(fuelValve));
             _oxidizerValve = oxidizerValve ?? throw new ArgumentNullException(nameof(oxidizerValve));
@@ -209,6 +253,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             _chamberTemperatureSensor = chamberTemperatureSensor ?? throw new ArgumentNullException(nameof(chamberTemperatureSensor));
             _fuelFlowSensor = fuelFlowSensor ?? throw new ArgumentNullException(nameof(fuelFlowSensor));
             _oxidizerFlowSensor = oxidizerFlowSensor ?? throw new ArgumentNullException(nameof(oxidizerFlowSensor));
+            _clock = clock ?? throw new ArgumentNullException(nameof(clock));
             
             // Define state timeouts
             _stateTimeouts = new Dictionary<StartupState, TimeSpan>
@@ -243,7 +288,7 @@ namespace HB_NLP_Research_Lab.Core.Control
 
                 _sequenceClosed = false;
                 _currentState = StartupState.PreStartupChecks;
-                _stateStartTime = DateTime.UtcNow;
+                _stateStartTime = _clock.UtcNow;
             }
 
             Console.WriteLine("[Startup Sequence] 🚀 Beginning engine startup sequence");
@@ -320,7 +365,7 @@ namespace HB_NLP_Research_Lab.Core.Control
 
                 _sequenceClosed = true;
                 _currentState = StartupState.Aborted;
-                _stateStartTime = DateTime.UtcNow;
+                _stateStartTime = _clock.UtcNow;
             }
 
             Console.WriteLine("[Startup Sequence] ⛔ Aborting startup sequence");
@@ -414,9 +459,8 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             var stateCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            stateCts.CancelAfter(remaining);
             var stateWork = ExecuteCurrentStateAsync(state, stateCts.Token);
-            var deadline = Task.Delay(remaining, deadlineCts.Token);
+            var deadline = _clock.Delay(remaining, deadlineCts.Token);
             try
             {
                 await Task.WhenAny(stateWork, deadline).ConfigureAwait(false);
@@ -508,7 +552,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             lock (_stateGate)
                 started = _stateStartTime;
 
-            remaining = timeout - (DateTime.UtcNow - started);
+            remaining = timeout - (_clock.UtcNow - started);
             if (remaining < TimeSpan.Zero)
                 remaining = TimeSpan.Zero;
             return true;
@@ -593,7 +637,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             
             // Open purge valves (simplified - would need purge valve actuator)
             // For now, just wait for purge duration
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await _clock.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return;
             
@@ -625,7 +669,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!await CommandIfSequenceActiveAsync(_fuelValve, 0.1, cancellationToken).ConfigureAwait(false))
                 return;
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await _clock.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return;
             
@@ -681,7 +725,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!await CommandIfSequenceActiveAsync(_oxidizerValve, 0.1, cancellationToken).ConfigureAwait(false))
                 return;
 
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await _clock.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return;
             
@@ -745,7 +789,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!await CommandIfSequenceActiveAsync(_igniter, 1.0, cancellationToken).ConfigureAwait(false))
                 return;
 
-            await Task.Delay(TimeSpan.FromSeconds(0.5), cancellationToken);
+            await _clock.Delay(TimeSpan.FromSeconds(0.5), cancellationToken);
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return;
             
@@ -781,7 +825,7 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             
             // Wait for combustion to establish
-            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken);
+            await _clock.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return;
             
@@ -882,7 +926,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Re-check when it ends so a fault during the ramp is not left until the
             // next pass. A pressure that is still below the floor stays in this state
             // only while temperature and both flows are still in band.
-            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            await _clock.Delay(TimeSpan.FromSeconds(2), cancellationToken);
             if (!await RequireCombustionTemperatureAsync(cancellationToken).ConfigureAwait(false))
                 return;
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
@@ -893,7 +937,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// <summary>
         /// Returns false after fail-closed when chamber temperature is missing, not Ready,
         /// or outside the combustion band. An abort that already won stays aborted.
-        /// A timeout that is not the loop token fail-closes. Any other read failure escapes.
+        /// A timeout or read failure that is not the loop token fail-closes.
         /// </summary>
         private async Task<bool> RequireCombustionTemperatureAsync(CancellationToken cancellationToken)
         {
@@ -920,7 +964,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// <summary>
         /// Returns false after fail-closed when either propellant flow is missing, not Ready,
         /// or outside the band that authorized ignition. An abort that already won stays aborted.
-        /// A timeout that is not the loop token fail-closes. Any other read failure escapes.
+        /// A timeout or read failure that is not the loop token fail-closes.
         /// </summary>
         private async Task<bool> RequirePropellantFlowsInBandAsync(CancellationToken cancellationToken)
         {
@@ -984,7 +1028,7 @@ namespace HB_NLP_Research_Lab.Core.Control
 
                 Console.WriteLine($"[Startup Sequence] Transitioning: {_currentState} → {newState}");
                 _currentState = newState;
-                _stateStartTime = DateTime.UtcNow;
+                _stateStartTime = _clock.UtcNow;
             }
         }
         
@@ -1001,7 +1045,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             if (!_stateTimeouts.TryGetValue(state, out var timeout))
                 return false;
             
-            var elapsed = DateTime.UtcNow - started;
+            var elapsed = _clock.UtcNow - started;
             return elapsed > timeout;
         }
         
@@ -1016,7 +1060,7 @@ namespace HB_NLP_Research_Lab.Core.Control
                 if (_currentState != StartupState.Aborted)
                 {
                     _currentState = StartupState.Error;
-                    _stateStartTime = DateTime.UtcNow;
+                    _stateStartTime = _clock.UtcNow;
                 }
             }
 
@@ -1075,8 +1119,8 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// <summary>
         /// Returns false after fail-closed when a running sample is missing, not Ready,
         /// or outside the band that authorized this state. An abort that already won
-        /// stays aborted. A timeout that is not the loop token fail-closes here.
-        /// Any other read exception still escapes so stop can report that fault.
+        /// stays aborted. A timeout or read failure that is not the loop token
+        /// fail-closes here.
         /// </summary>
         private async Task<bool> RequireRunningMeasurementAsync(
             ISensor<double> sensor,
@@ -1116,8 +1160,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// and closes the valves only once. A timeout that is not the loop token is
         /// the same loss of measurement as a sensor that is not Ready: fail-close on
         /// this pass, and let the closed-state loop retry a close that did not land.
-        /// Any other exception still escapes so stop can report that fault together
-        /// with a valve that stayed open.
+        /// A sensor exception is handled the same way.
         /// </summary>
         private async Task<StartupSensorSample> TryReadStartupSensorAsync(
             ISensor<double> sensor,
@@ -1136,6 +1179,12 @@ namespace HB_NLP_Research_Lab.Core.Control
             {
                 await FailClosedAsync(
                     $"[Startup Sequence] ❌ {sensor.Name} read timed out").ConfigureAwait(false);
+                return StartupSensorSample.TimedOut();
+            }
+            catch (Exception ex)
+            {
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ {sensor.Name} read failed: {ex.Message}").ConfigureAwait(false);
                 return StartupSensorSample.TimedOut();
             }
         }
@@ -1160,7 +1209,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// Returns false after fail-closed when the chamber is no longer a Ready ambient sample.
         /// Fuel, oxidizer, and the igniter are commanded only while this is still the chamber
         /// pre-start accepted. An abort that already won is left as abort.
-        /// A timeout that is not the loop token fail-closes. Any other read failure still escapes.
+        /// A timeout or read failure that is not the loop token fail-closes.
         /// </summary>
         private async Task<bool> RequireAmbientChamberAsync(CancellationToken cancellationToken)
         {
@@ -1218,7 +1267,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             double position,
             CancellationToken cancellationToken)
         {
-            if (_sequenceClosed)
+            if (!await ContinueSequenceAsync().ConfigureAwait(false))
                 return false;
 
             // A false return is a refused move, not a completed one. Fuel and oxidizer
@@ -1262,7 +1311,18 @@ namespace HB_NLP_Research_Lab.Core.Control
         private async Task<bool> ContinueSequenceAsync()
         {
             if (!_sequenceClosed)
+            {
+                var state = CurrentState;
+                if (TryGetRemainingStateBudget(state, out var remaining)
+                    && remaining <= TimeSpan.Zero)
+                {
+                    await FailClosedAsync($"[Startup Sequence] ⚠️ State {state} timed out")
+                        .ConfigureAwait(false);
+                    return false;
+                }
+
                 return true;
+            }
 
             await PerformShutdownAsync().ConfigureAwait(false);
             return false;
@@ -1392,7 +1452,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             Console.WriteLine($"[Startup Sequence] Starting startup sequence controller at {LoopFrequencyHz} Hz");
             lock (_stateGate)
-                _stateStartTime = DateTime.UtcNow;
+                _stateStartTime = _clock.UtcNow;
             return Task.CompletedTask;
         }
 
@@ -1427,7 +1487,7 @@ namespace HB_NLP_Research_Lab.Core.Control
                 if (_currentState != StartupState.Error && _currentState != StartupState.Aborted)
                 {
                     _currentState = StartupState.Aborted;
-                    _stateStartTime = DateTime.UtcNow;
+                    _stateStartTime = _clock.UtcNow;
                 }
             }
 
