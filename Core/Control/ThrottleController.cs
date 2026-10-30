@@ -152,8 +152,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // instead of passing NaN through Math.Clamp, which returns NaN.
                 throttleCommand = ConstrainThrottleCommand(throttleCommand);
                 
-                // A false return or an actuator timeout did not land. Leave the last
-                // accepted position in place so the next pass retries the same step.
+                // A false return, a timeout, or any other thrown command did not land.
+                // Leave the last accepted position in place so the next pass retries
+                // the same step. A throw is the same miss as a timeout: the loop stays
+                // up and the open command is not left without a rejection.
                 var success = await TrySetThrottlePositionAsync(throttleCommand, cancellationToken);
                 
                 if (success)
@@ -277,6 +279,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// every exception of that type as a clean stop, leaves <c>IsRunning</c> true,
         /// and closes only once. An actuator that times out on its own token is not
         /// the loop stopping, so the miss stays in this pass and the next one retries.
+        /// Any other throw used to reach the outer log-only catch. That pass did not
+        /// count an actuator error, so a close that failed left the last open command
+        /// applied without the same retry accounting as a timeout.
         /// </summary>
         private async Task<bool> TrySetThrottlePositionAsync(
             double throttleCommand,
@@ -292,6 +297,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                 throw;
             }
             catch (OperationCanceledException ex)
+            {
+                OnControlError(ex);
+                return false;
+            }
+            // codeql[generic-catch-clause]: A thrown throttle command is a miss, not a loop stop.
+            catch (Exception ex)
             {
                 OnControlError(ex);
                 return false;
