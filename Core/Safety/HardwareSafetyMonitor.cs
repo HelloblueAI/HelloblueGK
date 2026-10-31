@@ -24,6 +24,7 @@ namespace HB_NLP_Research_Lab.Core.Safety
         private string _pendingShutdownReason = string.Empty;
         private readonly int _emergencyShutdownFailureEscalationThreshold;
         private readonly int _emergencyShutdownFailureLogInterval;
+        private readonly TimeSpan _sensorReadTimeout;
         private int _consecutiveShutdownCommandFailures = 0;
         private bool _shutdownFailureEscalated = false;
         private readonly object _lock = new object();
@@ -78,7 +79,8 @@ namespace HB_NLP_Research_Lab.Core.Safety
             IActuator? emergencyShutdownActuator = null,
             int frequencyHz = 100,
             int emergencyShutdownFailureEscalationThreshold = 3,
-            int emergencyShutdownFailureLogInterval = 10) : base(frequencyHz)
+            int emergencyShutdownFailureLogInterval = 10,
+            TimeSpan? sensorReadTimeout = null) : base(frequencyHz)
         {
             _criticalSensors = criticalSensors ?? throw new ArgumentNullException(nameof(criticalSensors));
             _emergencyShutdownActuator = emergencyShutdownActuator;
@@ -98,6 +100,7 @@ namespace HB_NLP_Research_Lab.Core.Safety
 
             _emergencyShutdownFailureEscalationThreshold = emergencyShutdownFailureEscalationThreshold;
             _emergencyShutdownFailureLogInterval = emergencyShutdownFailureLogInterval;
+            _sensorReadTimeout = BoundedSensorRead.NormalizeTimeout(sensorReadTimeout);
             
             // Initialize safety limits
             _safetyLimits = new Dictionary<string, SafetyLimit>
@@ -202,7 +205,15 @@ namespace HB_NLP_Research_Lab.Core.Safety
             {
                 try
                 {
-                    var value = await sensor.ReadAsync(cancellationToken);
+                    // A read that never returns, and does not observe cancellation, used
+                    // to freeze this pass. Later sensors were not checked, the shutdown
+                    // command was never sent, and stop waited on this same read so the
+                    // pending-shutdown retry never ran. The deadline is a failed sensor.
+                    // A timeout the sensor raises itself still arrives as TaskCanceledException.
+                    var value = await BoundedSensorRead.ReadAsync(
+                        sensor.ReadAsync(cancellationToken),
+                        _sensorReadTimeout,
+                        cancellationToken).ConfigureAwait(false);
                     var sensorName = sensor.Name;
 
                     // A disconnected sensor can return a cached in-range number. That
@@ -243,6 +254,15 @@ namespace HB_NLP_Research_Lab.Core.Safety
                     // Sensor read timeout - treat as critical. Loop-token cancellation is
                     // handled above; this path is a timeout the sensor raised on its own.
                     Console.WriteLine($"[Safety Monitor] ⚠️ Sensor {sensor.Name} read timeout");
+                    await HandleSensorFailureAsync(sensor.Name, cancellationToken);
+                }
+                catch (TimeoutException)
+                {
+                    // The read did not return within the deadline and the loop token is
+                    // still live. That is the same loss of a measurement as a timeout
+                    // the sensor raised itself. Stop cancels the token and does not
+                    // land here.
+                    Console.WriteLine($"[Safety Monitor] ⚠️ Sensor {sensor.Name} read timed out");
                     await HandleSensorFailureAsync(sensor.Name, cancellationToken);
                 }
                 catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
