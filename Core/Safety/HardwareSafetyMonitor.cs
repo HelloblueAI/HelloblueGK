@@ -63,6 +63,13 @@ namespace HB_NLP_Research_Lab.Core.Safety
         public int EmergencyShutdownFailureLogInterval => _emergencyShutdownFailureLogInterval;
 
         /// <summary>
+        /// How long one shutdown command may run before this pass stops waiting.
+        /// A command that is still running is not accepted, and this pass does not
+        /// send another one. The default is one second.
+        /// </summary>
+        internal TimeSpan ActuatorCommandDeadline { get; set; } = BoundedActuatorCommand.DefaultDeadline;
+
+        /// <summary>
         /// One monitor pass, the same check the control loop runs. Tests call this so a
         /// non-finite reading can be asserted without waiting on the scheduler.
         /// </summary>
@@ -365,8 +372,22 @@ namespace HB_NLP_Research_Lab.Core.Safety
 
             try
             {
-                var accepted = await _emergencyShutdownActuator.SetPositionAsync(1.0, cancellationToken);
-                if (!accepted)
+                // A command that never returns, and does not observe cancellation,
+                // used to hold this pass. Stop waited on it, so a later attempt to
+                // finish the shutdown never ran. The deadline ends the wait. This
+                // pass does not send a second command.
+                var wait = await BoundedActuatorCommand.TrySetPositionAsync(
+                    _emergencyShutdownActuator,
+                    1.0,
+                    ActuatorCommandDeadline,
+                    cancellationToken).ConfigureAwait(false);
+                if (!wait.Completed)
+                {
+                    return ShutdownCommandResult.Failed(
+                        "Hardware shutdown command did not finish before its deadline");
+                }
+
+                if (!wait.Accepted)
                 {
                     return ShutdownCommandResult.Failed("Hardware shutdown command was rejected");
                 }

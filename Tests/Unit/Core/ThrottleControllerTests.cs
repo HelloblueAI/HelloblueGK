@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HB_NLP_Research_Lab.Core.Control;
 using HB_NLP_Research_Lab.Core.Hardware;
 
@@ -309,6 +310,107 @@ public class ThrottleControllerTests
         controller.IsRunning.Should().BeFalse();
         controller.CurrentThrottle.Should().Be(0);
         controller.Dispose();
+    }
+
+    [Fact]
+    public async Task InFlightActuatorCommand_DoesNotHoldThePassOrSendASecondCommand()
+    {
+        var actuator = new DeadlineActuator();
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor())
+        {
+            ActuatorCommandDeadline = TimeSpan.FromMilliseconds(50)
+        };
+        controller.SetThrottle(1);
+
+        var started = Stopwatch.StartNew();
+        var pass = controller.ExecuteOnceAsync();
+        var finished = await Task.WhenAny(pass, Task.Delay(TimeSpan.FromSeconds(2)));
+        started.Stop();
+
+        finished.Should().Be(pass);
+        await pass;
+        started.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        actuator.CommandCount.Should().Be(1);
+        actuator.Positions[0].Should().BeGreaterThan(0);
+        controller.CurrentThrottle.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task InFlightActuatorCommand_NextPassRetriesWithoutStoringTheHungCommand()
+    {
+        var actuator = new DeadlineActuator();
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor())
+        {
+            ActuatorCommandDeadline = TimeSpan.FromMilliseconds(50)
+        };
+        controller.SetThrottle(1);
+
+        await controller.StartAsync();
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning && actuator.CommandCount >= 2,
+            TimeSpan.FromSeconds(3));
+        continued.Should().BeTrue();
+
+        // The deadline is 50 ms. A second command in the same pass would land
+        // immediately. The retry is the next pass.
+        (actuator.TickAt(1) - actuator.TickAt(0)).Should().BeGreaterThanOrEqualTo(30);
+        actuator.Positions[0].Should().BeGreaterThan(0);
+        actuator.Positions[1].Should().BeGreaterThan(0);
+        controller.CurrentThrottle.Should().Be(0);
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.Positions.Should().Contain(0);
+        controller.Dispose();
+    }
+
+    [Fact]
+    public async Task InFlightActuatorCommand_StopCommandsClosedWithoutWaiting()
+    {
+        var actuator = new DeadlineActuator();
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor())
+        {
+            ActuatorCommandDeadline = TimeSpan.FromSeconds(30)
+        };
+        controller.SetThrottle(1);
+
+        await controller.StartAsync();
+        await actuator.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var stop = controller.StopAsync();
+        var finished = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(2)));
+        finished.Should().Be(stop);
+        await stop;
+
+        controller.IsRunning.Should().BeFalse();
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.Positions.Should().Contain(0);
+        actuator.CommandCount.Should().BeGreaterThan(1);
+        controller.Dispose();
+    }
+
+    [Fact]
+    public async Task InFlightActuatorCommand_LoopCancellationDoesNotSendASecondCommand()
+    {
+        var actuator = new DeadlineActuator();
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor())
+        {
+            ActuatorCommandDeadline = TimeSpan.FromSeconds(30)
+        };
+        controller.SetThrottle(1);
+        using var cts = new CancellationTokenSource();
+
+        var pass = controller.ExecuteOnceAsync(cts.Token);
+        await actuator.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cts.Cancel();
+
+        var finished = await Task.WhenAny(pass, Task.Delay(TimeSpan.FromSeconds(2)));
+        finished.Should().Be(pass);
+        var act = async () => await pass;
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        actuator.CommandCount.Should().Be(1);
+        controller.CurrentThrottle.Should().Be(0);
     }
 
     [Fact]
@@ -694,6 +796,76 @@ public class ThrottleControllerTests
                 RejectNext = false;
                 return Task.FromResult(false);
             }
+
+            return Task.FromResult(true);
+        }
+
+        public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(0d);
+
+        public Task<bool> EnableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> DisableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// A positive command never returns and does not observe cancellation.
+    /// A close to zero is accepted, which is the safe position stop sends.
+    /// </summary>
+    private sealed class DeadlineActuator : IActuator
+    {
+        private readonly object _gate = new();
+        private readonly List<(double Position, long Tick)> _commands = new();
+        private readonly TaskCompletionSource<bool> _hang =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int CommandCount
+        {
+            get
+            {
+                lock (_gate)
+                    return _commands.Count;
+            }
+        }
+
+        public IReadOnlyList<double> Positions
+        {
+            get
+            {
+                lock (_gate)
+                    return _commands.Select(command => command.Position).ToArray();
+            }
+        }
+
+        public long TickAt(int index)
+        {
+            lock (_gate)
+                return _commands[index].Tick;
+        }
+
+        public string ActuatorId => "throttle-deadline";
+        public string Name => "throttle-deadline";
+        public ActuatorType Type => ActuatorType.Throttle;
+        public ActuatorStatus Status => ActuatorStatus.Ready;
+        public double MinPosition => 0;
+        public double MaxPosition => 1;
+        public double ResponseTimeSeconds => 0.01;
+        public double MaxRateOfChange => 1;
+        public bool IsEnabled => true;
+
+        public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
+
+        public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        {
+            lock (_gate)
+                _commands.Add((position, Environment.TickCount64));
+
+            Started.TrySetResult();
+            PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            if (position > 0)
+                return _hang.Task;
 
             return Task.FromResult(true);
         }

@@ -40,6 +40,13 @@ namespace HB_NLP_Research_Lab.Core.Control
         public int ActuatorRejectionEscalationThreshold => _actuatorRejectionEscalationThreshold;
         public int ActuatorRejectionLogInterval => _actuatorRejectionLogInterval;
 
+        /// <summary>
+        /// How long one actuator command may run before this pass stops waiting.
+        /// A command that is still running is not accepted, and this pass does not
+        /// send another one. The default is one second.
+        /// </summary>
+        internal TimeSpan ActuatorCommandDeadline { get; set; } = BoundedActuatorCommand.DefaultDeadline;
+
         public event EventHandler<ActuatorRejectionEscalatedEventArgs>? ActuatorRejectionEscalated;
 
         /// <summary>
@@ -316,6 +323,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// and closes only once. An actuator that times out on its own token is not
         /// the loop stopping. The caller records a rejection and leaves control history
         /// unchanged so the next pass retries the same step.
+        /// A command that never returns, and does not observe cancellation, used to
+        /// hold this pass. Stop waited on it, so the safe close never ran. The
+        /// deadline ends the wait. This pass does not send a second command.
         /// </summary>
         private async Task<bool> TrySetActuatorPositionAsync(
             double command,
@@ -323,7 +333,19 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             try
             {
-                return await _actuator.SetPositionAsync(command, cancellationToken).ConfigureAwait(false);
+                var wait = await BoundedActuatorCommand.TrySetPositionAsync(
+                    _actuator,
+                    command,
+                    ActuatorCommandDeadline,
+                    cancellationToken).ConfigureAwait(false);
+                if (!wait.Completed)
+                {
+                    OnControlError(new TimeoutException(
+                        "Actuator command did not finish before its deadline."));
+                    return false;
+                }
+
+                return wait.Accepted;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -607,9 +629,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             var safe = SafeClosedCommand();
             try
             {
-                var accepted = await _actuator.SetPositionAsync(safe, CancellationToken.None)
-                    .ConfigureAwait(false);
-                if (accepted)
+                // The control pass has already returned. This close is not a second
+                // command inside that pass. A close that never returns must not hold Stop.
+                var wait = await BoundedActuatorCommand.TrySetPositionAsync(
+                    _actuator,
+                    safe,
+                    ActuatorCommandDeadline,
+                    CancellationToken.None).ConfigureAwait(false);
+                if (wait.Completed && wait.Accepted)
                 {
                     RememberCommand(safe);
                 }
