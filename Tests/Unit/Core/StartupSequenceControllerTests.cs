@@ -3582,6 +3582,195 @@ public class StartupSequenceControllerTests
         controller.CurrentState.Should().Be(StartupState.Error);
     }
 
+    [Theory]
+    [InlineData("pressure")]
+    [InlineData("oxidizer")]
+    public async Task Running_InFlightSensorRead_FailClosesWithoutWaiting(string hungSensor)
+    {
+        // Running has no state deadline. A read that never returns, and does not
+        // observe cancellation, used to hold the pass. The valves stayed at the last
+        // open command. This pass ends the wait and does not read that sensor again.
+        var clock = new FakeStartupClock();
+        var reads = new Dictionary<string, int>(StringComparer.Ordinal);
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateRunningController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: RunningRead(hungSensor, "pressure", "chamber pressure", StartupSequenceController.MinOperatingPressurePascals, reads),
+            temperature: RunningRead(hungSensor, "temperature", "chamber temperature", StartupSequenceController.MinCombustionTemperatureKelvin, reads),
+            fuelFlow: RunningRead(hungSensor, "fuel", "fuel flow", 1, reads),
+            oxidizerFlow: RunningRead(hungSensor, "oxidizer", "oxidizer flow", 1, reads),
+            clock: clock);
+        controller.MoveToState(StartupState.Running);
+
+        var pass = controller.ExecuteOnceAsync();
+        var scheduled = await WaitUntilAsync(
+            () => clock.PendingDelayCount > 0,
+            TimeSpan.FromSeconds(2));
+        scheduled.Should().BeTrue();
+        clock.Advance(StartupSequenceController.RunningSensorReadDeadline);
+        var finished = await Task.WhenAny(pass, Task.Delay(TimeSpan.FromSeconds(2)));
+        finished.Should().Be(pass);
+        await pass;
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        controller.IsStartupComplete.Should().BeFalse();
+        controller.HasError.Should().BeTrue();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        ReadCount(reads, "chamber pressure").Should().Be(1);
+        ReadCount(reads, "oxidizer flow").Should().Be(hungSensor == "oxidizer" ? 1 : 0);
+        if (hungSensor == "pressure")
+        {
+            ReadCount(reads, "chamber temperature").Should().Be(0);
+            ReadCount(reads, "fuel flow").Should().Be(0);
+        }
+
+        var readsAtClose = reads.Values.Sum();
+        await controller.ExecuteOnceAsync();
+        fuel.CloseAttempts.Should().BeGreaterThanOrEqualTo(2);
+        reads.Values.Sum().Should().Be(readsAtClose);
+        controller.CurrentState.Should().Be(StartupState.Error);
+    }
+
+    [Fact]
+    public async Task Running_InFlightSensorReadPastTheDeadline_LeavesTheControlLoopRunning()
+    {
+        var clock = new FakeStartupClock();
+        var reads = 0;
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateRunningController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    Interlocked.Increment(ref reads);
+                    return new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+                }
+            },
+            clock: clock);
+        controller.MoveToState(StartupState.Running);
+
+        await controller.StartAsync();
+        var scheduled = await WaitUntilAsync(
+            () => clock.PendingDelayCount > 0,
+            TimeSpan.FromSeconds(2));
+        scheduled.Should().BeTrue();
+        reads.Should().Be(1);
+        clock.Advance(StartupSequenceController.RunningSensorReadDeadline);
+
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning
+                && controller.CurrentState == StartupState.Error
+                && fuel.CloseAttempts >= 2,
+            TimeSpan.FromSeconds(3));
+        continued.Should().BeTrue();
+
+        var closesAfterDeadline = fuel.CloseAttempts;
+        await Task.Delay(200);
+        fuel.CloseAttempts.Should().BeGreaterThan(closesAfterDeadline);
+        reads.Should().Be(1);
+        controller.IsRunning.Should().BeTrue();
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.Dispose();
+    }
+
+    [Fact]
+    public async Task Running_InFlightSensorRead_LoopCancellationDoesNotFailClosed()
+    {
+        var readStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = 0;
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateRunningController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    Interlocked.Increment(ref reads);
+                    readStarted.TrySetResult();
+                    return new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+                }
+            });
+        controller.MoveToState(StartupState.Running);
+        using var cancellation = new CancellationTokenSource();
+        var pass = controller.ExecuteOnceAsync(cancellation.Token);
+        await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        cancellation.Cancel();
+
+        var act = () => pass;
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        controller.CurrentState.Should().Be(StartupState.Running);
+        controller.HasError.Should().BeFalse();
+        reads.Should().Be(1);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Running_InFlightSensorRead_DoesNotHoldStop()
+    {
+        var readStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var reads = 0;
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateRunningController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    Interlocked.Increment(ref reads);
+                    readStarted.TrySetResult();
+                    return new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+                }
+            });
+        controller.MoveToState(StartupState.Running);
+        await controller.StartAsync();
+        await readStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var stop = controller.StopAsync();
+        var finished = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(2)));
+        finished.Should().Be(stop);
+        await stop;
+
+        controller.IsRunning.Should().BeFalse();
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.IsStartupComplete.Should().BeFalse();
+        reads.Should().Be(1);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        controller.Dispose();
+    }
+
     [Fact]
     public async Task Running_PressureReadTimeoutAfterAbort_StaysAborted()
     {
@@ -4088,7 +4277,8 @@ public class StartupSequenceControllerTests
         ISensor<double>? pressure = null,
         ISensor<double>? temperature = null,
         ISensor<double>? fuelFlow = null,
-        ISensor<double>? oxidizerFlow = null)
+        ISensor<double>? oxidizerFlow = null,
+        IStartupSequenceClock? clock = null)
     {
         return CreateController(
             fuel,
@@ -4105,7 +4295,37 @@ public class StartupSequenceControllerTests
                 Value = StartupSequenceController.MinCombustionTemperatureKelvin
             },
             fuelFlow ?? new StubSensor { Name = "fuel flow", Value = 1 },
-            oxidizerFlow ?? new StubSensor { Name = "oxidizer flow", Value = 1 });
+            oxidizerFlow ?? new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock);
+    }
+
+    private static StubSensor RunningRead(
+        string hungSensor,
+        string slot,
+        string name,
+        double value,
+        Dictionary<string, int> reads)
+    {
+        return new StubSensor
+        {
+            Name = name,
+            Value = value,
+            OnReading = () =>
+            {
+                lock (reads)
+                    reads[name] = reads.GetValueOrDefault(name) + 1;
+
+                return hungSensor == slot
+                    ? new TaskCompletionSource<double>(TaskCreationOptions.RunContinuationsAsynchronously).Task
+                    : Task.FromResult(value);
+            }
+        };
+    }
+
+    private static int ReadCount(Dictionary<string, int> reads, string name)
+    {
+        lock (reads)
+            return reads.GetValueOrDefault(name);
     }
 
     private static StartupSequenceController CreateController(
@@ -4150,6 +4370,15 @@ public class StartupSequenceControllerTests
         private readonly List<ScheduledDelay> _delays = new();
 
         public DateTime UtcNow { get; private set; } = new(2026, 10, 29, 0, 0, 0, DateTimeKind.Utc);
+
+        public int PendingDelayCount
+        {
+            get
+            {
+                lock (_gate)
+                    return _delays.Count;
+            }
+        }
 
         public Task Delay(TimeSpan delay, CancellationToken cancellationToken)
         {
