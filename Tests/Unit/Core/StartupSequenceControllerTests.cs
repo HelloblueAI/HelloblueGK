@@ -2208,6 +2208,52 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_HungOpenAndHungClose_FailClosesWithoutWaitingOnTheClose()
+    {
+        // The state deadline abandons the open, then the shutdown close is a new
+        // command. A close that also never returns used to hold that pass, so the
+        // oxidizer and igniter were never commanded. The close deadline ends the
+        // wait. This pass does not send a second close.
+        var openStarted = 0;
+        var closeStarted = 0;
+        var fuel = new RecordingActuator
+        {
+            OnCommanding = position =>
+            {
+                if (position <= 0)
+                    Interlocked.Increment(ref closeStarted);
+                else
+                    Interlocked.Increment(ref openStarted);
+
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+            }
+        };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        controller.SetStateEnteredAt(DateTime.UtcNow - TimeSpan.FromMilliseconds(4_800));
+
+        var started = Stopwatch.StartNew();
+        await controller.ExecuteOnceAsync();
+        started.Stop();
+
+        started.Elapsed.Should().BeLessThan(
+            TimeSpan.FromMilliseconds(800) + StartupSequenceController.ShutdownCloseDeadline + TimeSpan.FromSeconds(1));
+        openStarted.Should().Be(1);
+        closeStarted.Should().Be(1);
+        controller.CurrentState.Should().Be(StartupState.Error);
+        oxidizer.LastPosition.Should().Be(0);
+        oxidizer.Positions.Any(position => position > 0).Should().BeFalse();
+        igniter.LastPosition.Should().Be(0);
+        igniter.Positions.Any(position => position > 0).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task FuelFlow_InFlightCommandPastTheDeadline_LeavesTheControlLoopRunning()
     {
         var fuel = new RecordingActuator
@@ -3898,6 +3944,115 @@ public class StartupSequenceControllerTests
         controller.CurrentState.Should().Be(StartupState.Aborted);
     }
 
+    [Theory]
+    [InlineData(StartupState.Error)]
+    [InlineData(StartupState.Aborted)]
+    public async Task ClosedSequence_HungFuelClose_CommandsTheOtherValvesOnceAndRetriesOnTheNextPass(StartupState state)
+    {
+        var closeStarted = 0;
+        var fuel = new RecordingActuator
+        {
+            Name = "fuel",
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    return Task.CompletedTask;
+
+                Interlocked.Increment(ref closeStarted);
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+            }
+        };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(fuel, oxidizer, igniter);
+        controller.MoveToState(state);
+
+        var started = Stopwatch.StartNew();
+        await controller.ExecuteOnceAsync();
+        started.Stop();
+
+        started.Elapsed.Should().BeLessThan(StartupSequenceController.ShutdownCloseDeadline + TimeSpan.FromSeconds(2));
+        closeStarted.Should().Be(1);
+        oxidizer.CommandCount.Should().Be(1);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.CommandCount.Should().Be(1);
+        igniter.LastPosition.Should().Be(0);
+        controller.CurrentState.Should().Be(state);
+
+        await controller.ExecuteOnceAsync();
+
+        closeStarted.Should().Be(2);
+        oxidizer.CommandCount.Should().Be(2);
+        igniter.CommandCount.Should().Be(2);
+        controller.CurrentState.Should().Be(state);
+    }
+
+    [Fact]
+    public async Task ClosedSequence_HungOxidizerClose_StillCommandsTheIgniterOnce()
+    {
+        var oxidizerCloses = 0;
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator
+        {
+            Name = "oxidizer",
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    return Task.CompletedTask;
+
+                Interlocked.Increment(ref oxidizerCloses);
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+            }
+        };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(fuel, oxidizer, igniter);
+        controller.MoveToState(StartupState.Error);
+
+        var started = Stopwatch.StartNew();
+        await controller.ExecuteOnceAsync();
+        started.Stop();
+
+        started.Elapsed.Should().BeLessThan(StartupSequenceController.ShutdownCloseDeadline + TimeSpan.FromSeconds(2));
+        fuel.CloseAttempts.Should().Be(1);
+        fuel.LastPosition.Should().Be(0);
+        oxidizerCloses.Should().Be(1);
+        igniter.CommandCount.Should().Be(1);
+        igniter.LastPosition.Should().Be(0);
+        controller.CurrentState.Should().Be(StartupState.Error);
+    }
+
+    [Fact]
+    public void AbortStartup_HungFuelClose_StillClosesTheOtherValves()
+    {
+        var closeStarted = 0;
+        var fuel = new RecordingActuator
+        {
+            Name = "fuel",
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    return Task.CompletedTask;
+
+                Interlocked.Increment(ref closeStarted);
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+            }
+        };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(fuel, oxidizer, igniter);
+        controller.MoveToState(StartupState.Running);
+
+        var started = Stopwatch.StartNew();
+        controller.AbortStartup();
+        started.Stop();
+
+        started.Elapsed.Should().BeLessThan(StartupSequenceController.ShutdownCloseDeadline + TimeSpan.FromSeconds(2));
+        closeStarted.Should().Be(1);
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
     [Fact]
     public void AbortStartup_WhenFuelCloseThrows_StillClosesTheOtherValves()
     {
@@ -3951,6 +4106,56 @@ public class StartupSequenceControllerTests
             controller.IsStartupComplete.Should().BeFalse();
             oxidizer.LastPosition.Should().Be(0);
             igniter.LastPosition.Should().Be(0);
+        }
+        finally
+        {
+            controller.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData(StartupState.Running)]
+    [InlineData(StartupState.Error)]
+    [InlineData(StartupState.Aborted)]
+    public async Task Stop_HungFuelClose_ReturnsAndCommandsTheOtherValves(StartupState state)
+    {
+        var closeStarted = 0;
+        var fuel = new RecordingActuator
+        {
+            Name = "fuel",
+            OnCommanding = position =>
+            {
+                if (position > 0)
+                    return Task.CompletedTask;
+
+                Interlocked.Increment(ref closeStarted);
+                return new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+            }
+        };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = state == StartupState.Running
+            ? CreateRunningController(fuel, oxidizer, igniter)
+            : CreateController(fuel, oxidizer, igniter);
+
+        try
+        {
+            controller.MoveToState(state);
+            await controller.StartAsync();
+
+            var pending = controller.StopAsync();
+            var completed = await Task.WhenAny(pending, Task.Delay(TimeSpan.FromSeconds(8)));
+            completed.Should().Be(pending, "a fuel close that never returns must not hold Stop");
+
+            var act = async () => await pending;
+            var exception = await act.Should().ThrowAsync<InvalidOperationException>();
+            exception.Which.Message.Should().Be("[Startup Sequence] Shutdown did not close every valve.");
+            controller.IsRunning.Should().BeFalse();
+            closeStarted.Should().BeGreaterThan(0);
+            oxidizer.LastPosition.Should().Be(0);
+            igniter.LastPosition.Should().Be(0);
+            controller.CurrentState.Should().Be(
+                state == StartupState.Error ? StartupState.Error : StartupState.Aborted);
         }
         finally
         {
