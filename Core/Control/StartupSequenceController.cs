@@ -111,6 +111,14 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal const int ShutdownCloseFailureEscalationThreshold = 3;
         internal const int ShutdownCloseFailureLogInterval = 10;
 
+        /// <summary>
+        /// How long one shutdown close may stay in flight. The safe close passes
+        /// <see cref="CancellationToken.None"/>, so a command that ignores cancellation
+        /// is not a throw and the catch in <see cref="CloseForShutdownAsync"/> never ran.
+        /// This is not the finite state budget and not an actuator-raised timeout.
+        /// </summary>
+        internal static readonly TimeSpan ShutdownCloseDeadline = TimeSpan.FromSeconds(1);
+
         private int _consecutiveFailedShutdownCloses;
 
         /// <summary>
@@ -931,7 +939,54 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
-            await RequireStartupActuatorsReadyAsync().ConfigureAwait(false);
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
+            // Temperature and flow are sampled again at the end of this wait. Pressure
+            // was not: the sample that authorized the wait is two seconds old. A pegged,
+            // negative, non-finite, or not-Ready chamber during the ramp used to stay
+            // open until the next tick. A pressure that is still below the floor stays
+            // in this state and does not command the valves. A pressure that has reached
+            // the operating floor finishes, the same way the sample before the wait does.
+            await FinishThrottleUpFromChamberPressureAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Reads chamber pressure after the throttle-up ramp. Returns after fail-closed
+        /// when the sample is missing, not Ready, or outside the plausible band. An
+        /// operating pressure declares the engine running. A pressure still below that
+        /// floor leaves the sequence in throttle-up. An abort that already won stays aborted.
+        /// </summary>
+        private async Task FinishThrottleUpFromChamberPressureAsync(CancellationToken cancellationToken)
+        {
+            var pressureRead = await TryReadStartupSensorAsync(_chamberPressureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!pressureRead.Completed)
+                return;
+
+            var pressure = pressureRead.Value;
+            if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
+                return;
+
+            if (!IsPlausibleChamberPressure(pressure))
+            {
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ Chamber pressure outside the allowed band: {pressure}")
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            // A valve can fault while this sample is in flight. That fault closes
+            // on this pass whether the chamber is still below the floor or has
+            // reached the operating pressure.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
+            if (!IsOperatingPressure(pressure))
+                return;
+
+            Console.WriteLine("[Startup Sequence] ✅ Engine running!");
+            TransitionToState(StartupState.Running);
         }
 
         /// <summary>
@@ -1351,6 +1406,9 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Fuel used to be awaited first. A throw from that command left the
             // oxidizer and igniter at their last positions, and the same throw on
             // the loop-stop path faulted the task before those valves were commanded.
+            // A close that never returns is the same skip: it is not a throw, and
+            // Stop used to stay on that call. CloseForShutdownAsync ends the wait
+            // and reports a failed close so the valves behind it still run.
             var fuelClosed = await CloseForShutdownAsync(_fuelValve).ConfigureAwait(false);
             var oxidizerClosed = await CloseForShutdownAsync(_oxidizerValve).ConfigureAwait(false);
             var igniterClosed = await CloseForShutdownAsync(_igniter).ConfigureAwait(false);
@@ -1361,10 +1419,27 @@ namespace HB_NLP_Research_Lab.Core.Control
 
         private async Task<ValveCloseResult> CloseForShutdownAsync(IActuator actuator)
         {
+            // Fuel is awaited first. A close that never returns is not a throw, so a
+            // catch never saw it: oxidizer and igniter stayed at the last command, and
+            // Stop stayed on this call. The deadline ends the wait. This pass does not
+            // send a second close. The next closed pass retries the one that did not
+            // land. Loop cancellation still must not abandon the safe close, so the
+            // command itself keeps CancellationToken.None.
+            using var deadlineCts = new CancellationTokenSource();
+            Task<bool>? close = null;
+            Task? deadline = null;
             try
             {
-                var accepted = await actuator.SetPositionAsync(0.0, CancellationToken.None)
-                    .ConfigureAwait(false);
+                close = actuator.SetPositionAsync(0.0, CancellationToken.None);
+                deadline = _clock.Delay(ShutdownCloseDeadline, deadlineCts.Token);
+                await Task.WhenAny(close, deadline).ConfigureAwait(false);
+                if (!close.IsCompleted)
+                {
+                    ObserveTask(close);
+                    return ValveCloseResult.Failure(actuator.Name, "close command timed out");
+                }
+
+                var accepted = await close.ConfigureAwait(false);
                 return accepted
                     ? ValveCloseResult.Success(actuator.Name)
                     : ValveCloseResult.Failure(actuator.Name, "rejected close command");
@@ -1372,8 +1447,36 @@ namespace HB_NLP_Research_Lab.Core.Control
             // codeql[generic-catch-clause]: A throw from one valve must not skip the others.
             catch (Exception ex)
             {
+                if (close is { IsCompleted: false })
+                    ObserveTask(close);
                 return ValveCloseResult.Failure(actuator.Name, ex.Message);
             }
+            finally
+            {
+                deadlineCts.Cancel();
+                if (deadline != null)
+                    ObserveTask(deadline);
+            }
+        }
+
+        private static void ObserveTask(Task task)
+        {
+            if (task.IsCompleted)
+            {
+                if (task.IsFaulted)
+                    _ = task.Exception;
+                return;
+            }
+
+            _ = task.ContinueWith(
+                completed =>
+                {
+                    if (completed.IsFaulted)
+                        _ = completed.Exception;
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
 
         private void RecordShutdownCloseResult(bool closed, params ValveCloseResult[] results)

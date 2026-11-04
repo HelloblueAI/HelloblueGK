@@ -438,6 +438,130 @@ public class HardwareSafetyMonitorTests
     }
 
     [Fact]
+    public async Task SensorReadThatNeverReturns_TripsAndStillReadsTheNextSensor()
+    {
+        var actuator = new RecordingActuator();
+        var hung = new HungSensor("ChamberPressure", 1_000_000);
+        var temperature = new ScriptedSensor("ChamberTemperature", 1_000);
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { hung, temperature },
+            actuator,
+            sensorReadTimeout: TimeSpan.FromMilliseconds(50));
+
+        await monitor.CheckSensorsOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        // The hung pressure read is not evidence the chamber is inside its limit.
+        // The temperature sensor behind it still has to be checked on this pass.
+        monitor.IsEmergencyShutdownActive.Should().BeTrue();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
+        actuator.CommandCount.Should().Be(1);
+        actuator.LastPosition.Should().Be(1);
+        temperature.ReadCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SensorReadThatNeverReturns_LeavesTheMonitorRunning()
+    {
+        var actuator = new RecordingActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new HungSensor("ChamberPressure", 1_000_000) },
+            actuator,
+            sensorReadTimeout: TimeSpan.FromMilliseconds(50));
+
+        try
+        {
+            await monitor.StartAsync();
+            var tripped = await WaitUntilAsync(
+                () => monitor.IsEmergencyShutdownActive && monitor.TotalIterations >= 2,
+                TimeSpan.FromSeconds(5));
+
+            tripped.Should().BeTrue();
+            monitor.IsRunning.Should().BeTrue();
+            actuator.LastPosition.Should().Be(1);
+        }
+        finally
+        {
+            monitor.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task CancelDuringHungRead_DoesNotTripEmergencyShutdown()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new HungSensor("ChamberPressure", 1_000_000);
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { sensor },
+            actuator,
+            sensorReadTimeout: TimeSpan.FromSeconds(30));
+        using var cts = new CancellationTokenSource();
+        var pending = monitor.CheckSensorsOnceAsync(cts.Token);
+        await sensor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cts.Cancel();
+
+        var act = async () => await pending.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
+        actuator.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task StopDuringHungRead_ReturnsWithoutTripping()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new HungSensor("ChamberPressure", 1_000_000);
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { sensor },
+            actuator,
+            sensorReadTimeout: TimeSpan.FromSeconds(30));
+
+        try
+        {
+            await monitor.StartAsync();
+            await sensor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await monitor.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+            monitor.IsRunning.Should().BeFalse();
+            monitor.IsEmergencyShutdownActive.Should().BeFalse();
+            monitor.IsEmergencyShutdownPending.Should().BeFalse();
+            actuator.CommandCount.Should().Be(0);
+        }
+        finally
+        {
+            monitor.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task InRangeRead_WithinTheDeadline_DoesNotTrip()
+    {
+        var actuator = new RecordingActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", 1_000_000) },
+            actuator,
+            sensorReadTimeout: TimeSpan.FromMilliseconds(50));
+
+        await monitor.CheckSensorsOnceAsync();
+
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeFalse();
+        actuator.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Constructor_RejectsANonPositiveSensorReadTimeout()
+    {
+        var act = () => new HardwareSafetyMonitor(
+            new List<ISensor<double>>(),
+            sensorReadTimeout: TimeSpan.Zero);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public async Task StopDuringInRangeRead_DoesNotTripEmergencyShutdown()
     {
         var actuator = new RecordingActuator();
@@ -670,6 +794,7 @@ public class HardwareSafetyMonitorTests
         public double Value { get; set; }
         public bool ThrowOnCancellation { get; set; }
         public bool ThrowTimeout { get; set; }
+        public int ReadCount { get; private set; }
 
         public string SensorId => Name;
         public string Name { get; }
@@ -684,6 +809,7 @@ public class HardwareSafetyMonitorTests
 
         public Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            ReadCount++;
             if (ThrowOnCancellation)
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -775,6 +901,43 @@ public class HardwareSafetyMonitorTests
             if (Block)
                 await Task.Delay(Timeout.Infinite, cancellationToken);
 
+            ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
+            return Value;
+        }
+
+        public Task<bool> ValidateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// A read that never completes and does not observe the caller's token.
+    /// </summary>
+    private sealed class HungSensor : ISensor<double>
+    {
+        public HungSensor(string name, double value)
+        {
+            Name = name;
+            Value = value;
+        }
+
+        public TaskCompletionSource Entered { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public double Value { get; }
+        public string SensorId => Name;
+        public string Name { get; }
+        public SensorType Type => SensorType.Pressure;
+        public SensorStatus Status => SensorStatus.Ready;
+        public double MinValue => 0;
+        public double MaxValue => 1;
+        public int MaxFrequencyHz => 10;
+        public DateTime LastReadingTime => DateTime.UtcNow;
+
+        public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
+
+        public async Task<double> ReadAsync(CancellationToken cancellationToken = default)
+        {
+            Entered.TrySetResult();
+            await Task.Delay(Timeout.Infinite, CancellationToken.None).ConfigureAwait(false);
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
             return Value;
         }

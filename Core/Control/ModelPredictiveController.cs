@@ -34,6 +34,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         private readonly object _actuatorRejectionGate = new();
         private readonly int _actuatorRejectionEscalationThreshold;
         private readonly int _actuatorRejectionLogInterval;
+        private readonly TimeSpan _sensorReadTimeout;
         private int _consecutiveActuatorRejections;
         private bool _actuatorRejectionEscalated;
 
@@ -71,7 +72,8 @@ namespace HB_NLP_Research_Lab.Core.Control
             double samplingTime = 0.01,
             int frequencyHz = 100,
             int actuatorRejectionEscalationThreshold = 3,
-            int actuatorRejectionLogInterval = 10) : base(frequencyHz)
+            int actuatorRejectionLogInterval = 10,
+            TimeSpan? sensorReadTimeout = null) : base(frequencyHz)
         {
             _actuator = actuator ?? throw new ArgumentNullException(nameof(actuator));
             _sensors = sensors ?? throw new ArgumentNullException(nameof(sensors));
@@ -99,6 +101,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             _samplingTime = samplingTime;
             _actuatorRejectionEscalationThreshold = actuatorRejectionEscalationThreshold;
             _actuatorRejectionLogInterval = actuatorRejectionLogInterval;
+            _sensorReadTimeout = BoundedSensorRead.NormalizeTimeout(sensorReadTimeout);
             
             _constraints = new ControlConstraints();
             _stateVector = new double[sensors.Count];
@@ -203,8 +206,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 controlAction = ApplyConstraints(controlAction);
                 optimalControl[0] = controlAction;
                 
-                // 5. Send to actuator. A refused command or a timeout leaves the actuator
-                // at the last accepted position, so it must not become the next rate-limit origin.
+                // 5. Send to actuator. A refused command, a timeout, or any other throw
+                // leaves the actuator at the last accepted position, so it must not
+                // become the next rate-limit origin. A throw counts as a rejection.
                 var accepted = await TrySetActuatorPositionAsync(controlAction, cancellationToken)
                     .ConfigureAwait(false);
                 if (!accepted)
@@ -248,7 +252,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             var ready = true;
             for (int i = 0; i < _sensors.Count; i++)
             {
-                state[i] = await _sensors[i].ReadAsync(cancellationToken);
+                // A read that ignores cancellation used to stall this pass before the
+                // safe close. Later channels were not read, the last command stayed
+                // applied, and stop waited on the same read. The deadline fails the
+                // measurement the way a timeout the sensor raises itself does.
+                state[i] = await BoundedSensorRead.ReadAsync(
+                    _sensors[i].ReadAsync(cancellationToken),
+                    _sensorReadTimeout,
+                    cancellationToken).ConfigureAwait(false);
                 if (!IsSensorReadyForState(_sensors[i].Status))
                 {
                     ready = false;
@@ -326,6 +337,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// A command that never returns, and does not observe cancellation, used to
         /// hold this pass. Stop waited on it, so the safe close never ran. The
         /// deadline ends the wait. This pass does not send a second command.
+        /// Any other throw used to reach the outer log-only catch. That pass did not
+        /// count a rejection, so a close that failed left the last open command applied
+        /// and never reached <see cref="ActuatorRejectionEscalated"/>.
         /// </summary>
         private async Task<bool> TrySetActuatorPositionAsync(
             double command,
@@ -352,6 +366,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                 throw;
             }
             catch (OperationCanceledException ex)
+            {
+                OnControlError(ex);
+                return false;
+            }
+            // codeql[generic-catch-clause]: A thrown actuator command is a rejection, not a loop stop.
+            catch (Exception ex)
             {
                 OnControlError(ex);
                 return false;

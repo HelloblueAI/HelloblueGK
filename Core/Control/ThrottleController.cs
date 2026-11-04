@@ -27,6 +27,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         private double _integral = 0.0;
         private double _lastError = 0.0;
         private DateTime _lastUpdate = DateTime.UtcNow;
+        private readonly TimeSpan _sensorReadTimeout;
         
         // Safety limits
         private const double MinThrottle = 0.0;
@@ -62,11 +63,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             IActuator throttleActuator,
             ISensor<double> thrustSensor,
             ISensor<double> chamberPressureSensor,
-            int frequencyHz = 100) : base(frequencyHz)
+            int frequencyHz = 100,
+            TimeSpan? sensorReadTimeout = null) : base(frequencyHz)
         {
             _throttleActuator = throttleActuator ?? throw new ArgumentNullException(nameof(throttleActuator));
             _thrustSensor = thrustSensor ?? throw new ArgumentNullException(nameof(thrustSensor));
             _chamberPressureSensor = chamberPressureSensor ?? throw new ArgumentNullException(nameof(chamberPressureSensor));
+            _sensorReadTimeout = BoundedSensorRead.NormalizeTimeout(sensorReadTimeout);
         }
         
         /// <summary>
@@ -112,7 +115,14 @@ namespace HB_NLP_Research_Lab.Core.Control
                 var thrustSampleNonFinite = false;
                 try
                 {
-                    currentThrust = await _thrustSensor.ReadAsync(cancellationToken).ConfigureAwait(false);
+                    // A read that ignores cancellation used to hold this pass. The last
+                    // command stayed applied, and stop waited here so the safe close
+                    // never ran. The deadline is a failed read, same as a timeout the
+                    // sensor raises itself. Loop-token cancellation still propagates.
+                    currentThrust = await BoundedSensorRead.ReadAsync(
+                        _thrustSensor.ReadAsync(cancellationToken),
+                        _sensorReadTimeout,
+                        cancellationToken).ConfigureAwait(false);
                     thrustSampleNonFinite = !double.IsFinite(currentThrust);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -159,8 +169,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // instead of passing NaN through Math.Clamp, which returns NaN.
                 throttleCommand = ConstrainThrottleCommand(throttleCommand);
                 
-                // A false return or an actuator timeout did not land. Leave the last
-                // accepted position in place so the next pass retries the same step.
+                // A false return, a timeout, or any other thrown command did not land.
+                // Leave the last accepted position in place so the next pass retries
+                // the same step. A throw is the same miss as a timeout: the loop stays
+                // up and the open command is not left without a rejection.
                 var success = await TrySetThrottlePositionAsync(throttleCommand, cancellationToken);
                 
                 if (success)
@@ -287,6 +299,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// A command that never returns, and does not observe cancellation, used to
         /// hold this pass. Stop waited on it, so the safe close never ran. The
         /// deadline ends the wait. This pass does not send a second command.
+        /// Any other throw used to reach the outer log-only catch. That pass did not
+        /// count an actuator error, so a close that failed left the last open command
+        /// applied without the same retry accounting as a timeout.
         /// </summary>
         private async Task<bool> TrySetThrottlePositionAsync(
             double throttleCommand,
@@ -313,6 +328,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                 throw;
             }
             catch (OperationCanceledException ex)
+            {
+                OnControlError(ex);
+                return false;
+            }
+            // codeql[generic-catch-clause]: A thrown throttle command is a miss, not a loop stop.
+            catch (Exception ex)
             {
                 OnControlError(ex);
                 return false;
