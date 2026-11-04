@@ -312,6 +312,78 @@ public class ThrottleControllerTests
     }
 
     [Fact]
+    public async Task ActuatorCommandThrows_LeavesTheLastAcceptedPositionAndRetries()
+    {
+        var actuator = new RecordingActuator { ThrowCall = 1 };
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.ExecuteOnceAsync();
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+
+        var thrown = () => controller.ExecuteOnceAsync();
+        await thrown.Should().NotThrowAsync();
+
+        // The thrown command was a step to 0.002 and did not land. Storing it
+        // would make the next accepted command 0.003. The retry starts from the
+        // last open command.
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.001, 1e-12);
+        await controller.ExecuteOnceAsync();
+        controller.CurrentThrottle.Should().BeApproximately(0.002, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.002, 1e-12);
+    }
+
+    [Fact]
+    public async Task ActuatorCommandThrows_WhileOpen_RetriesTheSameClose()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        actuator.ThrowCall = actuator.CommandCount;
+        thrust.Value = 2_000_000;
+
+        var thrown = () => controller.ExecuteOnceAsync();
+        await thrown.Should().NotThrowAsync();
+
+        // Overthrust commands one step closed. The throw did not land, so the
+        // open position stays applied and the next pass retries that same step.
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        actuator.LastPosition.Should().BeApproximately(0.02, 1e-9);
+
+        actuator.ThrowCall = null;
+        await controller.ExecuteOnceAsync();
+        controller.CurrentThrottle.Should().BeApproximately(0.019, 1e-9);
+        actuator.LastPosition.Should().BeApproximately(0.019, 1e-9);
+    }
+
+    [Fact]
+    public async Task ActuatorCommandThrows_LeavesTheControlLoopRunning()
+    {
+        var actuator = new RecordingActuator { ThrowCall = 0 };
+        var controller = new ThrottleController(actuator, new StubSensor(), new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.StartAsync();
+        var continued = await WaitUntilAsync(
+            () => controller.IsRunning && controller.CurrentThrottle > 0 && actuator.CommandCount >= 2,
+            TimeSpan.FromSeconds(5));
+        continued.Should().BeTrue();
+        controller.IsRunning.Should().BeTrue();
+
+        await controller.StopAsync();
+        controller.IsRunning.Should().BeFalse();
+        controller.CurrentThrottle.Should().Be(0);
+        controller.Dispose();
+    }
+
+    [Fact]
     public async Task OpenLoop_NotReadyThrustSensor_StillFollowsTheCommand()
     {
         var actuator = new RecordingActuator();
@@ -391,6 +463,102 @@ public class ThrottleControllerTests
         // from the last accepted position instead of leaving 0.02 applied.
         controller.CurrentThrottle.Should().BeApproximately(0.018, 1e-9);
         actuator.LastPosition.Should().BeApproximately(0.018, 1e-9);
+    }
+
+    [Fact]
+    public async Task ClosedLoop_ThrustReadThatNeverReturns_StepsClosedAndTheNextPassStillRuns()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(
+            actuator,
+            thrust,
+            new StubSensor(),
+            sensorReadTimeout: TimeSpan.FromMilliseconds(50));
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        thrust.BlockIgnoringCancellation = true;
+        await controller.ExecuteOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await controller.ExecuteOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        // A read that ignores cancellation is not a thrust and is not the loop
+        // stopping. Both passes step closed instead of leaving 0.02 applied.
+        controller.CurrentThrottle.Should().BeApproximately(0.018, 1e-9);
+        actuator.LastPosition.Should().BeApproximately(0.018, 1e-9);
+    }
+
+    [Fact]
+    public async Task OpenLoop_ThrustReadThatNeverReturns_StillFollowsTheCommand()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor
+        {
+            Value = 1_000_000,
+            Status = SensorStatus.Ready,
+            BlockIgnoringCancellation = true
+        };
+        var controller = new ThrottleController(
+            actuator,
+            thrust,
+            new StubSensor(),
+            sensorReadTimeout: TimeSpan.FromMilliseconds(50));
+        controller.SetThrottle(1);
+
+        await controller.ExecuteOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.001, 1e-12);
+    }
+
+    [Fact]
+    public async Task StopDuringThrustReadThatIgnoresCancellation_ClosesAndReturns()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(
+            actuator,
+            thrust,
+            new StubSensor(),
+            sensorReadTimeout: TimeSpan.FromSeconds(30));
+        controller.SetThrottle(1);
+
+        try
+        {
+            await controller.StartAsync();
+            var opened = await WaitUntilAsync(
+                () => controller.CurrentThrottle > 0,
+                TimeSpan.FromSeconds(5));
+            opened.Should().BeTrue();
+
+            thrust.BlockIgnoringCancellation = true;
+            await thrust.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            await controller.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+            controller.IsRunning.Should().BeFalse();
+            controller.CurrentThrottle.Should().Be(0);
+            actuator.LastPosition.Should().Be(0);
+        }
+        finally
+        {
+            controller.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Constructor_RejectsANonPositiveSensorReadTimeout()
+    {
+        var act = () => new ThrottleController(
+            new StubActuator(),
+            new StubSensor(),
+            new StubSensor(),
+            sensorReadTimeout: TimeSpan.Zero);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
     }
 
     [Fact]
@@ -654,6 +822,12 @@ public class ThrottleControllerTests
         /// </summary>
         public int? TimeoutCall { get; set; }
 
+        /// <summary>
+        /// Zero-based command index that throws <see cref="InvalidOperationException"/>.
+        /// The position is not recorded, matching a command that did not land.
+        /// </summary>
+        public int? ThrowCall { get; set; }
+
         public int CommandCount
         {
             get
@@ -670,16 +844,21 @@ public class ThrottleControllerTests
             cancellationToken.ThrowIfCancellationRequested();
 
             bool timeout;
+            bool fault;
             lock (_gate)
             {
                 var index = _calls++;
                 timeout = TimeoutCall == index;
-                if (!timeout)
+                fault = ThrowCall == index;
+                if (!timeout && !fault)
                     _positions.Add(position);
             }
 
             if (timeout)
                 throw new TaskCanceledException("actuator timeout");
+
+            if (fault)
+                throw new InvalidOperationException("actuator command failed");
 
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
             if (ThrowNext != null)
@@ -710,6 +889,8 @@ public class ThrottleControllerTests
         public double Value { get; set; }
         public SensorStatus Status { get; set; } = SensorStatus.Ready;
         public Exception? ReadException { get; set; }
+        public bool BlockIgnoringCancellation { get; set; }
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public string SensorId => "thrust";
         public string Name => "thrust";
         public SensorType Type => SensorType.Other;
@@ -720,16 +901,23 @@ public class ThrottleControllerTests
 
         public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
 
-        public Task<double> ReadAsync(CancellationToken cancellationToken = default)
+        public async Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            if (BlockIgnoringCancellation)
+            {
+                Entered.TrySetResult();
+                await Task.Delay(Timeout.Infinite, CancellationToken.None).ConfigureAwait(false);
+                return Value;
+            }
+
             if (cancellationToken.IsCancellationRequested)
-                return Task.FromException<double>(new OperationCanceledException(cancellationToken));
+                throw new OperationCanceledException(cancellationToken);
 
             if (ReadException != null)
-                return Task.FromException<double>(ReadException);
+                throw ReadException;
 
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
-            return Task.FromResult(Value);
+            return Value;
         }
 
         public Task<bool> ValidateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
