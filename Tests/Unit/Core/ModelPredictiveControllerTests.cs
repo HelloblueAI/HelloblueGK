@@ -786,6 +786,89 @@ public class ModelPredictiveControllerTests
     }
 
     [Fact]
+    public async Task StateReadThatNeverReturns_StepsClosedAndTheNextPassStillRuns()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(
+            actuator,
+            sensor,
+            sensorReadTimeout: TimeSpan.FromMilliseconds(50));
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync();
+        actuator.LastPosition.Should().BeApproximately(1, 1e-9);
+
+        sensor.BlockIgnoringCancellation = true;
+        await controller.ExecuteOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        await controller.ExecuteOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        // A read that ignores cancellation is not a sample and is not the loop
+        // stopping. Both passes step closed from the last accepted command.
+        actuator.Positions[1].Should().BeApproximately(0.9, 1e-9);
+        actuator.Positions[2].Should().BeApproximately(0.8, 1e-9);
+    }
+
+    [Fact]
+    public async Task StateReadThatNeverReturns_OneChannelRejectsTheWholeSample()
+    {
+        var actuator = new RecordingActuator();
+        var ready = new MutableSensor { Name = "chamber", Value = 0.2, Status = SensorStatus.Ready };
+        var hung = new MutableSensor
+        {
+            Name = "flow",
+            Value = 0.2,
+            Status = SensorStatus.Ready,
+            BlockIgnoringCancellation = true
+        };
+        using var controller = CreateController(
+            actuator,
+            sensors: new[] { ready, hung },
+            sensorReadTimeout: TimeSpan.FromMilliseconds(50));
+        TrackHighReference(controller);
+
+        await controller.ExecuteOnceAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+        // The chamber read completed. The hung flow read drops the vector.
+        // With no trusted sample, the first command is the floor.
+        actuator.Positions.Should().Equal(0);
+    }
+
+    [Fact]
+    public async Task StopDuringStateReadThatIgnoresCancellation_CommandsClosedAndReturns()
+    {
+        var actuator = new RecordingActuator();
+        var sensor = new MutableSensor { Value = 0.2, Status = SensorStatus.Ready };
+        using var controller = CreateController(
+            actuator,
+            sensor,
+            sensorReadTimeout: TimeSpan.FromSeconds(30));
+        TrackHighReference(controller);
+
+        await controller.StartAsync();
+        var opened = await WaitUntilAsync(
+            () => actuator.Positions.Count > 0 && actuator.LastPosition > 0,
+            TimeSpan.FromSeconds(5));
+        opened.Should().BeTrue();
+
+        sensor.BlockIgnoringCancellation = true;
+        await sensor.Entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await controller.StopAsync().WaitAsync(TimeSpan.FromSeconds(2));
+
+        controller.IsRunning.Should().BeFalse();
+        actuator.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public void Constructor_RejectsANonPositiveSensorReadTimeout()
+    {
+        var act = () => CreateController(sensorReadTimeout: TimeSpan.Zero);
+
+        act.Should().Throw<ArgumentOutOfRangeException>();
+    }
+
+    [Fact]
     public async Task StateReadThrows_OneChannelRejectsTheWholeSample()
     {
         var actuator = new RecordingActuator();
@@ -970,7 +1053,8 @@ public class ModelPredictiveControllerTests
         double samplingTime = 0.01,
         int actuatorRejectionEscalationThreshold = 3,
         int actuatorRejectionLogInterval = 10,
-        IReadOnlyList<ISensor<double>>? sensors = null)
+        IReadOnlyList<ISensor<double>>? sensors = null,
+        TimeSpan? sensorReadTimeout = null)
     {
         var sensorList = sensors?.ToList() ?? new List<ISensor<double>> { sensor ?? new ScriptedSensor(0) };
         return new ModelPredictiveController(
@@ -982,7 +1066,8 @@ public class ModelPredictiveControllerTests
             samplingTime: samplingTime,
             frequencyHz: 100,
             actuatorRejectionEscalationThreshold: actuatorRejectionEscalationThreshold,
-            actuatorRejectionLogInterval: actuatorRejectionLogInterval);
+            actuatorRejectionLogInterval: actuatorRejectionLogInterval,
+            sensorReadTimeout: sensorReadTimeout);
     }
 
     private sealed class RecordingActuator : IActuator
@@ -1147,6 +1232,8 @@ public class ModelPredictiveControllerTests
         public SensorStatus Status { get; set; } = SensorStatus.Ready;
         public SensorStatus? StatusOnRead { get; set; }
         public Exception? ReadException { get; set; }
+        public bool BlockIgnoringCancellation { get; set; }
+        public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public string SensorId => "state";
         public string Name { get; set; } = "state";
@@ -1158,19 +1245,26 @@ public class ModelPredictiveControllerTests
 
         public event EventHandler<SensorReadingChangedEventArgs<double>>? ReadingChanged;
 
-        public Task<double> ReadAsync(CancellationToken cancellationToken = default)
+        public async Task<double> ReadAsync(CancellationToken cancellationToken = default)
         {
+            if (BlockIgnoringCancellation)
+            {
+                Entered.TrySetResult();
+                await Task.Delay(Timeout.Infinite, CancellationToken.None).ConfigureAwait(false);
+                return Value;
+            }
+
             if (cancellationToken.IsCancellationRequested)
-                return Task.FromException<double>(new OperationCanceledException(cancellationToken));
+                throw new OperationCanceledException(cancellationToken);
 
             if (StatusOnRead is SensorStatus status)
                 Status = status;
 
             if (ReadException != null)
-                return Task.FromException<double>(ReadException);
+                throw ReadException;
 
             ReadingChanged?.Invoke(this, new SensorReadingChangedEventArgs<double>());
-            return Task.FromResult(Value);
+            return Value;
         }
 
         public Task<bool> ValidateAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);

@@ -27,6 +27,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         private double _integral = 0.0;
         private double _lastError = 0.0;
         private DateTime _lastUpdate = DateTime.UtcNow;
+        private readonly TimeSpan _sensorReadTimeout;
         
         // Safety limits
         private const double MinThrottle = 0.0;
@@ -55,11 +56,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             IActuator throttleActuator,
             ISensor<double> thrustSensor,
             ISensor<double> chamberPressureSensor,
-            int frequencyHz = 100) : base(frequencyHz)
+            int frequencyHz = 100,
+            TimeSpan? sensorReadTimeout = null) : base(frequencyHz)
         {
             _throttleActuator = throttleActuator ?? throw new ArgumentNullException(nameof(throttleActuator));
             _thrustSensor = thrustSensor ?? throw new ArgumentNullException(nameof(thrustSensor));
             _chamberPressureSensor = chamberPressureSensor ?? throw new ArgumentNullException(nameof(chamberPressureSensor));
+            _sensorReadTimeout = BoundedSensorRead.NormalizeTimeout(sensorReadTimeout);
         }
         
         /// <summary>
@@ -105,7 +108,14 @@ namespace HB_NLP_Research_Lab.Core.Control
                 var thrustSampleNonFinite = false;
                 try
                 {
-                    currentThrust = await _thrustSensor.ReadAsync(cancellationToken).ConfigureAwait(false);
+                    // A read that ignores cancellation used to hold this pass. The last
+                    // command stayed applied, and stop waited here so the safe close
+                    // never ran. The deadline is a failed read, same as a timeout the
+                    // sensor raises itself. Loop-token cancellation still propagates.
+                    currentThrust = await BoundedSensorRead.ReadAsync(
+                        _thrustSensor.ReadAsync(cancellationToken),
+                        _sensorReadTimeout,
+                        cancellationToken).ConfigureAwait(false);
                     thrustSampleNonFinite = !double.IsFinite(currentThrust);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
