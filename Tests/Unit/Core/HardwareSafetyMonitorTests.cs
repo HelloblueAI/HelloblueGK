@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HB_NLP_Research_Lab.Core.Hardware;
 using HB_NLP_Research_Lab.Core.Safety;
 
@@ -652,6 +653,122 @@ public class HardwareSafetyMonitorTests
         }
     }
 
+    [Fact]
+    public async Task InFlightShutdownCommand_DoesNotHoldThePassOrSendASecondCommand()
+    {
+        var actuator = new HangingShutdownActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator)
+        {
+            ActuatorCommandDeadline = TimeSpan.FromMilliseconds(50)
+        };
+
+        var started = Stopwatch.StartNew();
+        var pass = monitor.CheckSensorsOnceAsync();
+        var finished = await Task.WhenAny(pass, Task.Delay(TimeSpan.FromSeconds(2)));
+        started.Stop();
+
+        finished.Should().Be(pass);
+        await pass;
+        started.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        actuator.CommandCount.Should().Be(1);
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task InFlightShutdownCommand_CountsTowardEscalationOncePerPass()
+    {
+        var actuator = new HangingShutdownActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator,
+            emergencyShutdownFailureEscalationThreshold: 3)
+        {
+            ActuatorCommandDeadline = TimeSpan.FromMilliseconds(20)
+        };
+        var escalations = new List<EmergencyShutdownEscalationEventArgs>();
+        monitor.EmergencyShutdownEscalated += (_, args) => escalations.Add(args);
+
+        for (var i = 0; i < 3; i++)
+            await monitor.CheckSensorsOnceAsync();
+
+        actuator.CommandCount.Should().Be(3);
+        monitor.IsEmergencyShutdownActive.Should().BeFalse();
+        monitor.IsEmergencyShutdownPending.Should().BeTrue();
+        escalations.Should().ContainSingle();
+        escalations[0].ConsecutiveFailureCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task InFlightShutdownCommand_StopFinishesTheShutdownWithoutWaiting()
+    {
+        var actuator = new HangingShutdownActuator { AcceptUncancellable = true };
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator)
+        {
+            ActuatorCommandDeadline = TimeSpan.FromSeconds(30)
+        };
+
+        try
+        {
+            await monitor.StartAsync();
+            await actuator.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            var stop = monitor.StopAsync();
+            var finished = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(2)));
+            finished.Should().Be(stop);
+            await stop;
+
+            monitor.IsRunning.Should().BeFalse();
+            monitor.IsEmergencyShutdownActive.Should().BeTrue();
+            monitor.IsEmergencyShutdownPending.Should().BeFalse();
+            actuator.LastPosition.Should().Be(1);
+            actuator.CommandCount.Should().BeGreaterThan(1);
+        }
+        finally
+        {
+            monitor.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task InFlightShutdownCommand_StopReturnsWhenTheCloseAlsoHangs()
+    {
+        var actuator = new HangingShutdownActuator();
+        var monitor = new HardwareSafetyMonitor(
+            new List<ISensor<double>> { new ScriptedSensor("ChamberPressure", double.NaN) },
+            actuator)
+        {
+            ActuatorCommandDeadline = TimeSpan.FromMilliseconds(50)
+        };
+
+        try
+        {
+            await monitor.StartAsync();
+            await actuator.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+            var started = Stopwatch.StartNew();
+            var stop = monitor.StopAsync();
+            var finished = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(2)));
+            started.Stop();
+            finished.Should().Be(stop);
+            started.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+
+            var act = async () => await stop;
+            await act.Should().ThrowAsync<InvalidOperationException>();
+            monitor.IsRunning.Should().BeFalse();
+            monitor.IsEmergencyShutdownActive.Should().BeFalse();
+            monitor.IsEmergencyShutdownPending.Should().BeTrue();
+        }
+        finally
+        {
+            monitor.Dispose();
+        }
+    }
+
     private static async Task<bool> WaitUntilAsync(Func<bool> predicate, TimeSpan timeout)
     {
         var deadline = DateTime.UtcNow + timeout;
@@ -865,6 +982,55 @@ public class HardwareSafetyMonitorTests
             }
 
             return true;
+        }
+
+        public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(LastPosition);
+
+        public Task<bool> EnableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> DisableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// The shutdown command never returns and does not observe cancellation.
+    /// A command whose token cannot be cancelled is accepted only when
+    /// <see cref="AcceptUncancellable"/> is set, which is the stop path.
+    /// </summary>
+    private sealed class HangingShutdownActuator : IActuator
+    {
+        private readonly TaskCompletionSource<bool> _hang =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _commandCount;
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool AcceptUncancellable { get; set; }
+
+        public string ActuatorId => "shutdown-hang";
+        public string Name => "shutdown-hang";
+        public ActuatorType Type => ActuatorType.Valve;
+        public ActuatorStatus Status => ActuatorStatus.Ready;
+        public double MinPosition => 0;
+        public double MaxPosition => 1;
+        public double ResponseTimeSeconds => 0.1;
+        public double MaxRateOfChange => 1;
+        public bool IsEnabled => true;
+        public int CommandCount => Volatile.Read(ref _commandCount);
+        public double LastPosition { get; private set; } = double.NaN;
+
+        public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
+
+        public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _commandCount);
+            LastPosition = position;
+            Started.TrySetResult();
+            PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            if (AcceptUncancellable && !cancellationToken.CanBeCanceled)
+                return Task.FromResult(true);
+
+            return _hang.Task;
         }
 
         public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>

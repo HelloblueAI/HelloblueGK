@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using HB_NLP_Research_Lab.Core.Control;
 using HB_NLP_Research_Lab.Core.Hardware;
 
@@ -284,6 +285,111 @@ public class ModelPredictiveControllerTests
         positions[0].Should().BeApproximately(0.3, 1e-9);
         positions[1].Should().BeApproximately(0.4, 1e-9);
         positions[2].Should().BeApproximately(0.4, 1e-9);
+    }
+
+    [Fact]
+    public async Task InFlightActuatorCommand_DoesNotBecomeTheNextRateLimitOrigin()
+    {
+        var hung = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var actuator = new SelectiveActuator(rejectWhen: _ => false)
+        {
+            HangWhen = index => index == 1 ? hung.Task : null
+        };
+        using var controller = CreateController(actuator, new ScriptedSensor(0));
+        controller.ActuatorCommandDeadline = TimeSpan.FromMilliseconds(50);
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0,
+            MaxValue = 0.3,
+            MinRate = -1_000,
+            MaxRate = 1_000
+        });
+        actuator.OnAccepted = index =>
+        {
+            if (index != 0)
+                return;
+
+            controller.SetConstraints(new ControlConstraints
+            {
+                MinValue = 0,
+                MaxValue = 1,
+                MinRate = -10,
+                MaxRate = 10
+            });
+        };
+
+        await controller.ExecuteOnceAsync();
+        var started = Stopwatch.StartNew();
+        var pass = controller.ExecuteOnceAsync();
+        var finished = await Task.WhenAny(pass, Task.Delay(TimeSpan.FromSeconds(2)));
+        started.Stop();
+        finished.Should().Be(pass);
+        await pass;
+        started.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(2));
+        actuator.CallCount.Should().Be(2);
+
+        await controller.ExecuteOnceAsync();
+
+        var positions = actuator.Positions;
+        // The hung 0.4 command is not the next origin, and the pass that
+        // started it does not send a second command. The retry is 0.4 again.
+        positions[0].Should().BeApproximately(0.3, 1e-9);
+        positions[1].Should().BeApproximately(0.4, 1e-9);
+        positions[2].Should().BeApproximately(0.4, 1e-9);
+        positions.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task InFlightActuatorCommand_CountsTowardRejectionEscalation()
+    {
+        var hung = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var actuator = new SelectiveActuator(rejectWhen: _ => false)
+        {
+            HangWhen = _ => hung.Task
+        };
+        using var controller = CreateController(
+            actuator,
+            new ScriptedSensor(0),
+            actuatorRejectionEscalationThreshold: 3);
+        controller.ActuatorCommandDeadline = TimeSpan.FromMilliseconds(20);
+        var escalations = new List<ActuatorRejectionEscalatedEventArgs>();
+        controller.ActuatorRejectionEscalated += (_, args) => escalations.Add(args);
+
+        for (var i = 0; i < 3; i++)
+            await controller.ExecuteOnceAsync();
+
+        escalations.Should().ContainSingle();
+        escalations[0].ConsecutiveRejectionCount.Should().Be(3);
+        actuator.CallCount.Should().Be(3);
+    }
+
+    [Fact]
+    public async Task InFlightActuatorCommand_StopCommandsTheMinimumWithoutWaiting()
+    {
+        var actuator = new IgnoringCancellationActuator();
+        using var controller = CreateController(actuator, new ScriptedSensor(0));
+        controller.ActuatorCommandDeadline = TimeSpan.FromSeconds(30);
+        controller.SetReferenceTrajectory(new[] { 1_000d, 1_000d, 1_000d, 1_000d });
+        controller.SetConstraints(new ControlConstraints
+        {
+            MinValue = 0.25,
+            MaxValue = 1,
+            MinRate = -10,
+            MaxRate = 10
+        });
+
+        await controller.StartAsync();
+        await actuator.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var stop = controller.StopAsync();
+        var finished = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(2)));
+        finished.Should().Be(stop);
+        await stop;
+
+        controller.IsRunning.Should().BeFalse();
+        actuator.LastPosition.Should().Be(0.25);
+        controller.ApplyConstraints(1).Should().BeApproximately(0.35, 1e-12);
     }
 
     [Fact]
@@ -1168,7 +1274,18 @@ public class ModelPredictiveControllerTests
 
         public Func<int, bool>? TimeoutWhen { get; set; }
 
+        public Func<int, Task<bool>?>? HangWhen { get; set; }
+
         public Func<int, bool>? ThrowWhen { get; set; }
+
+        public int CallCount
+        {
+            get
+            {
+                lock (_gate)
+                    return _calls;
+            }
+        }
 
         public IReadOnlyList<double> Positions
         {
@@ -1208,6 +1325,10 @@ public class ModelPredictiveControllerTests
             if (TimeoutWhen?.Invoke(index) == true)
                 throw new TaskCanceledException("actuator timeout");
 
+            var hung = HangWhen?.Invoke(index);
+            if (hung != null)
+                return hung;
+
             if (ThrowWhen?.Invoke(index) == true)
                 throw new InvalidOperationException("actuator command failed");
 
@@ -1217,6 +1338,61 @@ public class ModelPredictiveControllerTests
 
             PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
             return Task.FromResult(accepted);
+        }
+
+        public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(0d);
+
+        public Task<bool> EnableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task<bool> DisableAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// A command with a cancellable token never returns and does not observe it.
+    /// Stop's token cannot be cancelled, and that command is accepted.
+    /// </summary>
+    private sealed class IgnoringCancellationActuator : IActuator
+    {
+        private readonly object _gate = new();
+        private readonly List<double> _positions = new();
+        private readonly TaskCompletionSource<bool> _hang =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public double LastPosition
+        {
+            get
+            {
+                lock (_gate)
+                    return _positions[^1];
+            }
+        }
+
+        public string ActuatorId => "mpc-hang";
+        public string Name => "mpc-hang";
+        public ActuatorType Type => ActuatorType.Throttle;
+        public ActuatorStatus Status => ActuatorStatus.Ready;
+        public double MinPosition => 0;
+        public double MaxPosition => 1;
+        public double ResponseTimeSeconds => 0.01;
+        public double MaxRateOfChange => 10;
+        public bool IsEnabled => true;
+
+        public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
+
+        public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        {
+            lock (_gate)
+                _positions.Add(position);
+
+            Started.TrySetResult();
+            PositionChanged?.Invoke(this, new ActuatorPositionChangedEventArgs());
+            if (cancellationToken.CanBeCanceled)
+                return _hang.Task;
+
+            return Task.FromResult(true);
         }
 
         public Task<double> GetPositionAsync(CancellationToken cancellationToken = default) =>

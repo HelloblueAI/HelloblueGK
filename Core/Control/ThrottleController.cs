@@ -33,6 +33,13 @@ namespace HB_NLP_Research_Lab.Core.Control
         private const double MinThrottle = 0.0;
         private const double MaxThrottle = 1.0;
         private const double MaxThrottleRate = 0.1; // per second (10% per second)
+
+        /// <summary>
+        /// How long one actuator command may run before this pass stops waiting.
+        /// A command that is still running is not accepted, and this pass does not
+        /// send another one. The default is one second.
+        /// </summary>
+        internal TimeSpan ActuatorCommandDeadline { get; set; } = BoundedActuatorCommand.DefaultDeadline;
         
         public double CommandedThrottle => _commandedThrottle;
         public double CurrentThrottle => _currentThrottle;
@@ -289,6 +296,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// every exception of that type as a clean stop, leaves <c>IsRunning</c> true,
         /// and closes only once. An actuator that times out on its own token is not
         /// the loop stopping, so the miss stays in this pass and the next one retries.
+        /// A command that never returns, and does not observe cancellation, used to
+        /// hold this pass. Stop waited on it, so the safe close never ran. The
+        /// deadline ends the wait. This pass does not send a second command.
         /// Any other throw used to reach the outer log-only catch. That pass did not
         /// count an actuator error, so a close that failed left the last open command
         /// applied without the same retry accounting as a timeout.
@@ -299,8 +309,19 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             try
             {
-                return await _throttleActuator.SetPositionAsync(throttleCommand, cancellationToken)
-                    .ConfigureAwait(false);
+                var wait = await BoundedActuatorCommand.TrySetPositionAsync(
+                    _throttleActuator,
+                    throttleCommand,
+                    ActuatorCommandDeadline,
+                    cancellationToken).ConfigureAwait(false);
+                if (!wait.Completed)
+                {
+                    OnControlError(new TimeoutException(
+                        "Actuator command did not finish before its deadline."));
+                    return false;
+                }
+
+                return wait.Accepted;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -346,9 +367,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             // from the pre-stop command and the actuator jumps open.
             try
             {
-                var closed = await _throttleActuator.SetPositionAsync(MinThrottle, CancellationToken.None)
-                    .ConfigureAwait(false);
-                if (closed)
+                // The control pass has already returned. This close is not a second
+                // command inside that pass. A close that never returns must not hold Stop.
+                var wait = await BoundedActuatorCommand.TrySetPositionAsync(
+                    _throttleActuator,
+                    MinThrottle,
+                    ActuatorCommandDeadline,
+                    CancellationToken.None).ConfigureAwait(false);
+                if (wait.Completed && wait.Accepted)
                 {
                     _currentThrottle = MinThrottle;
                 }
