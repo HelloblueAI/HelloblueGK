@@ -3408,6 +3408,383 @@ public class StartupSequenceControllerTests
         igniter.LastPosition.Should().Be(0);
     }
 
+    [Theory]
+    [InlineData("pegged")]
+    [InlineData("nan")]
+    [InlineData("negative")]
+    [InlineData("above-ceiling")]
+    public async Task ThrottleUp_PressureLeavesTheBandDuringTheRamp_DoesNotKeepTheValvesOpen(string sample)
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var reads = 0;
+        var departed = sample switch
+        {
+            "pegged" => double.MaxValue,
+            "nan" => double.NaN,
+            "negative" => -1d,
+            "above-ceiling" => StartupSequenceController.MaximumChamberPressurePascals + 1,
+            _ => throw new ArgumentOutOfRangeException(nameof(sample), sample, "Unknown ramp pressure.")
+        };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    reads++;
+                    return Task.FromResult(reads == 1 ? 120_000d : departed);
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        controller.IsStartupComplete.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(SensorStatus.Disconnected)]
+    [InlineData(SensorStatus.Error)]
+    [InlineData(SensorStatus.Reading)]
+    public async Task ThrottleUp_PressureNotReadyDuringTheRamp_DoesNotKeepWaiting(
+        SensorStatus status)
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var reads = 0;
+        StubSensor pressure = null!;
+        pressure = new StubSensor
+        {
+            Name = "chamber pressure",
+            OnReading = () =>
+            {
+                reads++;
+                if (reads > 1)
+                    pressure.Status = status;
+
+                return Task.FromResult(120_000d);
+            }
+        };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure,
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_PressureReadTimeoutDuringTheRamp_FailCloses()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var reads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    reads++;
+                    return reads == 1
+                        ? Task.FromResult(120_000d)
+                        : Task.FromException<double>(new TaskCanceledException("sensor timeout"));
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_PressureReadFailureDuringTheRamp_FailCloses()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var reads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    reads++;
+                    if (reads == 1)
+                        return Task.FromResult(120_000d);
+
+                    throw new InvalidOperationException("pressure read failed");
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.ThrottleUp);
+        reads.Should().Be(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_LoopCancellationDuringRampPressureRead_Propagates()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        using var cancelled = new CancellationTokenSource();
+        var reads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    reads++;
+                    if (reads == 1)
+                        return Task.FromResult(120_000d);
+
+                    cancelled.Cancel();
+                    return Task.FromException<double>(new TaskCanceledException("loop stop"));
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        var act = () => controller.ExecuteOnceAsync(cancelled.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        controller.CurrentState.Should().Be(StartupState.ThrottleUp);
+        controller.HasError.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_AbortDuringRampPressureRead_StaysAborted()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        StartupSequenceController? controller = null;
+        var reads = 0;
+        var pressure = new StubSensor
+        {
+            Name = "chamber pressure",
+            OnReading = () =>
+            {
+                reads++;
+                if (reads == 1)
+                    return Task.FromResult(120_000d);
+
+                controller!.AbortStartup();
+                return Task.FromResult(StartupSequenceController.MinOperatingPressurePascals);
+            }
+        };
+        controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure,
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.HasError.Should().BeFalse();
+        controller.IsStartupComplete.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_ValveFaultsDuringRampPressureRead_DoesNotDeclareRunning()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var reads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    reads++;
+                    if (reads == 1)
+                        return Task.FromResult(120_000d);
+
+                    oxidizer.Status = ActuatorStatus.Fault;
+                    return Task.FromResult(StartupSequenceController.MinOperatingPressurePascals);
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.Running);
+        controller.IsStartupComplete.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_PressureReachesOperatingDuringTheRamp_DeclaresRunningWithoutAValveCommand()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var reads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    reads++;
+                    return Task.FromResult(reads == 1
+                        ? 120_000d
+                        : StartupSequenceController.MinOperatingPressurePascals);
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Running);
+        controller.IsStartupComplete.Should().BeTrue();
+        controller.HasError.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task ThrottleUp_PressureStillBelowOperatingAfterTheRamp_KeepsTheValvesAsTheyWere()
+    {
+        var fuel = new RecordingActuator();
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var reads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    reads++;
+                    return Task.FromResult(120_000d);
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 1_500 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 },
+            clock: new CompletingStartupClock());
+
+        controller.MoveToState(StartupState.ThrottleUp);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.ThrottleUp);
+        controller.IsStartupComplete.Should().BeFalse();
+        reads.Should().Be(2);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        igniter.CommandCount.Should().Be(0);
+    }
+
     [Fact]
     public async Task Running_ReadyActuatorsAndInBandSamples_StaysRunningWithoutAValveCommand()
     {
@@ -4142,6 +4519,21 @@ public class StartupSequenceControllerTests
                 oxidizerFlowSensor,
                 10,
                 clock);
+    }
+
+    /// <summary>
+    /// Completes startup waits immediately. The ramp decision is what the sequence
+    /// does with the sample taken after the wait, not how long the wait lasts.
+    /// </summary>
+    private sealed class CompletingStartupClock : IStartupSequenceClock
+    {
+        public DateTime UtcNow { get; } = new(2026, 11, 4, 0, 0, 0, DateTimeKind.Utc);
+
+        public Task Delay(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeStartupClock : IStartupSequenceClock

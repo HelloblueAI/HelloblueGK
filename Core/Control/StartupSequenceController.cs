@@ -931,7 +931,54 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
-            await RequireStartupActuatorsReadyAsync().ConfigureAwait(false);
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
+            // Temperature and flow are sampled again at the end of this wait. Pressure
+            // was not: the sample that authorized the wait is two seconds old. A pegged,
+            // negative, non-finite, or not-Ready chamber during the ramp used to stay
+            // open until the next tick. A pressure that is still below the floor stays
+            // in this state and does not command the valves. A pressure that has reached
+            // the operating floor finishes, the same way the sample before the wait does.
+            await FinishThrottleUpFromChamberPressureAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Reads chamber pressure after the throttle-up ramp. Returns after fail-closed
+        /// when the sample is missing, not Ready, or outside the plausible band. An
+        /// operating pressure declares the engine running. A pressure still below that
+        /// floor leaves the sequence in throttle-up. An abort that already won stays aborted.
+        /// </summary>
+        private async Task FinishThrottleUpFromChamberPressureAsync(CancellationToken cancellationToken)
+        {
+            var pressureRead = await TryReadStartupSensorAsync(_chamberPressureSensor, cancellationToken)
+                .ConfigureAwait(false);
+            if (!pressureRead.Completed)
+                return;
+
+            var pressure = pressureRead.Value;
+            if (!await RequireSensorReadyAsync(_chamberPressureSensor).ConfigureAwait(false))
+                return;
+
+            if (!IsPlausibleChamberPressure(pressure))
+            {
+                await FailClosedAsync(
+                    $"[Startup Sequence] ❌ Chamber pressure outside the allowed band: {pressure}")
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            // A valve can fault while this sample is in flight. That fault closes
+            // on this pass whether the chamber is still below the floor or has
+            // reached the operating pressure.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return;
+
+            if (!IsOperatingPressure(pressure))
+                return;
+
+            Console.WriteLine("[Startup Sequence] ✅ Engine running!");
+            TransitionToState(StartupState.Running);
         }
 
         /// <summary>
