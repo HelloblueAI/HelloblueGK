@@ -112,6 +112,12 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal const int ShutdownCloseFailureLogInterval = 10;
 
         /// <summary>
+        /// Running has no state deadline. A sensor read still has to end. One second
+        /// is the same bound a healthy 10 Hz pass already assumes for a single read.
+        /// </summary>
+        internal static readonly TimeSpan RunningSensorReadDeadline = TimeSpan.FromSeconds(1);
+
+        /// <summary>
         /// How long one shutdown close may stay in flight. The safe close passes
         /// <see cref="CancellationToken.None"/>, so a command that ignores cancellation
         /// is not a throw and the catch in <see cref="CloseForShutdownAsync"/> never ran.
@@ -410,8 +416,10 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // A later sample outside those bands, a sensor that is no longer Ready,
                 // or a read that times out on its own token left the valves open.
                 // Throttle-up can wait below the operating floor. This state cannot:
-                // it has no ramp and no deadline. A Ready sample inside the bands
-                // still does not command the valves.
+                // it has no ramp and no state deadline. A Ready sample inside the bands
+                // still does not command the valves. Each sample is still bounded:
+                // Running is excluded from the state deadline, so a read that never
+                // returns would otherwise hold the pass and the safe close.
                 if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                     return;
 
@@ -1175,7 +1183,8 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// Returns false after fail-closed when a running sample is missing, not Ready,
         /// or outside the band that authorized this state. An abort that already won
         /// stays aborted. A timeout or read failure that is not the loop token
-        /// fail-closes here.
+        /// fail-closes here. A read that does not return also fail-closes here: this
+        /// state has no finite deadline of its own.
         /// </summary>
         private async Task<bool> RequireRunningMeasurementAsync(
             ISensor<double> sensor,
@@ -1183,7 +1192,7 @@ namespace HB_NLP_Research_Lab.Core.Control
             string outsideBandMessage,
             CancellationToken cancellationToken)
         {
-            var sample = await TryReadStartupSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
+            var sample = await TryReadRunningSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
             if (!sample.Completed)
                 return false;
 
@@ -1206,6 +1215,65 @@ namespace HB_NLP_Research_Lab.Core.Control
             await FailClosedAsync(
                 $"[Startup Sequence] ❌ {actuator.Name} not ready: {actuator.Status}").ConfigureAwait(false);
             return false;
+        }
+
+        /// <summary>
+        /// Reads one running sensor. <see cref="StartupState.Running"/> is stored with
+        /// <see cref="TimeSpan.MaxValue"/>, and the state-deadline wrapper does not
+        /// cover this pass. A read that ignores cancellation used to stay on the
+        /// await: the sensors behind it were not checked, the last open command stayed
+        /// applied, and <see cref="StopAsync"/> waited on that read so the safe close
+        /// never ran. The deadline ends the wait. This pass does not read the sensor
+        /// again. A timeout the sensor raises itself still fail-closes through
+        /// <see cref="TryReadStartupSensorAsync"/>. Cancelling the loop token still
+        /// propagates and is not a failed read.
+        /// </summary>
+        private async Task<StartupSensorSample> TryReadRunningSensorAsync(
+            ISensor<double> sensor,
+            CancellationToken cancellationToken)
+        {
+            var readCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var read = TryReadStartupSensorAsync(sensor, readCts.Token);
+            using var deadlineCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            try
+            {
+                var deadline = _clock.Delay(RunningSensorReadDeadline, deadlineCts.Token);
+                await Task.WhenAny(read, deadline).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                readCts.Cancel();
+                ReleaseStatePass(read, readCts);
+                throw;
+            }
+            finally
+            {
+                deadlineCts.Cancel();
+            }
+
+            if (read.IsCompleted)
+            {
+                try
+                {
+                    return await read.ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (read.IsFaulted)
+                        _ = read.Exception;
+                    readCts.Dispose();
+                }
+            }
+
+            // Do not wait for the read, and do not start another one in this pass.
+            readCts.Cancel();
+            ReleaseStatePass(read, readCts);
+            if (cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {sensor.Name} read did not return").ConfigureAwait(false);
+            return StartupSensorSample.TimedOut();
         }
 
         /// <summary>
