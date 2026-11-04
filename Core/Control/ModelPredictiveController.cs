@@ -196,8 +196,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 controlAction = ApplyConstraints(controlAction);
                 optimalControl[0] = controlAction;
                 
-                // 5. Send to actuator. A refused command or a timeout leaves the actuator
-                // at the last accepted position, so it must not become the next rate-limit origin.
+                // 5. Send to actuator. A refused command, a timeout, or any other throw
+                // leaves the actuator at the last accepted position, so it must not
+                // become the next rate-limit origin. A throw counts as a rejection.
                 var accepted = await TrySetActuatorPositionAsync(controlAction, cancellationToken)
                     .ConfigureAwait(false);
                 if (!accepted)
@@ -316,6 +317,9 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// and closes only once. An actuator that times out on its own token is not
         /// the loop stopping. The caller records a rejection and leaves control history
         /// unchanged so the next pass retries the same step.
+        /// Any other throw used to reach the outer log-only catch. That pass did not
+        /// count a rejection, so a close that failed left the last open command applied
+        /// and never reached <see cref="ActuatorRejectionEscalated"/>.
         /// </summary>
         private async Task<bool> TrySetActuatorPositionAsync(
             double command,
@@ -330,6 +334,12 @@ namespace HB_NLP_Research_Lab.Core.Control
                 throw;
             }
             catch (OperationCanceledException ex)
+            {
+                OnControlError(ex);
+                return false;
+            }
+            // codeql[generic-catch-clause]: A thrown actuator command is a rejection, not a loop stop.
+            catch (Exception ex)
             {
                 OnControlError(ex);
                 return false;
