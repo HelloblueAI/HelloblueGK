@@ -282,7 +282,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // in one 100 ms period: about 1.1 s for the whole pass. Oxidizer admission
                 // stays at 5 s. Its 1 s wait plus seven sensor reads, two of them the added
                 // fuel checks, is about 1.7 s at that same period. Lengthening either budget
-                // would loosen the interlock.
+                // would loosen the interlock. Combustion verification stays at 5 s. The
+                // pass reads both flows before a 1 s wait, then the chamber and both
+                // flows again. At 10 Hz that is about 1.6 s.
                 { StartupState.Ignition, TimeSpan.FromSeconds(3) },
                 { StartupState.CombustionVerification, TimeSpan.FromSeconds(5) },
                 { StartupState.ThrottleUp, TimeSpan.FromSeconds(10) },
@@ -820,9 +822,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
 
             // The pulse is one 0.5 s wait, so flow is sampled at the end of it rather
-            // than by a second monitor while the igniter is on. Combustion verification
-            // then waits another second before it reads flow. A sample that leaves the
-            // band during the pulse fail-closes here, before that wait.
+            // than by a second monitor while the igniter is on. A sample that leaves the
+            // band during the pulse fail-closes here. Combustion verification reads
+            // flow again before its own wait.
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
@@ -839,7 +841,18 @@ namespace HB_NLP_Research_Lab.Core.Control
             // AtPosition is not proof the valve is still where this sequence left it.
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return;
-            
+
+            // Flow was last checked at the end of the spark pulse. This state then
+            // waited one second, and it read flow only after the chamber already
+            // looked like combustion. A pegged, lost, non-finite, or not-Ready sample
+            // already present at the start of that wait left the last open command
+            // applied until the wait ended. An in-band sample stays in the wait and
+            // does not command the valves. The chamber may still be ambient here:
+            // combustion is a rise out of that band after the spark, and this check
+            // does not require the rise before the wait.
+            if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
             // Wait for combustion to establish
             await _clock.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
@@ -877,9 +890,8 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
-            // Flow was last checked before the spark. A pegged or lost propellant flow
-            // with a combustion-like chamber used to advance into throttle-up and leave
-            // the valves at the last open command.
+            // Flow authorized this wait. A sample that leaves the band during the
+            // second must not advance into throttle-up with the valves still open.
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
