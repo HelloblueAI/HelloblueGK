@@ -187,6 +187,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             HasMinimumPropellantFlow(flow) && double.IsFinite(maximum) && flow <= maximum;
 
         /// <summary>
+        /// A sample that may be present before the valve opens. Established flow is the
+        /// narrower band. Zero is quiescent and is not a failed transducer. A pegged,
+        /// negative, or non-finite sample is.
+        /// </summary>
+        internal static bool IsPlausiblePropellantFlow(double flow, double maximum) =>
+            double.IsFinite(flow) && flow >= 0 && double.IsFinite(maximum) && flow <= maximum;
+
+        /// <summary>
         /// A valve may be commanded open only from Ready. Fault, Error, Disabled,
         /// Unknown, and a valve that is still moving are not a safe pre-start.
         /// AtPosition is not Ready: the fuel valve already used that same gate.
@@ -679,6 +687,18 @@ namespace HB_NLP_Research_Lab.Core.Control
             // admitted into.
             if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
                 return;
+
+            // The flow sensor can already be Ready and still pegged, negative, or
+            // non-finite. That sample used to be read only after this valve was open
+            // and the one-second wait had elapsed. A failed transducer must not be
+            // the reading fuel is admitted on. Zero is still quiescent: flow is not
+            // established until the wait ends, and this check does not require the band.
+            if (!await RequirePlausiblePropellantFlowAsync(
+                    _fuelFlowSensor,
+                    MaximumFuelFlowKgPerSecond,
+                    "Fuel flow",
+                    cancellationToken).ConfigureAwait(false))
+                return;
             
             // Open fuel valve gradually. If abort closed the valve while this command
             // was in flight, do not leave the late open applied or advance the sequence.
@@ -735,6 +755,17 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Fuel flow was last checked before this state. A pegged, lost, non-finite,
             // or not-Ready sample must not be the flow oxidizer is admitted beside.
             if (!await RequireFuelFlowInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
+            // Fuel is already open. Oxidizer flow was only a Ready flag before this
+            // command. A pegged, negative, or non-finite sample still opened the valve
+            // and left both propellants admitted through the one-second wait. Zero is
+            // quiescent and still opens. This is not the fuel-flow band above it.
+            if (!await RequirePlausiblePropellantFlowAsync(
+                    _oxidizerFlowSensor,
+                    MaximumOxidizerFlowKgPerSecond,
+                    "Oxidizer flow",
+                    cancellationToken).ConfigureAwait(false))
                 return;
             
             // Open oxidizer valve gradually
@@ -1035,6 +1066,36 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return false;
 
             return await RequireOxidizerFlowInBandAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when the flow sample that would authorize
+        /// opening this valve is missing, not Ready, or not plausible. An in-band sample
+        /// and a quiescent zero stay in this state and do not command the valve from
+        /// here. An abort that already won stays aborted. A timeout or read failure
+        /// that is not the loop token fail-closes.
+        /// </summary>
+        private async Task<bool> RequirePlausiblePropellantFlowAsync(
+            ISensor<double> sensor,
+            double maximum,
+            string label,
+            CancellationToken cancellationToken)
+        {
+            var flowRead = await TryReadStartupSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
+            if (!flowRead.Completed)
+                return false;
+            if (!await RequireSensorReadyAsync(sensor).ConfigureAwait(false))
+                return false;
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return false;
+
+            if (IsPlausiblePropellantFlow(flowRead.Value, maximum))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {label} outside the allowed band: {flowRead.Value}")
+                .ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
