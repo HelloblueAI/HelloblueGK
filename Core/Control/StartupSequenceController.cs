@@ -163,6 +163,17 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal static bool IsPlausibleChamberPressure(double pressure) =>
             double.IsFinite(pressure) && pressure >= 0 && pressure <= MaximumChamberPressurePascals;
 
+        /// <summary>
+        /// A chamber temperature the startup sequence can keep acting on. Negative,
+        /// non-finite, and above-ceiling values are a failed transducer. A cold chamber
+        /// is still plausible: combustion is a rise out of ambient after the spark,
+        /// and this check is not that rise.
+        /// </summary>
+        internal static bool IsPlausibleChamberTemperature(double temperature) =>
+            double.IsFinite(temperature)
+            && temperature >= 0
+            && temperature <= MaximumChamberTemperatureKelvin;
+
         internal static bool IsOperatingPressure(double pressure) =>
             IsPlausibleChamberPressure(pressure) && pressure >= MinOperatingPressurePascals;
 
@@ -839,6 +850,17 @@ namespace HB_NLP_Research_Lab.Core.Control
             // AtPosition is not proof the valve is still where this sequence left it.
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return;
+
+            // The chamber was last read before the spark. This state then waited one
+            // second before reading it again. A pegged, negative, non-finite, or
+            // not-Ready sample at the start of that wait left the propellant valves
+            // open until the wait ended. A plausible sample may still be ambient, or
+            // already rising: combustion is a rise out of the ambient band, and this
+            // check does not require that rise. The wait below is where it is allowed
+            // to appear. A sample that leaves the band during the wait is still
+            // rejected when the wait ends.
+            if (!await RequirePlausibleChamberAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             // Wait for combustion to establish
             await _clock.Delay(TimeSpan.FromSeconds(1), cancellationToken);
@@ -1326,6 +1348,52 @@ namespace HB_NLP_Research_Lab.Core.Control
             public static StartupSensorSample Success(double value) => new(true, value);
 
             public static StartupSensorSample TimedOut() => new(false, 0);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when the chamber sample that would be carried
+        /// into the combustion wait is missing, not Ready, or outside the plausible band.
+        /// Ambient and a chamber that has already begun to rise are both plausible.
+        /// An abort that already won stays aborted. A timeout or read failure that is
+        /// not the loop token fail-closes.
+        /// </summary>
+        private async Task<bool> RequirePlausibleChamberAsync(CancellationToken cancellationToken)
+        {
+            if (!await RequirePlausibleSampleAsync(
+                    _chamberPressureSensor,
+                    IsPlausibleChamberPressure,
+                    "Chamber pressure",
+                    cancellationToken).ConfigureAwait(false))
+                return false;
+
+            return await RequirePlausibleSampleAsync(
+                _chamberTemperatureSensor,
+                IsPlausibleChamberTemperature,
+                "Chamber temperature",
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<bool> RequirePlausibleSampleAsync(
+            ISensor<double> sensor,
+            Func<double, bool> plausible,
+            string label,
+            CancellationToken cancellationToken)
+        {
+            var sample = await TryReadStartupSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
+            if (!sample.Completed)
+                return false;
+            if (!await RequireSensorReadyAsync(sensor).ConfigureAwait(false))
+                return false;
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return false;
+
+            if (plausible(sample.Value))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {label} outside the allowed band: {sample.Value}")
+                .ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
