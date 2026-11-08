@@ -295,10 +295,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 { StartupState.Purge, TimeSpan.FromSeconds(10) },
                 { StartupState.FuelFlowInitiation, TimeSpan.FromSeconds(5) },
                 { StartupState.OxidizerFlowInitiation, TimeSpan.FromSeconds(5) },
-                // Ignition stays at 3 s. The pass is the existing 0.5 s pulse, two chamber
-                // reads, and four flow reads (both propellants before the spark and again
+                // Ignition stays at 3 s. The pass is the existing 0.5 s pulse, four chamber
+                // reads (pressure and temperature before the spark and again when the pulse
+                // ends), and four flow reads (both propellants before the spark and again
                 // when the pulse ends). This sequence runs at 10 Hz, so a healthy read fits
-                // in one 100 ms period: about 1.1 s for the whole pass. Oxidizer admission
+                // in one 100 ms period: about 1.3 s for the whole pass. Oxidizer admission
                 // stays at 5 s. Its 1 s wait plus seven sensor reads, two of them the added
                 // fuel checks, is about 1.7 s at that same period. Lengthening either budget
                 // would loosen the interlock. Combustion verification stays at 5 s. The
@@ -869,6 +870,15 @@ namespace HB_NLP_Research_Lab.Core.Control
             // flow again before its own wait.
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
+
+            // The chamber was last required to be ambient before this pulse. Combustion
+            // is a rise out of that band, so the sample at the end of the pulse may
+            // already be hot, and it may still be cold. A pegged, negative, non-finite,
+            // or not-Ready sample is neither. Combustion verification waits another
+            // second before it reads the chamber, so this is the read that closes the
+            // pulse. A plausible sample does not command the valves.
+            if (!await RequirePlausibleChamberAfterSparkAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             TransitionToState(StartupState.CombustionVerification);
         }
@@ -1422,13 +1432,26 @@ namespace HB_NLP_Research_Lab.Core.Control
         }
 
         /// <summary>
+        /// Returns false after fail-closed when the chamber at the end of the spark pulse
+        /// is missing, not Ready, or outside the plausible band. Ambient and a chamber
+        /// that has already begun to rise are both plausible. Combustion is decided after
+        /// this pulse, not here. An abort that already won stays aborted. A timeout or
+        /// read failure that is not the loop token fail-closes.
+        /// </summary>
+        private Task<bool> RequirePlausibleChamberAfterSparkAsync(CancellationToken cancellationToken) =>
+            RequirePlausibleChamberCoreAsync(cancellationToken);
+
+        /// <summary>
         /// Returns false after fail-closed when the chamber sample that would be carried
         /// into the combustion wait is missing, not Ready, or outside the plausible band.
         /// Ambient and a chamber that has already begun to rise are both plausible.
         /// An abort that already won stays aborted. A timeout or read failure that is
         /// not the loop token fail-closes.
         /// </summary>
-        private async Task<bool> RequirePlausibleChamberAsync(CancellationToken cancellationToken)
+        private Task<bool> RequirePlausibleChamberAsync(CancellationToken cancellationToken) =>
+            RequirePlausibleChamberCoreAsync(cancellationToken);
+
+        private async Task<bool> RequirePlausibleChamberCoreAsync(CancellationToken cancellationToken)
         {
             if (!await RequirePlausibleSampleAsync(
                     _chamberPressureSensor,
