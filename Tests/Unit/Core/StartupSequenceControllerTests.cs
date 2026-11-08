@@ -76,6 +76,23 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public void PlausibleChamberTemperature_RejectsAFailedTransducerAndAllowsAColdChamber()
+    {
+        StartupSequenceController.IsPlausibleChamberTemperature(0).Should().BeTrue();
+        StartupSequenceController.IsPlausibleChamberTemperature(293.15).Should().BeTrue();
+        StartupSequenceController.IsPlausibleChamberTemperature(500).Should().BeTrue();
+        StartupSequenceController.IsPlausibleChamberTemperature(
+            StartupSequenceController.MaximumChamberTemperatureKelvin).Should().BeTrue();
+
+        StartupSequenceController.IsPlausibleChamberTemperature(-1).Should().BeFalse();
+        StartupSequenceController.IsPlausibleChamberTemperature(
+            StartupSequenceController.MaximumChamberTemperatureKelvin + 1).Should().BeFalse();
+        StartupSequenceController.IsPlausibleChamberTemperature(double.NaN).Should().BeFalse();
+        StartupSequenceController.IsPlausibleChamberTemperature(double.PositiveInfinity).Should().BeFalse();
+        StartupSequenceController.IsPlausibleChamberTemperature(double.MaxValue).Should().BeFalse();
+    }
+
+    [Fact]
     public void OperatingPressure_IsAboveTheAmbientBand()
     {
         StartupSequenceController.IsOperatingPressure(100_000).Should().BeFalse();
@@ -1216,8 +1233,9 @@ public class StartupSequenceControllerTests
     public async Task Ignition_SlowHealthySensors_SparkWithinTheExistingBudgetDeterministically()
     {
         // The startup sequence is 10 Hz, so a healthy sample fits in one 100 ms period.
-        // This pass reads the chamber twice and both flows twice, then holds the 0.5 s pulse.
-        // 6 * 100 ms + 500 ms is about 1.1 s, inside the 3 s ignition interlock.
+        // This pass reads pressure and temperature before the spark and again when the
+        // pulse ends, and both flows twice, then holds the 0.5 s pulse.
+        // 8 * 100 ms + 500 ms is 1.3 s, inside the 3 s ignition interlock.
         var clock = new FakeStartupClock();
         var startedAt = clock.UtcNow;
         var samplePeriod = TimeSpan.FromMilliseconds(100);
@@ -1249,7 +1267,7 @@ public class StartupSequenceControllerTests
         clock.Advance(TimeSpan.FromMilliseconds(500));
         await pass;
 
-        (clock.UtcNow - startedAt).Should().Be(TimeSpan.FromMilliseconds(1_100));
+        (clock.UtcNow - startedAt).Should().Be(TimeSpan.FromMilliseconds(1_300));
         controller.CurrentState.Should().Be(StartupState.CombustionVerification);
         controller.HasError.Should().BeFalse();
         igniter.Positions.Should().Contain(1);
@@ -1605,6 +1623,386 @@ public class StartupSequenceControllerTests
         fuel.LastPosition.Should().Be(0);
         oxidizer.LastPosition.Should().Be(0);
         (sensor == "fuel" ? fuelReads : oxidizerReads).Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData("pressure", double.NaN)]
+    [InlineData("pressure", double.PositiveInfinity)]
+    [InlineData("pressure", double.NegativeInfinity)]
+    [InlineData("pressure", double.MaxValue)]
+    [InlineData("pressure", -1d)]
+    [InlineData("pressure", StartupSequenceController.MaximumChamberPressurePascals + 1)]
+    [InlineData("temperature", double.NaN)]
+    [InlineData("temperature", double.PositiveInfinity)]
+    [InlineData("temperature", double.NegativeInfinity)]
+    [InlineData("temperature", double.MaxValue)]
+    [InlineData("temperature", -1d)]
+    [InlineData("temperature", StartupSequenceController.MaximumChamberTemperatureKelvin + 1)]
+    public async Task Ignition_ImplausibleChamberDuringTheSparkPulse_DoesNotEnterCombustion(
+        string sensor,
+        double sample)
+    {
+        // The chamber is ambient before the spark. The 0.5 s pulse leaves the
+        // propellant valves open. A sample outside the plausible band when that
+        // wait ends must fail-close on this pass, before combustion verification
+        // spends another second waiting to read the chamber. A rise out of
+        // ambient is not this failure.
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var pressureReads = 0;
+        var temperatureReads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    pressureReads++;
+                    var value = sensor == "pressure" && pressureReads > 1
+                        ? sample
+                        : StandardAtmospherePascals;
+                    return Task.FromResult(value);
+                }
+            },
+            temperature: new StubSensor
+            {
+                Name = "chamber temperature",
+                OnReading = () =>
+                {
+                    temperatureReads++;
+                    var value = sensor == "temperature" && temperatureReads > 1
+                        ? sample
+                        : 293.15;
+                    return Task.FromResult(value);
+                }
+            },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        pressureReads.Should().Be(2);
+        temperatureReads.Should().Be(sensor == "temperature" ? 2 : 1);
+    }
+
+    [Theory]
+    [InlineData(500d, StandardAtmospherePascals)]
+    [InlineData(StartupSequenceController.MinCombustionTemperatureKelvin, StartupSequenceController.MinOperatingPressurePascals)]
+    [InlineData(293.15d, StandardAtmospherePascals)]
+    public async Task Ignition_PlausibleChamberDuringTheSparkPulse_AdvancesWithoutAValveCommand(
+        double temperature,
+        double pressure)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var pressureReads = 0;
+        var temperatureReads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    pressureReads++;
+                    return Task.FromResult(pressureReads == 1 ? StandardAtmospherePascals : pressure);
+                }
+            },
+            temperature: new StubSensor
+            {
+                Name = "chamber temperature",
+                OnReading = () =>
+                {
+                    temperatureReads++;
+                    return Task.FromResult(temperatureReads == 1 ? 293.15 : temperature);
+                }
+            },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.CombustionVerification);
+        controller.HasError.Should().BeFalse();
+        igniter.Positions.Should().Equal(1, 0);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        pressureReads.Should().Be(2);
+        temperatureReads.Should().Be(2);
+    }
+
+    [Theory]
+    [InlineData("pressure", SensorStatus.Disconnected)]
+    [InlineData("pressure", SensorStatus.Reading)]
+    [InlineData("temperature", SensorStatus.Error)]
+    [InlineData("temperature", SensorStatus.Calibrating)]
+    public async Task Ignition_ChamberSensorNotReadyAfterTheSpark_DoesNotEnterCombustion(
+        string sensor,
+        SensorStatus status)
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var pressureReads = 0;
+        var temperatureReads = 0;
+        StubSensor pressureSensor = null!;
+        StubSensor temperatureSensor = null!;
+        pressureSensor = new StubSensor
+        {
+            Name = "chamber pressure",
+            OnReading = () =>
+            {
+                pressureReads++;
+                if (sensor == "pressure" && pressureReads > 1)
+                    pressureSensor.Status = status;
+                return Task.FromResult(StandardAtmospherePascals);
+            }
+        };
+        temperatureSensor = new StubSensor
+        {
+            Name = "chamber temperature",
+            OnReading = () =>
+            {
+                temperatureReads++;
+                if (sensor == "temperature" && temperatureReads > 1)
+                    temperatureSensor.Status = status;
+                return Task.FromResult(293.15);
+            }
+        };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: pressureSensor,
+            temperature: temperatureSensor,
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        pressureReads.Should().Be(2);
+        temperatureReads.Should().Be(sensor == "temperature" ? 2 : 1);
+    }
+
+    [Fact]
+    public async Task Ignition_ChamberReadTimeoutAfterTheSpark_FailClosesAndDoesNotEnterCombustion()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var pressureReads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    pressureReads++;
+                    return pressureReads == 1
+                        ? Task.FromResult(StandardAtmospherePascals)
+                        : Task.FromException<double>(new TaskCanceledException("chamber pressure timeout"));
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 293.15 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        pressureReads.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Ignition_ChamberReadFailureAfterTheSpark_FailClosesAndDoesNotEnterCombustion()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var temperatureReads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor { Name = "chamber pressure", Value = StandardAtmospherePascals },
+            temperature: new StubSensor
+            {
+                Name = "chamber temperature",
+                OnReading = () =>
+                {
+                    temperatureReads++;
+                    return temperatureReads == 1
+                        ? Task.FromResult(293.15)
+                        : Task.FromException<double>(new InvalidOperationException("chamber temperature read failed"));
+                }
+            },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        temperatureReads.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Ignition_AbortDuringPostSparkChamberRead_StaysAborted()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        StartupSequenceController? controller = null;
+        var pressureReads = 0;
+        controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    pressureReads++;
+                    if (pressureReads > 1)
+                        controller!.AbortStartup();
+                    return Task.FromResult(StandardAtmospherePascals);
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 293.15 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Aborted);
+        controller.HasError.Should().BeFalse();
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        pressureReads.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Ignition_ValveFaultsDuringPostSparkChamberRead_DoesNotEnterCombustion()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var pressureReads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    pressureReads++;
+                    if (pressureReads > 1)
+                        fuel.Status = ActuatorStatus.Fault;
+                    return Task.FromResult(StandardAtmospherePascals);
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 293.15 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.CombustionVerification);
+        igniter.Positions.Should().Contain(1);
+        igniter.LastPosition.Should().Be(0);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        pressureReads.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task Ignition_CancelledPostSparkChamberRead_PropagatesAndDoesNotFailClosed()
+    {
+        var fuel = new RecordingActuator { Name = "fuel" };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        using var cancelled = new CancellationTokenSource();
+        var pressureReads = 0;
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            pressure: new StubSensor
+            {
+                Name = "chamber pressure",
+                OnReading = () =>
+                {
+                    pressureReads++;
+                    if (pressureReads > 1)
+                    {
+                        cancelled.Cancel();
+                        return Task.FromException<double>(new TaskCanceledException("loop stop"));
+                    }
+
+                    return Task.FromResult(StandardAtmospherePascals);
+                }
+            },
+            temperature: new StubSensor { Name = "chamber temperature", Value = 293.15 },
+            fuelFlow: new StubSensor { Name = "fuel flow", Value = 1 },
+            oxidizerFlow: new StubSensor { Name = "oxidizer flow", Value = 1 });
+
+        controller.MoveToState(StartupState.Ignition);
+        var act = () => controller.ExecuteOnceAsync(cancelled.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        controller.CurrentState.Should().Be(StartupState.Ignition);
+        controller.HasError.Should().BeFalse();
+        igniter.Positions.Should().Equal(1, 0);
+        fuel.CommandCount.Should().Be(0);
+        oxidizer.CommandCount.Should().Be(0);
+        pressureReads.Should().Be(2);
     }
 
     [Theory]

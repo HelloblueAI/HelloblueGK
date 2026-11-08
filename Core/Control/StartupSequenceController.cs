@@ -163,6 +163,17 @@ namespace HB_NLP_Research_Lab.Core.Control
         internal static bool IsPlausibleChamberPressure(double pressure) =>
             double.IsFinite(pressure) && pressure >= 0 && pressure <= MaximumChamberPressurePascals;
 
+        /// <summary>
+        /// A chamber temperature the startup sequence can keep acting on. Negative,
+        /// non-finite, and above-ceiling values are a failed transducer. A cold chamber
+        /// is still plausible: combustion is a rise out of ambient after the spark,
+        /// and this check is not that rise.
+        /// </summary>
+        internal static bool IsPlausibleChamberTemperature(double temperature) =>
+            double.IsFinite(temperature)
+            && temperature >= 0
+            && temperature <= MaximumChamberTemperatureKelvin;
+
         internal static bool IsOperatingPressure(double pressure) =>
             IsPlausibleChamberPressure(pressure) && pressure >= MinOperatingPressurePascals;
 
@@ -276,10 +287,11 @@ namespace HB_NLP_Research_Lab.Core.Control
                 { StartupState.Purge, TimeSpan.FromSeconds(10) },
                 { StartupState.FuelFlowInitiation, TimeSpan.FromSeconds(5) },
                 { StartupState.OxidizerFlowInitiation, TimeSpan.FromSeconds(5) },
-                // Ignition stays at 3 s. The pass is the existing 0.5 s pulse, two chamber
-                // reads, and four flow reads (both propellants before the spark and again
+                // Ignition stays at 3 s. The pass is the existing 0.5 s pulse, four chamber
+                // reads (pressure and temperature before the spark and again when the pulse
+                // ends), and four flow reads (both propellants before the spark and again
                 // when the pulse ends). This sequence runs at 10 Hz, so a healthy read fits
-                // in one 100 ms period: about 1.1 s for the whole pass. Oxidizer admission
+                // in one 100 ms period: about 1.3 s for the whole pass. Oxidizer admission
                 // stays at 5 s. Its 1 s wait plus seven sensor reads, two of them the added
                 // fuel checks, is about 1.7 s at that same period. Lengthening either budget
                 // would loosen the interlock.
@@ -825,6 +837,15 @@ namespace HB_NLP_Research_Lab.Core.Control
             // band during the pulse fail-closes here, before that wait.
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
+
+            // The chamber was last required to be ambient before this pulse. Combustion
+            // is a rise out of that band, so the sample at the end of the pulse may
+            // already be hot, and it may still be cold. A pegged, negative, non-finite,
+            // or not-Ready sample is neither. Combustion verification waits another
+            // second before it reads the chamber, so this is the read that closes the
+            // pulse. A plausible sample does not command the valves.
+            if (!await RequirePlausibleChamberAfterSparkAsync(cancellationToken).ConfigureAwait(false))
+                return;
             
             TransitionToState(StartupState.CombustionVerification);
         }
@@ -1326,6 +1347,54 @@ namespace HB_NLP_Research_Lab.Core.Control
             public static StartupSensorSample Success(double value) => new(true, value);
 
             public static StartupSensorSample TimedOut() => new(false, 0);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when the chamber at the end of the spark pulse
+        /// is missing, not Ready, or outside the plausible band. Ambient and a chamber
+        /// that has already begun to rise are both plausible. Combustion is decided after
+        /// this pulse, not here. An abort that already won stays aborted. A timeout or
+        /// read failure that is not the loop token fail-closes.
+        /// </summary>
+        private async Task<bool> RequirePlausibleChamberAfterSparkAsync(CancellationToken cancellationToken)
+        {
+            if (!await RequirePlausibleStartupSampleAsync(
+                    _chamberPressureSensor,
+                    IsPlausibleChamberPressure,
+                    "Chamber pressure",
+                    cancellationToken).ConfigureAwait(false))
+                return false;
+
+            return await RequirePlausibleStartupSampleAsync(
+                _chamberTemperatureSensor,
+                IsPlausibleChamberTemperature,
+                "Chamber temperature",
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<bool> RequirePlausibleStartupSampleAsync(
+            ISensor<double> sensor,
+            Func<double, bool> plausible,
+            string label,
+            CancellationToken cancellationToken)
+        {
+            var sample = await TryReadStartupSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
+            if (!sample.Completed)
+                return false;
+            if (!await RequireSensorReadyAsync(sensor).ConfigureAwait(false))
+                return false;
+
+            // A valve can fault while this sample is in flight and still leave a finite chamber.
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return false;
+
+            if (plausible(sample.Value))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {label} outside the allowed band: {sample.Value}")
+                .ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
