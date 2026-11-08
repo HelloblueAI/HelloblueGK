@@ -198,6 +198,14 @@ namespace HB_NLP_Research_Lab.Core.Control
             HasMinimumPropellantFlow(flow) && double.IsFinite(maximum) && flow <= maximum;
 
         /// <summary>
+        /// A sample that may be present before the valve opens. Established flow is the
+        /// narrower band. Zero is quiescent and is not a failed transducer. A pegged,
+        /// negative, or non-finite sample is.
+        /// </summary>
+        internal static bool IsPlausiblePropellantFlow(double flow, double maximum) =>
+            double.IsFinite(flow) && flow >= 0 && double.IsFinite(maximum) && flow <= maximum;
+
+        /// <summary>
         /// A valve may be commanded open only from Ready. Fault, Error, Disabled,
         /// Unknown, and a valve that is still moving are not a safe pre-start.
         /// AtPosition is not Ready: the fuel valve already used that same gate.
@@ -294,7 +302,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // in one 100 ms period: about 1.3 s for the whole pass. Oxidizer admission
                 // stays at 5 s. Its 1 s wait plus seven sensor reads, two of them the added
                 // fuel checks, is about 1.7 s at that same period. Lengthening either budget
-                // would loosen the interlock.
+                // would loosen the interlock. Combustion verification stays at 5 s. The
+                // pass reads both flows before a 1 s wait, then the chamber and both
+                // flows again. At 10 Hz that is about 1.6 s.
                 { StartupState.Ignition, TimeSpan.FromSeconds(3) },
                 { StartupState.CombustionVerification, TimeSpan.FromSeconds(5) },
                 { StartupState.ThrottleUp, TimeSpan.FromSeconds(10) },
@@ -691,6 +701,18 @@ namespace HB_NLP_Research_Lab.Core.Control
             // admitted into.
             if (!await RequireAmbientChamberAsync(cancellationToken).ConfigureAwait(false))
                 return;
+
+            // The flow sensor can already be Ready and still pegged, negative, or
+            // non-finite. That sample used to be read only after this valve was open
+            // and the one-second wait had elapsed. A failed transducer must not be
+            // the reading fuel is admitted on. Zero is still quiescent: flow is not
+            // established until the wait ends, and this check does not require the band.
+            if (!await RequirePlausiblePropellantFlowAsync(
+                    _fuelFlowSensor,
+                    MaximumFuelFlowKgPerSecond,
+                    "Fuel flow",
+                    cancellationToken).ConfigureAwait(false))
+                return;
             
             // Open fuel valve gradually. If abort closed the valve while this command
             // was in flight, do not leave the late open applied or advance the sequence.
@@ -747,6 +769,17 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Fuel flow was last checked before this state. A pegged, lost, non-finite,
             // or not-Ready sample must not be the flow oxidizer is admitted beside.
             if (!await RequireFuelFlowInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
+            // Fuel is already open. Oxidizer flow was only a Ready flag before this
+            // command. A pegged, negative, or non-finite sample still opened the valve
+            // and left both propellants admitted through the one-second wait. Zero is
+            // quiescent and still opens. This is not the fuel-flow band above it.
+            if (!await RequirePlausiblePropellantFlowAsync(
+                    _oxidizerFlowSensor,
+                    MaximumOxidizerFlowKgPerSecond,
+                    "Oxidizer flow",
+                    cancellationToken).ConfigureAwait(false))
                 return;
             
             // Open oxidizer valve gradually
@@ -832,9 +865,9 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
 
             // The pulse is one 0.5 s wait, so flow is sampled at the end of it rather
-            // than by a second monitor while the igniter is on. Combustion verification
-            // then waits another second before it reads flow. A sample that leaves the
-            // band during the pulse fail-closes here, before that wait.
+            // than by a second monitor while the igniter is on. A sample that leaves the
+            // band during the pulse fail-closes here. Combustion verification reads
+            // flow again before its own wait.
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
 
@@ -860,7 +893,27 @@ namespace HB_NLP_Research_Lab.Core.Control
             // AtPosition is not proof the valve is still where this sequence left it.
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return;
-            
+
+            // Flow was last checked at the end of the spark pulse. This state then
+            // waited one second, and it read flow only after the chamber already
+            // looked like combustion. A pegged, lost, non-finite, or not-Ready sample
+            // already present at the start of that wait left the last open command
+            // applied until the wait ended. An in-band sample stays in the wait and
+            // does not command the valves.
+            if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
+            // The chamber was last read before the spark. This state then waited one
+            // second before reading it again. A pegged, negative, non-finite, or
+            // not-Ready sample at the start of that wait left the propellant valves
+            // open until the wait ended. A plausible sample may still be ambient, or
+            // already rising: combustion is a rise out of the ambient band, and this
+            // check does not require that rise. The wait below is where it is allowed
+            // to appear. A sample that leaves the band during the wait is still
+            // rejected when the wait ends.
+            if (!await RequirePlausibleChamberAsync(cancellationToken).ConfigureAwait(false))
+                return;
+
             // Wait for combustion to establish
             await _clock.Delay(TimeSpan.FromSeconds(1), cancellationToken);
             if (!await ContinueSequenceAsync().ConfigureAwait(false))
@@ -898,9 +951,8 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return;
             }
 
-            // Flow was last checked before the spark. A pegged or lost propellant flow
-            // with a combustion-like chamber used to advance into throttle-up and leave
-            // the valves at the last open command.
+            // Flow authorized this wait. A sample that leaves the band during the
+            // second must not advance into throttle-up with the valves still open.
             if (!await RequirePropellantFlowsInBandAsync(cancellationToken).ConfigureAwait(false))
                 return;
             
@@ -1056,6 +1108,36 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return false;
 
             return await RequireOxidizerFlowInBandAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Returns false after fail-closed when the flow sample that would authorize
+        /// opening this valve is missing, not Ready, or not plausible. An in-band sample
+        /// and a quiescent zero stay in this state and do not command the valve from
+        /// here. An abort that already won stays aborted. A timeout or read failure
+        /// that is not the loop token fail-closes.
+        /// </summary>
+        private async Task<bool> RequirePlausiblePropellantFlowAsync(
+            ISensor<double> sensor,
+            double maximum,
+            string label,
+            CancellationToken cancellationToken)
+        {
+            var flowRead = await TryReadStartupSensorAsync(sensor, cancellationToken).ConfigureAwait(false);
+            if (!flowRead.Completed)
+                return false;
+            if (!await RequireSensorReadyAsync(sensor).ConfigureAwait(false))
+                return false;
+            if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
+                return false;
+
+            if (IsPlausiblePropellantFlow(flowRead.Value, maximum))
+                return true;
+
+            await FailClosedAsync(
+                $"[Startup Sequence] ❌ {label} outside the allowed band: {flowRead.Value}")
+                .ConfigureAwait(false);
+            return false;
         }
 
         /// <summary>
@@ -1356,23 +1438,36 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// this pulse, not here. An abort that already won stays aborted. A timeout or
         /// read failure that is not the loop token fail-closes.
         /// </summary>
-        private async Task<bool> RequirePlausibleChamberAfterSparkAsync(CancellationToken cancellationToken)
+        private Task<bool> RequirePlausibleChamberAfterSparkAsync(CancellationToken cancellationToken) =>
+            RequirePlausibleChamberCoreAsync(cancellationToken);
+
+        /// <summary>
+        /// Returns false after fail-closed when the chamber sample that would be carried
+        /// into the combustion wait is missing, not Ready, or outside the plausible band.
+        /// Ambient and a chamber that has already begun to rise are both plausible.
+        /// An abort that already won stays aborted. A timeout or read failure that is
+        /// not the loop token fail-closes.
+        /// </summary>
+        private Task<bool> RequirePlausibleChamberAsync(CancellationToken cancellationToken) =>
+            RequirePlausibleChamberCoreAsync(cancellationToken);
+
+        private async Task<bool> RequirePlausibleChamberCoreAsync(CancellationToken cancellationToken)
         {
-            if (!await RequirePlausibleStartupSampleAsync(
+            if (!await RequirePlausibleSampleAsync(
                     _chamberPressureSensor,
                     IsPlausibleChamberPressure,
                     "Chamber pressure",
                     cancellationToken).ConfigureAwait(false))
                 return false;
 
-            return await RequirePlausibleStartupSampleAsync(
+            return await RequirePlausibleSampleAsync(
                 _chamberTemperatureSensor,
                 IsPlausibleChamberTemperature,
                 "Chamber temperature",
                 cancellationToken).ConfigureAwait(false);
         }
 
-        private async Task<bool> RequirePlausibleStartupSampleAsync(
+        private async Task<bool> RequirePlausibleSampleAsync(
             ISensor<double> sensor,
             Func<double, bool> plausible,
             string label,
@@ -1383,8 +1478,6 @@ namespace HB_NLP_Research_Lab.Core.Control
                 return false;
             if (!await RequireSensorReadyAsync(sensor).ConfigureAwait(false))
                 return false;
-
-            // A valve can fault while this sample is in flight and still leave a finite chamber.
             if (!await RequireStartupActuatorsReadyAsync().ConfigureAwait(false))
                 return false;
 
