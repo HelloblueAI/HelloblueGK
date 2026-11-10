@@ -29,6 +29,8 @@ public class ThrottleControllerTests
     [InlineData(double.NaN, 1_000_000)]
     [InlineData(1_000_000, double.NaN)]
     [InlineData(double.PositiveInfinity, 1_000_000)]
+    [InlineData(-1, 1_000_000)]
+    [InlineData(-1_000_000, 1_000_000)]
     [InlineData(0, 0)]
     [InlineData(10, -1)]
     public void NormalizedThrustError_MissingOrNonPositiveTarget_ContributesNoError(
@@ -36,6 +38,26 @@ public class ThrottleControllerTests
         double targetThrust)
     {
         ThrottleController.NormalizedThrustError(currentThrust, targetThrust).Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(1_000_000)]
+    public void IsPlausibleThrust_AcceptsAFiniteNonNegativeSample(double thrust)
+    {
+        ThrottleController.IsPlausibleThrust(thrust).Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData(-0.001)]
+    [InlineData(-1_000_000)]
+    [InlineData(double.NaN)]
+    [InlineData(double.PositiveInfinity)]
+    [InlineData(double.NegativeInfinity)]
+    public void IsPlausibleThrust_RejectsANegativeOrNonFiniteSample(double thrust)
+    {
+        ThrottleController.IsPlausibleThrust(thrust).Should().BeFalse();
     }
 
     [Theory]
@@ -708,6 +730,70 @@ public class ThrottleControllerTests
         // The thrown close is not the next origin. A stored 0.019 would step to 0.018.
         controller.CurrentThrottle.Should().BeApproximately(0.019, 1e-9);
         actuator.LastPosition.Should().BeApproximately(0.019, 1e-9);
+    }
+
+    [Theory]
+    [InlineData(-0.001)]
+    [InlineData(-1)]
+    [InlineData(-1_000_000)]
+    public async Task ClosedLoop_NegativeThrust_DoesNotOpenOnTheFirstPass(double thrustValue)
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = thrustValue, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        await controller.ExecuteOnceAsync();
+
+        // A trusted shortfall from closed steps open by the 0.001 rate limit.
+        // A negative sample is finite, so it used to be an error above one and
+        // take that same step. It is not a thrust.
+        controller.CurrentThrottle.Should().Be(0);
+        actuator.LastPosition.Should().Be(0);
+        actuator.CommandCount.Should().Be(1);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(-1_000_000)]
+    public async Task ClosedLoop_NegativeThrust_StepsClosedInsteadOfOpening(double thrustValue)
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = 0, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetTargetThrust(1_000_000);
+
+        for (var i = 0; i < 20; i++)
+            await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.02, 1e-9);
+        thrust.Value = 1_000_000;
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+        var held = controller.CurrentThrottle;
+        held.Should().BeGreaterThan(0);
+
+        thrust.Value = thrustValue;
+        await controller.ExecuteOnceAsync();
+        await controller.ExecuteOnceAsync();
+
+        // The old error stepped open. Both passes step closed.
+        controller.CurrentThrottle.Should().BeApproximately(held - 0.002, 1e-9);
+        actuator.LastPosition.Should().Be(controller.CurrentThrottle);
+    }
+
+    [Fact]
+    public async Task OpenLoop_NegativeThrust_StillFollowsTheCommand()
+    {
+        var actuator = new RecordingActuator();
+        var thrust = new ScriptedSensor { Value = -1_000_000, Status = SensorStatus.Ready };
+        var controller = new ThrottleController(actuator, thrust, new StubSensor());
+        controller.SetThrottle(1);
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentThrottle.Should().BeApproximately(0.001, 1e-12);
+        actuator.LastPosition.Should().BeApproximately(0.001, 1e-12);
     }
 
     [Theory]

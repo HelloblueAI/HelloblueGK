@@ -54,6 +54,13 @@ namespace HB_NLP_Research_Lab.Core.Control
             status == SensorStatus.Ready;
 
         /// <summary>
+        /// Closed-loop thrust is a finite reading in newtons, and it cannot be negative.
+        /// Zero is a real shortfall. NaN, infinity, and a negative sample are not.
+        /// </summary>
+        internal static bool IsPlausibleThrust(double thrust) =>
+            double.IsFinite(thrust) && thrust >= 0;
+
+        /// <summary>
         /// One control pass, the same step the control loop runs.
         /// </summary>
         internal Task ExecuteOnceAsync(CancellationToken cancellationToken = default) =>
@@ -107,12 +114,13 @@ namespace HB_NLP_Research_Lab.Core.Control
                 // gate is applied to the sample that was just returned. A thrown read,
                 // including a timeout that is not this loop stopping, is not a sample.
                 // The old catch logged that exception and left the last command applied.
-                // A Ready sensor can still return NaN or infinity. Every comparison with
-                // NaN is false, so that sample used to become zero thrust error and the
-                // loop held the last open command.
+                // A Ready sensor can still return NaN, infinity, or a negative number.
+                // Every comparison with NaN is false, so a non-finite sample used to
+                // become zero thrust error and the loop held the last open command.
+                // A negative sample is finite, so the same path treated it as a
+                // shortfall and stepped the throttle open.
                 double currentThrust = 0;
                 var thrustReadFailed = false;
-                var thrustSampleNonFinite = false;
                 try
                 {
                     // A read that ignores cancellation used to hold this pass. The last
@@ -123,7 +131,6 @@ namespace HB_NLP_Research_Lab.Core.Control
                         _thrustSensor.ReadAsync(cancellationToken),
                         _sensorReadTimeout,
                         cancellationToken).ConfigureAwait(false);
-                    thrustSampleNonFinite = !double.IsFinite(currentThrust);
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -141,20 +148,24 @@ namespace HB_NLP_Research_Lab.Core.Control
                 
                 // Closed-loop control uses the thrust sample. A disconnected sensor can
                 // return a cached in-band number, a failed read returns nothing, and a
-                // non-finite number is not a thrust. None of those may drive the command.
-                // The safe command is closed; the rate limiter steps toward it. Open-loop
-                // does not use the sample, so a direct throttle command stands even when
-                // the read throws or the sample is non-finite.
+                // non-finite number is not a thrust. A negative number is finite, so it
+                // used to become an error larger than one and the rate limiter stepped
+                // the throttle open. Thrust is in newtons and cannot be negative. None
+                // of those samples may drive the command. The safe command is closed;
+                // the rate limiter steps toward it. Open-loop does not use the sample,
+                // so a direct throttle command stands even when the read throws or the
+                // sample is implausible. A zero sample is still a shortfall: the
+                // controller opens toward the target.
                 double throttleCommand;
                 if (_targetThrust > 0 &&
                     (thrustReadFailed ||
-                     thrustSampleNonFinite ||
+                     !IsPlausibleThrust(currentThrust) ||
                      !IsSensorReadyForThrottle(_thrustSensor.Status)))
                 {
                     Console.WriteLine(thrustReadFailed
                         ? "[Throttle Controller] Thrust read failed. Commanding closed."
-                        : thrustSampleNonFinite
-                            ? "[Throttle Controller] Thrust sample is not finite. Commanding closed."
+                        : !IsPlausibleThrust(currentThrust)
+                            ? "[Throttle Controller] Thrust sample is not plausible. Commanding closed."
                             : $"[Throttle Controller] Thrust sensor not ready: {_thrustSensor.Status}. Commanding closed.");
                     throttleCommand = MinThrottle;
                 }
@@ -252,7 +263,11 @@ namespace HB_NLP_Research_Lab.Core.Control
         /// </summary>
         internal static double NormalizedThrustError(double currentThrust, double targetThrust)
         {
-            if (!double.IsFinite(currentThrust) || !double.IsFinite(targetThrust) || targetThrust <= 0)
+            // A negative reading is not a shortfall. Returning it as an error above one
+            // used to step the throttle open. The control pass rejects that sample
+            // before it gets here and commands closed; this guard keeps the helper
+            // from describing the same reading as a miss.
+            if (!IsPlausibleThrust(currentThrust) || !double.IsFinite(targetThrust) || targetThrust <= 0)
             {
                 return 0;
             }
