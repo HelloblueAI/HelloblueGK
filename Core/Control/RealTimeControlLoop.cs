@@ -158,12 +158,19 @@ namespace HB_NLP_Research_Lab.Core.Control
                     // Sleep until next iteration
                     if (sleepTime > TimeSpan.Zero)
                     {
-                        await Task.Delay(sleepTime, cancellationToken);
+                        await WaitForNextPassAsync(sleepTime, cancellationToken).ConfigureAwait(false);
                     }
                     else
                     {
-                        // We're behind schedule, log warning
+                        // We're behind schedule, log warning.
+                        // A late pass used to be followed by one command per missed
+                        // period, with no delay between them. Throttle and MPC limit
+                        // the step as one period of rate, so that catch-up moved the
+                        // actuator by the whole overrun at once. Drop the missed
+                        // periods and schedule the next pass one period from now.
                         OnScheduleOverrun(sleepTime);
+                        if (sleepTime < TimeSpan.Zero)
+                            nextLoopTime = _stopwatch.Elapsed;
                     }
                 }
             }
@@ -224,6 +231,15 @@ namespace HB_NLP_Research_Lab.Core.Control
             Console.WriteLine($"[Control Loop] ⚠️ Timing violation: {actual.TotalMilliseconds:F2}ms > {expected.TotalMilliseconds:F2}ms");
         }
         
+        /// <summary>
+        /// Waits until the next scheduled pass. A zero or negative delay is not
+        /// passed here: an overrun drops the missed periods instead of waiting.
+        /// </summary>
+        protected virtual Task WaitForNextPassAsync(TimeSpan delay, CancellationToken cancellationToken)
+        {
+            return Task.Delay(delay, cancellationToken);
+        }
+
         /// <summary>
         /// Called when schedule overrun occurs (override for logging/alerts)
         /// </summary>
