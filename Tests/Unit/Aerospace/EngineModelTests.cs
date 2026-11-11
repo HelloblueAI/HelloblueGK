@@ -12,7 +12,8 @@ public class RevolutionaryEngineAnalysisTests
     public async Task AnalyzeRevolutionaryEngineAsync_RejectsAnArchitectureWithNoChamberPressure()
     {
         var architectures = new RevolutionaryEngineArchitectures();
-        await architectures.CreateVariableGeometryEngineAsync("vg-1", new VariableGeometrySpecs());
+        var created = await architectures.CreateVariableGeometryEngineAsync("vg-1", new VariableGeometrySpecs());
+        ((VariableGeometryEngine)created).MorphingMechanism.Reliability.Should().Be(0);
 
         var act = () => architectures.AnalyzeRevolutionaryEngineAsync("vg-1");
 

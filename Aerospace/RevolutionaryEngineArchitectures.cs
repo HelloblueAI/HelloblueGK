@@ -62,8 +62,7 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "Electro-Hydraulic Actuation",
                     ResponseTime = 0.1, // seconds
-                    Precision = 0.001, // mm
-                    Reliability = 0.999
+                    Precision = 0.001 // mm
                 },
                 AdaptiveControl = new AdaptiveControlSystem
                 {

@@ -78,7 +78,6 @@ namespace HB_NLP_Research_Lab.AI
                 {
                     Thrust = 2500000,
                     Efficiency = 0.97,
-                    Reliability = 0.999,
                     FuelConsumption = 850,
                     Temperature = 2800,
                     Pressure = 350,
@@ -759,8 +758,7 @@ namespace HB_NLP_Research_Lab.AI
                 Performance = new EnginePerformance
                 {
                     Thrust = architecture.PropulsionSystem.Thrust * 1.1,
-                    Efficiency = architecture.CoolingSystem.Efficiency * 1.05,
-                    Reliability = 0.999
+                    Efficiency = architecture.CoolingSystem.Efficiency * 1.05
                 },
                 Efficiency = 0.95,
                 History = new List<OptimizationStep>(),

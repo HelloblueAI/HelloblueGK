@@ -186,8 +186,8 @@ namespace HB_NLP_Research_Lab.Aerospace
 
             // The derived type hides these members. A caller typed as the base
             // class, including EngineDesignSpecs and the Plasticity converters,
-            // would otherwise keep the base defaults: hardware acceleration,
-            // "Genetic Algorithm", coupling method "Strong", and real-time processing.
+            // would otherwise keep the base defaults for hardware acceleration,
+            // the turbulence model, combustion, acoustics, and real-time processing.
             var optimization = (OptimizationParameters)_engineDesign.OptimizationParameters;
             optimization.HardwareAcceleration = false;
             optimization.RealTimeOptimization = false;

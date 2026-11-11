@@ -32,7 +32,6 @@ namespace HB_NLP_Research_Lab.Core
             return new EnginePerformance
             {
                 Thrust = 1500000,
-                Efficiency = 0.95,
                 Temperature = 1800,
                 FuelConsumption = 250
             };
@@ -43,10 +42,10 @@ namespace HB_NLP_Research_Lab.Core
             await Task.CompletedTask;
             Console.WriteLine("[Advanced Engine Core] 🔧 Optimizing performance...");
             
+            // Efficiency stays unset. This method does not measure it.
             return new EnginePerformance
             {
                 Thrust = 1600000,
-                Efficiency = 0.96,
                 Temperature = 1750,
                 FuelConsumption = 240
             };
@@ -68,16 +67,14 @@ namespace HB_NLP_Research_Lab.Core
             
             return new EngineStatus
             {
-                IsRunning = true,
-                Health = "95%",
-                Performance = "Excellent"
+                IsRunning = true
             };
         }
 
         private void InitializeComponents()
         {
             // Core engine components
-            _components.Add(new TurbineComponent { Name = "High-Pressure Turbine", Efficiency = 0.95 });
+            _components.Add(new TurbineComponent { Name = "High-Pressure Turbine" });
             _components.Add(new CompressorComponent { Name = "Multi-Stage Compressor", PressureRatio = 50.0 });
             _components.Add(new CombustionChamberComponent { Name = "Advanced Combustion Chamber", Temperature = 2000 });
             _components.Add(new NozzleComponent { Name = "Variable Geometry Nozzle", ExpansionRatio = 25.0 });
@@ -95,7 +92,6 @@ namespace HB_NLP_Research_Lab.Core
             return new EnginePerformance
             {
                 Thrust = 1500000,
-                Efficiency = 0.95,
                 Temperature = 1800,
                 FuelConsumption = 250
             };
@@ -107,7 +103,6 @@ namespace HB_NLP_Research_Lab.Core
             return new EnginePerformance
             {
                 Thrust = 1500000,
-                Efficiency = 0.95,
                 Temperature = 1800,
                 FuelConsumption = 250
             };
@@ -196,7 +191,6 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Name = Name,
                 IsOperational = true,
-                Efficiency = 0.88,
                 Temperature = 800.0,
                 Pressure = 300.0
             };
@@ -225,7 +219,6 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Name = Name,
                 IsOperational = true,
-                Efficiency = 0.98,
                 Temperature = Temperature,
                 Pressure = 350.0
             };
@@ -254,7 +247,6 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Name = Name,
                 IsOperational = true,
-                Efficiency = 0.96,
                 Temperature = 600.0,
                 Pressure = 50.0
             };
@@ -283,7 +275,6 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Name = Name,
                 IsOperational = true,
-                Efficiency = 0.99,
                 Temperature = 300.0,
                 Pressure = 400.0
             };
@@ -312,7 +303,6 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Name = Name,
                 IsOperational = true,
-                Efficiency = 0.85,
                 Temperature = 400.0,
                 Pressure = 200.0
             };
@@ -341,7 +331,6 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Name = Name,
                 IsOperational = true,
-                Efficiency = 0.99,
                 Temperature = 350.0,
                 Pressure = 0.0
             };
@@ -370,7 +359,6 @@ namespace HB_NLP_Research_Lab.Core
             {
                 Name = Name,
                 IsOperational = true,
-                Efficiency = 0.99,
                 Temperature = 300.0,
                 Pressure = 0.0
             };
