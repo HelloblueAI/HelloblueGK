@@ -184,14 +184,20 @@ namespace HB_NLP_Research_Lab.Aerospace
                 }
             };
 
-            // The derived type hides these two flags. The base values still default
-            // to true, and a caller that sees the base type would report hardware
-            // acceleration that this machine did not demonstrate.
-            ((OptimizationParameters)_engineDesign.OptimizationParameters).HardwareAcceleration = false;
-            ((OptimizationParameters)_engineDesign.OptimizationParameters).RealTimeOptimization = false;
+            // The derived type hides these members. A caller typed as the base
+            // class, including EngineDesignSpecs and the Plasticity converters,
+            // would otherwise keep the base defaults: hardware acceleration,
+            // "Genetic Algorithm", coupling method "Strong", and real-time processing.
+            var optimization = (OptimizationParameters)_engineDesign.OptimizationParameters;
+            optimization.HardwareAcceleration = false;
+            optimization.RealTimeOptimization = false;
+            optimization.OptimizationAlgorithm = string.Empty;
             ((CfdParameters)_engineDesign.CfdParameters).TurbulenceModel = string.Empty;
-            ((MultiPhysicsParameters)_engineDesign.MultiPhysicsParameters).CombustionModeling = false;
-            ((MultiPhysicsParameters)_engineDesign.MultiPhysicsParameters).AcousticAnalysis = false;
+            var multiPhysics = (MultiPhysicsParameters)_engineDesign.MultiPhysicsParameters;
+            multiPhysics.CombustionModeling = false;
+            multiPhysics.AcousticAnalysis = false;
+            multiPhysics.CouplingMethod = string.Empty;
+            multiPhysics.RealTimeProcessing = false;
 
             Console.WriteLine($"[HB-NLP Engine] ✅ Engine design created: {_engineDesign.Name}");
             Console.WriteLine("[HB-NLP Engine] Declared thrust, specific impulse, chamber pressure, and geometry only.");

@@ -194,6 +194,12 @@ public class EngineDesignConsistencyTests
         design.CfdParameters.ReynoldsNumber.Should().Be(0);
         design.CfdParameters.MachNumber.Should().Be(0);
         ((CfdParameters)design.CfdParameters).TurbulenceModel.Should().BeEmpty();
+        ((OptimizationParameters)design.OptimizationParameters).OptimizationAlgorithm.Should().BeEmpty();
+        ((OptimizationParameters)design.OptimizationParameters).HardwareAcceleration.Should().BeFalse();
+        ((OptimizationParameters)design.OptimizationParameters).RealTimeOptimization.Should().BeFalse();
+        ((MultiPhysicsParameters)design.MultiPhysicsParameters).CouplingMethod.Should().BeEmpty();
+        ((MultiPhysicsParameters)design.MultiPhysicsParameters).RealTimeProcessing.Should().BeFalse();
+        ((MultiPhysicsParameters)design.MultiPhysicsParameters).CombustionModeling.Should().BeFalse();
         design.StructuralSystem.AnalysisType.Should().Be("schematic, not a finite-element result");
         design.StructuralSystem.SafetyFactor.Should().Be(0);
         design.Materials.Should().NotContain(material => material.QuantumProperties || material.SelfHealing);
