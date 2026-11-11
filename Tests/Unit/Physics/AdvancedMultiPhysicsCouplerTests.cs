@@ -42,6 +42,7 @@ public class AdvancedMultiPhysicsCouplerTests
         // The monitor reports a residual equal to the tolerance. That is converged,
         // so the loop stops on the first pass instead of compounding for 50 iterations.
         results.Should().OnlyContain(result => result.TotalIterations == 1);
+        results.Should().OnlyContain(result => result.CouplingEfficiency == 0);
 
         var baseline = (AdvancedThermalResult)new AdvancedThermalSolver().RunSimulation(new EngineModel
         {

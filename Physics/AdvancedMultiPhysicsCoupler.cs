@@ -211,7 +211,6 @@ namespace HB_NLP_Research_Lab.Physics
                 {
                     PressureLoads = ExtractPressureLoads(result.CfdAnalysis),
                     StructuralDeformation = ExtractStructuralDeformation(result.StructuralAnalysis),
-                    CouplingEfficiency = 0.98,
                     ConvergenceIterations = result.TotalIterations
                 },
                 
@@ -219,24 +218,21 @@ namespace HB_NLP_Research_Lab.Physics
                 {
                     HeatTransferCoefficient = result.ThermalAnalysis.HeatTransferCoefficients["Convection"],
                     TemperatureDistribution = result.ThermalAnalysis.TemperatureDistribution,
-                    ThermalStress = CalculateThermalStress(result.ThermalAnalysis, result.StructuralAnalysis),
-                    CouplingEfficiency = 0.97
+                    ThermalStress = CalculateThermalStress(result.ThermalAnalysis, result.StructuralAnalysis)
                 },
                 
                 ElectromagneticCoupling = new ElectromagneticCoupling
                 {
                     MagneticFieldStrength = result.ElectromagneticAnalysis.MagneticFieldStrength,
                     ElectricFieldStrength = result.ElectromagneticAnalysis.ElectricFieldStrength,
-                    ElectromagneticForces = CalculateElectromagneticForces(result.ElectromagneticAnalysis),
-                    CouplingEfficiency = 0.96
+                    ElectromagneticForces = CalculateElectromagneticForces(result.ElectromagneticAnalysis)
                 },
                 
                 MolecularCoupling = new MolecularCoupling
                 {
                     AtomicStressDistribution = result.MolecularAnalysis.AtomicStressDistribution,
                     MaterialProperties = result.MolecularAnalysis.MaterialProperties,
-                    DynamicsData = result.MolecularAnalysis.DynamicsData,
-                    CouplingEfficiency = 0.95
+                    DynamicsData = result.MolecularAnalysis.DynamicsData
                 },
                 
                 OverallIntegration = new CompletePhysicsIntegration
@@ -293,7 +289,6 @@ namespace HB_NLP_Research_Lab.Physics
                 Snapshots = couplingSnapshots,
                 TotalSnapshots = couplingSnapshots.Count,
                 AverageCouplingEfficiency = couplingSnapshots.Average(s => s.CouplingEfficiency),
-                RealTimePerformance = "Excellent",
                 UpdateRate = 10.0 // Hz
             };
         }
@@ -387,20 +382,15 @@ namespace HB_NLP_Research_Lab.Physics
 
         private static double CalculateCouplingEfficiency(IReadOnlyList<CouplingIteration> couplingHistory)
         {
-            // Calculate overall coupling efficiency based on convergence and physics integration
-            var convergenceEfficiency = couplingHistory.Count > 0
-                ? Math.Max(0, 1.0 - couplingHistory[^1].ConvergenceStatus.ResidualNorm)
-                : 0.95;
-            
-            var physicsIntegrationEfficiency = 0.98; // High integration level
-            var feedbackEfficiency = 0.97; // Real-time feedback
-            
-            return (convergenceEfficiency * 0.4 + physicsIntegrationEfficiency * 0.4 + feedbackEfficiency * 0.2);
+            // A residual is not a coupling efficiency. The previous return blended
+            // that residual with fixed 0.95, 0.98, and 0.97 weights.
+            _ = couplingHistory;
+            return 0;
         }
 
-        private double CalculateRealTimeCouplingEfficiency()
+        private static double CalculateRealTimeCouplingEfficiency()
         {
-            return 0.95 + Random.Shared.NextDouble() * 0.05; // 95-100%
+            return 0;
         }
 
         // Helper methods for applying coupling effects

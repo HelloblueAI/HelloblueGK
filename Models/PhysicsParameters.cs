@@ -30,7 +30,7 @@ namespace HB_NLP_Research_Lab.Models
         public bool ElectromagneticAnalysis { get; set; } = true;
         public bool AcousticAnalysis { get; set; } = false;
         public bool CombustionModeling { get; set; } = true;
-        public string CouplingMethod { get; set; } = "Strong";
+        public string CouplingMethod { get; set; } = string.Empty;
         public double ConvergenceTolerance { get; set; } = 1e-6;
         public int MaxIterations { get; set; } = 5000;
         public bool RealTimeProcessing { get; set; } = true;
@@ -44,7 +44,7 @@ namespace HB_NLP_Research_Lab.Models
     {
         public string ObjectiveFunction { get; set; } = "Maximize Thrust Efficiency";
         public List<string> Constraints { get; set; } = new();
-        public string OptimizationAlgorithm { get; set; } = "Genetic Algorithm";
+        public string OptimizationAlgorithm { get; set; } = string.Empty;
         public int PopulationSize { get; set; } = 100;
         public int Generations { get; set; } = 1000;
         public double MutationRate { get; set; } = 0.1;
