@@ -482,19 +482,25 @@ namespace HB_NLP_Research_Lab.Core
                     };
 
                     var testResult = await _autonomousTesting.DesignAndRunTestsAsync(engineArchitecture, requirements);
-                    var testFlightData = new TestFlightData
+                    // A run that produced no results used to invent a 95% pass rate and a
+                    // 0.999 reliability, then learn from that flight. The numbers matched
+                    // a typical engine model, so prediction accuracy moved without a test.
+                    if (testResult.TestResults.Count > 0)
                     {
-                        EngineId = engineId,
-                        FlightDate = DateTime.UtcNow,
-                        FlightMetrics = new Dictionary<string, double>
+                        var testFlightData = new TestFlightData
                         {
-                            ["Thrust"] = testResult.Analysis.AveragePerformance * 1500000,
-                            ["Efficiency"] = testResult.Analysis.AveragePerformance,
-                            ["Reliability"] = testResult.Analysis.ReliabilityScore
-                        }
-                    };
+                            EngineId = engineId,
+                            FlightDate = DateTime.UtcNow,
+                            FlightMetrics = new Dictionary<string, double>
+                            {
+                                ["Thrust"] = testResult.Analysis.AveragePerformance * 1500000,
+                                ["Efficiency"] = testResult.Analysis.AveragePerformance,
+                                ["Reliability"] = testResult.Analysis.ReliabilityScore
+                            }
+                        };
 
-                    await LearnFromTestFlightWithGateAsync(engineId, testFlightData);
+                        await LearnFromTestFlightWithGateAsync(engineId, testFlightData);
+                    }
 
                     Console.WriteLine($"[Digital Twin] Autonomous testing complete for {engineId}");
                     Console.WriteLine($"[Digital Twin] Test coverage: {testResult.TestCoverage:P2}");
@@ -603,10 +609,7 @@ namespace HB_NLP_Research_Lab.Core
                 ActiveTwins = _digitalTwins?.Count(t => t.Value.LearningStatus == "Active") ?? 0,
                 AveragePredictionAccuracy = avgPredictionAccuracy,
                 TotalLearningEvents = totalLearningEvents,
-                TotalPredictions = totalPredictions,
-                LearningPerformance = "Excellent",
-                PredictionPerformance = "Outstanding",
-                SystemHealth = "Optimal"
+                TotalPredictions = totalPredictions
             };
 
             Console.WriteLine($"[Digital Twin] Summary generated successfully");
@@ -639,9 +642,7 @@ namespace HB_NLP_Research_Lab.Core
                 TotalModelImprovements = historyCounts.ModelImprovements,
                 TotalPredictions = historyCounts.Predictions,
                 AverageModelImprovement = historyCounts.AverageModelImprovement,
-                PredictionAccuracy = accuracy.OverallAccuracy,
-                LearningTrend = "Improving",
-                PerformanceRating = "Excellent"
+                PredictionAccuracy = accuracy.OverallAccuracy
             };
 
             return report;
@@ -1024,12 +1025,10 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<LearningMetrics> ProcessLearningEventAsync(TestFlightData flightData)
         {
             await Task.Delay(50);
-            return new LearningMetrics
-            {
-                DataQuality = 0.95,
-                LearningRate = 0.15,
-                ModelConvergence = 0.98
-            };
+            // The learn endpoint persists this object. A fixed 0.95 / 0.15 / 0.98
+            // described every flight, including an empty one, as high-quality evidence.
+            _ = flightData;
+            return new LearningMetrics();
         }
     }
 
@@ -1332,20 +1331,11 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<AutonomousTestingResult> DesignAndRunTestsAsync(EngineArchitecture engine, TestingRequirements requirements)
         {
             await Task.Delay(200);
-            return new AutonomousTestingResult
-            {
-                TestScenarios = new List<HB_NLP_Research_Lab.AI.TestScenario>(),
-                TestResults = new List<TestResult>(),
-                Analysis = new TestAnalysis
-                {
-                    PassRate = 0.95,
-                    AveragePerformance = 0.92,
-                    ReliabilityScore = 0.999,
-                    TestCoverage = 0.90
-                },
-                TestCoverage = 0.90,
-                TestAccuracy = 0.95
-            };
+            // No scenario is executed. Pass rate, coverage, and accuracy stay unset
+            // rather than publishing a 95% pass and a 0.999 reliability.
+            _ = engine;
+            _ = requirements;
+            return new AutonomousTestingResult();
         }
     }
 
@@ -1361,12 +1351,12 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(100);
             // Fail closed: do not invent a hardcoded 12% ModelImprovement on every learn.
             // Until real model-delta evidence exists, report unproven (zero) improvement.
+            // "2.1.0" was not a version this update produced.
             _ = flightData;
             return new ModelImprovement
             {
                 EngineId = engineId,
                 ImprovementPercentage = 0.0,
-                ModelVersion = "2.1.0",
                 UpdateTimestamp = DateTime.UtcNow
             };
         }
