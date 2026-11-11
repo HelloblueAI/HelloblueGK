@@ -223,17 +223,12 @@ chamber pressure, expansion ratio, and geometry. `EngineDesignConsistencyTests` 
 and fails if those fields diverge from the engine. The package claims no technology readiness level
 and no efficiency or solver-convergence figure.
 
-### Claims outside physics that are also unsupported
+### Claims outside physics that are not declared
 
-Recorded here rather than changed, since editing them is a decision about how the project describes
-itself:
-
-- `TechnologyReadinessLevel = "TRL 8"`. Under NPR 7123.1, TRL 8 means an actual system completed and
-  flight-qualified through test and demonstration. This engine has never been built.
-- `EngineType = "quantum_classical_hybrid"` and `QuantumComputing = true`, both still present after
-  the quantum scaffolding they referred to was deleted.
-- `InnovationLevel = 0.98`, `Efficiency = 0.96`, and `CombustionEfficiency = 0.99` have no stated
-  basis or derivation.
+The concept declaration does not assign a technology readiness level, an efficiency, a reliability,
+a cost, or a quantum capability. Under NPR 7123.1, TRL 8 would mean an actual system completed and
+flight-qualified through test and demonstration. This engine has never been built, so the field is
+left unset. `EngineDesignConsistencyTests` fails if a later change fills those fields back in.
 
 `MixtureRatio = 3.5` is, for contrast, a reasonable oxidizer-to-fuel ratio for methane/LOX against a
 stoichiometric 4.0, and a 280 bar chamber is aggressive but in the same class as Raptor's 300 bar.

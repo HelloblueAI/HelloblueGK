@@ -57,21 +57,21 @@ namespace HB_NLP_Research_Lab.Aerospace
             // Simulate async design creation process
             await Task.Delay(100);
 
+            // Thrust, specific impulse, chamber pressure, and geometry are the concept
+            // declaration checked against ideal-rocket theory. Readiness, efficiency,
+            // reliability, cost, and quantum flags are not measurements, so they stay
+            // at the unset defaults instead of being filled in.
             _engineDesign = new HB_NLP_EngineDesign
             {
-                Name = "HB-NLP Quantum-Classical Hybrid Engine",
-                Version = "Advanced v2.5",
-                EngineType = "quantum_classical_hybrid",
-                InnovationLevel = 0.98,
-                TechnologyReadinessLevel = "TRL 8",
+                Name = "HB-NLP-REV-001",
+                Version = "concept",
+                EngineType = "methane/LOX",
                 
                 // Core Specifications
                 Thrust = 3500000, // 3.5 MN
                 SpecificImpulse = 351.5, // seconds, ideal methane/LOX at the declared expansion ratio
                 ChamberPressure = 280, // bar
                 ExpansionRatio = 28.5,
-                ThrustToWeightRatio = 180,
-                Efficiency = 0.96,
                 
                 // Advanced Geometry
                 ChamberDiameter = 0.65, // meters
@@ -84,48 +84,38 @@ namespace HB_NLP_Research_Lab.Aerospace
                 ExitDiameter = 1.564192,
                 NozzleLength = 2.8,
                 ComplexGeometry = true,
-                AdaptiveGeometry = true,
-                
-                // Advanced Features
-                QuantumComputing = true,
-                AI_Optimization = true,
-                RealTimeAdaptation = true,
-                PredictiveMaintenance = true,
-                SelfHealing = true,
                 MorphingNozzle = true,
                 
-                // Materials and Construction
+                // Materials and Construction. Temperature limits are material limits,
+                // not a chamber temperature and not a test result.
                 Materials = new List<AdvancedMaterial>
                 {
                     new AdvancedMaterial
                     {
-                        Name = "Quantum-Enhanced Chamber Alloy",
-                        Type = "Nanostructured High-Temperature Alloy",
+                        Name = "Chamber alloy",
+                        Type = "High-temperature alloy",
                         Density = 7500.0, // kg/m³
                         ThermalConductivity = 35.0, // W/m·K
                         YieldStrength = 1500.0, // MPa
-                        TemperatureLimit = 3800.0, // K
-                        QuantumProperties = true
+                        TemperatureLimit = 3800.0 // K
                     },
                     new AdvancedMaterial
                     {
-                        Name = "Self-Healing Nozzle Composite",
-                        Type = "Carbon-Carbon with Nanotube Reinforcement",
+                        Name = "Nozzle composite",
+                        Type = "Carbon-carbon composite",
                         Density = 2000.0,
                         ThermalConductivity = 20.0,
                         YieldStrength = 1200.0,
-                        TemperatureLimit = 3500.0,
-                        SelfHealing = true
+                        TemperatureLimit = 3500.0
                     },
                     new AdvancedMaterial
                     {
-                        Name = "Smart Thermal Protection",
-                        Type = "Aerogel with Phase Change Materials",
+                        Name = "Thermal protection",
+                        Type = "Aerogel",
                         Density = 800.0,
                         ThermalConductivity = 5.0,
                         YieldStrength = 400.0,
-                        TemperatureLimit = 3200.0,
-                        AdaptiveThermal = true
+                        TemperatureLimit = 3200.0
                     }
                 },
                 
@@ -135,133 +125,82 @@ namespace HB_NLP_Research_Lab.Aerospace
                     PrimaryFuel = "Methane",
                     Oxidizer = "LOX",
                     MixtureRatio = 3.5,
-                    CombustionEfficiency = 0.99,
                     InjectorType = "Swirl Coaxial",
-                    IgnitionSystem = "Laser-Induced",
-                    ThrottleRange = new Range(new Index(0), new Index(1)),
-                    ThrottleResponseTime = 0.05 // seconds
+                    IgnitionSystem = string.Empty,
+                    ThrottleRange = new Range(new Index(0), new Index(1))
                 },
                 
-                // Advanced Control Systems
-                ControlSystem = new AI_ControlSystem
-                {
-                    Type = "Quantum-Classical Hybrid AI",
-                    LearningRate = 1000.0, // Hz
-                    AdaptationSpeed = 0.001, // seconds
-                    PredictiveCapability = true,
-                    AutonomousOperation = true,
-                    FailureRecovery = true,
-                    OptimizationAlgorithm = "Quantum Genetic Algorithm"
-                },
-                
-                // Thermal Management
+                // These objects stay present so a caller can read them. Their numeric
+                // fields stay unset: this declaration does not report a solved flow,
+                // a safety factor, a control law, or an optimization result.
+                ControlSystem = new AI_ControlSystem(),
                 ThermalSystem = new AdvancedThermalSystem
                 {
-                    CoolingMethod = "Regenerative + Film + Transpiration",
-                    HeatExchangerEfficiency = 0.95,
-                    ThermalProtection = "Multi-Layer Adaptive",
-                    TemperatureControl = "AI-Driven Real-Time",
-                    HeatRecovery = true
+                    CoolingMethod = "declared concept, not a measured cooling effectiveness"
                 },
-                
-                // Structural Analysis
                 StructuralSystem = new AdvancedStructuralSystem
                 {
-                    AnalysisType = "Multi-Physics FSI",
-                    SafetyFactor = 2.5,
-                    FatigueAnalysis = true,
-                    FractureMechanics = true,
-                    VibrationControl = "Active Damping",
-                    LoadDistribution = "Optimized"
+                    AnalysisType = "schematic, not a finite-element result"
                 },
-                
-                // Performance Metrics
                 PerformanceMetrics = new EnginePerformanceMetrics
                 {
                     Thrust = 3500000,
                     SpecificImpulse = 351.5,
                     ChamberPressure = 280,
-                    ExpansionRatio = 28.5,
-                    Efficiency = 0.96,
-                    Reliability = 0.999,
-                    Cost = 75000000, // $75M
-                    DevelopmentTime = "24 months",
-                    TechnologyReadinessLevel = 8
+                    ExpansionRatio = 28.5
                 },
-                
-                // Innovation Metrics
-                InnovationMetrics = new DesignInnovationMetrics
-                {
-                    NoveltyScore = 0.95,
-                    MarketPotential = 0.90,
-                    CompetitiveAdvantage = 0.95,
-                    Patentability = 0.98,
-                    Scalability = 0.92,
-                    EnvironmentalImpact = 0.85
-                },
-                
-                // CFD Parameters
+                InnovationMetrics = new DesignInnovationMetrics(),
                 CfdParameters = new AdvancedCfdParameters
                 {
-                    ReynoldsNumber = 2.5e6,
-                    MachNumber = 4.2,
-                    TurbulenceModel = "LES with Wall Functions",
-                    TimeStep = 0.0005, // seconds
-                    ConvergenceTolerance = 1e-7,
-                    MaxIterations = 15000,
-                    AdaptiveMeshRefinement = true,
-                    RealTimeVisualization = true,
-                    BoundaryConditions = new Dictionary<string, string>
-                    {
-                        { "Inlet", "Supersonic Inlet" },
-                        { "Outlet", "Pressure Outlet" },
-                        { "Walls", "No-Slip with Heat Transfer" },
-                        { "Symmetry", "Axisymmetric" }
-                    }
+                    ReynoldsNumber = 0,
+                    MachNumber = 0,
+                    TimeStep = 0,
+                    TurbulenceModel = string.Empty,
+                    ConvergenceTolerance = 0,
+                    MaxIterations = 0
                 },
-                
-                // Multi-Physics Parameters
                 MultiPhysicsParameters = new AdvancedMultiPhysicsParameters
                 {
-                    FluidStructureInteraction = true,
-                    ThermalAnalysis = true,
-                    ElectromagneticAnalysis = true,
-                    AcousticAnalysis = true,
-                    CombustionModeling = true,
-                    CouplingMethod = "Strong Coupling",
-                    ConvergenceTolerance = 1e-6,
-                    MaxIterations = 8000,
-                    TimeStep = 0.0005,
-                    RealTimeProcessing = true
+                    TimeStep = 0,
+                    FluidStructureInteraction = false,
+                    ThermalAnalysis = false,
+                    ElectromagneticAnalysis = false,
+                    AcousticAnalysis = false,
+                    CombustionModeling = false,
+                    CouplingMethod = string.Empty,
+                    ConvergenceTolerance = 0,
+                    MaxIterations = 0,
+                    RealTimeProcessing = false
                 },
-                
-                // Optimization Parameters
                 OptimizationParameters = new EngineOptimizationParameters
                 {
-                    ObjectiveFunction = "Maximize Thrust Efficiency while Minimizing Cost",
-                    Constraints = new List<string>
-                    {
-                        "ChamberPressure <= 300 bar",
-                        "SpecificImpulse >= 400 s",
-                        "Thrust >= 3.0 MN",
-                        "Efficiency >= 0.95",
-                        "Reliability >= 0.999",
-                        "Cost <= 100M USD"
-                    },
-                    OptimizationAlgorithm = "Quantum-Classical Hybrid",
-                    PopulationSize = 200,
-                    Generations = 2000,
-                    MutationRate = 0.08,
-                    CrossoverRate = 0.85,
-                    ConvergenceTolerance = 1e-8,
-                    HardwareAcceleration = true,
-                    RealTimeOptimization = true
+                    ObjectiveFunction = string.Empty,
+                    OptimizationAlgorithm = string.Empty,
+                    PopulationSize = 0,
+                    Generations = 0,
+                    MutationRate = 0,
+                    CrossoverRate = 0,
+                    ConvergenceTolerance = 0
                 }
             };
 
+            // The derived type hides these members. A caller typed as the base
+            // class, including EngineDesignSpecs and the Plasticity converters,
+            // would otherwise keep the base defaults: hardware acceleration,
+            // "Genetic Algorithm", coupling method "Strong", and real-time processing.
+            var optimization = (OptimizationParameters)_engineDesign.OptimizationParameters;
+            optimization.HardwareAcceleration = false;
+            optimization.RealTimeOptimization = false;
+            optimization.OptimizationAlgorithm = string.Empty;
+            ((CfdParameters)_engineDesign.CfdParameters).TurbulenceModel = string.Empty;
+            var multiPhysics = (MultiPhysicsParameters)_engineDesign.MultiPhysicsParameters;
+            multiPhysics.CombustionModeling = false;
+            multiPhysics.AcousticAnalysis = false;
+            multiPhysics.CouplingMethod = string.Empty;
+            multiPhysics.RealTimeProcessing = false;
+
             Console.WriteLine($"[HB-NLP Engine] ✅ Engine design created: {_engineDesign.Name}");
-            Console.WriteLine($"[HB-NLP Engine] Innovation Level: {_engineDesign.InnovationLevel:P}");
-            Console.WriteLine($"[HB-NLP Engine] Technology Readiness Level: {_engineDesign.TechnologyReadinessLevel}");
+            Console.WriteLine("[HB-NLP Engine] Declared thrust, specific impulse, chamber pressure, and geometry only.");
             
             return _engineDesign;
         }
@@ -297,8 +236,8 @@ namespace HB_NLP_Research_Lab.Aerospace
             var analysis = await _plasticityIntegration.PerformComprehensiveAnalysisAsync(designId);
             
             Console.WriteLine("[HB-NLP Engine] ✅ Comprehensive analysis completed");
-            Console.WriteLine($"[HB-NLP Engine] CFD Convergence: {analysis.CfdAnalysis.PerformanceMetrics.ConvergenceRate:P}");
-            Console.WriteLine($"[HB-NLP Engine] Hardware Utilization: {analysis.CfdAnalysis.PerformanceMetrics.HardwareUtilization:P}");
+            Console.WriteLine("[HB-NLP Engine] No convergence rate or technology readiness level is reported.");
+            _ = analysis;
             
             return analysis;
         }

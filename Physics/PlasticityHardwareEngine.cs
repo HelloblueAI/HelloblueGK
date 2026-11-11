@@ -13,7 +13,7 @@ namespace HB_NLP_Research_Lab.Physics
     /// <summary>
     /// Plasticity Hardware Engine Integration
     /// Advanced hardware acceleration for aerospace engine simulations
-    /// Integrates with Plasticity v25.2.2 for real-time hardware acceleration
+    /// CPU-side stand-in for a hardware accelerator. It does not detect or use a GPU.
     /// </summary>
     public class PlasticityHardwareEngine : IPhysicsSolver
     {
@@ -27,7 +27,7 @@ namespace HB_NLP_Research_Lab.Physics
         private bool _isInitialized = false;
         private bool _isHardwareAvailable = false;
 
-        public string Name => "Plasticity Hardware Engine v25.2.2";
+        public string Name => "Plasticity Hardware Engine";
 
         public PlasticityHardwareEngine()
         {
@@ -42,7 +42,7 @@ namespace HB_NLP_Research_Lab.Physics
 
         public void Initialize()
         {
-            Console.WriteLine("[Plasticity Hardware Engine] 🚀 Initializing Plasticity Hardware Engine v25.2.2...");
+            Console.WriteLine("[Plasticity Hardware Engine] Initializing...");
             
             try
             {
@@ -76,7 +76,7 @@ namespace HB_NLP_Research_Lab.Physics
 
         public async Task InitializeAsync()
         {
-            Console.WriteLine("[Plasticity Hardware Engine] 🚀 Initializing Plasticity Hardware Engine v25.2.2 (async)...");
+            Console.WriteLine("[Plasticity Hardware Engine] Initializing...");
             
             try
             {
@@ -286,26 +286,8 @@ namespace HB_NLP_Research_Lab.Physics
         {
             _config = new PlasticityConfiguration
             {
-                Version = "v25.2.2",
-                HardwareAcceleration = true,
-                GpuEnabled = true,
-                MultiThreading = true,
-                Precision = "Double",
-                MemoryAllocation = "Dynamic",
-                CacheOptimization = true,
-                ParallelProcessing = true,
-                RealTimeProcessing = true,
-                AdaptiveMeshRefinement = true,
-                TurbulenceModeling = "Advanced",
-                BoundaryConditionHandling = "Automatic",
-                ConvergenceCriteria = "Strict",
-                TimeStepping = "Adaptive",
-                SolverType = "Implicit",
-                Preconditioner = "Advanced",
-                LinearSolver = "GMRES",
-                NonlinearSolver = "Newton-Raphson",
-                MeshGeneration = "Automatic",
-                PostProcessing = "RealTime"
+                HardwareAcceleration = false,
+                GpuEnabled = false
             };
 
             await Task.Delay(50); // Simulate configuration loading
@@ -314,29 +296,13 @@ namespace HB_NLP_Research_Lab.Physics
 
         private async Task CheckHardwareAvailabilityAsync()
         {
-            // Simulate hardware detection
-            await Task.Delay(100);
-            
-            _isHardwareAvailable = true; // Assume hardware is available
-            _hardwareState = new PlasticityHardwareState
-            {
-                GpuAvailable = true,
-                GpuMemory = 16384, // 16GB
-                CpuCores = 32,
-                SystemMemory = 128, // 128GB
-                HardwareAcceleration = true,
-                CudaSupport = true,
-                OpenCLSupport = true,
-                VulkanSupport = true,
-                DirectXSupport = true,
-                ComputeCapability = "8.6",
-                DriverVersion = "535.98",
-                HardwareName = "NVIDIA RTX 4090"
-            };
+            // This process does not query a CUDA device. Reporting a card, a memory
+            // size, or a utilization here invented a GPU the simulation never used.
+            await Task.CompletedTask;
+            _isHardwareAvailable = false;
+            _hardwareState = new PlasticityHardwareState();
 
-            Console.WriteLine($"[Plasticity Hardware Engine] Hardware detected: {_hardwareState.HardwareName}");
-            Console.WriteLine($"[Plasticity Hardware Engine] GPU Memory: {_hardwareState.GpuMemory}MB");
-            Console.WriteLine($"[Plasticity Hardware Engine] CPU Cores: {_hardwareState.CpuCores}");
+            Console.WriteLine("[Plasticity Hardware Engine] No accelerator detected. GPU metrics are not measurements.");
         }
 
         private async Task InitializeHardwareStateAsync()
@@ -357,18 +323,11 @@ namespace HB_NLP_Research_Lab.Physics
             {
                 ReynoldsNumber = parameters.ReynoldsNumber,
                 MachNumber = parameters.MachNumber,
-                TurbulenceModel = "k-epsilon",
+                TurbulenceModel = parameters.TurbulenceModel,
                 BoundaryConditions = parameters.BoundaryConditions,
-                MeshResolution = "UltraHigh",
                 TimeStep = parameters.TimeStep,
-                ConvergenceTolerance = 1e-6,
-                MaxIterations = 10000,
-                SolverType = "Implicit",
-                Preconditioner = "ILU",
-                LinearSolver = "GMRES",
-                NonlinearSolver = "Newton-Raphson",
-                AdaptiveMeshRefinement = true,
-                RealTimeVisualization = true,
+                ConvergenceTolerance = parameters.ConvergenceTolerance,
+                MaxIterations = parameters.MaxIterations,
                 HardwareAcceleration = _isHardwareAvailable
             };
         }
@@ -377,16 +336,15 @@ namespace HB_NLP_Research_Lab.Physics
         {
             return new PlasticityMultiPhysicsParameters
             {
-                FluidStructureInteraction = true,
-                ThermalAnalysis = true,
-                ElectromagneticAnalysis = true,
-                CouplingMethod = "Strong",
-                ConvergenceTolerance = 1e-6,
-                MaxIterations = 5000,
+                FluidStructureInteraction = parameters.FluidStructureInteraction,
+                ThermalAnalysis = parameters.ThermalAnalysis,
+                ElectromagneticAnalysis = parameters.ElectromagneticAnalysis,
+                CouplingMethod = parameters.CouplingMethod,
+                ConvergenceTolerance = parameters.ConvergenceTolerance,
+                MaxIterations = parameters.MaxIterations,
                 TimeStep = parameters.TimeStep,
                 HardwareAcceleration = _isHardwareAvailable,
-                ParallelProcessing = true,
-                RealTimeProcessing = true
+                RealTimeProcessing = parameters.RealTimeProcessing
             };
         }
 
@@ -396,350 +354,69 @@ namespace HB_NLP_Research_Lab.Physics
             {
                 ObjectiveFunction = parameters.ObjectiveFunction,
                 Constraints = parameters.Constraints,
-                OptimizationAlgorithm = "Genetic Algorithm",
-                PopulationSize = 100,
-                Generations = 1000,
-                MutationRate = 0.1,
-                CrossoverRate = 0.8,
-                ConvergenceTolerance = 1e-6,
+                OptimizationAlgorithm = parameters.OptimizationAlgorithm,
+                PopulationSize = parameters.PopulationSize,
+                Generations = parameters.Generations,
+                MutationRate = parameters.MutationRate,
+                CrossoverRate = parameters.CrossoverRate,
+                ConvergenceTolerance = parameters.ConvergenceTolerance,
                 HardwareAcceleration = _isHardwareAvailable,
-                ParallelEvaluation = true,
-                RealTimeOptimization = true
+                RealTimeOptimization = parameters.RealTimeOptimization
             };
         }
 
         private async Task<HB_NLP_Research_Lab.Models.CfdAnalysisResult> ExecutePlasticityCfdAsync(HB_NLP_Research_Lab.Models.EngineModel engineModel, PlasticityCfdParameters parameters)
         {
-            // Simulate hardware-accelerated CFD computation
-            await Task.Delay(200); // Simulate computation time
-            
-            return new HB_NLP_Research_Lab.Models.CfdAnalysisResult
-            {
-                PressureDistribution = GeneratePressureDistribution(),
-                VelocityField = GenerateVelocityField(),
-                TemperatureField = GenerateTemperatureField(),
-                TurbulenceIntensity = GenerateTurbulenceIntensity(),
-                WallShearStress = GenerateWallShearStress(),
-                ConvergenceHistory = GenerateConvergenceHistory(),
-                PerformanceMetrics = new CfdPerformanceMetrics
-                {
-                    ComputationTime = 0.2,
-                    MemoryUsage = 2048,
-                    ConvergenceRate = 0.95,
-                    Accuracy = 0.99,
-                    HardwareUtilization = 0.85
-                }
-            };
+            // No CFD solution is computed here. Returning a filled pressure field
+            // or a convergence rate would present this method as a solver.
+            await Task.CompletedTask;
+            _ = engineModel;
+            _ = parameters;
+            return new HB_NLP_Research_Lab.Models.CfdAnalysisResult();
         }
 
         private async Task<HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult> ExecutePlasticityMultiPhysicsAsync(
             HB_NLP_Research_Lab.Models.EngineModel engineModel, 
             PlasticityMultiPhysicsParameters parameters)
         {
-            // Simulate hardware-accelerated multi-physics computation
-            await Task.Delay(500); // Simulate computation time
-            
-            return new HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult
-            {
-                FluidAnalysis = new HB_NLP_Research_Lab.Models.CfdAnalysisResult
-                {
-                    PressureDistribution = GeneratePressureDistribution(),
-                    VelocityField = GenerateVelocityField(),
-                    TemperatureField = GenerateTemperatureField(),
-                    TurbulenceIntensity = GenerateTurbulenceIntensity(),
-                    WallShearStress = GenerateWallShearStress(),
-                    ConvergenceHistory = GenerateConvergenceHistory()
-                },
-                StructuralAnalysis = new HB_NLP_Research_Lab.Models.StructuralAnalysisResult
-                {
-                    StressDistribution = GenerateStressDistribution(),
-                    DisplacementField = GenerateDisplacementField(),
-                    StrainField = GenerateStrainField(),
-                    NaturalFrequencies = GenerateNaturalFrequencies(),
-                    ModalShapes = GenerateModalShapes()
-                },
-                ThermalAnalysis = new HB_NLP_Research_Lab.Models.ThermalAnalysisResult
-                {
-                    TemperatureField = GenerateTemperatureField(),
-                    HeatFlux = GenerateHeatFlux(),
-                    ThermalGradients = GenerateThermalGradients(),
-                    ConvectionCoefficients = GenerateConvectionCoefficients()
-                },
-                ElectromagneticAnalysis = new ElectromagneticAnalysisResult
-                {
-                    ElectricField = GenerateElectricField(),
-                    MagneticField = GenerateMagneticField(),
-                    ElectromagneticForces = GenerateElectromagneticForces(),
-                    EddyCurrents = GenerateEddyCurrents()
-                },
-                CouplingMetrics = new CouplingMetrics
-                {
-                    FluidStructureCoupling = 0.95,
-                    ThermalCoupling = 0.92,
-                    ElectromagneticCoupling = 0.88,
-                    OverallCoupling = 0.91
-                }
-            };
+            // No coupled solution is computed here.
+            await Task.CompletedTask;
+            _ = engineModel;
+            _ = parameters;
+            return new HB_NLP_Research_Lab.Models.FluidStructureThermalElectromagneticResult();
         }
 
         private async Task<HB_NLP_Research_Lab.Models.PlasticityOptimizationResult> ExecutePlasticityOptimizationAsync(
             HB_NLP_Research_Lab.Models.EngineModel engineModel, 
             PlasticityOptimizationParameters parameters)
         {
-            // Simulate hardware-accelerated optimization
-            await Task.Delay(1000); // Simulate optimization time
-            
+            // No optimum is computed here. A filled thrust or specific impulse would
+            // be a second engine declaration.
+            await Task.CompletedTask;
+            _ = engineModel;
+            _ = parameters;
             return new HB_NLP_Research_Lab.Models.PlasticityOptimizationResult
             {
-                OptimizedParameters = new Dictionary<string, double>
-                {
-                    { "Thrust", 2500000 },
-                    { "SpecificImpulse", 380 },
-                    { "ChamberPressure", 300 },
-                    { "ExpansionRatio", 25.5 },
-                    { "Efficiency", 0.95 }
-                },
-                ObjectiveValue = 0.95,
-                ConvergenceHistory = GenerateOptimizationConvergenceHistory(),
-                ConstraintViolations = new List<string>(),
-                OptimizationMetrics = new HB_NLP_Research_Lab.Models.OptimizationMetrics
-                {
-                    Iterations = 850,
-                    ComputationTime = 1.0,
-                    ConvergenceRate = 0.98,
-                    ObjectiveImprovement = 0.15,
-                    ConvergenceAchieved = true
-                }
+                OptimizedParameters = new Dictionary<string, double>(),
+                ConstraintViolations = new List<string>()
             };
         }
 
-        private async Task<double> GetHardwareUtilizationAsync()
-        {
-            await Task.Delay(10);
-            return 0.85; // 85% utilization
-        }
+        private Task<double> GetHardwareUtilizationAsync() => Task.FromResult(double.NaN);
 
-        private async Task<double> GetMemoryUsageAsync()
-        {
-            await Task.Delay(10);
-            return 8192; // 8GB
-        }
+        private Task<double> GetMemoryUsageAsync() => Task.FromResult(double.NaN);
 
-        private async Task<double> GetGpuUtilizationAsync()
-        {
-            await Task.Delay(10);
-            return 0.90; // 90% GPU utilization
-        }
+        private Task<double> GetGpuUtilizationAsync() => Task.FromResult(double.NaN);
 
-        private async Task<double> GetCpuUtilizationAsync()
-        {
-            await Task.Delay(10);
-            return 0.75; // 75% CPU utilization
-        }
+        private Task<double> GetCpuUtilizationAsync() => Task.FromResult(double.NaN);
 
-        private async Task<double> GetHardwareTemperatureAsync()
-        {
-            await Task.Delay(10);
-            return 65.0; // 65°C
-        }
+        private Task<double> GetHardwareTemperatureAsync() => Task.FromResult(double.NaN);
 
-        private async Task<double> GetPowerConsumptionAsync()
-        {
-            await Task.Delay(10);
-            return 350.0; // 350W
-        }
+        private Task<double> GetPowerConsumptionAsync() => Task.FromResult(double.NaN);
 
-        private async Task<HB_NLP_Research_Lab.Models.PerformanceMetrics> GetPerformanceMetricsAsync()
-        {
-            await Task.Delay(10);
-            return new HB_NLP_Research_Lab.Models.PerformanceMetrics
-            {
-                ComputationSpeed = 1.5e12, // 1.5 TFLOPS
-                MemoryBandwidth = 1008, // GB/s
-                Latency = 0.001, // 1ms
-                Throughput = 1000, // simulations/second
-                Efficiency = 0.95
-            };
-        }
+        private Task<HB_NLP_Research_Lab.Models.PerformanceMetrics> GetPerformanceMetricsAsync() =>
+            Task.FromResult(new HB_NLP_Research_Lab.Models.PerformanceMetrics());
 
-        // Helper methods for generating simulation data
-        private Dictionary<string, double> GeneratePressureDistribution()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 300.0 },
-                { "Throat", 150.0 },
-                { "Exit", 50.0 },
-                { "Ambient", 1.0 }
-            };
-        }
-
-        private Dictionary<string, Vector3> GenerateVelocityField()
-        {
-            return new Dictionary<string, Vector3>
-            {
-                { "Inlet", new Vector3(0, 0, 100) },
-                { "Chamber", new Vector3(0, 0, 500) },
-                { "Throat", new Vector3(0, 0, 2000) },
-                { "Exit", new Vector3(0, 0, 3000) }
-            };
-        }
-
-        private Dictionary<string, double> GenerateTemperatureField()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 3500.0 },
-                { "Throat", 3200.0 },
-                { "Exit", 2800.0 },
-                { "Ambient", 300.0 }
-            };
-        }
-
-        private Dictionary<string, double> GenerateTurbulenceIntensity()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Inlet", 0.05 },
-                { "Chamber", 0.15 },
-                { "Throat", 0.25 },
-                { "Exit", 0.10 }
-            };
-        }
-
-        private Dictionary<string, double> GenerateWallShearStress()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 5000.0 },
-                { "Throat", 15000.0 },
-                { "Exit", 8000.0 }
-            };
-        }
-
-        private List<double> GenerateConvergenceHistory()
-        {
-            return Enumerable.Range(0, 100).Select(i => Math.Exp(-i * 0.1)).ToList();
-        }
-
-        private Dictionary<string, double> GenerateStressDistribution()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 200.0 },
-                { "Throat", 500.0 },
-                { "Exit", 300.0 }
-            };
-        }
-
-        private Dictionary<string, Vector3> GenerateDisplacementField()
-        {
-            return new Dictionary<string, Vector3>
-            {
-                { "Chamber", new Vector3(0.001f, 0.001f, 0.002f) },
-                { "Throat", new Vector3(0.002f, 0.002f, 0.005f) },
-                { "Exit", new Vector3(0.001f, 0.001f, 0.003f) }
-            };
-        }
-
-        private Dictionary<string, double> GenerateStrainField()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 0.0001 },
-                { "Throat", 0.0003 },
-                { "Exit", 0.0002 }
-            };
-        }
-
-        private List<double> GenerateNaturalFrequencies()
-        {
-            return new List<double> { 100, 250, 500, 750, 1000 };
-        }
-
-        private List<Vector3[]> GenerateModalShapes()
-        {
-            return new List<Vector3[]>
-            {
-                new Vector3[] { new Vector3(1, 0, 0), new Vector3(0, 1, 0) },
-                new Vector3[] { new Vector3(0, 1, 0), new Vector3(1, 0, 0) }
-            };
-        }
-
-        private Dictionary<string, double> GenerateHeatFlux()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 50000.0 },
-                { "Throat", 100000.0 },
-                { "Exit", 75000.0 }
-            };
-        }
-
-        private Dictionary<string, Vector3> GenerateThermalGradients()
-        {
-            return new Dictionary<string, Vector3>
-            {
-                { "Chamber", new Vector3(100, 100, 200) },
-                { "Throat", new Vector3(200, 200, 500) },
-                { "Exit", new Vector3(150, 150, 300) }
-            };
-        }
-
-        private Dictionary<string, double> GenerateConvectionCoefficients()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 500.0 },
-                { "Throat", 1000.0 },
-                { "Exit", 750.0 }
-            };
-        }
-
-        private Dictionary<string, Vector3> GenerateElectricField()
-        {
-            return new Dictionary<string, Vector3>
-            {
-                { "Chamber", new Vector3(0, 0, 1000) },
-                { "Throat", new Vector3(0, 0, 2000) },
-                { "Exit", new Vector3(0, 0, 1500) }
-            };
-        }
-
-        private Dictionary<string, Vector3> GenerateMagneticField()
-        {
-            return new Dictionary<string, Vector3>
-            {
-                { "Chamber", new Vector3(0, 0, 0.1f) },
-                { "Throat", new Vector3(0, 0, 0.2f) },
-                { "Exit", new Vector3(0, 0, 0.15f) }
-            };
-        }
-
-        private Dictionary<string, Vector3> GenerateElectromagneticForces()
-        {
-            return new Dictionary<string, Vector3>
-            {
-                { "Chamber", new Vector3(0, 0, 100) },
-                { "Throat", new Vector3(0, 0, 200) },
-                { "Exit", new Vector3(0, 0, 150) }
-            };
-        }
-
-        private Dictionary<string, double> GenerateEddyCurrents()
-        {
-            return new Dictionary<string, double>
-            {
-                { "Chamber", 10.0 },
-                { "Throat", 20.0 },
-                { "Exit", 15.0 }
-            };
-        }
-
-        private List<double> GenerateOptimizationConvergenceHistory()
-        {
-            return Enumerable.Range(0, 100).Select(i => 1.0 - Math.Exp(-i * 0.05)).ToList();
-        }
     }
 
     // Plasticity-specific data structures

@@ -13,7 +13,7 @@ namespace HB_NLP_Research_Lab.Aerospace
 {
     /// <summary>
     /// Plasticity Engine Integration
-    /// Advanced hardware-accelerated engine design using Plasticity v25.2.2
+    /// Packages the concept declaration. It does not run a GPU or a CFD solver.
     /// Enables real-time 3D modeling, simulation, and optimization of aerospace engines
     /// </summary>
     public class PlasticityEngineIntegration
@@ -640,39 +640,20 @@ namespace HB_NLP_Research_Lab.Aerospace
 
         private HB_NLP_Research_Lab.Models.PerformanceMetrics CalculatePerformanceMetrics(PlasticityEngineDesign design)
         {
-            return new HB_NLP_Research_Lab.Models.PerformanceMetrics
-            {
-                ThrustEfficiency = 0.95f,
-                FuelConsumption = 2.5f, // g/kN·s
-                ThermalEfficiency = 0.92f,
-                WeightToThrust = 0.001f, // kg/N
-                OverallEfficiency = 0.95f,
-                ComputationSpeed = 1.5e12, // 1.5 TFLOPS
-                MemoryBandwidth = 1008, // GB/s
-                Latency = 0.001, // 1ms
-                Throughput = 1000, // operations/second
-                Efficiency = 0.95 // percentage
-            };
+            _ = design;
+            return new HB_NLP_Research_Lab.Models.PerformanceMetrics();
         }
 
         private InnovationMetrics CalculateInnovationMetrics(PlasticityEngineDesign design)
         {
-            return new InnovationMetrics
-            {
-                TechnologyReadinessLevel = "TRL 8",
-                NoveltyScore = 0.95f,
-                DisruptivePotential = 0.90f,
-                MarketImpact = 0.85f,
-                Patentability = 0.95f,
-                CostEffectiveness = 0.88f,
-                Scalability = 0.92f,
-                Sustainability = 0.94f
-            };
+            _ = design;
+            return new InnovationMetrics();
         }
 
         private string CalculateTechnologyReadinessLevel(PlasticityEngineDesign design)
         {
-            return "TRL 8 - System Complete and Qualified";
+            _ = design;
+            return string.Empty;
         }
     }
 
