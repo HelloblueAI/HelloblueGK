@@ -3,9 +3,9 @@
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
-[![Line Coverage](https://img.shields.io/badge/line%20coverage-61.1%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-62.0%25-yellow)](Certification/Artifacts/coverage-floors.json)
-[![Tests](https://img.shields.io/badge/tests-1336%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
+[![Line Coverage](https://img.shields.io/badge/line%20coverage-64.5%25-yellow)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/42924539402)
+[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-66.2%25-yellow)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/42924539402)
+[![Tests](https://img.shields.io/badge/tests-1893%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/42924539402)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
 <div align="center">

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using FluentAssertions;
+using HB_NLP_Research_Lab.Models;
 using HB_NLP_Research_Lab.Physics;
 using Xunit;
 
@@ -168,6 +169,34 @@ public class EngineDesignConsistencyTests
 
         root.TryGetProperty("performance_metrics", out _).Should().BeFalse(
             "solver convergence, power, and hardware figures in the old package were constants, not measurements");
+    }
+
+    /// <summary>
+    /// The physical declaration is checked above. These fields used to carry a readiness level,
+    /// an efficiency, a reliability, and a quantum flag with no measurement behind them.
+    /// </summary>
+    [Fact]
+    public async Task Declaration_DoesNotClaimReadinessEfficiencyReliabilityOrQuantum()
+    {
+        var design = await DeclaredDesignAsync();
+
+        design.TechnologyReadinessLevel.Should().BeEmpty();
+        design.PerformanceMetrics.TechnologyReadinessLevel.Should().Be(0);
+        design.InnovationLevel.Should().Be(0);
+        design.Efficiency.Should().Be(0);
+        design.PerformanceMetrics.Efficiency.Should().Be(0);
+        design.PerformanceMetrics.Reliability.Should().Be(0);
+        design.PropulsionSystem.CombustionEfficiency.Should().Be(0);
+        design.ThrustToWeightRatio.Should().Be(0);
+        design.QuantumComputing.Should().BeFalse();
+        design.EngineType.Should().Be("methane/LOX");
+        design.CfdParameters.TurbulenceModel.Should().BeEmpty();
+        design.CfdParameters.ReynoldsNumber.Should().Be(0);
+        design.CfdParameters.MachNumber.Should().Be(0);
+        ((CfdParameters)design.CfdParameters).TurbulenceModel.Should().BeEmpty();
+        design.StructuralSystem.AnalysisType.Should().Be("schematic, not a finite-element result");
+        design.StructuralSystem.SafetyFactor.Should().Be(0);
+        design.Materials.Should().NotContain(material => material.QuantumProperties || material.SelfHealing);
     }
 
     // Path.Join concatenates these parts. Path.Combine would discard the walked
