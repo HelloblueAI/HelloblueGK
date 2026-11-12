@@ -381,7 +381,9 @@ namespace HB_NLP_Research_Lab.AI
         public async Task<double> GetLearningImprovementAsync()
         {
             await Task.CompletedTask;
-            return 0.15; // 15% improvement from learning
+            // The learn endpoint persists this value. Nothing in the flight was measured
+            // as a 15% gain.
+            return 0;
         }
 
         public async Task LearnFromFlightDataAsync(TestFlightData flightData)
@@ -475,7 +477,9 @@ namespace HB_NLP_Research_Lab.AI
         public async Task<double> GetOptimizationImprovementAsync()
         {
             await Task.CompletedTask;
-            return 0.12; // 12% improvement
+            // Same persisted learn result as the generative-AI figure. A fixed 12%
+            // is not an optimization delta.
+            return 0;
         }
 
         public async Task UpdateOptimizationModelsAsync(TestFlightData flightData)
@@ -519,7 +523,8 @@ namespace HB_NLP_Research_Lab.AI
         public async Task<double> GetPredictionImprovementAsync()
         {
             await Task.CompletedTask;
-            return 0.08; // 8% improvement
+            // Same persisted learn result. A fixed 8% is not a prediction-model delta.
+            return 0;
         }
 
         public async Task UpdatePredictionModelsAsync(TestFlightData flightData)

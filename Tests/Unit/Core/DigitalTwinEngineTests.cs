@@ -775,6 +775,80 @@ public class DigitalTwinEngineTests : IDisposable
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
+    [Fact]
+    public async Task LearnFromTestFlight_DoesNotStampUnmeasuredQuality()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "UnmeasuredLearn";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Learn", Parameters = new Dictionary<string, double>() });
+
+        var result = await _digitalTwinEngine.LearnFromTestFlightAsync(
+            engineId,
+            new TestFlightData
+            {
+                EngineId = engineId,
+                FlightDate = DateTime.UtcNow,
+                FlightMetrics = new Dictionary<string, double>()
+            });
+
+        result.LearningEvent.LearningMetrics.DataQuality.Should().Be(0);
+        result.LearningEvent.LearningMetrics.LearningRate.Should().Be(0);
+        result.LearningEvent.LearningMetrics.ModelConvergence.Should().Be(0);
+        result.AILearningResult.GenerativeAIImprovement.Should().Be(0);
+        result.AILearningResult.OptimizationImprovement.Should().Be(0);
+        result.AILearningResult.FailurePredictionImprovement.Should().Be(0);
+        result.ModelImprovement.ImprovementPercentage.Should().Be(0);
+        result.ModelImprovement.ModelVersion.Should().BeEmpty();
+
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+        report.LearningTrend.Should().BeEmpty();
+        report.PerformanceRating.Should().BeEmpty();
+
+        var summary = await _digitalTwinEngine.GenerateDigitalTwinSummaryAsync();
+        summary.LearningPerformance.Should().BeEmpty();
+        summary.PredictionPerformance.Should().BeEmpty();
+        summary.SystemHealth.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RunAutonomousTests_DoesNotLearnFromAnInventedFlight()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "AutonomousUnmeasured";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel
+            {
+                Name = "Matched",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_380_000,
+                    ["Efficiency"] = 0.92,
+                    ["Reliability"] = 0.999
+                }
+            });
+
+        var before = (await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId)).PredictionAccuracy;
+
+        var testResult = await _digitalTwinEngine.RunAutonomousTestsAsync(
+            engineId,
+            new TestingRequirements { TestType = "Regression" });
+
+        testResult.TestResults.Should().BeEmpty();
+        testResult.Analysis.PassRate.Should().Be(0);
+        testResult.Analysis.AveragePerformance.Should().Be(0);
+        testResult.Analysis.ReliabilityScore.Should().Be(0);
+        testResult.TestCoverage.Should().Be(0);
+        testResult.TestAccuracy.Should().Be(0);
+
+        var report = await _digitalTwinEngine.GenerateLearningPerformanceReportAsync(engineId);
+        report.TotalLearningEvents.Should().Be(0);
+        report.TotalModelImprovements.Should().Be(0);
+        report.PredictionAccuracy.Should().Be(before);
+    }
+
     public void Dispose()
     {
         _digitalTwinEngine?.Dispose();
