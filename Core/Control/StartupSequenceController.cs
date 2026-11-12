@@ -1565,10 +1565,17 @@ namespace HB_NLP_Research_Lab.Core.Control
             // Any other throw used to take that stop path too. The spark could already be
             // on, or a propellant valve already open, and a close that failed on the way
             // out was not retried. A sensor read that throws already fail-closes.
+            // The state deadline stops waiting for this call. A command that ignores
+            // cancellation can still apply the open after shutdown has commanded closed.
+            // ContinueSequenceAsync only sees that when this wait is still running.
+            var command = actuator.SetPositionAsync(position, cancellationToken);
+            if (position > 0)
+                ObserveLateOpen(actuator, command);
+
             bool accepted;
             try
             {
-                accepted = await actuator.SetPositionAsync(position, cancellationToken).ConfigureAwait(false);
+                accepted = await command.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
@@ -1597,6 +1604,62 @@ namespace HB_NLP_Research_Lab.Core.Control
             await FailClosedAsync(
                 $"[Startup Sequence] ❌ {actuator.Name} rejected command {position}").ConfigureAwait(false);
             return false;
+        }
+
+        /// <summary>
+        /// An open that is still in flight when the state deadline stops waiting can
+        /// apply after shutdown has commanded closed. <see cref="ContinueSequenceAsync"/>
+        /// closes in that case only while this pass is still awaiting the command.
+        /// A command that returns true after <see cref="_sequenceClosed"/> is set is
+        /// closed again here, including after the loop has stopped.
+        /// </summary>
+        private void ObserveLateOpen(IActuator actuator, Task<bool> command)
+        {
+            if (command.IsCompletedSuccessfully)
+            {
+                if (command.Result && _sequenceClosed)
+                    _ = CloseLateOpenAsync(actuator);
+                return;
+            }
+
+            _ = command.ContinueWith(
+                completed =>
+                {
+                    if (completed.IsFaulted)
+                    {
+                        _ = completed.Exception;
+                        return;
+                    }
+
+                    if (!completed.IsCompletedSuccessfully || !completed.Result || !_sequenceClosed)
+                        return;
+
+                    _ = CloseLateOpenAsync(actuator);
+                },
+                CancellationToken.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
+        }
+
+        private async Task CloseLateOpenAsync(IActuator actuator)
+        {
+            try
+            {
+                Console.WriteLine(
+                    $"[Startup Sequence] Late open on {actuator.Name} landed after shutdown. Closing it.");
+                var result = await CloseForShutdownAsync(actuator).ConfigureAwait(false);
+                if (!result.Closed)
+                {
+                    Console.WriteLine(
+                        $"[Startup Sequence] Late open on {actuator.Name} stayed open: {result.Reason}");
+                }
+            }
+            // codeql[generic-catch-clause]: A late close must not become an unobserved task fault.
+            catch (Exception ex)
+            {
+                Console.WriteLine(
+                    $"[Startup Sequence] Late open close on {actuator.Name} failed: {ex.Message}");
+            }
         }
 
         /// <summary>

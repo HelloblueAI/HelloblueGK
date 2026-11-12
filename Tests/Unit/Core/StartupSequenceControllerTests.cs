@@ -2662,6 +2662,49 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_OpenThatLandsAfterTheDeadline_IsClosedAgain()
+    {
+        // The deadline stops waiting and shutdown commands closed. The open does not
+        // observe cancellation, so it can still apply after that close. The pass is
+        // no longer awaiting it, and stop may already have returned.
+        var openGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fuel = new RecordingActuator
+        {
+            Name = "fuel",
+            OnCommanding = position => position > 0
+                ? openGate.Task
+                : Task.CompletedTask
+        };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        controller.SetStateEnteredAt(DateTime.UtcNow - TimeSpan.FromMilliseconds(4_800));
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        fuel.LastPosition.Should().Be(0);
+        var closesBeforeLateOpen = fuel.CloseAttempts;
+
+        openGate.TrySetResult();
+
+        var closedAgain = await WaitUntilAsync(
+            () => fuel.CloseAttempts > closesBeforeLateOpen && fuel.LastPosition == 0,
+            TimeSpan.FromSeconds(2));
+
+        closedAgain.Should().BeTrue();
+        fuel.Positions.Should().Contain(0.1);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.Positions.Any(position => position > 0).Should().BeFalse();
+        igniter.Positions.Any(position => position > 0).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task FuelFlow_HungOpenAndHungClose_FailClosesWithoutWaitingOnTheClose()
     {
         // The state deadline abandons the open, then the shutdown close is a new
