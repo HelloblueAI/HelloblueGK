@@ -544,12 +544,14 @@ namespace HB_NLP_Research_Lab.Core
 
             var multiPhysicsResult = await _multiPhysicsCoupler.RunCompletePhysicsIntegrationAsync(physicsEngineModel);
 
+            // Missing thrust or efficiency is not a 1.5 MN, 92% engine. Thermal
+            // efficiency is not 92% of that figure, and no fatigue life was solved.
             var thrust = TryReadEngineParameter(engineModel, "Thrust", out var engineThrust) && engineThrust > 0
                 ? engineThrust
-                : 1500000.0;
+                : 0.0;
             var efficiency = TryReadEngineParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
                 ? Math.Clamp(engineEfficiency, 0.0, 1.0)
-                : 0.92;
+                : 0.0;
             
             // Create predictive result
             var prediction = new MultiPhysicsPrediction
@@ -563,19 +565,10 @@ namespace HB_NLP_Research_Lab.Core
                     Thrust = thrust,
                     Efficiency = efficiency,
                     Reliability = UnprovenPredictionAccuracy,
-                    ThermalEfficiency = Math.Clamp(efficiency * 0.92, 0.0, 1.0),
+                    ThermalEfficiency = 0.0,
                     StructuralSafety = UnprovenPredictionAccuracy
                 },
-                PredictedFailures = new List<PredictedFailure>
-                {
-                    new PredictedFailure
-                    {
-                        FailureMode = "Thermal Fatigue",
-                        Probability = 0.001,
-                        TimeToFailure = TimeSpan.FromHours(5000),
-                        Confidence = UnprovenPredictionAccuracy
-                    }
-                }
+                PredictedFailures = new List<PredictedFailure>()
             };
             
             Console.WriteLine($"[Digital Twin] Predictive multi-physics analysis complete");
@@ -1051,12 +1044,15 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.Delay(100);
 
+            // A model that does not carry thrust or efficiency must not be reported as
+            // 1.5 MN at 92%. Zero is unset. Throttle and ambient temperature only
+            // derate a value the model actually has.
             var thrust = TryReadEngineModelParameter(engineModel, "Thrust", out var engineThrust) && engineThrust > 0
                 ? engineThrust
-                : 1500000.0;
+                : 0.0;
             var efficiency = TryReadEngineModelParameter(engineModel, "Efficiency", out var engineEfficiency) && engineEfficiency > 0
                 ? Math.Clamp(engineEfficiency, 0.0, 1.0)
-                : 0.92;
+                : 0.0;
             // Baseline reliability stays fail-closed/unproven until a trusted model prior exists.
             // Clients must not set PredictedMetrics.Reliability directly.
             var reliability = DigitalTwinEngine.UnprovenPredictionAccuracy;
