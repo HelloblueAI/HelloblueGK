@@ -126,39 +126,19 @@ namespace HB_NLP_Research_Lab.Core
         public async Task<ValidationResult> ValidateEngineAsync(string engineModel)
         {
             Console.WriteLine($"[Validation] 🔍 Validating engine: {engineModel}");
-            
-            // Simulate async operation
+
+            // No test data is bound to this call. A fixed 95.9 used to mark every
+            // name Validated, and the summary then treated that average as proof.
             await Task.Delay(10);
-            
-            // Create synthetic validation for now
-            CreateSyntheticTestData(engineModel, new SimulationResults());
-            var metrics = new ValidationMetrics
-            {
-                ThrustAccuracy = 95.5,
-                ISPAccuracy = 96.2,
-                ChamberPressureAccuracy = 94.8,
-                ThermalAccuracy = 97.1,
-                StructuralAccuracy = 95.9,
-                OverallAccuracy = 95.9
-            };
-            
+
             var result = new ValidationResult
             {
                 EngineId = engineModel,
-                ValidationStatus = "Validated",
-                TestResults = new Dictionary<string, double>
-                {
-                    ["Thrust"] = metrics.ThrustAccuracy,
-                    ["ISP"] = metrics.ISPAccuracy,
-                    ["ChamberPressure"] = metrics.ChamberPressureAccuracy,
-                    ["Thermal"] = metrics.ThermalAccuracy,
-                    ["Structural"] = metrics.StructuralAccuracy,
-                    ["Overall"] = metrics.OverallAccuracy
-                }
+                ValidationDate = DateTime.UtcNow
             };
 
             RecordValidationResult(result);
-            
+
             return result;
         }
 
@@ -228,7 +208,12 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(1);
             lock (_historyLock)
             {
-                return _validationResults.Any(r => r.EngineId == engineModel);
+                return _validationResults.Any(r =>
+                    r.EngineId == engineModel
+                    && string.Equals(r.ValidationStatus, "Validated", StringComparison.Ordinal)
+                    && r.TestResults.TryGetValue("Overall", out var overall)
+                    && double.IsFinite(overall)
+                    && overall > 0);
             }
         }
 

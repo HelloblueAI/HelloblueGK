@@ -28,19 +28,23 @@ public class ValidationEngineTests
     }
 
     [Fact]
-    public async Task ValidateEngineAsync_ShouldHaveValidTestResults()
+    public async Task ValidateEngineAsync_DoesNotPublishUnmeasuredAccuracy()
     {
-        // Arrange
-        var engineModel = "TestEngine_002";
+        var result = await _validationEngine.ValidateEngineAsync("UnmeasuredEngine");
 
-        // Act
-        var result = await _validationEngine.ValidateEngineAsync(engineModel);
+        result.ValidationStatus.Should().NotBe("Validated");
+        result.Accuracy.Should().Be(0);
+        result.TestResults.Should().BeEmpty();
+        result.TestResults.Values.Should().NotContain(95.9);
 
-        // Assert
-        result.TestResults.Should().NotBeEmpty();
-        result.TestResults.Should().ContainKey("Thrust");
-        result.TestResults.Should().ContainKey("ISP");
-        result.TestResults.Should().ContainKey("ChamberPressure");
+        (await _validationEngine.IsEngineValidatedAsync("UnmeasuredEngine")).Should().BeFalse();
+
+        var summary = await _validationEngine.GenerateValidationSummaryAsync();
+        summary.IsValid.Should().BeFalse();
+        summary.AverageAccuracy.Should().Be(0);
+        summary.HighestAccuracy.Should().Be(0);
+        summary.LowestAccuracy.Should().Be(0);
+        summary.ValidationScore.Should().Be(0);
     }
 
     [Fact]
@@ -71,17 +75,14 @@ public class ValidationEngineTests
     }
 
     [Fact]
-    public async Task IsEngineValidatedAsync_ShouldReturnTrueForValidatedEngine()
+    public async Task IsEngineValidatedAsync_WithoutMeasuredEvidence_ShouldReturnFalse()
     {
-        // Arrange
         var engineModel = "ValidatedEngine";
         await _validationEngine.ValidateEngineAsync(engineModel);
 
-        // Act
         var isValidated = await _validationEngine.IsEngineValidatedAsync(engineModel);
 
-        // Assert
-        isValidated.Should().BeTrue();
+        isValidated.Should().BeFalse();
     }
 
     [Fact]
