@@ -2375,6 +2375,31 @@ public class StartupSequenceControllerTests
     }
 
     [Fact]
+    public async Task FuelFlow_ActuatorCommandThrowsBeforeReturning_FailClosesAndDoesNotContinue()
+    {
+        var fuel = new RecordingActuator { ThrowSynchronouslyBeforeReturning = true };
+        var oxidizer = new RecordingActuator();
+        var igniter = new RecordingActuator();
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        var act = () => controller.ExecuteOnceAsync();
+        await act.Should().NotThrowAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
+        fuel.LastPosition.Should().Be(0);
+        oxidizer.LastPosition.Should().Be(0);
+        igniter.LastPosition.Should().Be(0);
+        oxidizer.Positions.Any(position => position > 0).Should().BeFalse();
+        igniter.Positions.Any(position => position > 0).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task FuelFlow_ActuatorCommandThrows_FailClosesAndDoesNotContinue()
     {
         var fuel = new RecordingActuator
@@ -2657,6 +2682,49 @@ public class StartupSequenceControllerTests
         controller.CurrentState.Should().NotBe(StartupState.OxidizerFlowInitiation);
         fuel.LastPosition.Should().Be(0);
         fuel.Positions.Should().Contain(0.0);
+        oxidizer.Positions.Any(position => position > 0).Should().BeFalse();
+        igniter.Positions.Any(position => position > 0).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task FuelFlow_OpenThatLandsAfterTheDeadline_IsClosedAgain()
+    {
+        // The deadline stops waiting and shutdown commands closed. The open does not
+        // observe cancellation, so it can still apply after that close. The pass is
+        // no longer awaiting it, and stop may already have returned.
+        var openGate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var fuel = new RecordingActuator
+        {
+            Name = "fuel",
+            OnCommanding = position => position > 0
+                ? openGate.Task
+                : Task.CompletedTask
+        };
+        var oxidizer = new RecordingActuator { Name = "oxidizer" };
+        var igniter = new RecordingActuator { Name = "igniter" };
+        var controller = CreateController(
+            fuel,
+            oxidizer,
+            igniter,
+            fuelFlow: new StubSensor { Value = 1 });
+        controller.MoveToState(StartupState.FuelFlowInitiation);
+        controller.SetStateEnteredAt(DateTime.UtcNow - TimeSpan.FromMilliseconds(4_800));
+
+        await controller.ExecuteOnceAsync();
+
+        controller.CurrentState.Should().Be(StartupState.Error);
+        fuel.LastPosition.Should().Be(0);
+        var closesBeforeLateOpen = fuel.CloseAttempts;
+
+        openGate.TrySetResult();
+
+        var closedAgain = await WaitUntilAsync(
+            () => fuel.CloseAttempts > closesBeforeLateOpen && fuel.LastPosition == 0,
+            TimeSpan.FromSeconds(2));
+
+        closedAgain.Should().BeTrue();
+        fuel.Positions.Should().Contain(0.1);
+        fuel.LastPosition.Should().Be(0);
         oxidizer.Positions.Any(position => position > 0).Should().BeFalse();
         igniter.Positions.Any(position => position > 0).Should().BeFalse();
     }
@@ -6911,13 +6979,27 @@ public class StartupSequenceControllerTests
         public bool RejectClose { get; init; }
 
         /// <summary>
+        /// Throws from SetPositionAsync before a task exists. An async method that
+        /// throws after it has started only faults the returned task.
+        /// </summary>
+        public bool ThrowSynchronouslyBeforeReturning { get; init; }
+
+        /// <summary>
         /// When this returns true, the command is recorded and rejected.
         /// </summary>
         public Predicate<double>? RejectWhen { get; init; }
 
         public event EventHandler<ActuatorPositionChangedEventArgs>? PositionChanged;
 
-        public async Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        public Task<bool> SetPositionAsync(double position, CancellationToken cancellationToken = default)
+        {
+            if (ThrowSynchronouslyBeforeReturning && position > 0)
+                throw new InvalidOperationException("fuel valve command failed");
+
+            return SetPositionCoreAsync(position, cancellationToken);
+        }
+
+        private async Task<bool> SetPositionCoreAsync(double position, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
