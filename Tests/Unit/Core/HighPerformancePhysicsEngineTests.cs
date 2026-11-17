@@ -25,6 +25,22 @@ public class HighPerformancePhysicsEngineTests
     }
 
     [Fact]
+    public async Task ValidateEngineModelAsync_DoesNotTreatUnmeasuredAccuracyAsValidated()
+    {
+        var engine = new HighPerformancePhysicsEngine();
+        await engine.InitializeAsync();
+
+        var report = await engine.ValidateEngineModelAsync("UnmeasuredEngine");
+        var summary = await engine.GenerateValidationSummaryAsync();
+
+        report.IsValidated.Should().BeFalse();
+        report.ValidationScore.Should().Be(0);
+        summary.IsValid.Should().BeFalse();
+        summary.AverageAccuracy.Should().Be(0);
+        summary.ValidationScore.Should().Be(0);
+    }
+
+    [Fact]
     public async Task InitializeAsync_IsIdempotentUnderConcurrency()
     {
         var engine = new HighPerformancePhysicsEngine();
