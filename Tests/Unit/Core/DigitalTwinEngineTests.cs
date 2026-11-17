@@ -325,7 +325,15 @@ public class DigitalTwinEngineTests : IDisposable
         var engineId = "TestEngine_ScenarioParams";
         await _digitalTwinEngine.CreateDigitalTwinAsync(
             engineId,
-            new EngineModel { Name = "Scenario Engine", Parameters = new Dictionary<string, double>() });
+            new EngineModel
+            {
+                Name = "Scenario Engine",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["Thrust"] = 1_000_000,
+                    ["Efficiency"] = 0.80
+                }
+            });
 
         var baseline = await _digitalTwinEngine.PredictEngineBehaviorAsync(
             engineId,
@@ -350,6 +358,32 @@ public class DigitalTwinEngineTests : IDisposable
             baseline.PredictedMetrics["Thrust"] * 0.8,
             0.0001);
         throttled.PredictedMetrics["Efficiency"].Should().BeLessThan(baseline.PredictedMetrics["Efficiency"]);
+    }
+
+    [Fact]
+    public async Task PredictEngineBehaviorAsync_DoesNotInventThrustOrEfficiency()
+    {
+        await _digitalTwinEngine.InitializeAsync();
+        const string engineId = "UnmeasuredPredict";
+        await _digitalTwinEngine.CreateDigitalTwinAsync(
+            engineId,
+            new EngineModel { Name = "Unset", Parameters = new Dictionary<string, double>() });
+
+        var prediction = await _digitalTwinEngine.PredictEngineBehaviorAsync(
+            engineId,
+            new PredictionScenario
+            {
+                Name = "No model performance",
+                Parameters = new Dictionary<string, object>
+                {
+                    ["throttle"] = 1.2,
+                    ["ambientTemperature"] = 320.0
+                }
+            });
+
+        prediction.PredictedMetrics["Thrust"].Should().Be(0);
+        prediction.PredictedMetrics["Efficiency"].Should().Be(0);
+        prediction.PredictedMetrics["Reliability"].Should().Be(DigitalTwinEngine.UnprovenPredictionAccuracy);
     }
 
     [Fact]
@@ -745,7 +779,31 @@ public class DigitalTwinEngineTests : IDisposable
 
         prediction.MultiPhysicsResult.Should().NotBeNull();
         prediction.PredictedPerformance.Thrust.Should().Be(3_500_000d);
+        prediction.PredictedPerformance.Efficiency.Should().Be(0);
+        prediction.PredictedPerformance.ThermalEfficiency.Should().Be(0);
+        prediction.PredictedFailures.Should().BeEmpty();
         prediction.MultiPhysicsResult.ThermalFluidCoupling.TemperatureDistribution[0, 0].Should().Be(3600d);
+    }
+
+    [Fact]
+    public async Task RunPredictiveMultiPhysicsAsync_DoesNotInventPerformanceOrAFatigueLife()
+    {
+        var prediction = await _digitalTwinEngine.RunPredictiveMultiPhysicsAsync(
+            "UnmeasuredPhysics",
+            new EngineModel
+            {
+                Name = "Unmeasured",
+                Parameters = new Dictionary<string, double>
+                {
+                    ["ChamberPressure"] = 28_000_000d,
+                    ["ChamberTemperature"] = 3600d
+                }
+            });
+
+        prediction.PredictedPerformance.Thrust.Should().Be(0);
+        prediction.PredictedPerformance.Efficiency.Should().Be(0);
+        prediction.PredictedPerformance.ThermalEfficiency.Should().Be(0);
+        prediction.PredictedFailures.Should().BeEmpty();
     }
 
     [Fact]
