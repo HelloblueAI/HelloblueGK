@@ -1568,13 +1568,15 @@ namespace HB_NLP_Research_Lab.Core.Control
             // The state deadline stops waiting for this call. A command that ignores
             // cancellation can still apply the open after shutdown has commanded closed.
             // ContinueSequenceAsync only sees that when this wait is still running.
-            var command = actuator.SetPositionAsync(position, cancellationToken);
-            if (position > 0)
-                ObserveLateOpen(actuator, command);
-
+            // SetPositionAsync can throw before it returns a task. That throw has to
+            // take the same fail-closed path as a faulted task, or the pass leaves
+            // the loop instead of latching closed and retrying the close.
             bool accepted;
             try
             {
+                var command = actuator.SetPositionAsync(position, cancellationToken);
+                if (position > 0)
+                    ObserveLateOpen(actuator, command);
                 accepted = await command.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
