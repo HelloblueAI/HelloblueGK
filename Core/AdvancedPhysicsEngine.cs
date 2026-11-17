@@ -17,7 +17,6 @@ namespace HB_NLP_Research_Lab.Core
         private readonly AdvancedCFDSolver _cfdSolver;
         private readonly AdvancedThermalSolver _thermalSolver;
         private readonly AdvancedStructuralSolver _structuralSolver;
-        private readonly ValidationEngine _validationEngine;
         private bool _isInitialized = false;
 
         public AdvancedPhysicsEngine()
@@ -25,7 +24,6 @@ namespace HB_NLP_Research_Lab.Core
             _cfdSolver = new AdvancedCFDSolver();
             _thermalSolver = new AdvancedThermalSolver();
             _structuralSolver = new AdvancedStructuralSolver();
-            _validationEngine = new ValidationEngine();
         }
 
         public async Task<PhysicsStatus> InitializeAsync()
@@ -96,13 +94,18 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.CompletedTask;
             Console.WriteLine("[Advanced Physics] ✅ Validating engine model...");
-            
+
+            // No test data is attached to this call. A fixed 0.95 and a validated
+            // status would pass every name, including an engine the autonomous
+            // designer just generated.
             return new ValidationReport
             {
-                IsValidated = true,
-                ValidationScore = 0.95,
+                EngineModel = string.IsNullOrWhiteSpace(engineModel) ? string.Empty : engineModel,
+                IsValidated = false,
+                ValidationScore = 0,
                 CriticalIssues = 0,
-                Warnings = 2
+                Warnings = 0,
+                ValidationTimestamp = DateTime.UtcNow
             };
         }
 
@@ -110,13 +113,15 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.CompletedTask;
             Console.WriteLine("[Advanced Physics] 📊 Generating validation summary...");
-            
+
+            // This summary is not computed from recorded measurements.
             return new ValidationSummary
             {
-                IsValid = true,
-                ValidationScore = 0.95,
+                IsValid = false,
+                ValidationScore = 0,
                 CriticalIssues = 0,
-                Warnings = 2
+                Warnings = 0,
+                ValidationTimestamp = DateTime.UtcNow
             };
         }
 
