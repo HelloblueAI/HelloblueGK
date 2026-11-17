@@ -107,17 +107,19 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<FailurePredictionResult> PredictFailureAsync(string engineId)
         {
-            Console.WriteLine($"[AI Designer] Predicting failures for engine: {engineId}");
-            await Task.Delay(100);
+            await Task.CompletedTask;
+            Console.WriteLine($"[AI Designer] No measured failure history for engine: {engineId}");
 
+            // No operating history is attached. A fixed thermal-stress life of
+            // 5,000 hours at 94% accuracy would report a failure this call never measured.
             return new FailurePredictionResult
             {
-                EngineId = engineId,
-                PredictionAccuracy = 0.94,
-                PredictedFailureMode = "Thermal Stress",
-                TimeToFailure = TimeSpan.FromHours(5000),
-                ConfidenceLevel = 0.92,
-                RecommendedActions = new List<string> { "Enhanced cooling", "Material upgrade", "Design optimization" }
+                EngineId = string.IsNullOrWhiteSpace(engineId) ? string.Empty : engineId,
+                PredictionAccuracy = 0,
+                PredictedFailureMode = string.Empty,
+                TimeToFailure = TimeSpan.Zero,
+                ConfidenceLevel = 0,
+                RecommendedActions = new List<string>()
             };
         }
 
@@ -247,10 +249,29 @@ namespace HB_NLP_Research_Lab.AI
         {
             double performanceScore = engine.Performance.Thrust / 1000000.0; // Normalize thrust
             double efficiencyScore = engine.Performance.Efficiency;
-            double reliabilityScore = 1.0 - prediction.FailureProbability;
+            double reliabilityScore = ReliabilityCredit(prediction);
             double innovationScore = engine.InnovationLevel;
             
             return (performanceScore * 0.3 + efficiencyScore * 0.25 + reliabilityScore * 0.25 + innovationScore * 0.2);
+        }
+
+        /// <summary>
+        /// Reliability credit from a failure prediction. Confidence at or below zero
+        /// means the probability was not measured, so it does not count as a perfect engine.
+        /// </summary>
+        internal static double ReliabilityCredit(FailurePrediction prediction)
+        {
+            if (!double.IsFinite(prediction.ConfidenceLevel)
+                || prediction.ConfidenceLevel <= 0
+                || prediction.ConfidenceLevel > 1
+                || !double.IsFinite(prediction.FailureProbability)
+                || prediction.FailureProbability < 0
+                || prediction.FailureProbability > 1)
+            {
+                return 0;
+            }
+
+            return 1.0 - prediction.FailureProbability;
         }
 
         private async Task<TestResult> RunAutonomousTestAsync(EngineArchitecture engine, TestScenario scenario)
@@ -501,23 +522,23 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<FailurePrediction> PredictFailureAsync(SelfOptimizedEngine engine)
         {
-            await Task.Delay(1); // Simulate async operation
-            
-            Console.WriteLine($"[Failure Predictor] 🔮 Predicting failure for {engine.Id}...");
-            
-            var prediction = new FailurePrediction
+            await Task.CompletedTask;
+
+            Console.WriteLine($"[Failure Predictor] No measured failure history for {engine.Id}.");
+
+            // No operating history is attached. A random 0.1-1% probability, a
+            // 1,000-10,000 hour life, and 99.9% accuracy would report a failure
+            // this call never measured.
+            return new FailurePrediction
             {
                 EngineId = engine.Id,
-                FailureProbability = 0.001 + Random.Shared.NextDouble() * 0.009, // 0.1-1%
-                PredictedFailureMode = GetRandomFailureMode(),
-                TimeToFailure = TimeSpan.FromHours(1000 + Random.Shared.Next(9000)), // 1000-10000 hours
-                ConfidenceLevel = 0.95 + Random.Shared.NextDouble() * 0.05, // 95-100%
-                PredictionAccuracy = 0.999 + Random.Shared.NextDouble() * 0.001, // 99.9-100%
-                RecommendedActions = GenerateRecommendedActions()
+                FailureProbability = 0,
+                PredictedFailureMode = string.Empty,
+                TimeToFailure = TimeSpan.Zero,
+                ConfidenceLevel = 0,
+                PredictionAccuracy = 0,
+                RecommendedActions = new List<string>()
             };
-            
-            Console.WriteLine($"[Failure Predictor] Failure probability: {prediction.FailureProbability:P3}");
-            return prediction;
         }
 
         public async Task<double> GetPredictionImprovementAsync()
@@ -532,22 +553,6 @@ namespace HB_NLP_Research_Lab.AI
             await Task.Delay(100); // Simulate model update
         }
 
-        private string GetRandomFailureMode()
-        {
-            var modes = new[] { "Thermal Fatigue", "Structural Fatigue", "Material Degradation", "Control System Failure", "Propulsion System Failure" };
-            return modes[Random.Shared.Next(modes.Length)];
-        }
-
-        private List<string> GenerateRecommendedActions()
-        {
-            return new List<string>
-            {
-                "Implement enhanced cooling system",
-                "Upgrade material composition",
-                "Add redundant control systems",
-                "Schedule preventive maintenance"
-            };
-        }
     }
 
     // Supporting Classes
