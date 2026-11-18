@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "parameters": "--vulnerable --include-transitive",
+  "sources": [
+    "https://api.nuget.org/v3/index.json"
+  ],
+  "projects": [
+    {
+      "path": "/tmp/VulnFixture.csproj",
+      "frameworks": [
+        {
+          "framework": "net9.0",
+          "topLevelPackages": [
+            {
+              "id": "System.Text.RegularExpressions",
+              "requestedVersion": "4.3.0",
+              "resolvedVersion": "4.3.0",
+              "vulnerabilities": [
+                {
+                  "severity": "High",
+                  "advisoryurl": "https://github.com/advisories/GHSA-cmhx-cq75-c4mj"
+                }
+              ]
+            }
+          ],
+          "transitivePackages": [
+            {
+              "id": "Newtonsoft.Json",
+              "resolvedVersion": "12.0.1",
+              "vulnerabilities": [
+                {
+                  "severity": "High",
+                  "advisoryurl": "https://github.com/advisories/GHSA-5crp-9r3c-p9vr"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

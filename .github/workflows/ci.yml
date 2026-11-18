@@ -176,6 +176,12 @@ jobs:
         dotnet restore WebAPI/HelloblueGK.WebAPI.csproj
         dotnet restore Tests/HelloblueGK.Tests.csproj
 
+    - name: Test vulnerable-package detector
+      run: |
+        chmod +x .github/scripts/fail-on-vulnerable-packages.sh
+        chmod +x .github/scripts/test-fail-on-vulnerable-packages.sh
+        .github/scripts/test-fail-on-vulnerable-packages.sh
+
     - name: Fail on vulnerable NuGet packages
       run: |
         chmod +x .github/scripts/fail-on-vulnerable-packages.sh

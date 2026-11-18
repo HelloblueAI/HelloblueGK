@@ -28,8 +28,9 @@ This folder contains **automation and templates** for contributors.
 | `release.yml` | Push of a `v*` tag | Release automation |
 | `security-audit.yml` | Daily at 06:00 UTC; manual dispatch | Vulnerable-package audit and security checks |
 
-`scripts/fail-on-vulnerable-packages.sh` is called by both `ci.yml` and `security-audit.yml`; it
-fails the build when NuGet reports a vulnerable direct or transitive package.
+`.github/scripts/fail-on-vulnerable-packages.sh` is called by both `ci.yml` and `security-audit.yml`;
+it fails the build when NuGet reports a vulnerable direct or transitive package. Parser fixture
+tests live in `.github/scripts/test-fail-on-vulnerable-packages.sh` and run in the Security Scan job.
 
 ### What CI enforces on a pull request
 

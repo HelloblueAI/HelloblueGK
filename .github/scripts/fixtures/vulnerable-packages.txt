@@ -1,0 +1,9 @@
+
+The following sources were used:
+   https://api.nuget.org/v3/index.json
+
+Project `VulnFixture` has the following vulnerable packages
+   [net9.0]: 
+   Top-level Package                     Requested   Resolved   Severity   Advisory URL                                     
+   > System.Text.RegularExpressions      4.3.0       4.3.0      High       https://github.com/advisories/GHSA-cmhx-cq75-c4mj
+
