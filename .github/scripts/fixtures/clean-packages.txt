@@ -1,4 +1,3 @@
-
 The following sources were used:
    https://api.nuget.org/v3/index.json
 

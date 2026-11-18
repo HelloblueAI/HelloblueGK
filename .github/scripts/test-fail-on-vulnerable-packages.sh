@@ -81,6 +81,18 @@ echo "=== Fixture: malformed JSON must fail ==="
 assert_exit "malformed JSON exits non-zero" 1 \
   "$SCANNER" --parse-json "$FIXTURES/malformed-packages.json"
 
+echo "=== Fixture: empty/unrecognized reports must fail closed ==="
+assert_exit "empty text exits non-zero" 1 \
+  "$SCANNER" --parse-text "$FIXTURES/empty-packages.txt"
+assert_exit "garbage text exits non-zero" 1 \
+  "$SCANNER" --parse-text "$FIXTURES/garbage-packages.txt"
+assert_exit "empty JSON object exits non-zero" 1 \
+  "$SCANNER" --parse-json "$FIXTURES/empty-object.json"
+assert_exit "JSON missing projects exits non-zero" 1 \
+  "$SCANNER" --parse-json "$FIXTURES/missing-projects.json"
+assert_exit "JSON projects not array exits non-zero" 1 \
+  "$SCANNER" --parse-json "$FIXTURES/projects-not-array.json"
+
 echo "=== Missing JSON parser tools must fail ==="
 assert_exit "missing jq/python exits non-zero" 1 \
   env JQ_BIN=/nonexistent/jq PYTHON3_BIN=/nonexistent/python3 \

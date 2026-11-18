@@ -13,6 +13,12 @@
 # JSON parsing prefers jq (preinstalled on ubuntu-latest), then python3.
 # If `dotnet list ... --format json` is unavailable, falls back to console text + grep -E.
 # Never depends on ripgrep (`rg`).
+#
+# Parsers pass only on recognizably valid reports:
+#   JSON — top-level object with a projects array; each project is an object that either
+#          omits frameworks (NuGet clean shape) or has frameworks as an array.
+#   Text — recognizable `dotnet list package --vulnerable` clean or vulnerable output.
+# Empty, garbage, or unexpected schema exits 1 (fail closed).
 set -euo pipefail
 
 JQ_BIN="${JQ_BIN:-jq}"
@@ -21,7 +27,7 @@ DOTNET_BIN="${DOTNET_BIN:-dotnet}"
 
 # ---------------------------------------------------------------------------
 # Parsers (fixture-testable)
-# Exit 0 = clean, 2 = vulnerabilities found, 1 = tool/parse error.
+# Exit 0 = clean, 2 = vulnerabilities found, 1 = tool/parse/schema error.
 # ---------------------------------------------------------------------------
 
 parse_json_report() {
@@ -33,9 +39,36 @@ parse_json_report() {
     return 1
   fi
 
+  if [[ ! -s "$file" ]]; then
+    echo "ERROR: JSON report is empty" >&2
+    return 1
+  fi
+
   if command -v "$JQ_BIN" >/dev/null 2>&1; then
+    # Validate schema first (fail closed), then extract vulnerable package ids.
+    if ! "$JQ_BIN" -e '
+      if type != "object" then
+        error("top-level JSON must be an object")
+      elif (has("projects") | not) then
+        error("JSON report missing projects array")
+      elif (.projects | type) != "array" then
+        error("JSON report projects must be an array")
+      elif ([.projects[] | select(
+          (type != "object")
+          or ((has("frameworks")) and ((.frameworks | type) != "array"))
+        )] | length) > 0 then
+        error("JSON report project entries must be objects with frameworks omitted (clean) or an array")
+      else
+        true
+      end
+    ' "$file" >/dev/null; then
+      echo "ERROR: JSON report has unexpected or invalid vulnerable-package schema" >&2
+      return 1
+    fi
+
     if ! ids="$("$JQ_BIN" -r '
-      [.projects[]?.frameworks[]?
+      [.projects[]
+        | (.frameworks // [])[]
         | ((.topLevelPackages // []) + (.transitivePackages // []))[]
         | select((.vulnerabilities // []) | length > 0)
         | .id
@@ -47,22 +80,53 @@ parse_json_report() {
   elif command -v "$PYTHON3_BIN" >/dev/null 2>&1; then
     if ! ids="$("$PYTHON3_BIN" - "$file" <<'PY'
 import json, sys
+
 path = sys.argv[1]
 try:
     data = json.load(open(path, encoding="utf-8"))
 except Exception as exc:
     print(f"ERROR: failed to parse JSON: {exc}", file=sys.stderr)
     sys.exit(1)
+
+if not isinstance(data, dict):
+    print("ERROR: top-level JSON must be an object", file=sys.stderr)
+    sys.exit(1)
+if "projects" not in data:
+    print("ERROR: JSON report missing projects array", file=sys.stderr)
+    sys.exit(1)
+if not isinstance(data["projects"], list):
+    print("ERROR: JSON report projects must be an array", file=sys.stderr)
+    sys.exit(1)
+
 ids = []
-for project in data.get("projects") or []:
+for project in data["projects"]:
+    if not isinstance(project, dict):
+        print("ERROR: JSON report project entries must be objects", file=sys.stderr)
+        sys.exit(1)
+    if "frameworks" in project and not isinstance(project["frameworks"], list):
+        print(
+            "ERROR: JSON report project frameworks must be an array when present",
+            file=sys.stderr,
+        )
+        sys.exit(1)
     for fw in project.get("frameworks") or []:
+        if not isinstance(fw, dict):
+            print("ERROR: JSON report framework entries must be objects", file=sys.stderr)
+            sys.exit(1)
         for key in ("topLevelPackages", "transitivePackages"):
-            for pkg in fw.get(key) or []:
+            packages = fw.get(key) or []
+            if not isinstance(packages, list):
+                print(f"ERROR: JSON report {key} must be an array", file=sys.stderr)
+                sys.exit(1)
+            for pkg in packages:
+                if not isinstance(pkg, dict):
+                    continue
                 vulns = pkg.get("vulnerabilities") or []
                 if vulns:
                     pkg_id = pkg.get("id")
                     if pkg_id:
                         ids.append(pkg_id)
+
 for pkg_id in sorted(set(ids)):
     print(pkg_id)
 PY
@@ -92,9 +156,35 @@ parse_text_report() {
     return 1
   fi
 
+  if [[ ! -s "$file" ]]; then
+    echo "ERROR: text report is empty" >&2
+    return 1
+  fi
+
+  # Recognizable `dotnet list package --vulnerable` console shapes:
+  #   clean:      "... has no vulnerable packages ..."
+  #   vulnerable: "... has the following vulnerable packages" plus advisory/table cues
+  local has_clean=0 has_vulnerable=0
+  if grep -qE 'has no vulnerable packages' "$file"; then
+    has_clean=1
+  fi
+  if grep -qE 'has the following vulnerable packages' "$file" \
+    || grep -qE 'Top-level Package[[:space:]]+Requested[[:space:]]+Resolved[[:space:]]+Severity[[:space:]]+Advisory' "$file"; then
+    has_vulnerable=1
+  fi
+
+  if [[ "$has_clean" -eq 0 && "$has_vulnerable" -eq 0 ]]; then
+    echo "ERROR: unrecognized or invalid vulnerable-package text report" >&2
+    return 1
+  fi
+
   # Match NuGet's vulnerable package table / advisory URLs (CVE or GHSA).
   # Use grep -E only — never ripgrep — so GitHub-hosted runners work.
   if ! grep -qE 'CVE-[0-9]{4}-[0-9]+|GHSA-[A-Za-z0-9-]+' "$file"; then
+    if [[ "$has_vulnerable" -ne 0 ]]; then
+      echo "ERROR: vulnerable-package text report claims vulnerabilities but names none" >&2
+      return 1
+    fi
     return 0
   fi
 
@@ -286,7 +376,7 @@ main() {
       return "$rc"
       ;;
     -h|--help)
-      sed -n '2,16p' "$0" | sed 's/^# \?//'
+      sed -n '2,20p' "$0" | sed 's/^# \?//'
       return 0
       ;;
     *)
