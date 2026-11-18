@@ -276,41 +276,73 @@ namespace HB_NLP_Research_Lab.AI
 
         private async Task<TestResult> RunAutonomousTestAsync(EngineArchitecture engine, TestScenario scenario)
         {
-            Console.WriteLine($"[Autonomous Testing] Running test: {scenario.Name}");
-            
-            // Simulate test conditions
-            var testConditions = scenario.TestConditions;
-            var result = await _physicsEngine.RunCfdAnalysisAsync();
-            
+            Console.WriteLine($"[Autonomous Testing] No measured run for test: {scenario.Name}");
+            await Task.CompletedTask;
+            _ = engine;
+            _ = scenario.TestConditions;
+
+            // The schematic CFD call does not execute this scenario. Mesh quality is
+            // not a pass, and a fixed 1.5 MN, 92% efficiency, 0.999 reliability, and
+            // five-minute duration were never measured.
             return new TestResult
             {
                 Scenario = scenario,
-                Passed = result.MeshQuality > 0.98, // Assuming MeshQuality is the convergence indicator
-                PerformanceMetrics = new Dictionary<string, double>
-                {
-                    ["Thrust"] = 1500000.0, // N
-                    ["Efficiency"] = 0.92,
-                    ["Reliability"] = 0.999
-                },
-                TestDuration = TimeSpan.FromMinutes(5),
+                Passed = false,
+                PerformanceMetrics = new Dictionary<string, double>(),
+                TestDuration = TimeSpan.Zero,
                 TestTimestamp = DateTime.UtcNow
             };
         }
 
         private async Task<TestAnalysis> AnalyzeTestResultsAsync(List<TestResult> results)
         {
-            await Task.Delay(1); // Simulate async operation
-            
+            await Task.CompletedTask;
+
             var passedTests = results.Count(r => r.Passed);
             var totalTests = results.Count;
-            
+
             return new TestAnalysis
             {
-                PassRate = (double)passedTests / totalTests,
-                AveragePerformance = results.Average(r => r.PerformanceMetrics["Efficiency"]),
-                ReliabilityScore = results.Average(r => r.PerformanceMetrics["Reliability"]),
+                PassRate = PassRate(passedTests, totalTests),
+                AveragePerformance = AverageReportedMetric(results, "Efficiency"),
+                ReliabilityScore = AverageReportedMetric(results, "Reliability"),
                 TestCoverage = CalculateTestCoverage(results.Select(r => r.Scenario).ToList())
             };
+        }
+
+        /// <summary>
+        /// Fraction of results that passed. An empty run is not a perfect pass rate.
+        /// </summary>
+        internal static double PassRate(int passedTests, int totalTests)
+        {
+            if (totalTests <= 0)
+            {
+                return 0;
+            }
+
+            return (double)passedTests / totalTests;
+        }
+
+        /// <summary>
+        /// Mean of finite reported samples. A missing or non-finite value was not
+        /// measured, so it does not count as zero performance.
+        /// </summary>
+        internal static double AverageReportedMetric(IReadOnlyList<TestResult> results, string key)
+        {
+            double sum = 0;
+            var count = 0;
+            foreach (var result in results)
+            {
+                if (result.PerformanceMetrics != null
+                    && result.PerformanceMetrics.TryGetValue(key, out var value)
+                    && double.IsFinite(value))
+                {
+                    sum += value;
+                    count++;
+                }
+            }
+
+            return count == 0 ? 0 : sum / count;
         }
 
         private double CalculateInnovationScore(List<EngineArchitecture> architectures)
