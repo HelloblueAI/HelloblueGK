@@ -43,6 +43,19 @@ assert_contains() {
   fi
 }
 
+assert_not_contains() {
+  local name="$1"
+  local needle="$2"
+  if [[ "$LAST_OUTPUT" != *"$needle"* ]]; then
+    echo "PASS: $name (output omits '$needle')"
+    passed=$((passed + 1))
+  else
+    echo "FAIL: $name (output unexpectedly contains '$needle')" >&2
+    echo "$LAST_OUTPUT" >&2
+    failed=$((failed + 1))
+  fi
+}
+
 chmod +x "$SCANNER"
 
 echo "=== Fixture: vulnerable JSON must fail and name the package ==="
@@ -76,6 +89,70 @@ assert_exit "missing jq/python exits non-zero" 1 \
 echo "=== Missing report file must fail ==="
 assert_exit "missing file exits non-zero" 1 \
   "$SCANNER" --parse-json "$FIXTURES/does-not-exist.json"
+
+# Full-scan path negatives (DOTNET_BIN stubs). Uses a dummy project path; stubs
+# never touch the real solution. Stub stderr must not look like "--format json
+# unsupported" or the scanner would take the console fallback path.
+stubs_dir="$(mktemp -d)"
+cleanup_stubs() { rm -rf "$stubs_dir"; }
+trap cleanup_stubs EXIT
+dummy_project="${stubs_dir}/Dummy.csproj"
+: >"$dummy_project"
+
+failing_dotnet="${stubs_dir}/dotnet-fail"
+cat >"$failing_dotnet" <<'EOF'
+#!/usr/bin/env bash
+# Simulate a restore/auth failure on vulnerable package listing.
+echo "error NU1301: Unable to load the service index for source https://api.nuget.org/v3/index.json (401 Unauthorized)." >&2
+exit 1
+EOF
+chmod +x "$failing_dotnet"
+
+vulnerable_dotnet="${stubs_dir}/dotnet-vulnerable"
+cat >"$vulnerable_dotnet" <<EOF
+#!/usr/bin/env bash
+# Emit vulnerable JSON fixture and succeed (exit 0), like a real list --format json.
+cat "$FIXTURES/vulnerable-packages.json"
+exit 0
+EOF
+chmod +x "$vulnerable_dotnet"
+
+clean_dotnet="${stubs_dir}/dotnet-clean"
+cat >"$clean_dotnet" <<EOF
+#!/usr/bin/env bash
+# Emit clean JSON fixture and succeed (exit 0).
+cat "$FIXTURES/clean-packages.json"
+exit 0
+EOF
+chmod +x "$clean_dotnet"
+
+echo "=== Full scan: missing DOTNET_BIN must fail ==="
+assert_exit "missing DOTNET_BIN exits non-zero" 1 \
+  env DOTNET_BIN=/nonexistent/dotnet \
+  "$SCANNER" --project "$dummy_project"
+assert_contains "missing DOTNET_BIN names install error" "dotnet is not installed"
+
+echo "=== Full scan: failing DOTNET_BIN must fail closed ==="
+assert_exit "failing DOTNET_BIN exits non-zero" 1 \
+  env DOTNET_BIN="$failing_dotnet" \
+  "$SCANNER" --project "$dummy_project"
+assert_contains "failing DOTNET_BIN reports list failure" "failed to list packages"
+assert_not_contains "failing DOTNET_BIN omits clean success" "No vulnerable NuGet packages reported"
+
+echo "=== Full scan: stub vulnerable JSON must fail and name the package ==="
+assert_exit "stub vulnerable JSON exits non-zero" 1 \
+  env DOTNET_BIN="$vulnerable_dotnet" \
+  "$SCANNER" --project "$dummy_project"
+assert_contains "stub vulnerable JSON names System.Text.RegularExpressions" "System.Text.RegularExpressions"
+
+echo "=== Full scan: stub clean JSON must pass ==="
+assert_exit "stub clean JSON exits 0" 0 \
+  env DOTNET_BIN="$clean_dotnet" \
+  "$SCANNER" --project "$dummy_project"
+assert_contains "stub clean JSON reports clean" "No vulnerable NuGet packages reported"
+
+trap - EXIT
+cleanup_stubs
 
 # Optional end-to-end: scratch project with a known-vulnerable package version.
 # Never commits anything; only runs when dotnet is available.
