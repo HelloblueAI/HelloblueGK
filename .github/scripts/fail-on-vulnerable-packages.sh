@@ -15,8 +15,10 @@
 # Never depends on ripgrep (`rg`).
 #
 # Parsers pass only on recognizably valid reports:
-#   JSON — top-level object with a projects array; each project is an object that either
-#          omits frameworks (NuGet clean shape) or has frameworks as an array.
+#   JSON — top-level object with a non-empty projects array; each project is an object
+#          with a non-empty string path, and either omits frameworks (NuGet clean shape)
+#          or has frameworks as an array. Real `dotnet list package --vulnerable
+#          --include-transitive --format json` always emits at least one project with path.
 #   Text — recognizable `dotnet list package --vulnerable` clean or vulnerable output.
 # Empty, garbage, or unexpected schema exits 1 (fail closed).
 set -euo pipefail
@@ -46,6 +48,8 @@ parse_json_report() {
 
   if command -v "$JQ_BIN" >/dev/null 2>&1; then
     # Validate schema first (fail closed), then extract vulnerable package ids.
+    # Require a non-empty projects array and a non-empty string path on every project
+    # (matches real NuGet JSON from `dotnet list package --vulnerable --format json`).
     if ! "$JQ_BIN" -e '
       if type != "object" then
         error("top-level JSON must be an object")
@@ -53,11 +57,15 @@ parse_json_report() {
         error("JSON report missing projects array")
       elif (.projects | type) != "array" then
         error("JSON report projects must be an array")
+      elif (.projects | length) == 0 then
+        error("JSON report projects array must be non-empty")
       elif ([.projects[] | select(
           (type != "object")
+          or ((.path | type) != "string")
+          or ((.path | length) == 0)
           or ((has("frameworks")) and ((.frameworks | type) != "array"))
         )] | length) > 0 then
-        error("JSON report project entries must be objects with frameworks omitted (clean) or an array")
+        error("JSON report project entries must be objects with a non-empty string path and frameworks omitted (clean) or an array")
       else
         true
       end
@@ -97,11 +105,21 @@ if "projects" not in data:
 if not isinstance(data["projects"], list):
     print("ERROR: JSON report projects must be an array", file=sys.stderr)
     sys.exit(1)
+if len(data["projects"]) == 0:
+    print("ERROR: JSON report projects array must be non-empty", file=sys.stderr)
+    sys.exit(1)
 
 ids = []
 for project in data["projects"]:
     if not isinstance(project, dict):
         print("ERROR: JSON report project entries must be objects", file=sys.stderr)
+        sys.exit(1)
+    path = project.get("path")
+    if not isinstance(path, str) or path == "":
+        print(
+            "ERROR: JSON report project entries must include a non-empty string path",
+            file=sys.stderr,
+        )
         sys.exit(1)
     if "frameworks" in project and not isinstance(project["frameworks"], list):
         print(
