@@ -474,11 +474,13 @@ namespace HB_NLP_Research_Lab.AI
 
         private ControlSystem GenerateControlSystem()
         {
+            // No closed-loop measurement is attached. A 1-3 ms response and
+            // 99.9-100% accuracy would report tracking this generator never measured.
             return new ControlSystem
             {
                 Type = "AI-Driven Adaptive Control",
-                ResponseTime = 0.001 + Random.Shared.NextDouble() * 0.002, // 1-3 ms
-                Accuracy = 0.999 + Random.Shared.NextDouble() * 0.001 // 99.9-100%
+                ResponseTime = 0,
+                Accuracy = 0
             };
         }
 
