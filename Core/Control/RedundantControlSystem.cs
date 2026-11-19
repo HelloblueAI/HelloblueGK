@@ -12,7 +12,7 @@ namespace HB_NLP_Research_Lab.Core.Control
     /// Runtime operation is disabled until real per-channel output sources,
     /// timestamps/staleness, quorum rules, bounds, rate limits, and
     /// single-writer actuation are designed. <see cref="StartAsync"/> always
-    /// throws; voting helpers remain available for offline use.
+    /// throws; voting helpers are retained for internal/offline testing.
     /// </summary>
     public class RedundantControlSystem : IDisposable
     {

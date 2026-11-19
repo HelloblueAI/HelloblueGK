@@ -16,9 +16,12 @@ Control/
 Safety/
 └── HardwareSafetyMonitor.cs     # Simulated safety-monitoring research loop (100 Hz)
 
-# Future research gaps (not present evidence of hardware readiness):
-# - Sensor interfaces
-# - Actuator interfaces
+Hardware/
+├── ISensor.cs                   # Existing interface only; no real hardware implementation behind it
+└── IActuator.cs                 # Existing interface only; no real hardware implementation behind it
+
+# Future research gaps (not evidence of hardware readiness):
+# - Real sensor and actuator implementations
 # - Hardware communication interfaces
 ```
 
@@ -105,8 +108,8 @@ await throttleController.StopAsync();
 
 The items below are research gaps, not evidence that hardware control is ready:
 
-1. Concrete `ISensor`, `IActuator`, and `IHardwareInterface` implementations suitable for a specific test stand (still not permission to connect to a real engine)
-2. Communication protocol drivers (for example CAN, Modbus, or serial) as research topics
+1. Real `ISensor` and `IActuator` implementations suitable for a specific test stand (still not permission to connect to a real engine)
+2. Hardware communication interfaces / protocol drivers (for example CAN, Modbus, or serial) as research topics
 3. Gimbal / thrust-vectoring research controllers
 4. Mixture-ratio research controllers
 5. RTOS integration experiments
