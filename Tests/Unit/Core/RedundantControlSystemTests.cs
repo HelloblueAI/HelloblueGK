@@ -12,43 +12,158 @@ namespace HelloblueGK.Tests.Unit.Core;
 public class RedundantControlSystemTests
 {
     /// <summary>
-    /// Minimal concrete control loop for testing (no sensors/actuators).
+    /// Control loop that records whether StartAsync was invoked.
     /// </summary>
-    private sealed class TestControlLoop : RealTimeControlLoop
+    private sealed class SpyControlLoop : RealTimeControlLoop
     {
-        public TestControlLoop(int frequencyHz = 10) : base(frequencyHz) { }
+        public int StartCallCount { get; private set; }
+
+        public SpyControlLoop(int frequencyHz = 10) : base(frequencyHz) { }
+
+        public override Task StartAsync()
+        {
+            StartCallCount++;
+            return base.StartAsync();
+        }
+
         protected override Task ExecuteControlLoopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
-    [Fact]
-    public async Task StopAsync_WaitsForMonitoringTask_OrTimesOut()
+    private static Mock<IActuator> CreateActuatorMock(string id)
     {
-        var primaryActuator = new Mock<IActuator>();
-        primaryActuator.Setup(a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        primaryActuator.Setup(a => a.ActuatorId).Returns("primary");
-        primaryActuator.Setup(a => a.Name).Returns("Primary");
-        primaryActuator.Setup(a => a.Type).Returns(ActuatorType.Throttle);
-        primaryActuator.Setup(a => a.Status).Returns(ActuatorStatus.Ready);
-        primaryActuator.Setup(a => a.MinPosition).Returns(0);
-        primaryActuator.Setup(a => a.MaxPosition).Returns(1);
-        primaryActuator.Setup(a => a.ResponseTimeSeconds).Returns(0.1);
-        primaryActuator.Setup(a => a.MaxRateOfChange).Returns(1);
-        primaryActuator.Setup(a => a.IsEnabled).Returns(true);
-        primaryActuator.Setup(a => a.GetPositionAsync(It.IsAny<CancellationToken>())).ReturnsAsync(0.5);
-        primaryActuator.Setup(a => a.EnableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
-        primaryActuator.Setup(a => a.DisableAsync(It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        var actuator = new Mock<IActuator>(MockBehavior.Strict);
+        actuator.Setup(a => a.ActuatorId).Returns(id);
+        actuator.Setup(a => a.Name).Returns(id);
+        actuator.Setup(a => a.Type).Returns(ActuatorType.Throttle);
+        actuator.Setup(a => a.Status).Returns(ActuatorStatus.Ready);
+        actuator.Setup(a => a.MinPosition).Returns(0);
+        actuator.Setup(a => a.MaxPosition).Returns(1);
+        actuator.Setup(a => a.ResponseTimeSeconds).Returns(0.1);
+        actuator.Setup(a => a.MaxRateOfChange).Returns(1);
+        actuator.Setup(a => a.IsEnabled).Returns(true);
+        return actuator;
+    }
 
-        var loops = new List<RealTimeControlLoop> { new TestControlLoop(10), new TestControlLoop(10) };
-        using var system = new RedundantControlSystem(
-            loops,
+    private static RedundantControlSystem CreateSystem(
+        out SpyControlLoop loopA,
+        out SpyControlLoop loopB,
+        out Mock<IActuator> primary,
+        out Mock<IActuator> redundant)
+    {
+        loopA = new SpyControlLoop();
+        loopB = new SpyControlLoop();
+        primary = CreateActuatorMock("primary");
+        redundant = CreateActuatorMock("redundant");
+
+        return new RedundantControlSystem(
+            new List<RealTimeControlLoop> { loopA, loopB },
             VotingStrategy.MajorityVote,
-            primaryActuator.Object);
+            primary.Object,
+            new List<IActuator> { redundant.Object });
+    }
 
-        await system.StartAsync();
-        await Task.Delay(80);
-        await system.StopAsync();
+    [Fact]
+    public async Task StartAsync_ThrowsNotSupportedException_WithClearMessage()
+    {
+        using var system = CreateSystem(out _, out _, out var primary, out var redundant);
+
+        var act = async () => await system.StartAsync();
+
+        var exception = await act.Should().ThrowAsync<NotSupportedException>();
+        exception.Which.Message.Should().Contain("disabled");
+        exception.Which.Message.Should().Contain("per-channel output sources");
+
+        primary.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        redundant.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task StartAsync_DoesNotSetIsRunning_OrStartLoops_OrCommandActuators()
+    {
+        using var system = CreateSystem(out var loopA, out var loopB, out var primary, out var redundant);
+
+        var act = async () => await system.StartAsync();
+        await act.Should().ThrowAsync<NotSupportedException>();
 
         system.IsRunning.Should().BeFalse();
+        loopA.StartCallCount.Should().Be(0);
+        loopB.StartCallCount.Should().Be(0);
+        loopA.IsRunning.Should().BeFalse();
+        loopB.IsRunning.Should().BeFalse();
+
+        primary.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        redundant.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task StopAsync_AndDispose_AfterFailedStart_AreSafe_AndDoNotCommandActuators()
+    {
+        var system = CreateSystem(out _, out _, out var primary, out var redundant);
+
+        var act = async () => await system.StartAsync();
+        await act.Should().ThrowAsync<NotSupportedException>();
+
+        var stop = async () => await system.StopAsync();
+        await stop.Should().NotThrowAsync();
+        system.IsRunning.Should().BeFalse();
+
+        var disposeOnce = () => system.Dispose();
+        disposeOnce.Should().NotThrow();
+
+        var disposeTwice = () => system.Dispose();
+        disposeTwice.Should().NotThrow();
+
+        primary.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        redundant.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public async Task StopAsync_AndDispose_WhenNeverStarted_AreSafe_AndDoNotCommandActuators()
+    {
+        var system = CreateSystem(out var loopA, out var loopB, out var primary, out var redundant);
+
+        var stop = async () => await system.StopAsync();
+        await stop.Should().NotThrowAsync();
+        system.IsRunning.Should().BeFalse();
+        loopA.StartCallCount.Should().Be(0);
+        loopB.StartCallCount.Should().Be(0);
+
+        system.Dispose();
+        system.Dispose();
+
+        primary.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+        redundant.Verify(
+            a => a.SetPositionAsync(It.IsAny<double>(), It.IsAny<CancellationToken>()),
+            Times.Never);
+    }
+
+    [Fact]
+    public void Constructor_RejectsFewerThanTwoControlLoops()
+    {
+        var primary = CreateActuatorMock("primary");
+        var singleLoop = new List<RealTimeControlLoop> { new SpyControlLoop() };
+
+        var act = () => new RedundantControlSystem(
+            singleLoop,
+            VotingStrategy.MajorityVote,
+            primary.Object);
+
+        act.Should().Throw<ArgumentException>()
+            .WithParameterName("controlLoops");
     }
 
     [Theory]
