@@ -29,8 +29,10 @@ This folder contains **automation and templates** for contributors.
 | `security-audit.yml` | Daily at 06:00 UTC; manual dispatch | Vulnerable-package audit and security checks |
 
 `.github/scripts/fail-on-vulnerable-packages.sh` is called by both `ci.yml` and `security-audit.yml`;
-it fails the build when NuGet reports a vulnerable direct or transitive package. Parser fixture
-tests live in `.github/scripts/test-fail-on-vulnerable-packages.sh` and run in the Security Scan job.
+it fails the build when NuGet reports a vulnerable direct or transitive package. JSON reports must
+include a non-empty `projects` array and a non-empty string `path` on every project (matching real
+`dotnet list package --vulnerable --format json` output). Parser fixture tests live in
+`.github/scripts/test-fail-on-vulnerable-packages.sh` and run in the Security Scan job.
 
 ### What CI enforces on a pull request
 
