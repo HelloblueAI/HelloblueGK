@@ -61,6 +61,9 @@ Real-time safety monitoring:
 - **Limits**: Configurable safety limits per parameter
 - **Response**: Hardware interlock activation
 
+### RedundantControlSystem
+Voting helpers for TMR/NMR (majority, median, average, mid-value, consensus, fault detection) are available for offline use. **Runtime operation is disabled**: `StartAsync` throws `NotSupportedException` and does not start loops or command actuators. Re-enable only after real per-channel output sources, timestamps/staleness, quorum rules, bounds, rate limits, and single-writer actuation are designed.
+
 ## Usage Example
 
 ```csharp

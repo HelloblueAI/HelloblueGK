@@ -1,33 +1,29 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using HB_NLP_Research_Lab.Core.Hardware;
 
 namespace HB_NLP_Research_Lab.Core.Control
 {
     /// <summary>
-    /// Redundant control system with voting logic
-    /// Implements Triple Modular Redundancy (TMR) or N-Modular Redundancy (NMR)
-    /// Used by SpaceX, NASA, and other critical aerospace systems
+    /// Redundant control voting helpers for Triple Modular Redundancy (TMR)
+    /// or N-Modular Redundancy (NMR).
+    /// Runtime operation is disabled until real per-channel output sources,
+    /// timestamps/staleness, quorum rules, bounds, rate limits, and
+    /// single-writer actuation are designed. <see cref="StartAsync"/> always
+    /// throws; voting helpers remain available for offline use.
     /// </summary>
     public class RedundantControlSystem : IDisposable
     {
         private readonly List<RealTimeControlLoop> _controlLoops;
         private readonly VotingStrategy _votingStrategy;
-        private readonly IActuator _primaryActuator;
-        private readonly List<IActuator> _redundantActuators;
-        
-        // Use volatile to ensure visibility across threads for the flag read in MonitorAndVoteAsync
-        private volatile bool _isRunning = false;
-        private readonly object _lock = new object();
-        private Task? _monitoringTask;
+        private bool _isRunning;
 
         public int RedundancyLevel => _controlLoops.Count;
         public VotingStrategy Strategy => _votingStrategy;
         public bool IsRunning => _isRunning;
-        
+
         public RedundantControlSystem(
             List<RealTimeControlLoop> controlLoops,
             VotingStrategy votingStrategy,
@@ -36,155 +32,38 @@ namespace HB_NLP_Research_Lab.Core.Control
         {
             if (controlLoops == null || controlLoops.Count < 2)
                 throw new ArgumentException("At least 2 control loops required for redundancy", nameof(controlLoops));
-            
+
+            if (primaryActuator == null)
+                throw new ArgumentNullException(nameof(primaryActuator));
+
+            // Retained for API compatibility while runtime actuation is disabled.
+            _ = redundantActuators;
+
             _controlLoops = controlLoops;
             _votingStrategy = votingStrategy;
-            _primaryActuator = primaryActuator ?? throw new ArgumentNullException(nameof(primaryActuator));
-            _redundantActuators = redundantActuators ?? new List<IActuator>();
         }
-        
-        /// <summary>
-        /// Start all redundant control loops
-        /// </summary>
-        public async Task StartAsync()
-        {
-            lock (_lock)
-            {
-                if (_isRunning)
-                    throw new InvalidOperationException("Redundant control system is already running");
-                
-                _isRunning = true;
-            }
-            
-            Console.WriteLine($"[Redundant Control] Starting {RedundancyLevel}-redundant control system");
-            Console.WriteLine($"[Redundant Control] Voting strategy: {_votingStrategy}");
-            
-            // Start all control loops in parallel
-            var startTasks = _controlLoops.Select(loop => loop.StartAsync()).ToArray();
-            await Task.WhenAll(startTasks);
-            
-            // Start voting/monitoring task; it exits when _isRunning becomes false (see StopAsync)
-            _monitoringTask = Task.Run(() => MonitorAndVoteAsync(CancellationToken.None));
-        }
-        
-        /// <summary>
-        /// Stop all control loops
-        /// </summary>
-        public async Task StopAsync()
-        {
-            lock (_lock)
-            {
-                if (!_isRunning)
-                    return;
-                
-                _isRunning = false;
-            }
-            
-            Console.WriteLine("[Redundant Control] Stopping redundant control system");
-            
-            var stopTasks = _controlLoops.Select(loop => loop.StopAsync()).ToArray();
-            await Task.WhenAll(stopTasks);
 
-            // Monitoring loop exits when _isRunning is set false above; wait for it (with timeout)
-            if (_monitoringTask != null)
-            {
-                try
-                {
-                    await _monitoringTask.WaitAsync(TimeSpan.FromSeconds(5));
-                }
-                catch (TimeoutException)
-                {
-                    Console.WriteLine("[Redundant Control] ⚠️ Monitoring task did not complete within 5s");
-                }
-                catch (OperationCanceledException)
-                {
-                    // Expected when cancellation is requested during shutdown.
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Expected if the task or related resources were disposed during shutdown.
-                }
-            }
-        }
-        
         /// <summary>
-        /// Monitor control loops and vote on outputs
+        /// Runtime start is not supported. Throws before any control loop is
+        /// started, <see cref="IsRunning"/> is changed, or any actuator is commanded.
         /// </summary>
-        private async Task MonitorAndVoteAsync(CancellationToken cancellationToken)
+        /// <exception cref="NotSupportedException">Always thrown; runtime is disabled.</exception>
+        public Task StartAsync()
         {
-            while (_isRunning && !cancellationToken.IsCancellationRequested)
-            {
-                try
-                {
-                    // Get outputs from all control loops
-                    var outputs = await GetControlOutputsAsync();
-                    
-                    // Vote on the outputs
-                    var votedOutput = VoteOnOutputs(outputs);
-                    
-                    // Check for faults
-                    var faults = DetectFaults(outputs);
-                    
-                    if (faults.Count > 0)
-                    {
-                        HandleFaults(faults);
-                    }
-                    
-                    // Apply voted output to primary actuator
-                    if (votedOutput.HasValue)
-                    {
-                        await _primaryActuator.SetPositionAsync(votedOutput.Value, CancellationToken.None);
-                        
-                        // Also apply to redundant actuators if available
-                        foreach (var actuator in _redundantActuators)
-                        {
-                            await actuator.SetPositionAsync(votedOutput.Value, CancellationToken.None);
-                        }
-                    }
-                    
-                    await Task.Delay(10, cancellationToken); // 100 Hz monitoring
-                }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
-                catch (InvalidOperationException ex)
-                {
-                    Console.WriteLine($"[Redundant Control] ⚠️ Invalid operation in voting: {ex.Message}");
-                    await Task.Delay(100, cancellationToken);
-                }
-                catch (Exception ex) when (ex is ArgumentException || ex is NullReferenceException)
-                {
-                    Console.WriteLine($"[Redundant Control] ⚠️ Data error in voting: {ex.Message}");
-                    await Task.Delay(100, cancellationToken);
-                }
-            }
+            throw new NotSupportedException(
+                "RedundantControlSystem runtime is disabled until real per-channel output sources, " +
+                "timestamps/staleness checks, quorum rules, command bounds, rate limits, and " +
+                "single-writer actuation are designed. Voting helpers remain available.");
         }
-        
-        private async Task<List<double>> GetControlOutputsAsync()
+
+        /// <summary>
+        /// Safe no-op when the system was never started or <see cref="StartAsync"/> failed.
+        /// Does not command actuators.
+        /// </summary>
+        public Task StopAsync()
         {
-            // In a real system, control loops would expose their current outputs
-            // For now, we'll get actuator positions as proxy
-            var outputs = new List<double>();
-            
-            // This is simplified - in production, control loops would expose their outputs
-            // For demonstration, we'll use a placeholder
-            // Note: In production, would get actual control output from each loop
-            for (int i = 0; i < _controlLoops.Count; i++)
-            {
-                // Would get actual control output from loop
-                // For now, use a simulated value
-                outputs.Add(0.5); // Placeholder
-            }
-            
-            // Explicitly mark as async operation
-            await Task.CompletedTask;
-            return outputs;
-        }
-        
-        private double? VoteOnOutputs(List<double> outputs)
-        {
-            return SelectVote(_votingStrategy, outputs);
+            _isRunning = false;
+            return Task.CompletedTask;
         }
 
         /// <summary>
@@ -306,11 +185,6 @@ namespace HB_NLP_Research_Lab.Core.Control
             return double.IsFinite(average) ? average : null;
         }
 
-        private List<Fault> DetectFaults(List<double> outputs)
-        {
-            return DetectChannelFaults(outputs);
-        }
-
         /// <summary>
         /// A non-finite channel is a fault. Comparisons with NaN are false, so the
         /// old deviation check never reported a failed channel, and one NaN made
@@ -372,37 +246,17 @@ namespace HB_NLP_Research_Lab.Core.Control
 
             return faults;
         }
-        
-        private void HandleFaults(List<Fault> faults)
-        {
-            foreach (var fault in faults)
-            {
-                Console.WriteLine($"[Redundant Control] ⚠️ Fault detected in controller {fault.ControllerIndex}: " +
-                    $"output={fault.OutputValue:F3}, expected={fault.ExpectedValue:F3}, deviation={fault.Deviation:F3}");
-                
-                // In production, would:
-                // 1. Log fault
-                // 2. Isolate faulty controller
-                // 3. Switch to backup if needed
-                // 4. Alert operators
-            }
-        }
-        
+
+        /// <summary>
+        /// Safe when never started or after a failed <see cref="StartAsync"/>.
+        /// Does not command actuators. Idempotent.
+        /// </summary>
         public void Dispose()
         {
-            // Use Task.Run to avoid deadlocks when disposing from sync context
-            try
-            {
-                Task.Run(async () => await StopAsync().ConfigureAwait(false))
-                    .Wait(TimeSpan.FromSeconds(5));
-            }
-            catch (AggregateException)
-            {
-                // Task may have already completed or been cancelled - this is expected during disposal
-            }
+            _isRunning = false;
         }
     }
-    
+
     public enum VotingStrategy
     {
         MajorityVote,    // Strict majority of channels; otherwise hold
@@ -411,7 +265,7 @@ namespace HB_NLP_Research_Lab.Core.Control
         MidValueSelect,  // Middle value (TMR)
         Consensus        // All must agree
     }
-    
+
     public class Fault
     {
         public int ControllerIndex { get; set; }
