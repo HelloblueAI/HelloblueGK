@@ -1,52 +1,52 @@
-# Real-Time Engine Control System
+# Experimental Engine Control Components
 
 ## Overview
 
-This directory contains the real-time control system components that enable HelloblueGK to actually control rocket engines, not just simulate them.
+This directory contains experimental simulation and research control components. They are not validated, certified, or approved for operational hardware. They must not be connected to a real engine. Software tests in this repository are not physical or operational validation.
 
 ## Architecture
 
 ```
 Control/
-├── RealTimeControlLoop.cs      # Base class for deterministic control loops
-├── ThrottleController.cs        # Thrust control (100 Hz)
-├── StartupSequenceController.cs # Engine startup sequence (10 Hz)
+├── RealTimeControlLoop.cs      # Base class for timed control-loop research code
+├── ThrottleController.cs        # Simulated thrust-command loop (100 Hz)
+├── StartupSequenceController.cs # Simulated startup-sequence state machine (10 Hz)
 └── README.md                    # This file
 
 Safety/
-└── HardwareSafetyMonitor.cs     # Real-time safety monitoring (100 Hz)
+└── HardwareSafetyMonitor.cs     # Simulated safety-monitoring research loop (100 Hz)
 
-Hardware/
-├── ISensor.cs                   # Sensor interface
-├── IActuator.cs                 # Actuator interface
-└── IHardwareInterface.cs        # Communication protocol interface
+# Future research gaps (not present evidence of hardware readiness):
+# - Sensor interfaces
+# - Actuator interfaces
+# - Hardware communication interfaces
 ```
 
 ## Components
 
 ### RealTimeControlLoop
 Base class providing:
-- Deterministic timing (configurable frequency)
+- Configurable loop timing
 - Timing violation detection
 - Performance statistics
-- Graceful startup/shutdown
+- Startup/shutdown hooks for research use
 
 ### ThrottleController
-Controls engine thrust via throttle actuator:
+Research loop that issues simulated throttle commands via an `IActuator`:
 - **Frequency**: 100 Hz (10ms period)
 - **Control**: PID-based closed-loop or open-loop
-- **Safety**: Rate limiting, position limits
-- **Inputs**: Thrust sensor, chamber pressure sensor
-- **Output**: Throttle actuator position
+- **Limits**: Rate limiting, position limits
+- **Inputs**: Thrust sensor, chamber pressure sensor abstractions
+- **Output**: Throttle actuator position commands in simulation
 
 ### StartupSequenceController
-Manages engine startup sequence:
+Simulated engine startup-sequence state machine:
 - **Frequency**: 10 Hz (100ms period)
 - **States**: Pre-checks → Purge → Fuel → Oxidizer → Ignition → Verify → Throttle Up → Running
-- **Safety**: Timeout detection, state validation, fail-closed sensor and actuator gates
-- **Abort**: Can abort at any time
+- **Gates**: Timeout detection, state validation, fail-closed sensor and actuator gates in software
+- **Abort**: Can abort at any time within the simulation
 
-Propellant is admitted and the igniter is fired only while the samples that authorize that command are still valid:
+In this simulated sequence, propellant admission and igniter commands are authorized only while the samples that authorize that command are still valid:
 
 - The chamber stays in the ambient band until the spark. Combustion is a rise out of that band after the pulse, not another ambient sample.
 - Fuel flow stays inside its band before the oxidizer valve opens, and again at the end of the oxidizer wait, before the sequence enters ignition. Ignition reads both flows again immediately before the spark. Those two fuel checks are not the same sample: the second runs on a later loop tick, after the chamber is read again, and it is the sample that authorizes the spark. Oxidizer flow is part of that pre-spark read only.
@@ -55,19 +55,19 @@ Propellant is admitted and the igniter is fired only while the samples that auth
 - Ignition's budget stays 3 seconds, and oxidizer admission's budget stays 5 seconds. At 10 Hz a healthy read fits in one 100 ms period. Ignition's pass, including the 0.5 s pulse, four chamber reads, and four flow reads, is about 1.3 s. Oxidizer admission's 1 s wait plus its sensor reads is about 1.7 s. The added reads fit in those budgets, so neither interlock is lengthened.
 
 ### HardwareSafetyMonitor
-Real-time safety monitoring:
+Simulated safety-monitoring research loop:
 - **Frequency**: 100 Hz (10ms period)
-- **Function**: Monitors critical sensors, triggers emergency shutdown
-- **Limits**: Configurable safety limits per parameter
-- **Response**: Hardware interlock activation
+- **Function**: Monitors configured sensor abstractions and can request a simulated emergency shutdown path
+- **Limits**: Configurable software limits per parameter
+- **Response**: Software-side interlock request only; not a hardware safety system
 
 ### RedundantControlSystem
-Voting helpers for TMR/NMR (majority, median, average, mid-value, consensus, fault detection) are available for offline use. **Runtime operation is disabled**: `StartAsync` throws `NotSupportedException` and does not start loops or command actuators. Re-enable only after real per-channel output sources, timestamps/staleness, quorum rules, bounds, rate limits, and single-writer actuation are designed.
+Voting helpers (majority, median, average, mid-value, consensus, fault detection) are retained for internal/offline testing. Runtime operation stays disabled until real output sources, timestamps, quorum rules, bounds, rate limits, and single-writer actuation are designed. `StartAsync` throws `NotSupportedException` and does not start loops or command actuators.
 
 ## Usage Example
 
 ```csharp
-// Create hardware interfaces (would be actual hardware implementations)
+// Simulated sensor/actuator stand-ins for research only — not operational hardware
 var throttleActuator = new SimulatedThrottleActuator();
 var thrustSensor = new SimulatedThrustSensor();
 var pressureSensor = new SimulatedPressureSensor();
@@ -93,23 +93,21 @@ throttleController.SetThrottle(0.75); // 75% throttle
 await throttleController.StopAsync();
 ```
 
-## Safety Considerations
+## Scope and Limits
 
-⚠️ **CRITICAL**: This code is for controlling real rocket engines. Do not use without:
+- These components are experimental simulation and research code.
+- They are not validated, certified, or approved for operational hardware.
+- They must not be connected to a real engine.
+- Passing software tests here is not physical or operational validation.
+- Do not treat this directory as flight-ready, certified, or hardware-qualified software.
 
-1. **Proper Safety Systems**: Hardware interlocks, emergency shutdown
-2. **Testing**: Extensive testing on test stands before flight
-3. **Certification**: Aerospace certification (DO-178C, etc.)
-4. **Redundancy**: Multiple independent safety systems
-5. **Expertise**: Aerospace engineering expertise required
+## Future Research Gaps
 
-## Next Steps
+The items below are research gaps, not evidence that hardware control is ready:
 
-To make this fully functional:
-
-1. **Implement Hardware Interfaces**: Create concrete implementations of `ISensor`, `IActuator`, `IHardwareInterface`
-2. **Add Communication Protocols**: CAN bus, Modbus, Serial drivers
-3. **Implement Gimbal Controller**: Thrust vectoring control
-4. **Add Mixture Ratio Controller**: Fuel/oxidizer ratio control
-5. **RTOS Integration**: Real-time operating system support
-6. **Testing**: Hardware-in-the-loop testing
+1. Concrete `ISensor`, `IActuator`, and `IHardwareInterface` implementations suitable for a specific test stand (still not permission to connect to a real engine)
+2. Communication protocol drivers (for example CAN, Modbus, or serial) as research topics
+3. Gimbal / thrust-vectoring research controllers
+4. Mixture-ratio research controllers
+5. RTOS integration experiments
+6. Hardware-in-the-loop research setups under appropriate lab controls
