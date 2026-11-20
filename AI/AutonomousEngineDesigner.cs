@@ -510,9 +510,7 @@ namespace HB_NLP_Research_Lab.AI
 
         public async Task<SelfOptimizedEngine> OptimizeEngineAsync(EngineArchitecture architecture)
         {
-            Console.WriteLine($"[Self-Optimizer] 🔧 Optimizing {architecture.Name}...");
-            
-            // Multi-objective optimization
+            // No objective is attached. The result does not carry a measured efficiency.
             var optimizationResult = await _optimizer.OptimizeAsync(architecture);
             
             var optimizedEngine = new SelfOptimizedEngine
@@ -525,7 +523,7 @@ namespace HB_NLP_Research_Lab.AI
                 OptimizedParameters = optimizationResult.Parameters
             };
             
-            Console.WriteLine($"[Self-Optimizer] Optimization complete - Efficiency: {optimizationResult.Efficiency:P2}");
+            Console.WriteLine($"[Self-Optimizer] No measured optimization for {architecture.Name}.");
             return optimizedEngine;
         }
 
@@ -796,15 +794,16 @@ namespace HB_NLP_Research_Lab.AI
     { 
         public async Task<EngineOptimizationResult> OptimizeAsync(EngineArchitecture architecture)
         {
-            await Task.Delay(100);
+            await Task.CompletedTask;
+            _ = architecture;
+
+            // No objective or measured operating point is attached. A fixed 95%
+            // efficiency, a 10% thrust increase, and a 5% rise in cooling efficiency
+            // would report an optimization this call never ran.
             return new EngineOptimizationResult
             {
-                Performance = new EnginePerformance
-                {
-                    Thrust = architecture.PropulsionSystem.Thrust * 1.1,
-                    Efficiency = architecture.CoolingSystem.Efficiency * 1.05
-                },
-                Efficiency = 0.95,
+                Performance = new EnginePerformance(),
+                Efficiency = 0,
                 History = new List<OptimizationStep>(),
                 Parameters = new Dictionary<string, double>()
             };
