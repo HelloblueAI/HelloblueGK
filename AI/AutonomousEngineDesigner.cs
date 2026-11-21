@@ -388,6 +388,8 @@ namespace HB_NLP_Research_Lab.AI
         public async Task<List<EngineArchitecture>> GenerateEngineArchitecturesAsync(DesignRequirements requirements)
         {
             await Task.CompletedTask;
+            // Required thrust, efficiency, and temperature are targets, not a measured engine.
+            _ = requirements;
             Console.WriteLine("[Generative AI] 🧠 Generating Revolutionary Engine Architectures...");
             
             var architectures = new List<EngineArchitecture>();
@@ -453,22 +455,28 @@ namespace HB_NLP_Research_Lab.AI
 
         private PropulsionSystem GeneratePropulsionSystem()
         {
+            // No thrust, impulse, or chamber pressure was measured. A random
+            // 1.5-2.5 MN, 350-450 s, and 250-350 bar stored as 250e6-350e6 Pa
+            // would report an engine this generator never sized.
             return new PropulsionSystem
             {
                 Type = "Advanced Methane/LOX",
-                Thrust = 1500000 + Random.Shared.NextDouble() * 1000000, // 1.5-2.5 MN
-                SpecificImpulse = 350 + Random.Shared.NextDouble() * 100, // 350-450 s
-                ChamberPressure = 250e6 + Random.Shared.NextDouble() * 100e6 // 250-350 bar
+                Thrust = 0,
+                SpecificImpulse = 0,
+                ChamberPressure = 0,
+                Efficiency = 0
             };
         }
 
         private CoolingSystem GenerateCoolingSystem()
         {
+            // No cooling measurement is attached. A random 500-800 kW at
+            // 85-95% efficiency would report heat rejection this generator never ran.
             return new CoolingSystem
             {
                 Type = "Active Regenerative Cooling",
-                CoolingCapacity = 500 + Random.Shared.NextDouble() * 300, // 500-800 kW
-                Efficiency = 0.85 + Random.Shared.NextDouble() * 0.1 // 85-95%
+                CoolingCapacity = 0,
+                Efficiency = 0
             };
         }
 
@@ -486,13 +494,15 @@ namespace HB_NLP_Research_Lab.AI
 
         private MaterialComposition GenerateMaterialComposition()
         {
+            // No material test is attached. A random 400-600 MPa and 2000-2500 K
+            // would report strength and temperature resistance this generator never measured.
             return new MaterialComposition
             {
                 PrimaryMaterial = "Advanced Nickel Superalloy",
                 SecondaryMaterial = "Carbon-Carbon Composite",
                 Coating = "Thermal Barrier Coating",
-                Strength = 400e6 + Random.Shared.NextDouble() * 200e6, // 400-600 MPa
-                TemperatureResistance = 2000 + Random.Shared.NextDouble() * 500 // 2000-2500 K
+                Strength = 0,
+                TemperatureResistance = 0
             };
         }
     }
