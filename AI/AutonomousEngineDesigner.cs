@@ -399,7 +399,9 @@ namespace HB_NLP_Research_Lab.AI
                 {
                     Id = $"Revolutionary_Engine_{i + 1}",
                     Name = $"AI-Generated Engine {i + 1}",
-                    InnovationLevel = Random.Shared.NextDouble() * 0.5 + 0.5, // 0.5 to 1.0
+                    // No novelty measurement is attached. A random 0.5-1.0 would
+                    // report innovation this generator never measured. 0 means unmeasured.
+                    InnovationLevel = 0,
                     ArchitectureType = GetRandomArchitectureType(),
                     PropulsionSystem = GeneratePropulsionSystem(),
                     CoolingSystem = GenerateCoolingSystem(),
