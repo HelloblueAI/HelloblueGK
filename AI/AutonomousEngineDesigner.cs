@@ -58,15 +58,21 @@ namespace HB_NLP_Research_Lab.AI
             Console.WriteLine($"[AI Designer] Generating revolutionary engine: {engineName}");
             await Task.Delay(200);
 
+            // No design measurement is attached. A 2.5 MN thrust, 97% efficiency,
+            // 380 s specific impulse, 850 kg/s fuel flow, 2800 K, 350 bar, 15000 RPM,
+            // 50000 kW, thrust-to-weight 180, 95% cooling and optimization efficiency,
+            // a 1 ms control response, and innovation level 0.98 would report an
+            // engine this call never designed. 0 means unmeasured. The architecture
+            // type and material names stay.
             return new SelfOptimizedEngine
             {
                 Id = engineName,
                 Architecture = new EngineArchitecture
                 {
                     ArchitectureType = "Revolutionary AI-Generated",
-                    PropulsionSystem = new PropulsionSystem { Thrust = 2500000, Efficiency = 0.97 },
-                    CoolingSystem = new CoolingSystem { Efficiency = 0.95 },
-                    ControlSystem = new ControlSystem { ResponseTime = 0.001 },
+                    PropulsionSystem = new PropulsionSystem(),
+                    CoolingSystem = new CoolingSystem(),
+                    ControlSystem = new ControlSystem(),
                     MaterialComposition = new MaterialComposition
                     {
                         PrimaryMaterial = "Quantum-Enhanced Superalloy",
@@ -74,20 +80,7 @@ namespace HB_NLP_Research_Lab.AI
                         Coating = "Thermal Barrier Coating"
                     }
                 },
-                Performance = new EnginePerformance
-                {
-                    Thrust = 2500000,
-                    Efficiency = 0.97,
-                    FuelConsumption = 850,
-                    Temperature = 2800,
-                    Pressure = 350,
-                    RPM = 15000,
-                    PowerOutput = 50000,
-                    SpecificImpulse = 380,
-                    ThrustToWeightRatio = 180
-                },
-                OptimizationEfficiency = 0.95,
-                InnovationLevel = 0.98,
+                Performance = new EnginePerformance(),
                 OptimizationHistory = new List<OptimizationStep>(),
                 OptimizedParameters = new Dictionary<string, double>()
             };
