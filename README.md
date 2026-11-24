@@ -1,11 +1,11 @@
-**UW students:** [UW Student Projects: Start Here](https://github.com/HelloblueAI/.github/blob/main/profile/UW-STUDENT-PROJECTS.md). Claim one listed issue. This repository is not flight-certified software. GPU tasks stay closed until access is confirmed.
+**UW students:** [UW Student Projects: Start Here](https://github.com/HelloblueAI/.github/blob/main/profile/UW-STUDENT-PROJECTS.md). Claim one listed issue. This repository is not flight-certified software. UW Bothell provides shared NVIDIA GPUs with at least 8 GB of VRAM for these student projects. Scheduling that access is coordinated with UW faculty.
 
 [![CI/CD Pipeline](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml/badge.svg)](https://github.com/HelloblueAI/HelloblueGK/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![.NET 9.0](https://img.shields.io/badge/.NET-9.0-512BD4?style=flat&logo=.net&logoColor=white)](https://dotnet.microsoft.com/)
-[![Line Coverage](https://img.shields.io/badge/line%20coverage-65.2%25-yellow)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/42976918002)
-[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-66.5%25-yellow)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/42976918002)
-[![Tests](https://img.shields.io/badge/tests-1895%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/42976918002)
+[![Line Coverage](https://img.shields.io/badge/line%20coverage-67.6%25-yellow)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/45509735051)
+[![Branch Coverage](https://img.shields.io/badge/branch%20coverage-66.9%25-yellow)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/45509735051)
+[![Tests](https://img.shields.io/badge/tests-1938%20passing-success)](https://github.com/HelloblueAI/HelloblueGK/actions/runs/45509735051)
 [![Verification Scope](https://img.shields.io/badge/verification%20scope-documented-blue)](Docs/VERIFICATION_SCOPE.md)
 
 <div align="center">
@@ -126,8 +126,10 @@ the artifact itself.
 ### Coverage floors enforced per directory
 
 [`coverage-floors.json`](Certification/Artifacts/coverage-floors.json) sets minimum line and branch
-coverage per directory, checked in CI from the measured report. The latest local run passed
-**1,336 tests**.
+coverage per directory, checked in CI from the measured report. Those floors are minimums.
+[Main CI run 45509735051](https://github.com/HelloblueAI/HelloblueGK/actions/runs/45509735051)
+passed **1,938** tests in `Tests/HelloblueGK.Tests.csproj`, with 67.6% line coverage and 66.9%
+branch coverage.
 
 ### What is simulation scaffolding
 
@@ -259,14 +261,17 @@ Full endpoint reference: [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 ## Testing
 
 ```bash
-dotnet test Tests/HelloblueGK.Tests.csproj                        # all 1,214 tests
-dotnet test --filter Category=Integration                         # integration suite
-dotnet test --filter Category=Performance                         # performance benchmarks
+dotnet test Tests/HelloblueGK.Tests.csproj                        # full project: 1,938 tests on main CI run 45509735051
+dotnet test --filter Category=Integration                         # 7 tests, a subset of that run
+dotnet test --filter Category=Performance                         # 10 tests, a subset of that run
 dotnet test --filter 'FullyQualifiedName~IdealRocketNozzleTests'  # nozzle validation
 ```
 
-`Integration` and `Performance` are the only category traits defined, so other `Category=` filters
-match nothing and pass while running zero tests.
+The 1,938 count is the unfiltered `Tests/HelloblueGK.Tests.csproj` run in
+[main CI run 45509735051](https://github.com/HelloblueAI/HelloblueGK/actions/runs/45509735051):
+1,938 passed, 0 failed. The integration and performance commands rerun subsets of that same
+project. `Integration` and `Performance` are the only category traits defined, so other
+`Category=` filters match nothing and pass while running zero tests.
 
 Coverage and the certification gate run in the **Build and Test** job, which is a required check on
 `main` — the gate and the floors can fail a merge. To reproduce the full pipeline locally, see
