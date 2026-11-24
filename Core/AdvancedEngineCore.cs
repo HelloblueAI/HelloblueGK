@@ -28,27 +28,18 @@ namespace HB_NLP_Research_Lab.Core
         {
             await Task.CompletedTask;
             Console.WriteLine("[Advanced Engine Core] 🚀 Starting engine...");
-            
-            return new EnginePerformance
-            {
-                Thrust = 1500000,
-                Temperature = 1800,
-                FuelConsumption = 250
-            };
+
+            // Nothing was measured. 0 means unmeasured.
+            return new EnginePerformance();
         }
 
         public async Task<EnginePerformance> OptimizePerformanceAsync()
         {
             await Task.CompletedTask;
             Console.WriteLine("[Advanced Engine Core] 🔧 Optimizing performance...");
-            
-            // Efficiency stays unset. This method does not measure it.
-            return new EnginePerformance
-            {
-                Thrust = 1600000,
-                Temperature = 1750,
-                FuelConsumption = 240
-            };
+
+            // Nothing was measured. 0 means unmeasured.
+            return new EnginePerformance();
         }
 
         public async Task<EngineStatus> GetEngineStatusAsync()
