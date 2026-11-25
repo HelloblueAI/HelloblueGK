@@ -51,7 +51,8 @@ namespace HB_NLP_Research_Lab.Aerospace
                 EngineId = engineId,
                 Name = $"Variable Geometry Engine {engineId}",
                 ArchitectureType = "Variable Geometry",
-                InnovationLevel = 0.95,
+                // No novelty measurement is attached. 0 means unmeasured.
+                InnovationLevel = 0,
                 GeometryStates = new List<GeometryState>
                 {
                     new GeometryState { Name = "Launch Configuration", ExpansionRatio = 20.0, Thrust = 2000000 },
@@ -97,7 +98,8 @@ namespace HB_NLP_Research_Lab.Aerospace
                 EngineId = engineId,
                 Name = $"Modular Engine System {engineId}",
                 ArchitectureType = "Modular Design",
-                InnovationLevel = 0.90,
+                // No novelty measurement is attached. 0 means unmeasured.
+                InnovationLevel = 0,
                 Modules = new List<EngineModule>
                 {
                     new EngineModule { Type = "Propulsion Module", Standardized = true, Interchangeable = true },
@@ -136,7 +138,8 @@ namespace HB_NLP_Research_Lab.Aerospace
                 EngineId = engineId,
                 Name = $"Distributed Propulsion System {engineId}",
                 ArchitectureType = "Distributed Propulsion",
-                InnovationLevel = 0.92,
+                // No novelty measurement is attached. 0 means unmeasured.
+                InnovationLevel = 0,
                 Engines = new List<SubEngine>
                 {
                     new SubEngine { Id = "Engine-1", Thrust = 500000, Position = new Vector3(0, 0, 0) },
@@ -176,7 +179,8 @@ namespace HB_NLP_Research_Lab.Aerospace
                 EngineId = engineId,
                 Name = $"Hybrid Electric Engine {engineId}",
                 ArchitectureType = "Hybrid Electric",
-                InnovationLevel = 0.88,
+                // No novelty measurement is attached. 0 means unmeasured.
+                InnovationLevel = 0,
                 ElectricSystem = new ElectricPropulsionSystem
                 {
                     PowerOutput = 1000000, // 1 MW
@@ -221,7 +225,8 @@ namespace HB_NLP_Research_Lab.Aerospace
                 EngineId = engineId,
                 Name = $"Nuclear Thermal Engine {engineId}",
                 ArchitectureType = "Nuclear Thermal",
-                InnovationLevel = 0.96,
+                // No novelty measurement is attached. 0 means unmeasured.
+                InnovationLevel = 0,
                 NuclearReactor = new AdvancedNuclearReactor
                 {
                     PowerOutput = 100000000, // 100 MW
@@ -281,7 +286,10 @@ namespace HB_NLP_Research_Lab.Aerospace
             {
                 TotalEngines = _revolutionaryEngines.Count,
                 ArchitectureTypes = _revolutionaryEngines.Values.Select(e => e.ArchitectureType).Distinct().ToList(),
-                AverageInnovationLevel = _revolutionaryEngines.Values.Average(e => e.InnovationLevel),
+                // This average only restates the per-engine levels. Those stay 0 until measured.
+                AverageInnovationLevel = _revolutionaryEngines.Count == 0
+                    ? 0
+                    : _revolutionaryEngines.Values.Average(e => e.InnovationLevel),
                 PerformanceData = _performanceData,
                 TechnologyBreakthroughs = GenerateTechnologyBreakthroughs(),
                 FutureDevelopmentRoadmap = GenerateDevelopmentRoadmap()
