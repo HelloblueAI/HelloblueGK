@@ -125,6 +125,7 @@ public class HelloblueGKEngineTests : IDisposable
 
         // Assert
         metrics.Should().NotBeNull();
+        metrics.CpuUsage.Should().Be(0);
     }
 
     [Fact]
