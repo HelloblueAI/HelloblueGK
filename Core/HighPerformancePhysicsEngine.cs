@@ -275,11 +275,10 @@ namespace HB_NLP_Research_Lab.Core
             };
         }
 
-        private async Task<double> GetCpuUsageAsync()
+        private static Task<double> GetCpuUsageAsync()
         {
-            // Simulate CPU usage monitoring
-            await Task.Delay(1);
-            return new Random().NextDouble() * 100;
+            // No host CPU sample is attached. 0 means unmeasured.
+            return Task.FromResult(0.0);
         }
 
         public Task<MultiPhysicsResult> RunMultiPhysicsAnalysisAsync()
