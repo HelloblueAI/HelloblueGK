@@ -43,6 +43,9 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateVariableGeometryEngineAsync(string engineId, VariableGeometrySpecs specs)
         {
             await Task.CompletedTask;
+            // Geometry counts, expansion bounds, and morphing time on the request
+            // are targets, not a measured engine.
+            _ = specs;
             Console.WriteLine($"[Engine Architectures] 🔄 Creating Variable Geometry Engine: {engineId}");
             Console.WriteLine("[Engine Architectures] Shape-Shifting Engine Technology");
             
@@ -55,20 +58,24 @@ namespace HB_NLP_Research_Lab.Aerospace
                 InnovationLevel = 0,
                 GeometryStates = new List<GeometryState>
                 {
-                    new GeometryState { Name = "Launch Configuration", ExpansionRatio = 20.0, Thrust = 2000000 },
-                    new GeometryState { Name = "Cruise Configuration", ExpansionRatio = 40.0, Thrust = 1500000 },
-                    new GeometryState { Name = "Landing Configuration", ExpansionRatio = 10.0, Thrust = 500000 }
+                    // Configuration names stay. 2 MN, 1.5 MN, and 0.5 MN were stamped.
+                    // Nothing was measured. 0 means unmeasured.
+                    new GeometryState { Name = "Launch Configuration", ExpansionRatio = 20.0, Thrust = 0 },
+                    new GeometryState { Name = "Cruise Configuration", ExpansionRatio = 40.0, Thrust = 0 },
+                    new GeometryState { Name = "Landing Configuration", ExpansionRatio = 10.0, Thrust = 0 }
                 },
                 MorphingMechanism = new MorphingMechanism
                 {
                     Type = "Electro-Hydraulic Actuation",
-                    ResponseTime = 0.1, // seconds
-                    Precision = 0.001 // mm
+                    // 0.1 s and 0.001 mm were stamped. Nothing was measured.
+                    ResponseTime = 0,
+                    Precision = 0
                 },
                 AdaptiveControl = new AdaptiveControlSystem
                 {
                     Type = "AI-Driven Real-Time Adaptation",
-                    AdaptationRate = 100.0, // Hz
+                    // 100 Hz was stamped. Nothing was measured.
+                    AdaptationRate = 0,
                     LearningCapability = true,
                     PredictiveAdjustment = true
                 }
@@ -90,6 +97,9 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateModularEngineSystemAsync(string engineId, ModularSystemSpecs specs)
         {
             await Task.CompletedTask;
+            // Module count, assembly time, and automation on the request are targets,
+            // not a measured engine.
+            _ = specs;
             Console.WriteLine($"[Engine Architectures] 🧩 Creating Modular Engine System: {engineId}");
             Console.WriteLine("[Engine Architectures] Standardized Component Architecture");
             
@@ -109,13 +119,15 @@ namespace HB_NLP_Research_Lab.Aerospace
                 },
                 AssemblySystem = new ModularAssemblySystem
                 {
-                    AssemblyTime = TimeSpan.FromHours(2),
-                    DisassemblyTime = TimeSpan.FromHours(1),
-                    AutomationLevel = 0.95,
+                    // 2 h, 1 h, and 95% automation were stamped. Nothing was measured.
+                    AssemblyTime = TimeSpan.Zero,
+                    DisassemblyTime = TimeSpan.Zero,
+                    AutomationLevel = 0,
                     QualityControl = "AI-Driven Inspection"
                 },
-                StandardizationLevel = 0.98,
-                InterchangeabilityFactor = 0.95
+                // 98% standardization and 95% interchangeability were stamped.
+                StandardizationLevel = 0,
+                InterchangeabilityFactor = 0
             };
             
             _revolutionaryEngines[engineId] = engine;
@@ -130,6 +142,9 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateDistributedPropulsionSystemAsync(string engineId, DistributedPropulsionSpecs specs)
         {
             await Task.CompletedTask;
+            // Engine count, total thrust, and coordination accuracy on the request
+            // are targets, not a measured engine.
+            _ = specs;
             Console.WriteLine($"[Engine Architectures] 🔄 Creating Distributed Propulsion System: {engineId}");
             Console.WriteLine("[Engine Architectures] Multi-Engine Coordination Technology");
             
@@ -142,21 +157,24 @@ namespace HB_NLP_Research_Lab.Aerospace
                 InnovationLevel = 0,
                 Engines = new List<SubEngine>
                 {
-                    new SubEngine { Id = "Engine-1", Thrust = 500000, Position = new Vector3(0, 0, 0) },
-                    new SubEngine { Id = "Engine-2", Thrust = 500000, Position = new Vector3(1, 0, 0) },
-                    new SubEngine { Id = "Engine-3", Thrust = 500000, Position = new Vector3(-1, 0, 0) },
-                    new SubEngine { Id = "Engine-4", Thrust = 500000, Position = new Vector3(0, 1, 0) }
+                    // Layout stays. 500 kN on each sub-engine was stamped. Nothing was measured.
+                    new SubEngine { Id = "Engine-1", Thrust = 0, Position = new Vector3(0, 0, 0) },
+                    new SubEngine { Id = "Engine-2", Thrust = 0, Position = new Vector3(1, 0, 0) },
+                    new SubEngine { Id = "Engine-3", Thrust = 0, Position = new Vector3(-1, 0, 0) },
+                    new SubEngine { Id = "Engine-4", Thrust = 0, Position = new Vector3(0, 1, 0) }
                 },
                 CoordinationSystem = new EngineCoordinationSystem
                 {
                     Type = "AI-Driven Multi-Engine Coordination",
                     CoordinationAlgorithm = "Neural Network Optimization",
-                    ResponseTime = 0.001, // 1 ms
-                    SynchronizationAccuracy = 0.999,
+                    // 1 ms and 99.9% synchronization were stamped. Nothing was measured.
+                    ResponseTime = 0,
+                    SynchronizationAccuracy = 0,
                     FailureRedundancy = true
                 },
-                TotalThrust = 2000000, // N
-                CoordinationEfficiency = 0.98
+                // 2 MN and 98% coordination efficiency were stamped. Nothing was measured.
+                TotalThrust = 0,
+                CoordinationEfficiency = 0
             };
             
             _revolutionaryEngines[engineId] = engine;
@@ -171,6 +189,9 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateHybridElectricEngineAsync(string engineId, HybridElectricSpecs specs)
         {
             await Task.CompletedTask;
+            // Electric power, combustion thrust, and battery capacity on the request
+            // are targets, not a measured engine.
+            _ = specs;
             Console.WriteLine($"[Engine Architectures] ⚡ Creating Hybrid Electric Engine: {engineId}");
             Console.WriteLine("[Engine Architectures] Electric-Combustion Hybrid Technology");
             
@@ -183,15 +204,17 @@ namespace HB_NLP_Research_Lab.Aerospace
                 InnovationLevel = 0,
                 ElectricSystem = new ElectricPropulsionSystem
                 {
-                    PowerOutput = 1000000, // 1 MW
-                    Efficiency = 0.95,
-                    BatteryCapacity = 5000000, // 5 MWh
+                    // 1 MW, 95% efficiency, and 5 MWh were stamped. Nothing was measured.
+                    PowerOutput = 0,
+                    Efficiency = 0,
+                    BatteryCapacity = 0,
                     RegenerativeBraking = true
                 },
                 CombustionSystem = new AdvancedCombustionSystem
                 {
-                    Thrust = 1500000, // N
-                    Efficiency = 0.92,
+                    // 1.5 MN and 92% efficiency were stamped. Nothing was measured.
+                    Thrust = 0,
+                    Efficiency = 0,
                     FuelType = "Methane/LOX",
                     HybridMode = true
                 },
@@ -199,10 +222,12 @@ namespace HB_NLP_Research_Lab.Aerospace
                 {
                     Type = "AI-Driven Power Distribution",
                     OptimizationAlgorithm = "Real-Time Load Balancing",
-                    Efficiency = 0.97,
+                    // 97% efficiency was stamped. Nothing was measured.
+                    Efficiency = 0,
                     AdaptiveControl = true
                 },
-                HybridEfficiency = 0.94
+                // 94% hybrid efficiency was stamped. Nothing was measured.
+                HybridEfficiency = 0
             };
             
             _revolutionaryEngines[engineId] = engine;
@@ -217,6 +242,8 @@ namespace HB_NLP_Research_Lab.Aerospace
         public async Task<RevolutionaryEngine> CreateNuclearThermalEngineAsync(string engineId, NuclearThermalSpecs specs)
         {
             await Task.CompletedTask;
+            // Reactor power and safety factor on the request are targets, not a measured engine.
+            _ = specs;
             Console.WriteLine($"[Engine Architectures] ☢️ Creating Nuclear Thermal Engine: {engineId}");
             Console.WriteLine("[Engine Architectures] Nuclear Propulsion Technology");
             
@@ -229,26 +256,30 @@ namespace HB_NLP_Research_Lab.Aerospace
                 InnovationLevel = 0,
                 NuclearReactor = new AdvancedNuclearReactor
                 {
-                    PowerOutput = 100000000, // 100 MW
+                    // 100 MW was stamped. Nothing was measured.
+                    PowerOutput = 0,
                     FuelType = "Uranium-235",
                     SafetyLevel = "Triple Redundant",
                     Shielding = "Multi-Layer Radiation Protection"
                 },
                 ThermalPropulsion = new ThermalPropulsionSystem
                 {
-                    Thrust = 5000000, // 5 MN
-                    SpecificImpulse = 800, // s
+                    // 5 MN, 800 s, and 85% thermal efficiency were stamped. Nothing was measured.
+                    Thrust = 0,
+                    SpecificImpulse = 0,
                     Propellant = "Hydrogen",
-                    ThermalEfficiency = 0.85
+                    ThermalEfficiency = 0
                 },
                 SafetySystems = new NuclearSafetySystems
                 {
                     EmergencyShutdown = true,
                     RadiationMonitoring = true,
                     ContainmentVessel = true,
-                    SafetyFactor = 10.0
+                    // A safety factor of 10 was stamped. Nothing was measured.
+                    SafetyFactor = 0
                 },
-                NuclearEfficiency = 0.90
+                // 90% nuclear efficiency was stamped. Nothing was measured.
+                NuclearEfficiency = 0
             };
             
             _revolutionaryEngines[engineId] = engine;
@@ -479,8 +510,10 @@ namespace HB_NLP_Research_Lab.Aerospace
             {
                 Type = "AI-Driven Multi-Engine Coordination",
                 CoordinationAlgorithm = "Neural Network Optimization",
-                ResponseTime = 0.001, // 1 ms
-                SynchronizationAccuracy = 0.999,
+                // A constructed system has not coordinated anything. 1 ms and
+                // 99.9% accuracy were stamped. 0 means unmeasured.
+                ResponseTime = 0,
+                SynchronizationAccuracy = 0,
                 FailureRedundancy = true
             };
         }
