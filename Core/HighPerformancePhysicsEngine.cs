@@ -481,10 +481,10 @@ namespace HB_NLP_Research_Lab.Core
             await Task.Delay(20, cancellationToken);
         }
 
-        public async Task<int> GetOptimizationLevelAsync()
+        public Task<int> GetOptimizationLevelAsync()
         {
-            await Task.Delay(1);
-            return 95; // 95% optimization level
+            // No solver-optimization measurement is attached. 0 means unmeasured.
+            return Task.FromResult(0);
         }
     }
 
